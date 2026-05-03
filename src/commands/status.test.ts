@@ -619,6 +619,47 @@ describe("statusCommand", () => {
             message:
               "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.",
           },
+          schedulerBoundary: {
+            contractVersion: "rust-spine-scheduler-v1",
+            schedulerAuthority: "node",
+            rustScheduler: "shadow",
+            workflowRunAuthority: "node",
+            workflowSessionAuthority: "node",
+            channelDeliveryAuthority: "node",
+            authoritySwitchAllowed: false,
+            localDryRunCompatible: true,
+            leases: {
+              requiredForLiveRuns: true,
+              storage: "postgres",
+              status: "blocked_without_postgres",
+              owner: "node-workflows",
+              rustOwnership: "not_enabled",
+              message:
+                "Live workflow scheduler leases require PostgreSQL and remain unavailable locally; Rust scheduler remains shadow-only.",
+            },
+            wakeups: {
+              owner: "node-cron",
+              mode: "next-heartbeat",
+              rustOwnership: "shadow",
+              duplicatePrevention:
+                "one workflowRun cron job per active schedule; duplicate scheduled workflows start inactive",
+              message:
+                "Node cron owns workflow wakeups in next-heartbeat mode; duplicate prevention keeps one workflowRun cron job per active schedule and starts scheduled duplicates inactive.",
+            },
+            handoff: {
+              runPayload: "cron payload kind=workflowRun workflowId",
+              session: "isolated workflow agent session",
+              dryRun: "canvas payload validation",
+              liveRunRequiresPostgres: true,
+              message:
+                "Node workflows own workflowRun payload handling and isolated workflow agent sessions; Rust may observe the contract but cannot take authority.",
+            },
+            blockers: [
+              "postgres_required_for_live_scheduler_leases",
+              "rust_scheduler_shadow_only",
+              "authority_switch_not_allowed",
+            ],
+          },
         };
       }
       return {};
@@ -633,6 +674,10 @@ describe("statusCommand", () => {
     expect(logs.join("\n")).toContain("saved workflows need PostgreSQL");
     expect(logs.join("\n")).toContain("cron reconciliation");
     expect(logs.join("\n")).toContain("skipped without PostgreSQL");
+    expect(logs.join("\n")).toContain("scheduler node");
+    expect(logs.join("\n")).toContain("rust shadow");
+    expect(logs.join("\n")).toContain("leases need PostgreSQL");
+    expect(logs.join("\n")).toContain("authority switch");
 
     mocks.callGateway.mockReset().mockResolvedValue({});
   });

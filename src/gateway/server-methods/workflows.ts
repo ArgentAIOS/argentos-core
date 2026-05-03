@@ -235,6 +235,39 @@ type WorkflowBackendStatus = {
     status: "configured" | "skipped_no_postgres";
     message: string;
   };
+  schedulerBoundary: {
+    contractVersion: "rust-spine-scheduler-v1";
+    schedulerAuthority: "node";
+    rustScheduler: "shadow";
+    workflowRunAuthority: "node";
+    workflowSessionAuthority: "node";
+    channelDeliveryAuthority: "node";
+    authoritySwitchAllowed: false;
+    localDryRunCompatible: true;
+    leases: {
+      requiredForLiveRuns: true;
+      storage: "postgres";
+      status: "configured" | "blocked_without_postgres";
+      owner: "node-workflows";
+      rustOwnership: "not_enabled";
+      message: string;
+    };
+    wakeups: {
+      owner: "node-cron";
+      mode: "next-heartbeat";
+      rustOwnership: "shadow";
+      duplicatePrevention: string;
+      message: string;
+    };
+    handoff: {
+      runPayload: "cron payload kind=workflowRun workflowId";
+      session: "isolated workflow agent session";
+      dryRun: "canvas payload validation";
+      liveRunRequiresPostgres: true;
+      message: string;
+    };
+    blockers: string[];
+  };
   operatorMessages: string[];
 };
 
@@ -271,6 +304,20 @@ export function buildWorkflowBackendStatus(options?: {
   const scheduleCronMessage = savedWorkflowsAvailable
     ? "Scheduled workflow cron reconciliation is configured for saved workflows."
     : "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.";
+  const leaseMessage = savedWorkflowsAvailable
+    ? "Live workflow scheduler leases are owned by Node workflows and backed by PostgreSQL; Rust scheduler remains shadow-only."
+    : "Live workflow scheduler leases require PostgreSQL and remain unavailable locally; Rust scheduler remains shadow-only.";
+  const wakeupMessage =
+    "Node cron owns workflow wakeups in next-heartbeat mode; duplicate prevention keeps one workflowRun cron job per active schedule and starts scheduled duplicates inactive.";
+  const handoffMessage =
+    "Node workflows own workflowRun payload handling and isolated workflow agent sessions; Rust may observe the contract but cannot take authority.";
+  const schedulerBlockers = savedWorkflowsAvailable
+    ? ["rust_scheduler_shadow_only", "authority_switch_not_allowed"]
+    : [
+        "postgres_required_for_live_scheduler_leases",
+        "rust_scheduler_shadow_only",
+        "authority_switch_not_allowed",
+      ];
 
   return {
     ok: true,
@@ -305,7 +352,48 @@ export function buildWorkflowBackendStatus(options?: {
       status: savedWorkflowsAvailable ? "configured" : "skipped_no_postgres",
       message: scheduleCronMessage,
     },
-    operatorMessages: [dryRunMessage, savedMessage, scheduleCronMessage],
+    schedulerBoundary: {
+      contractVersion: "rust-spine-scheduler-v1",
+      schedulerAuthority: "node",
+      rustScheduler: "shadow",
+      workflowRunAuthority: "node",
+      workflowSessionAuthority: "node",
+      channelDeliveryAuthority: "node",
+      authoritySwitchAllowed: false,
+      localDryRunCompatible: true,
+      leases: {
+        requiredForLiveRuns: true,
+        storage: "postgres",
+        status: savedWorkflowsAvailable ? "configured" : "blocked_without_postgres",
+        owner: "node-workflows",
+        rustOwnership: "not_enabled",
+        message: leaseMessage,
+      },
+      wakeups: {
+        owner: "node-cron",
+        mode: "next-heartbeat",
+        rustOwnership: "shadow",
+        duplicatePrevention:
+          "one workflowRun cron job per active schedule; duplicate scheduled workflows start inactive",
+        message: wakeupMessage,
+      },
+      handoff: {
+        runPayload: "cron payload kind=workflowRun workflowId",
+        session: "isolated workflow agent session",
+        dryRun: "canvas payload validation",
+        liveRunRequiresPostgres: true,
+        message: handoffMessage,
+      },
+      blockers: schedulerBlockers,
+    },
+    operatorMessages: [
+      dryRunMessage,
+      savedMessage,
+      scheduleCronMessage,
+      leaseMessage,
+      wakeupMessage,
+      handoffMessage,
+    ],
   };
 }
 

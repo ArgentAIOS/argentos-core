@@ -61,9 +61,43 @@ describe("workflow backend status", () => {
         requiresPostgres: true,
         status: "skipped_no_postgres",
       },
+      schedulerBoundary: {
+        contractVersion: "rust-spine-scheduler-v1",
+        schedulerAuthority: "node",
+        rustScheduler: "shadow",
+        workflowRunAuthority: "node",
+        workflowSessionAuthority: "node",
+        channelDeliveryAuthority: "node",
+        authoritySwitchAllowed: false,
+        localDryRunCompatible: true,
+        leases: {
+          requiredForLiveRuns: true,
+          storage: "postgres",
+          status: "blocked_without_postgres",
+          owner: "node-workflows",
+          rustOwnership: "not_enabled",
+        },
+        wakeups: {
+          owner: "node-cron",
+          mode: "next-heartbeat",
+          rustOwnership: "shadow",
+        },
+        handoff: {
+          runPayload: "cron payload kind=workflowRun workflowId",
+          session: "isolated workflow agent session",
+          dryRun: "canvas payload validation",
+          liveRunRequiresPostgres: true,
+        },
+        blockers: [
+          "postgres_required_for_live_scheduler_leases",
+          "rust_scheduler_shadow_only",
+          "authority_switch_not_allowed",
+        ],
+      },
     });
     expect(status.operatorMessages.join(" ")).toContain("without PostgreSQL");
     expect(status.operatorMessages.join(" ")).toContain("cron reconciliation is skipped");
+    expect(status.operatorMessages.join(" ")).toContain("Rust scheduler remains shadow-only");
     expect(status.dryRun.command).toContain("argent gateway call workflows.dryRun");
   });
 
@@ -84,6 +118,20 @@ describe("workflow backend status", () => {
       requiresPostgres: true,
       status: "configured",
     });
+    expect(status.schedulerBoundary).toMatchObject({
+      schedulerAuthority: "node",
+      rustScheduler: "shadow",
+      authoritySwitchAllowed: false,
+      leases: {
+        status: "configured",
+        owner: "node-workflows",
+        rustOwnership: "not_enabled",
+      },
+      wakeups: {
+        duplicatePrevention: expect.stringContaining("one workflowRun cron job"),
+      },
+      blockers: ["rust_scheduler_shadow_only", "authority_switch_not_allowed"],
+    });
   });
 
   it("returns backend status without touching saved workflow storage", async () => {
@@ -101,6 +149,11 @@ describe("workflow backend status", () => {
         dryRun: expect.objectContaining({ requiresPostgres: false }),
         savedWorkflows: expect.objectContaining({ requiresPostgres: true }),
         scheduleCron: expect.objectContaining({ status: "skipped_no_postgres" }),
+        schedulerBoundary: expect.objectContaining({
+          schedulerAuthority: "node",
+          rustScheduler: "shadow",
+          authoritySwitchAllowed: false,
+        }),
       }),
     );
   });
