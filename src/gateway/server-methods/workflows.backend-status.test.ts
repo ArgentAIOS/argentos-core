@@ -88,6 +88,41 @@ describe("workflow backend status", () => {
           dryRun: "canvas payload validation",
           liveRunRequiresPostgres: true,
         },
+        runSessionHandoff: {
+          contractVersion: "workflow-run-session-handoff-v1",
+          dryRun: {
+            authority: "node-workflows",
+            input: "canvas payload",
+            persistsWorkflowRun: false,
+            requiresPostgres: false,
+            duplicatePrevention: "not_applicable_no_saved_run",
+          },
+          liveRun: {
+            authority: "node-workflows",
+            input: "saved workflow row",
+            payloadKind: "workflowRun",
+            persistsWorkflowRun: true,
+            requiresPostgres: true,
+            sessionTarget: "isolated",
+          },
+          session: {
+            owner: "node-workflow-runner",
+            keyDerivation: "buildWorkflowAgentSessionKey(agentId, stepIndex)",
+            isolation: "per agent step",
+            rustOwnership: "not_enabled",
+          },
+          duplicatePrevention: {
+            scheduleCron: "one workflowRun cron job per active schedule",
+            duplicateWorkflow: "scheduled duplicates start inactive",
+            staleCronCleanup: "extra workflowRun cron jobs are removed during reconciliation",
+            rustOwnership: "shadow_observe_only",
+          },
+          rustPromotionBlockers: [
+            "postgres_required_for_live_scheduler_leases",
+            "rust_scheduler_shadow_only",
+            "authority_switch_not_allowed",
+          ],
+        },
         blockers: [
           "postgres_required_for_live_scheduler_leases",
           "rust_scheduler_shadow_only",
@@ -129,6 +164,19 @@ describe("workflow backend status", () => {
       },
       wakeups: {
         duplicatePrevention: expect.stringContaining("one workflowRun cron job"),
+      },
+      runSessionHandoff: {
+        liveRun: {
+          authority: "node-workflows",
+          persistsWorkflowRun: true,
+          requiresPostgres: true,
+          sessionTarget: "isolated",
+        },
+        duplicatePrevention: {
+          staleCronCleanup: expect.stringContaining("extra workflowRun cron jobs"),
+          rustOwnership: "shadow_observe_only",
+        },
+        rustPromotionBlockers: ["rust_scheduler_shadow_only", "authority_switch_not_allowed"],
       },
       blockers: ["rust_scheduler_shadow_only", "authority_switch_not_allowed"],
     });

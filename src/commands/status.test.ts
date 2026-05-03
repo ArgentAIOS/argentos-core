@@ -694,6 +694,43 @@ describe("statusCommand", () => {
               message:
                 "Node workflows own workflowRun payload handling and isolated workflow agent sessions; Rust may observe the contract but cannot take authority.",
             },
+            runSessionHandoff: {
+              contractVersion: "workflow-run-session-handoff-v1",
+              dryRun: {
+                authority: "node-workflows",
+                input: "canvas payload",
+                persistsWorkflowRun: false,
+                requiresPostgres: false,
+                duplicatePrevention: "not_applicable_no_saved_run",
+              },
+              liveRun: {
+                authority: "node-workflows",
+                input: "saved workflow row",
+                payloadKind: "workflowRun",
+                persistsWorkflowRun: true,
+                requiresPostgres: true,
+                sessionTarget: "isolated",
+              },
+              session: {
+                owner: "node-workflow-runner",
+                keyDerivation: "buildWorkflowAgentSessionKey(agentId, stepIndex)",
+                isolation: "per agent step",
+                rustOwnership: "not_enabled",
+              },
+              duplicatePrevention: {
+                scheduleCron: "one workflowRun cron job per active schedule",
+                duplicateWorkflow: "scheduled duplicates start inactive",
+                staleCronCleanup: "extra workflowRun cron jobs are removed during reconciliation",
+                rustOwnership: "shadow_observe_only",
+              },
+              rustPromotionBlockers: [
+                "postgres_required_for_live_scheduler_leases",
+                "rust_scheduler_shadow_only",
+                "authority_switch_not_allowed",
+              ],
+              message:
+                "Dry-run validates canvas payloads without persisted runs; live workflowRun payloads and isolated agent sessions remain Node-owned with PostgreSQL-backed duplicate prevention.",
+            },
             blockers: [
               "postgres_required_for_live_scheduler_leases",
               "rust_scheduler_shadow_only",
@@ -717,6 +754,8 @@ describe("statusCommand", () => {
     expect(logs.join("\n")).toContain("scheduler node");
     expect(logs.join("\n")).toContain("rust shadow");
     expect(logs.join("\n")).toContain("leases need PostgreSQL");
+    expect(logs.join("\n")).toContain("handoff workflowRun isolated");
+    expect(logs.join("\n")).toContain("dedupe shadow_observe_only");
     expect(logs.join("\n")).toContain("authority switch");
 
     mocks.callGateway.mockReset().mockResolvedValue({});
