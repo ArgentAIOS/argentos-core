@@ -40,6 +40,48 @@ import {
   resolveUpdateAvailability,
 } from "./status.update.js";
 
+type WorkflowBackendStatus = {
+  ok: true;
+  label: string;
+  backend: string;
+  readFrom: string;
+  writeTo: string[];
+  postgres: {
+    requiredForSavedWorkflows: true;
+    activeForRuntime: boolean;
+    connectionSource: "env" | "config" | "default" | "not_applicable";
+    status: "configured" | "not_configured";
+  };
+  dryRun: {
+    graphPayloadAvailable: true;
+    requiresPostgres: false;
+    message: string;
+  };
+  savedWorkflows: {
+    available: boolean;
+    requiresPostgres: true;
+    message: string;
+  };
+  operatorMessages?: string[];
+};
+
+function isWorkflowBackendStatus(value: unknown): value is WorkflowBackendStatus {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Partial<WorkflowBackendStatus>;
+  return (
+    record.ok === true &&
+    typeof record.label === "string" &&
+    typeof record.backend === "string" &&
+    typeof record.readFrom === "string" &&
+    Array.isArray(record.writeTo) &&
+    typeof record.postgres === "object" &&
+    typeof record.dryRun === "object" &&
+    typeof record.savedWorkflows === "object"
+  );
+}
+
 export async function statusCommand(
   opts: {
     json?: boolean;
@@ -129,6 +171,15 @@ export async function statusCommand(
           timeoutMs: opts.timeoutMs,
         }).catch(() => null)
       : null;
+  const workflowBackendStatus = gatewayReachable
+    ? await callGateway<unknown>({
+        method: "workflows.backendStatus",
+        params: {},
+        timeoutMs: opts.timeoutMs,
+      })
+        .then((status) => (isWorkflowBackendStatus(status) ? status : null))
+        .catch(() => null)
+    : null;
 
   const configChannel = normalizeUpdateChannel(cfg.update?.channel);
   const channelInfo = resolveEffectiveUpdateChannel({
@@ -164,6 +215,7 @@ export async function statusCommand(
           },
           gatewayService: daemon,
           nodeService: nodeDaemon,
+          workflowBackendStatus,
           agents: agentStatus,
           securityAudit,
           ...(health || usage || lastHeartbeat ? { health, usage, lastHeartbeat } : {}),
@@ -423,6 +475,34 @@ export async function statusCommand(
     ].filter(Boolean);
     return parts.join(" · ");
   })();
+  const workflowBackendValue = (() => {
+    if (!gatewayReachable) {
+      return muted("unavailable (gateway unreachable)");
+    }
+    const status = workflowBackendStatus;
+    if (!status) {
+      return muted("unavailable");
+    }
+    const saved = status.savedWorkflows.available
+      ? ok("saved workflows configured")
+      : warn("saved workflows need PostgreSQL");
+    const dryRun = status.dryRun.requiresPostgres
+      ? warn("dry-run requires PostgreSQL")
+      : ok("dry-run available without PostgreSQL");
+    const postgres =
+      status.postgres.status === "configured"
+        ? ok(`postgres ${status.postgres.connectionSource}`)
+        : muted("postgres not configured");
+    return [
+      status.label,
+      `backend ${status.backend}`,
+      `read ${status.readFrom}`,
+      `write ${status.writeTo.join(",") || "none"}`,
+      dryRun,
+      saved,
+      postgres,
+    ].join(" · ");
+  })();
   const lastHeartbeatValue = (() => {
     if (!opts.deep) {
       return null;
@@ -539,6 +619,7 @@ export async function statusCommand(
     { Item: "Rust scheduler authority", Value: rustSchedulerAuthorityValue },
     { Item: "Executive shadow", Value: executiveShadowValue },
     { Item: "Exec inspect", Value: executiveShadowInspectionValue },
+    { Item: "Workflows backend", Value: workflowBackendValue },
     ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
     {
       Item: "Sessions",

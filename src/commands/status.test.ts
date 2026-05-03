@@ -572,6 +572,58 @@ describe("statusCommand", () => {
     expect(logs.join("\n")).toMatch(/WARN/);
   });
 
+  it("surfaces workflow backend dry-run readiness without PostgreSQL", async () => {
+    mocks.probeGateway.mockResolvedValueOnce({
+      ok: true,
+      url: "ws://127.0.0.1:18789",
+      connectLatencyMs: 10,
+      error: null,
+      close: null,
+      health: {},
+      status: {},
+      presence: [],
+      configSnapshot: null,
+    });
+    mocks.callGateway.mockImplementation(async ({ method }: { method?: string }) => {
+      if (method === "workflows.backendStatus") {
+        return {
+          ok: true,
+          label: "Dry-run available; saved workflows need PostgreSQL",
+          backend: "sqlite",
+          readFrom: "sqlite",
+          writeTo: ["sqlite"],
+          postgres: {
+            requiredForSavedWorkflows: true,
+            activeForRuntime: false,
+            connectionSource: "not_applicable",
+            status: "not_configured",
+          },
+          dryRun: {
+            graphPayloadAvailable: true,
+            requiresPostgres: false,
+            message:
+              "Canvas payload dry-runs can validate workflow shape and step readiness without PostgreSQL.",
+          },
+          savedWorkflows: {
+            available: false,
+            requiresPostgres: true,
+            message: "Saved workflow create/list/run paths require PostgreSQL.",
+          },
+        };
+      }
+      return {};
+    });
+
+    (runtime.log as vi.Mock).mockClear();
+    await statusCommand({}, runtime as never);
+    const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
+    expect(logs.join("\n")).toContain("Workflows backend");
+    expect(logs.join("\n")).toContain("dry-run available without PostgreSQL");
+    expect(logs.join("\n")).toContain("saved workflows need PostgreSQL");
+
+    mocks.callGateway.mockReset().mockResolvedValue({});
+  });
+
   it("includes sessions across agents in JSON output", async () => {
     const originalAgents = mocks.listAgentsForGateway.getMockImplementation();
     const originalResolveStorePath = mocks.resolveStorePath.getMockImplementation();
