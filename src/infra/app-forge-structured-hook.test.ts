@@ -460,6 +460,66 @@ describe("useForgeStructuredData", () => {
     });
   });
 
+  it("restores token-free field selection from local storage after remount", async () => {
+    const host = installDom("?token=secret-token");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
+      throw new Error("Not connected to Gateway");
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    const props: StructuredDataProps = {
+      apps: [app()],
+      selectedAppId: "app-1",
+      onSelectApp: vi.fn(),
+      gatewayRequest,
+      emitWorkflowEvent: vi.fn(async () => {}),
+    };
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props,
+        }),
+      );
+    });
+
+    const ownerField = (result as StructuredDataResult).activeTable?.fields.find(
+      (field) => field.id === "owner",
+    );
+    if (!ownerField) {
+      throw new Error("owner field missing");
+    }
+    await act(async () => {
+      (result as StructuredDataResult).selectField(ownerField.id);
+    });
+    expect((result as StructuredDataResult).selectedField?.id).toBe(ownerField.id);
+
+    await act(async () => root?.unmount());
+    root = createRoot(host);
+    result = null;
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props,
+        }),
+      );
+    });
+    await act(async () => undefined);
+
+    expect((result as StructuredDataResult).selectedField?.id).toBe(ownerField.id);
+  });
+
   it("keeps newly created fields visible in saved views", async () => {
     const host = installDom("?token=secret-token");
     vi.spyOn(console, "warn").mockImplementation(() => {});

@@ -1473,21 +1473,21 @@ export function useForgeStructuredData({
   }, [selectedField, selectedFieldId]);
 
   useEffect(() => {
-    if (
-      !selectedAppId ||
-      !activeTable ||
-      activeTable.selectedFieldId ||
-      typeof window === "undefined"
-    ) {
+    if (!selectedAppId || !activeTable || typeof window === "undefined") {
       return;
     }
     const stored = window.localStorage.getItem(
       storedFieldSelectionKey(selectedAppId, activeTable.id),
     );
-    if (stored && activeTable.fields.some((field) => field.id === stored)) {
+    if (
+      stored &&
+      stored !== selectedFieldId &&
+      activeTable.fields.some((field) => field.id === stored) &&
+      fieldIsVisibleInView(activeView ?? undefined, stored)
+    ) {
       queueMicrotask(() => setSelectedFieldId(stored));
     }
-  }, [activeTable, selectedAppId]);
+  }, [activeTable, activeView, selectedAppId, selectedFieldId]);
 
   useEffect(() => {
     if (!gatewayRequest) {
