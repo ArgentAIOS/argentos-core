@@ -52,6 +52,15 @@ export type RustGatewayReceiptStore = {
   hasDuplicate: (surface: RustGatewayReceiptSurface, duplicateKey: string) => Promise<boolean>;
 };
 
+export type RustGatewayReceiptStorePolicy = {
+  path: string;
+  source: "env" | "operator-home";
+  directoryMode: "0700";
+  fileMode: "0600";
+  containsSecrets: false;
+  liveAuthoritySwitchAllowed: false;
+};
+
 const RECEIPT_STORE_VERSION = "rust-gateway-receipt-store-v1";
 
 export function resolveRustGatewayReceiptStorePath(env: NodeJS.ProcessEnv = process.env): string {
@@ -61,6 +70,19 @@ export function resolveRustGatewayReceiptStorePath(env: NodeJS.ProcessEnv = proc
   }
   const home = env.HOME?.trim() || process.cwd();
   return path.join(home, ".argentos", "rust-gateway", "receipts.jsonl");
+}
+
+export function describeRustGatewayReceiptStorePolicy(
+  env: NodeJS.ProcessEnv = process.env,
+): RustGatewayReceiptStorePolicy {
+  return {
+    path: resolveRustGatewayReceiptStorePath(env),
+    source: env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH?.trim() ? "env" : "operator-home",
+    directoryMode: "0700",
+    fileMode: "0600",
+    containsSecrets: false,
+    liveAuthoritySwitchAllowed: false,
+  };
 }
 
 export function createRustGatewayReceiptStore(

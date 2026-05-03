@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createRustGatewayReceiptStore,
+  describeRustGatewayReceiptStorePolicy,
   resolveRustGatewayReceiptStorePath,
 } from "./rust-gateway-receipt-store.js";
 
@@ -84,5 +85,27 @@ describe("rust gateway receipt store", () => {
         ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH: "/tmp/custom/receipts.jsonl",
       }),
     ).toBe("/tmp/custom/receipts.jsonl");
+  });
+
+  it("declares a no-secret default-off production receipt path policy", () => {
+    expect(describeRustGatewayReceiptStorePolicy({ HOME: "/tmp/argent-home" })).toEqual({
+      path: "/tmp/argent-home/.argentos/rust-gateway/receipts.jsonl",
+      source: "operator-home",
+      directoryMode: "0700",
+      fileMode: "0600",
+      containsSecrets: false,
+      liveAuthoritySwitchAllowed: false,
+    });
+    expect(
+      describeRustGatewayReceiptStorePolicy({
+        HOME: "/tmp/argent-home",
+        ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH: "/tmp/canary/receipts.jsonl",
+      }),
+    ).toMatchObject({
+      path: "/tmp/canary/receipts.jsonl",
+      source: "env",
+      containsSecrets: false,
+      liveAuthoritySwitchAllowed: false,
+    });
   });
 });
