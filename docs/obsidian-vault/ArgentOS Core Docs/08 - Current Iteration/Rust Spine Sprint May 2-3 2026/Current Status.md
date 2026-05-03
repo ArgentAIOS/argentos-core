@@ -13,7 +13,7 @@ Last updated: 2026-05-03 14:16 UTC
 
 - Gateway: `rollback-node` is executable as a local-only proof. Before/after authority snapshots both show Node live and Rust shadow-only, `authorityChanges=[]`, `productionTrafficUsed=false`, and `authoritySwitchAllowed=false`.
 - Gateway rehearsal: disposable loopback `rehearse-loopback` proves canary receipts for `chat.send`, `cron.add`, and `workflows.run` using temp HOME/state, random local port/token, and no installed service control.
-- Gateway installed-daemon canary: `authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json` now reports `receiptProofComplete`, required receipt surfaces, and exact missing surfaces for the local daemon proof gate.
+- Gateway installed-daemon canary: `authority status-installed --json` now uses the configured local Gateway URL plus explicit/env/config auth provenance without printing secrets; the older `authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json` path still reports `receiptProofComplete`, required receipt surfaces, and exact missing surfaces for the local daemon proof gate.
 - Gateway installed service readiness: the same status JSON now includes `installedServiceReadiness` to separate disposable/self-check proof from loopback-local daemon proof, name exact missing capabilities, and keep production installed daemon rollback blocked.
 - Workflows: `workflows.backendStatus` now reports the workflow run/session handoff contract and duplicate-prevention expectations for future Rust ownership.
 - Workflows dry-run stays local/no-PostgreSQL. Live workflow runs remain Node-owned and PostgreSQL-gated.

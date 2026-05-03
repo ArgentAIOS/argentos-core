@@ -117,6 +117,20 @@ Status check:
 argent gateway authority status --json
 ```
 
+Installed daemon operator status:
+
+```bash
+argent gateway authority status-installed --json
+```
+
+`status-installed` is the operator-friendly local daemon path. By default it uses the configured
+local Gateway URL and finds auth from explicit flags, `ARGENT_GATEWAY_TOKEN` /
+`ARGENT_GATEWAY_PASSWORD`, or local config. The JSON reports only redacted credential provenance
+(`explicit-only`, `env-redacted`, `config-redacted`, or `missing`) plus `secretPrinted=false`; it
+never prints the token/password value. It calls only `rustGateway.canaryReceipts.status`, accepts
+only loopback/local targets, does not control services, and keeps
+`productionTrafficUsed=false`, `authoritySwitchAllowed=false`, and `authorityChanges=[]`.
+
 Local installed-canary smoke:
 
 ```bash
@@ -148,6 +162,11 @@ argent gateway authority smoke-local \
 Installed daemon status proof:
 
 ```bash
+argent gateway authority status-installed \
+  --url ws://127.0.0.1:<port> \
+  --token <token> \
+  --json
+
 argent gateway authority status \
   --installed-canary-url ws://127.0.0.1:<port> \
   --installed-canary-token <token> \

@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import type { ArgentConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { formatCliCommand } from "../cli/command-format.js";
-import { callGateway } from "../gateway/call.js";
+import { loadConfig, resolveConfigPath, resolveStateDir } from "../config/config.js";
+import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { startGatewayServer, type GatewayServer } from "../gateway/server.js";
 import { getRustGatewayParityReportStatus } from "./status.rust-gateway-parity-report.js";
 import { getRustGatewaySchedulerAuthoritySummary } from "./status.rust-gateway-scheduler-authority.js";
@@ -14,6 +16,14 @@ import { getRustGatewayShadowSummary } from "./status.rust-gateway-shadow.js";
 export type GatewayAuthorityStatusOptions = {
   json?: boolean;
   installedCanary?: GatewayInstalledDaemonCanaryOptions;
+};
+
+export type GatewayAuthorityInstalledStatusOptions = {
+  json?: boolean;
+  installedCanary?: GatewayInstalledDaemonCanaryOptions;
+  config?: ArgentConfig;
+  configPath?: string;
+  env?: NodeJS.ProcessEnv;
 };
 
 export type GatewayAuthorityLocalRehearsalOptions = {
@@ -222,11 +232,18 @@ export type GatewayAuthorityStatusSummary = {
   nextCommands: string[];
 };
 
+export type GatewayInstalledDaemonCredentialSource =
+  | "explicit-only"
+  | "env-redacted"
+  | "config-redacted"
+  | "missing";
+
 export type GatewayInstalledDaemonCanaryOptions = {
   url?: string;
   token?: string;
   password?: string;
   timeoutMs?: number;
+  credentialSource?: GatewayInstalledDaemonCredentialSource;
   requestStatus?: (options: {
     url: string;
     token?: string;
@@ -252,6 +269,7 @@ type GatewayAuthorityDisposableLoopbackSmokeDependencies = {
 export type GatewayInstalledDaemonCanaryStatus = {
   status: "not-configured" | "blocked" | "unavailable" | "unsafe" | "ok";
   configured: boolean;
+  credentialSource: GatewayInstalledDaemonCredentialSource;
   method: "rustGateway.canaryReceipts.status";
   queried: boolean;
   url: string | null;
@@ -286,7 +304,7 @@ export type GatewayInstalledServiceReadiness = {
     source: "not-configured" | "queried-loopback" | "local-self-check";
   };
   tokenDiscovery: {
-    status: "explicit-only" | "missing";
+    status: GatewayInstalledDaemonCredentialSource;
     secretStoredOrExposed: false;
   };
   receiptPersistence: {
@@ -302,6 +320,31 @@ export type GatewayInstalledServiceReadiness = {
   };
   missingCapabilities: string[];
   remainingPromotionGaps: string[];
+  proof: string[];
+  nextCommands: string[];
+};
+
+export type GatewayAuthorityInstalledStatus = {
+  command: "argent gateway authority status-installed";
+  mode: "installed-daemon-read-only-canary";
+  status: "blocked" | "read-only-ready";
+  localOnly: true;
+  installedServiceControlUsed: false;
+  productionTrafficUsed: false;
+  authoritySwitchAllowed: false;
+  authorityChanges: [];
+  target: {
+    url: string | null;
+    urlSource: "explicit" | "config-local" | "config-nonlocal-blocked";
+    configPath: string;
+    credentialSource: GatewayInstalledDaemonCredentialSource;
+    credentialConfigured: boolean;
+    secretPrinted: false;
+  };
+  installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
+  installedServiceReadiness: GatewayInstalledServiceReadiness;
+  rollback: GatewayAuthorityRollbackPlan;
+  blockers: string[];
   proof: string[];
   nextCommands: string[];
 };
@@ -497,6 +540,219 @@ export async function gatewayAuthorityStatusCommand(
   return summary;
 }
 
+function resolveInstalledDaemonOperatorCanary(options: GatewayAuthorityInstalledStatusOptions): {
+  target: GatewayAuthorityInstalledStatus["target"];
+  installedCanary: GatewayInstalledDaemonCanaryOptions;
+} {
+  const env = options.env ?? process.env;
+  const config = options.config ?? loadConfig();
+  const configPath = options.configPath ?? resolveConfigPath(env, resolveStateDir(env));
+  const explicitUrl =
+    typeof options.installedCanary?.url === "string" && options.installedCanary.url.trim()
+      ? options.installedCanary.url.trim()
+      : undefined;
+  const connection = buildGatewayConnectionDetails({
+    config,
+    url: explicitUrl,
+    configPath,
+  });
+  const credential = resolveInstalledDaemonOperatorCredential({
+    config,
+    env,
+    token: options.installedCanary?.token,
+    password: options.installedCanary?.password,
+  });
+  const urlSource: GatewayAuthorityInstalledStatus["target"]["urlSource"] = explicitUrl
+    ? "explicit"
+    : isLoopbackInstalledCanaryUrl(connection.url)
+      ? "config-local"
+      : "config-nonlocal-blocked";
+
+  return {
+    target: {
+      url: connection.url,
+      urlSource,
+      configPath,
+      credentialSource: credential.source,
+      credentialConfigured: Boolean(credential.token || credential.password),
+      secretPrinted: false,
+    },
+    installedCanary: {
+      url: connection.url,
+      token: credential.token,
+      password: credential.password,
+      timeoutMs: options.installedCanary?.timeoutMs,
+      credentialSource: credential.source,
+      requestStatus: options.installedCanary?.requestStatus,
+    },
+  };
+}
+
+function resolveInstalledDaemonOperatorCredential(params: {
+  config: ArgentConfig;
+  env: NodeJS.ProcessEnv;
+  token?: string;
+  password?: string;
+}): {
+  token?: string;
+  password?: string;
+  source: GatewayInstalledDaemonCredentialSource;
+} {
+  const explicitToken = trimmed(params.token);
+  if (explicitToken) {
+    return { token: explicitToken, source: "explicit-only" };
+  }
+  const explicitPassword = trimmed(params.password);
+  if (explicitPassword) {
+    return { password: explicitPassword, source: "explicit-only" };
+  }
+  const envToken =
+    trimmed(params.env.ARGENT_GATEWAY_TOKEN) ?? trimmed(params.env.CLAWDBOT_GATEWAY_TOKEN);
+  if (envToken) {
+    return { token: envToken, source: "env-redacted" };
+  }
+  const envPassword =
+    trimmed(params.env.ARGENT_GATEWAY_PASSWORD) ?? trimmed(params.env.CLAWDBOT_GATEWAY_PASSWORD);
+  if (envPassword) {
+    return { password: envPassword, source: "env-redacted" };
+  }
+  const configToken = trimmed(params.config.gateway?.auth?.token);
+  if (configToken) {
+    return { token: configToken, source: "config-redacted" };
+  }
+  const configPassword = trimmed(params.config.gateway?.auth?.password);
+  if (configPassword) {
+    return { password: configPassword, source: "config-redacted" };
+  }
+  return { source: "missing" };
+}
+
+function trimmed(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function buildInstalledStatusBlockers(params: {
+  installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
+  installedServiceReadiness: GatewayInstalledServiceReadiness;
+  target: GatewayAuthorityInstalledStatus["target"];
+}): string[] {
+  const blockers = new Set<string>();
+  if (params.target.urlSource === "config-nonlocal-blocked") {
+    blockers.add("configured Gateway target is not loopback/local for installed daemon canary");
+  }
+  if (params.target.credentialSource === "missing" || !params.target.credentialConfigured) {
+    blockers.add("installed daemon token/password source is missing");
+  }
+  for (const blocker of params.installedDaemonCanary.blockers) {
+    blockers.add(blocker);
+  }
+  for (const capability of params.installedServiceReadiness.missingCapabilities) {
+    blockers.add(`missing installed daemon capability: ${capability}`);
+  }
+  if (
+    params.installedServiceReadiness.rollbackReadiness.productionInstalledDaemonRollback !==
+    "blocked"
+  ) {
+    blockers.add("production installed daemon rollback must remain blocked");
+  }
+  return [...blockers].toSorted();
+}
+
+export async function collectGatewayAuthorityInstalledStatus(
+  options: GatewayAuthorityInstalledStatusOptions = {},
+): Promise<GatewayAuthorityInstalledStatus> {
+  const resolved = resolveInstalledDaemonOperatorCanary(options);
+  const installedDaemonCanary = await collectInstalledDaemonCanaryStatus(resolved.installedCanary);
+  const installedServiceReadiness = buildInstalledServiceReadiness(installedDaemonCanary);
+  const rollback = buildGatewayAuthorityRollbackPlan({
+    json: false,
+    reason: "installed daemon read-only canary status proof",
+  });
+  const blockers = buildInstalledStatusBlockers({
+    installedDaemonCanary,
+    installedServiceReadiness,
+    target: resolved.target,
+  });
+
+  return {
+    command: "argent gateway authority status-installed",
+    mode: "installed-daemon-read-only-canary",
+    status:
+      blockers.length === 0 && installedServiceReadiness.status === "read-only-ready"
+        ? "read-only-ready"
+        : "blocked",
+    localOnly: true,
+    installedServiceControlUsed: false,
+    productionTrafficUsed: false,
+    authoritySwitchAllowed: false,
+    authorityChanges: [],
+    target: resolved.target,
+    installedDaemonCanary,
+    installedServiceReadiness,
+    rollback,
+    blockers,
+    proof: [
+      "queried only rustGateway.canaryReceipts.status",
+      "used only loopback/local installed daemon targets",
+      "did not start, stop, restart, install, unload, or configure any daemon",
+      "did not print raw token or password material",
+      "productionTrafficUsed=false",
+      "authoritySwitchAllowed=false",
+      "authorityChanges=[]",
+      "rollback-node remains executable as a local-only proof; production installed daemon rollback remains blocked",
+      "Node remains live gateway/scheduler/workflow/channel/session/run authority",
+      "Rust remains shadow-only",
+    ],
+    nextCommands: [
+      "argent gateway authority status-installed --json",
+      "argent gateway authority status-installed --url ws://127.0.0.1:<port> --token <redacted-local-token> --json",
+      "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <redacted-local-token> --json",
+      "argent gateway authority rollback-node --reason <reason> --json",
+    ],
+  };
+}
+
+export async function gatewayAuthorityInstalledStatusCommand(
+  runtime: Pick<RuntimeEnv, "log">,
+  options: GatewayAuthorityInstalledStatusOptions = {},
+): Promise<GatewayAuthorityInstalledStatus> {
+  const status = await collectGatewayAuthorityInstalledStatus(options);
+  if (options.json) {
+    runtime.log(JSON.stringify(status, null, 2));
+    return status;
+  }
+
+  runtime.log("Gateway authority installed daemon status");
+  runtime.log("");
+  runtime.log(`Mode: ${status.mode}`);
+  runtime.log(`Status: ${status.status}`);
+  runtime.log(`Target URL: ${status.target.url ?? "not-configured"}`);
+  runtime.log(`URL source: ${status.target.urlSource}`);
+  runtime.log(`Credential source: ${status.target.credentialSource}`);
+  runtime.log(`Secret printed: no`);
+  runtime.log(`Installed canary: ${status.installedDaemonCanary.status}`);
+  runtime.log(`Readiness: ${status.installedServiceReadiness.status}`);
+  runtime.log(`Production traffic used: no`);
+  runtime.log(`Authority switch allowed: no`);
+  runtime.log(`Authority changes: none`);
+  runtime.log(
+    `Production installed daemon rollback: ${status.installedServiceReadiness.rollbackReadiness.productionInstalledDaemonRollback}`,
+  );
+  if (status.blockers.length > 0) {
+    runtime.log("");
+    runtime.log("Blockers:");
+    for (const blocker of status.blockers) {
+      runtime.log(`- ${blocker}`);
+    }
+  }
+  runtime.log("");
+  runtime.log("Next commands:");
+  for (const command of status.nextCommands) {
+    runtime.log(`- ${formatCliCommand(command)}`);
+  }
+  return status;
+}
+
 export async function collectGatewayAuthorityLocalRehearsal(
   options: GatewayAuthorityLocalRehearsalOptions,
 ): Promise<GatewayAuthorityLocalRehearsal> {
@@ -507,6 +763,7 @@ export async function collectGatewayAuthorityLocalRehearsal(
     : installedCanaryStatus({
         status: "blocked",
         configured: before.configured,
+        credentialSource: before.credentialSource,
         queried: false,
         url: before.url,
         productionTrafficUsed: false,
@@ -907,6 +1164,7 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
       before: installedCanaryStatus({
         status: "blocked",
         configured: false,
+        credentialSource: "missing",
         queried: false,
         url: null,
         productionTrafficUsed: false,
@@ -927,6 +1185,7 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
       after: installedCanaryStatus({
         status: "blocked",
         configured: false,
+        credentialSource: "missing",
         queried: false,
         url: null,
         productionTrafficUsed: false,
@@ -1074,6 +1333,7 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
     const fallback = installedCanaryStatus({
       status: "blocked",
       configured: server !== null,
+      credentialSource: server !== null ? "explicit-only" : "missing",
       queried: false,
       url,
       productionTrafficUsed: false,
@@ -1217,10 +1477,13 @@ async function collectInstalledDaemonCanaryStatus(
     typeof options?.timeoutMs === "number" && Number.isFinite(options.timeoutMs)
       ? Math.min(Math.max(Math.trunc(options.timeoutMs), 250), 30_000)
       : 3000;
+  const credentialSource: GatewayInstalledDaemonCredentialSource =
+    options?.credentialSource ?? (token || password ? "explicit-only" : "missing");
   if (!url) {
     return installedCanaryStatus({
       status: "not-configured",
       configured: false,
+      credentialSource,
       queried: false,
       url: null,
       productionTrafficUsed: false,
@@ -1245,6 +1508,7 @@ async function collectInstalledDaemonCanaryStatus(
     return installedCanaryStatus({
       status: "blocked",
       configured: true,
+      credentialSource,
       queried: false,
       url,
       productionTrafficUsed: false,
@@ -1267,6 +1531,7 @@ async function collectInstalledDaemonCanaryStatus(
     return installedCanaryStatus({
       status: "blocked",
       configured: true,
+      credentialSource,
       queried: false,
       url,
       productionTrafficUsed: false,
@@ -1301,11 +1566,12 @@ async function collectInstalledDaemonCanaryStatus(
       }));
   try {
     const payload = await requestStatus({ url, token, password, timeoutMs });
-    return normalizeInstalledDaemonCanaryPayload(url, payload);
+    return normalizeInstalledDaemonCanaryPayload(url, payload, credentialSource);
   } catch (error) {
     return installedCanaryStatus({
       status: "unavailable",
       configured: true,
+      credentialSource,
       queried: true,
       url,
       productionTrafficUsed: false,
@@ -1329,6 +1595,7 @@ async function collectInstalledDaemonCanaryStatus(
 function normalizeInstalledDaemonCanaryPayload(
   url: string,
   payload: unknown,
+  credentialSource: GatewayInstalledDaemonCredentialSource,
 ): GatewayInstalledDaemonCanaryStatus {
   const record = objectRecord(payload);
   const authority = objectRecord(record?.authority);
@@ -1392,6 +1659,7 @@ function normalizeInstalledDaemonCanaryPayload(
   return installedCanaryStatus({
     status: blockers.length === 0 ? "ok" : "unsafe",
     configured: true,
+    credentialSource,
     queried: true,
     url,
     productionTrafficUsed,
@@ -1435,7 +1703,7 @@ function buildInstalledServiceReadiness(
           : ("not-configured" as const),
   };
   const tokenDiscovery = {
-    status: status.configured ? ("explicit-only" as const) : ("missing" as const),
+    status: status.configured ? status.credentialSource : ("missing" as const),
     secretStoredOrExposed: false as const,
   };
   const receiptPersistence = {
@@ -1503,7 +1771,7 @@ function buildInstalledServiceReadiness(
     proof: [
       "readiness is derived from the read-only installed daemon canary status query",
       "no service start, stop, restart, install, unload, or config mutation is performed",
-      "explicit loopback URL and token/password are required before querying an installed daemon",
+      "loopback URL and explicit/env/config token or password are required before querying an installed daemon",
       "rollback-node remains local-only and reports authorityChanges=[]",
       "Node remains live gateway/scheduler/workflow/channel/session/run authority",
       "Rust remains shadow-only",
@@ -1635,7 +1903,7 @@ function buildLocalSmokeBlockers(params: {
   if (status.duplicatePreventionReceiptPresent !== true) {
     blockers.push("RUST_CANARY_DUPLICATE_PREVENTED receipt must be present");
   }
-  if (status.receiptProofComplete !== true) {
+  if (!status.receiptProofComplete) {
     blockers.push("all required canary receipt surfaces must be present and redacted");
   }
   return blockers;

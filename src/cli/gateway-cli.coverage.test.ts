@@ -15,6 +15,7 @@ const serviceIsLoaded = vi.fn().mockResolvedValue(true);
 const serviceInstall = vi.fn(async () => {});
 const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityInstalledStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityLocalSmokeCommand = vi.fn(async () => {});
 const gatewayAuthorityDisposableLoopbackSmokeCommand = vi.fn(async () => {});
@@ -117,6 +118,8 @@ vi.mock("../commands/gateway-authority-status.js", () => ({
     gatewayAuthorityDisposableLoopbackRehearsalCommand(runtime, opts),
   gatewayAuthorityDisposableLoopbackSmokeCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityDisposableLoopbackSmokeCommand(runtime, opts),
+  gatewayAuthorityInstalledStatusCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityInstalledStatusCommand(runtime, opts),
   gatewayAuthorityLocalSmokeCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityLocalSmokeCommand(runtime, opts),
   gatewayAuthorityLocalRehearsalCommand: (runtime: unknown, opts: unknown) =>
@@ -173,6 +176,42 @@ describe("gateway-cli coverage", () => {
 
     expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
     expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({ json: true });
+  }, 30_000);
+
+  it("registers gateway authority status-installed and routes redacted operator options", async () => {
+    gatewayAuthorityInstalledStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "status-installed",
+        "--json",
+        "--url",
+        "ws://127.0.0.1:18789",
+        "--token",
+        "test-token",
+        "--timeout",
+        "1250",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityInstalledStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityInstalledStatusCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: 1250,
+      },
+    });
   }, 30_000);
 
   it("routes explicit installed canary status options without enabling them by default", async () => {
