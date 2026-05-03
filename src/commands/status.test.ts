@@ -356,6 +356,46 @@ vi.mock("./status.executive-shadow.js", () => ({
       authoritySwitchAllowed: false,
       promotionStatus: "blocked",
       failClosed: true,
+      kernelShadow: {
+        reachable: true,
+        status: "fail-closed",
+        authority: "shadow",
+        wakefulness: "active",
+        agenda: {
+          activeLane: "operator",
+          pendingLanes: ["background"],
+          focus: "interactive",
+        },
+        focus: "interactive",
+        ticks: {
+          count: 4,
+          lastTickAtMs: 12222,
+          nextTickDueAtMs: 12345,
+          intervalMs: 5000,
+        },
+        reflectionQueue: {
+          status: "shadow-only",
+          depth: 1,
+          items: [
+            {
+              lane: "background",
+              priority: 50,
+              reason: "reflect",
+              requestedAtMs: 12000,
+            },
+          ],
+        },
+        persistedAt: 12222,
+        restartRecovery: {
+          model: "snapshot-plus-journal-replay",
+          status: "recovered",
+          bootCount: 2,
+          lastRecoveredAtMs: 11111,
+          journalEventCount: 8,
+          snapshotFile: "executive-state.json",
+          journalFile: "executive.journal.jsonl",
+        },
+      },
       currentAuthority: {
         gateway: "node",
         scheduler: "node",

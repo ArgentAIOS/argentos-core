@@ -121,6 +121,157 @@
           "type": "string",
           "const": "blocked"
         },
+        "kernelShadow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reachable": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "string",
+              "const": "fail-closed"
+            },
+            "authority": {
+              "type": "string",
+              "const": "shadow"
+            },
+            "wakefulness": {
+              "type": "string",
+              "enum": ["active", "attentive", "watching"]
+            },
+            "agenda": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "activeLane": {
+                  "type": ["string", "null"]
+                },
+                "pendingLanes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "focus": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["activeLane", "pendingLanes", "focus"]
+            },
+            "focus": {
+              "type": ["string", "null"]
+            },
+            "ticks": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "type": "number"
+                },
+                "lastTickAtMs": {
+                  "type": ["number", "null"]
+                },
+                "nextTickDueAtMs": {
+                  "type": "number"
+                },
+                "intervalMs": {
+                  "type": "number"
+                }
+              },
+              "required": ["count", "lastTickAtMs", "nextTickDueAtMs", "intervalMs"]
+            },
+            "reflectionQueue": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "shadow-only"
+                },
+                "depth": {
+                  "type": "number"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "lane": {
+                        "type": "string"
+                      },
+                      "priority": {
+                        "type": "number"
+                      },
+                      "reason": {
+                        "type": ["string", "null"]
+                      },
+                      "requestedAtMs": {
+                        "type": ["number", "null"]
+                      }
+                    },
+                    "required": ["lane", "priority", "reason", "requestedAtMs"]
+                  }
+                }
+              },
+              "required": ["status", "depth", "items"]
+            },
+            "persistedAt": {
+              "type": "number"
+            },
+            "restartRecovery": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "const": "snapshot-plus-journal-replay"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["booted", "recovered"]
+                },
+                "bootCount": {
+                  "type": "number"
+                },
+                "lastRecoveredAtMs": {
+                  "type": ["number", "null"]
+                },
+                "journalEventCount": {
+                  "type": "number"
+                },
+                "snapshotFile": {
+                  "type": "string"
+                },
+                "journalFile": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model",
+                "status",
+                "bootCount",
+                "lastRecoveredAtMs",
+                "journalEventCount",
+                "snapshotFile",
+                "journalFile"
+              ]
+            }
+          },
+          "required": [
+            "reachable",
+            "status",
+            "authority",
+            "wakefulness",
+            "agenda",
+            "focus",
+            "ticks",
+            "reflectionQueue",
+            "persistedAt",
+            "restartRecovery"
+          ]
+        },
         "currentAuthority": {
           "type": "object",
           "additionalProperties": false,
@@ -208,6 +359,7 @@
         "mode",
         "authoritySwitchAllowed",
         "promotionStatus",
+        "kernelShadow",
         "currentAuthority",
         "nodeResponsibilities",
         "rustResponsibilities",

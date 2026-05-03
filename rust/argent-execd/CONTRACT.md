@@ -113,6 +113,46 @@ Returns the current shadow-readiness contract for Kernel/Executive promotion:
   "mode": "shadow-readiness",
   "authoritySwitchAllowed": false,
   "promotionStatus": "blocked",
+  "kernelShadow": {
+    "reachable": true,
+    "status": "fail-closed",
+    "authority": "shadow",
+    "wakefulness": "active",
+    "agenda": {
+      "activeLane": "operator",
+      "pendingLanes": ["background"],
+      "focus": "interactive"
+    },
+    "focus": "interactive",
+    "ticks": {
+      "count": 4,
+      "lastTickAtMs": 1776653168603,
+      "nextTickDueAtMs": 1776653173603,
+      "intervalMs": 5000
+    },
+    "reflectionQueue": {
+      "status": "shadow-only",
+      "depth": 1,
+      "items": [
+        {
+          "lane": "background",
+          "priority": 20,
+          "reason": "reflection",
+          "requestedAtMs": 1776653166950
+        }
+      ]
+    },
+    "persistedAt": 1776653168603,
+    "restartRecovery": {
+      "model": "snapshot-plus-journal-replay",
+      "status": "recovered",
+      "bootCount": 2,
+      "lastRecoveredAtMs": 1776653160000,
+      "journalEventCount": 8,
+      "snapshotFile": "executive-state.json",
+      "journalFile": "executive.journal.jsonl"
+    }
+  },
   "currentAuthority": {
     "gateway": "node",
     "scheduler": "node",

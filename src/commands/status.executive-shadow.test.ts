@@ -9,6 +9,40 @@ vi.mock("../infra/executive-shadow-client.js", () => ({
   createExecutiveShadowClient: mocks.createExecutiveShadowClient,
 }));
 
+const kernelShadow = {
+  reachable: true,
+  status: "fail-closed",
+  authority: "shadow",
+  wakefulness: "active",
+  agenda: {
+    activeLane: "operator",
+    pendingLanes: ["background"],
+    focus: "interactive",
+  },
+  focus: "interactive",
+  ticks: {
+    count: 4,
+    lastTickAtMs: 12222,
+    nextTickDueAtMs: 12345,
+    intervalMs: 5000,
+  },
+  reflectionQueue: {
+    status: "shadow-only",
+    depth: 1,
+    items: [{ lane: "background", priority: 50, reason: "reflect", requestedAtMs: 12000 }],
+  },
+  persistedAt: 12222,
+  restartRecovery: {
+    model: "snapshot-plus-journal-replay",
+    status: "recovered",
+    bootCount: 2,
+    lastRecoveredAtMs: 11111,
+    journalEventCount: 8,
+    snapshotFile: "executive-state.json",
+    journalFile: "executive.journal.jsonl",
+  },
+} as const;
+
 describe("getExecutiveShadowSummary", () => {
   it("returns a read-only executive shadow summary when reachable", async () => {
     mocks.createExecutiveShadowClient.mockReturnValue({
@@ -63,6 +97,7 @@ describe("getExecutiveShadowSummary", () => {
         mode: "shadow-readiness",
         authoritySwitchAllowed: false,
         promotionStatus: "blocked",
+        kernelShadow,
         currentAuthority: {
           gateway: "node",
           scheduler: "node",
@@ -129,6 +164,7 @@ describe("getExecutiveShadowSummary", () => {
         authoritySwitchAllowed: false,
         promotionStatus: "blocked",
         failClosed: true,
+        kernelShadow,
         currentAuthority: {
           gateway: "node",
           scheduler: "node",

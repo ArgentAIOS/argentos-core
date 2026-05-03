@@ -60,6 +60,44 @@ export type ExecutiveShadowStatus = {
     promotionStatus: "blocked";
     authoritySwitchAllowed: false;
     failClosed: boolean;
+    kernelShadow: {
+      reachable: boolean;
+      status: "fail-closed";
+      authority: "shadow";
+      wakefulness: "active" | "attentive" | "watching";
+      agenda: {
+        activeLane: string | null;
+        pendingLanes: string[];
+        focus: string | null;
+      };
+      focus: string | null;
+      ticks: {
+        count: number;
+        lastTickAtMs: number | null;
+        nextTickDueAtMs: number;
+        intervalMs: number;
+      };
+      reflectionQueue: {
+        status: "shadow-only";
+        depth: number;
+        items: Array<{
+          lane: string;
+          priority: number;
+          reason: string | null;
+          requestedAtMs: number | null;
+        }>;
+      };
+      persistedAt: number;
+      restartRecovery: {
+        model: "snapshot-plus-journal-replay";
+        status: "booted" | "recovered";
+        bootCount: number;
+        lastRecoveredAtMs: number | null;
+        journalEventCount: number;
+        snapshotFile: string;
+        journalFile: string;
+      };
+    };
     currentAuthority: {
       gateway: string;
       scheduler: string;

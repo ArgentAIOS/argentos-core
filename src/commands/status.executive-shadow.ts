@@ -12,6 +12,7 @@ export type ExecutiveShadowReadinessSummary = {
   promotionStatus: "blocked";
   authoritySwitchAllowed: false;
   failClosed: boolean;
+  kernelShadow: ExecutiveShadowReadiness["kernelShadow"];
   currentAuthority: ExecutiveShadowReadiness["currentAuthority"];
   persistenceModel: ExecutiveShadowReadiness["persistenceModel"];
   promotionGates: ExecutiveShadowReadiness["promotionGates"];
@@ -154,6 +155,7 @@ function buildReadinessSummary(
     promotionStatus: readiness.promotionStatus,
     authoritySwitchAllowed: readiness.authoritySwitchAllowed,
     failClosed: executiveShadowReadinessFailsClosed(readiness),
+    kernelShadow: readiness.kernelShadow,
     currentAuthority: readiness.currentAuthority,
     persistenceModel: readiness.persistenceModel,
     promotionGates: readiness.promotionGates,
@@ -180,6 +182,39 @@ function buildReadinessError(error: unknown): ExecutiveShadowReadinessSummary {
       channels: "unknown",
       sessions: "unknown",
       executive: "unknown",
+    },
+    kernelShadow: {
+      reachable: false,
+      status: "fail-closed",
+      authority: "shadow",
+      wakefulness: "watching",
+      agenda: {
+        activeLane: null,
+        pendingLanes: [],
+        focus: null,
+      },
+      focus: null,
+      ticks: {
+        count: 0,
+        lastTickAtMs: null,
+        nextTickDueAtMs: 0,
+        intervalMs: 0,
+      },
+      reflectionQueue: {
+        status: "shadow-only",
+        depth: 0,
+        items: [],
+      },
+      persistedAt: 0,
+      restartRecovery: {
+        model: "snapshot-plus-journal-replay",
+        status: "booted",
+        bootCount: 0,
+        lastRecoveredAtMs: null,
+        journalEventCount: 0,
+        snapshotFile: "unknown",
+        journalFile: "unknown",
+      },
     },
     persistenceModel: {
       snapshotFile: "unknown",

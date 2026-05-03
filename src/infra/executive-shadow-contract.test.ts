@@ -9,6 +9,40 @@ import {
   executiveShadowStateEnvelopeSchema,
 } from "./executive-shadow-contract.js";
 
+const kernelShadow = {
+  reachable: true,
+  status: "fail-closed",
+  authority: "shadow",
+  wakefulness: "active",
+  agenda: {
+    activeLane: "operator",
+    pendingLanes: ["background"],
+    focus: "interactive",
+  },
+  focus: "interactive",
+  ticks: {
+    count: 4,
+    lastTickAtMs: 12222,
+    nextTickDueAtMs: 12345,
+    intervalMs: 5000,
+  },
+  reflectionQueue: {
+    status: "shadow-only",
+    depth: 1,
+    items: [{ lane: "background", priority: 20, reason: "reflection", requestedAtMs: 12000 }],
+  },
+  persistedAt: 12222,
+  restartRecovery: {
+    model: "snapshot-plus-journal-replay",
+    status: "recovered",
+    bootCount: 2,
+    lastRecoveredAtMs: 11111,
+    journalEventCount: 8,
+    snapshotFile: "executive.state.json",
+    journalFile: "executive.journal.jsonl",
+  },
+} as const;
+
 describe("executive shadow contract schemas", () => {
   it("accepts a valid health payload", () => {
     const payload = executiveShadowHealthSchema.parse({
@@ -45,6 +79,7 @@ describe("executive shadow contract schemas", () => {
       mode: "shadow-readiness",
       authoritySwitchAllowed: false,
       promotionStatus: "blocked",
+      kernelShadow,
       currentAuthority: {
         gateway: "node",
         scheduler: "node",
