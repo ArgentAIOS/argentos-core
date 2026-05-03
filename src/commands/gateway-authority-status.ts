@@ -1,11 +1,13 @@
 import type { RuntimeEnv } from "../runtime.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import { callGateway } from "../gateway/call.js";
 import { getRustGatewayParityReportStatus } from "./status.rust-gateway-parity-report.js";
 import { getRustGatewaySchedulerAuthoritySummary } from "./status.rust-gateway-scheduler-authority.js";
 import { getRustGatewayShadowSummary } from "./status.rust-gateway-shadow.js";
 
 export type GatewayAuthorityStatusOptions = {
   json?: boolean;
+  installedCanary?: GatewayInstalledDaemonCanaryOptions;
 };
 
 export type GatewayAuthorityRollbackPlanOptions = {
@@ -60,9 +62,39 @@ export type GatewayAuthorityStatusSummary = {
   rustShadow: Awaited<ReturnType<typeof getRustGatewayShadowSummary>>;
   parityReport: Awaited<ReturnType<typeof getRustGatewayParityReportStatus>>;
   scheduler: Awaited<ReturnType<typeof getRustGatewaySchedulerAuthoritySummary>>;
+  installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
   promotionReady: false;
   blockers: string[];
   nextCommands: string[];
+};
+
+export type GatewayInstalledDaemonCanaryOptions = {
+  url?: string;
+  token?: string;
+  password?: string;
+  timeoutMs?: number;
+  requestStatus?: (options: {
+    url: string;
+    token?: string;
+    password?: string;
+    timeoutMs: number;
+  }) => Promise<unknown>;
+};
+
+export type GatewayInstalledDaemonCanaryStatus = {
+  status: "not-configured" | "blocked" | "unavailable" | "unsafe" | "ok";
+  configured: boolean;
+  method: "rustGateway.canaryReceipts.status";
+  queried: boolean;
+  url: string | null;
+  productionTrafficUsed: false | boolean | null;
+  canaryFlagEnabled: boolean | null;
+  authoritySwitchAllowed: false | boolean | null;
+  dashboardVisible: boolean | null;
+  receiptCount: number | null;
+  redactionVerified: boolean | null;
+  blockers: string[];
+  error: string | null;
 };
 
 export function buildGatewayAuthorityRollbackPlan(
@@ -108,11 +140,14 @@ export function buildGatewayAuthorityRollbackPlan(
   };
 }
 
-export async function collectGatewayAuthorityStatus(): Promise<GatewayAuthorityStatusSummary> {
-  const [rustShadow, parityReport, scheduler] = await Promise.all([
+export async function collectGatewayAuthorityStatus(
+  options: GatewayAuthorityStatusOptions = {},
+): Promise<GatewayAuthorityStatusSummary> {
+  const [rustShadow, parityReport, scheduler, installedDaemonCanary] = await Promise.all([
     getRustGatewayShadowSummary(),
     getRustGatewayParityReportStatus(),
     getRustGatewaySchedulerAuthoritySummary(),
+    collectInstalledDaemonCanaryStatus(options.installedCanary),
   ]);
   const blockers = [
     "Rust gateway is shadow-only.",
@@ -164,11 +199,13 @@ export async function collectGatewayAuthorityStatus(): Promise<GatewayAuthorityS
     rustShadow,
     parityReport,
     scheduler,
+    installedDaemonCanary,
     promotionReady: false,
     blockers,
     nextCommands: [
       "argent status",
       "argent gateway authority status --json",
+      "argent gateway authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
       "argent gateway authority rollback-node --reason <reason> --json",
     ],
   };
@@ -178,7 +215,7 @@ export async function gatewayAuthorityStatusCommand(
   runtime: Pick<RuntimeEnv, "log">,
   options: GatewayAuthorityStatusOptions = {},
 ): Promise<GatewayAuthorityStatusSummary> {
-  const summary = await collectGatewayAuthorityStatus();
+  const summary = await collectGatewayAuthorityStatus(options);
   if (options.json) {
     runtime.log(JSON.stringify(summary, null, 2));
     return summary;
@@ -203,12 +240,173 @@ export async function gatewayAuthorityStatusCommand(
   runtime.log(
     `Scheduler: ${summary.scheduler.schedulerAuthority} live · Rust ${summary.scheduler.rustSchedulerAuthority} · ${summary.scheduler.enabledCronJobs}/${summary.scheduler.cronJobs} cron jobs enabled`,
   );
+  runtime.log(
+    `Installed daemon canary: ${summary.installedDaemonCanary.status} · queried=${String(
+      summary.installedDaemonCanary.queried,
+    )} · productionTrafficUsed=${String(
+      summary.installedDaemonCanary.productionTrafficUsed,
+    )} · authoritySwitchAllowed=${String(summary.installedDaemonCanary.authoritySwitchAllowed)}`,
+  );
   runtime.log("");
   runtime.log("Next commands:");
   for (const command of summary.nextCommands) {
     runtime.log(`- ${formatCliCommand(command)}`);
   }
   return summary;
+}
+
+async function collectInstalledDaemonCanaryStatus(
+  options: GatewayInstalledDaemonCanaryOptions | undefined,
+): Promise<GatewayInstalledDaemonCanaryStatus> {
+  const url = typeof options?.url === "string" && options.url.trim() ? options.url.trim() : null;
+  const token =
+    typeof options?.token === "string" && options.token.trim() ? options.token.trim() : undefined;
+  const password =
+    typeof options?.password === "string" && options.password.trim()
+      ? options.password.trim()
+      : undefined;
+  const timeoutMs =
+    typeof options?.timeoutMs === "number" && Number.isFinite(options.timeoutMs)
+      ? Math.min(Math.max(Math.trunc(options.timeoutMs), 250), 30_000)
+      : 3000;
+  if (!url) {
+    return installedCanaryStatus({
+      status: "not-configured",
+      configured: false,
+      queried: false,
+      url: null,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+      dashboardVisible: null,
+      receiptCount: null,
+      redactionVerified: null,
+      blockers: [
+        "installed daemon canary status is default-off; pass --installed-canary-url and explicit credentials to query",
+      ],
+      error: null,
+    });
+  }
+  if (!token && !password) {
+    return installedCanaryStatus({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      url,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+      dashboardVisible: null,
+      receiptCount: null,
+      redactionVerified: null,
+      blockers: ["explicit installed daemon token or password is required before querying"],
+      error: null,
+    });
+  }
+
+  const requestStatus =
+    options?.requestStatus ??
+    ((params) =>
+      callGateway({
+        url: params.url,
+        token: params.token,
+        password: params.password,
+        timeoutMs: params.timeoutMs,
+        method: "rustGateway.canaryReceipts.status",
+        params: { limit: 20 },
+      }));
+  try {
+    const payload = await requestStatus({ url, token, password, timeoutMs });
+    return normalizeInstalledDaemonCanaryPayload(url, payload);
+  } catch (error) {
+    return installedCanaryStatus({
+      status: "unavailable",
+      configured: true,
+      queried: true,
+      url,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: null,
+      authoritySwitchAllowed: false,
+      dashboardVisible: null,
+      receiptCount: null,
+      redactionVerified: null,
+      blockers: ["installed daemon canary status query failed"],
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function normalizeInstalledDaemonCanaryPayload(
+  url: string,
+  payload: unknown,
+): GatewayInstalledDaemonCanaryStatus {
+  const record = objectRecord(payload);
+  const authority = objectRecord(record?.authority);
+  const policy = objectRecord(record?.policy);
+  const receipts = Array.isArray(record?.receipts) ? record.receipts : [];
+  const blockers: string[] = [];
+  const productionTrafficUsed =
+    typeof record?.productionTrafficUsed === "boolean" ? record.productionTrafficUsed : null;
+  const canaryFlagEnabled =
+    typeof record?.canaryFlagEnabled === "boolean" ? record.canaryFlagEnabled : null;
+  const authoritySwitchAllowed =
+    typeof authority?.authoritySwitchAllowed === "boolean"
+      ? authority.authoritySwitchAllowed
+      : null;
+  const dashboardVisible =
+    typeof record?.dashboardVisible === "boolean" ? record.dashboardVisible : null;
+  const policyContainsSecrets =
+    typeof policy?.containsSecrets === "boolean" ? policy.containsSecrets : null;
+  const redactionVerified = receipts.every((receipt) => {
+    const receiptRecord = objectRecord(receipt);
+    return receiptRecord?.tokenMaterialRedacted !== false;
+  });
+
+  if (!record || record.status !== "ok") {
+    blockers.push("status payload is missing or not ok");
+  }
+  if (productionTrafficUsed !== false) {
+    blockers.push("productionTrafficUsed is not false");
+  }
+  if (authoritySwitchAllowed !== false) {
+    blockers.push("authoritySwitchAllowed is not false");
+  }
+  if (policyContainsSecrets !== false) {
+    blockers.push("receipt policy does not prove containsSecrets=false");
+  }
+  if (!redactionVerified) {
+    blockers.push("one or more receipts are not marked redacted");
+  }
+
+  return installedCanaryStatus({
+    status: blockers.length === 0 ? "ok" : "unsafe",
+    configured: true,
+    queried: true,
+    url,
+    productionTrafficUsed,
+    canaryFlagEnabled,
+    authoritySwitchAllowed,
+    dashboardVisible,
+    receiptCount: receipts.length,
+    redactionVerified,
+    blockers,
+    error: null,
+  });
+}
+
+function installedCanaryStatus(
+  status: Omit<GatewayInstalledDaemonCanaryStatus, "method">,
+): GatewayInstalledDaemonCanaryStatus {
+  return {
+    method: "rustGateway.canaryReceipts.status",
+    ...status,
+  };
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function buildGatewayAuthorityPromotionGates(params: {

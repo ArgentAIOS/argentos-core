@@ -177,9 +177,41 @@ export function registerGatewayCli(program: Command) {
     .command("status")
     .description("Show read-only Gateway authority and rollback readiness")
     .option("--json", "Output JSON", false)
+    .option("--installed-canary-url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option(
+      "--installed-canary-token <token>",
+      "Explicit installed Gateway token for canary status",
+    )
+    .option(
+      "--installed-canary-password <password>",
+      "Explicit installed Gateway password for canary status",
+    )
+    .option("--installed-canary-timeout <ms>", "Installed canary query timeout in ms")
     .action(async (opts) => {
       await runGatewayCommand(async () => {
-        await gatewayAuthorityStatusCommand(defaultRuntime, { json: Boolean(opts.json) });
+        const installedCanary =
+          opts.installedCanaryUrl || opts.installedCanaryToken || opts.installedCanaryPassword
+            ? {
+                url:
+                  typeof opts.installedCanaryUrl === "string" ? opts.installedCanaryUrl : undefined,
+                token:
+                  typeof opts.installedCanaryToken === "string"
+                    ? opts.installedCanaryToken
+                    : undefined,
+                password:
+                  typeof opts.installedCanaryPassword === "string"
+                    ? opts.installedCanaryPassword
+                    : undefined,
+                timeoutMs:
+                  typeof opts.installedCanaryTimeout === "string"
+                    ? Number(opts.installedCanaryTimeout)
+                    : undefined,
+              }
+            : undefined;
+        await gatewayAuthorityStatusCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          ...(installedCanary ? { installedCanary } : {}),
+        });
       }, "Gateway authority status failed");
     });
 
