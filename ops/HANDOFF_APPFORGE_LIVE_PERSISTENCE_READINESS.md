@@ -1,12 +1,5 @@
 # AppForge Live Persistence And Workflow Resource Readiness
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core/worktrees/appforge-live-persistence-smoke
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core AppForge/TableForge foundation work
-
 ## Task
 
 Threadmaster task: `task-20260501002909-32diqh`

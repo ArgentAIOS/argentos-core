@@ -1,12 +1,5 @@
 # AppForge Phase 1+2 Persistence Slice
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core/worktrees/appforge-phase1-2-persistence
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core AppForge/TableForge foundation work
-
 ## Task
 
 `task-20260430235823-bbgzwp` - Phase 1+2: gateway-backed persistence smoke and

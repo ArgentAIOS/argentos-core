@@ -1,12 +1,5 @@
 # AppForge Storage Deployment Repair
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core/worktrees/appforge-storage-deployment-repair
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation repair during merge-custody freeze
-
 ## Problem
 
 Dev-channel installs could serve AppForge durable-storage gateway methods before the

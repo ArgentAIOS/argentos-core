@@ -1,12 +1,5 @@
 # AppForge/TableForge Phase 1E Field Validation Handoff
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core or clean AppForge worktree
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation work
-
 ## Scope
 
 Phase 1E hardens AppForge structured table field behavior. This is not the full

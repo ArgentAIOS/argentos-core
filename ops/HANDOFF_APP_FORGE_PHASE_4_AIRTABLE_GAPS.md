@@ -1,12 +1,5 @@
 # AppForge Phase 4 Airtable Gap Rollout
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core-appforge-dev
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation work
-
 ## Current Branch
 
 - Branch: `codex/appforge-phase-4-airtable-gaps`

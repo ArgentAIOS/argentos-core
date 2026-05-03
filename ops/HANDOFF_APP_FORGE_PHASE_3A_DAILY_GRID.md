@@ -1,12 +1,5 @@
 # AppForge Phase 3A Daily Grid Handoff
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core AppForge/TableForge foundation work
-
 ## Task
 
 - Task: `task-20260501012205-8kwckr`

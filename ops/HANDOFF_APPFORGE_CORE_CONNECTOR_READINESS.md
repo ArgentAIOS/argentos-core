@@ -1,12 +1,5 @@
 # AppForge Core Connector Readiness
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core/worktrees/appforge-core-readiness
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core AppForge/Workflows readiness coordination
-
 ## Task
 
 Threadmaster task: `task-20260430233639-2x2inw`

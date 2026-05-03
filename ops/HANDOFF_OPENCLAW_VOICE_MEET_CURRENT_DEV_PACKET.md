@@ -1,12 +1,5 @@
 # OpenClaw Voice And Google Meet Current-Dev Packet
 
-LANE LOCK:
-Repo: `ArgentAIOS/argentos-core`
-Local path: `/Users/sem/code/argent-core`
-Target branch: `dev`
-Forbidden repo for this task: `ArgentAIOS/argentos`
-Reason: pure core foundation work
-
 ## Status
 
 - Lane: `openclaw`

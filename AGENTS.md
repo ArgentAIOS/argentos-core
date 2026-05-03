@@ -58,16 +58,7 @@ Rules:
 - If a lane is stale or blocked, keep other clean READY packets moving to `dev`; open a rescue task for the stalled lane instead of freezing all progress.
 - If a checkpoint breaks `argent update`, fixing the update path becomes the next highest-priority dev checkpoint.
 
-Every AppForge/Workflow handoff must start with:
-
-```text
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation work
-```
+Lane enforcement is mechanical (`scripts/check-repo-lane.mjs` reads `.argent-repo.json` per push). Handoff docs do not need LANE LOCK preambles.
 
 ## Threadmaster Coordination
 

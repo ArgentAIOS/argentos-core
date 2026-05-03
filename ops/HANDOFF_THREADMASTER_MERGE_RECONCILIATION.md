@@ -1,12 +1,5 @@
 # Threadmaster Merge Reconciliation Handoff
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/worktrees/argent-core-threadmaster-reconcile
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation merge-custody repair
-
 ## Summary
 
 This slice reconciles ready branches that were still outside `origin/dev` after

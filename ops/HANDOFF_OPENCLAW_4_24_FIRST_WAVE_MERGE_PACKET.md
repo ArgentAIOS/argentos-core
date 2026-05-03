@@ -1,12 +1,5 @@
 # OpenClaw 4.24 First Wave Merge Packet
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core
-Target branch: dev
-Forbidden repo: ArgentAIOS/argentos
-Reason: pure core foundation work
-
 ## Summary
 
 OpenClaw lane has a first-wave implementation ready for review/merge planning.
