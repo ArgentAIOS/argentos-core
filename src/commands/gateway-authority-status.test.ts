@@ -240,6 +240,69 @@ describe("gatewayAuthorityStatusCommand", () => {
       dashboardVisible: true,
       receiptCount: 1,
       redactionVerified: true,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      missingReceiptSurfaces: ["cron.add", "workflows.run"],
+      blockers: [],
+    });
+  });
+
+  it("reports complete installed daemon canary receipt proof for all guarded surfaces", async () => {
+    const receipts = ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+    ]);
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: {
+        containsSecrets: false,
+      },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts,
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      queried: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      receiptProofComplete: true,
+      requiredReceiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      missingReceiptSurfaces: [],
+      receiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
       blockers: [],
     });
   });
@@ -348,20 +411,20 @@ describe("gatewayAuthorityStatusCommand", () => {
         rustAuthority: "shadow-only",
         authoritySwitchAllowed: false,
       },
-      receipts: [
+      receipts: ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
         {
-          surface: "chat.send",
+          surface,
           receiptCode: "RUST_CANARY_DENIED",
           tokenMaterialRedacted: true,
           authoritySwitchAllowed: false,
         },
         {
-          surface: "chat.send",
+          surface,
           receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
           tokenMaterialRedacted: true,
           authoritySwitchAllowed: false,
         },
-      ],
+      ]),
     });
 
     const rehearsal = await gatewayAuthorityLocalRehearsalCommand(
@@ -388,7 +451,7 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(rehearsal.after.productionTrafficUsed).toBe(false);
     expect(rehearsal.after.authoritySwitchAllowed).toBe(false);
     expect(rehearsal.after.redactionVerified).toBe(true);
-    expect(rehearsal.after.receiptCount).toBe(2);
+    expect(rehearsal.after.receiptCount).toBe(6);
     expect(rehearsal.rollback.authorityChanges).toEqual([]);
     expect(rehearsal.rollback.executable).toBe(true);
     expect(rehearsal.duplicateReceiptSafety.requiredReceipts).toEqual([
@@ -444,20 +507,20 @@ describe("gatewayAuthorityStatusCommand", () => {
         rustAuthority: "shadow-only",
         authoritySwitchAllowed: false,
       },
-      receipts: [
+      receipts: ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
         {
-          surface: "chat.send",
+          surface,
           receiptCode: "RUST_CANARY_DENIED",
           tokenMaterialRedacted: true,
           authoritySwitchAllowed: false,
         },
         {
-          surface: "chat.send",
+          surface,
           receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
           tokenMaterialRedacted: true,
           authoritySwitchAllowed: false,
         },
-      ],
+      ]),
     });
 
     const smoke = await gatewayAuthorityLocalSmokeCommand(
@@ -497,10 +560,12 @@ describe("gatewayAuthorityStatusCommand", () => {
       productionTrafficUsed: false,
       canaryFlagEnabled: true,
       authoritySwitchAllowed: false,
-      receiptCount: 2,
+      receiptCount: 6,
       redactionVerified: true,
       denialReceiptPresent: true,
       duplicatePreventionReceiptPresent: true,
+      receiptProofComplete: true,
+      missingReceiptSurfaces: [],
     });
     expect(smoke.blockers).toEqual([]);
     expect(smoke.operatorGuidance.join("\n")).toContain("PASS");
@@ -827,6 +892,9 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(smoke.status).toBe("blocked");
     expect(smoke.installedDaemonCanary.status).toBe("ok");
     expect(smoke.blockers).toContain("RUST_CANARY_DUPLICATE_PREVENTED receipt must be present");
+    expect(smoke.blockers).toContain(
+      "all required canary receipt surfaces must be present and redacted",
+    );
   });
 
   it("blocks local smoke when canary status implies production traffic or authority switch", async () => {

@@ -261,6 +261,9 @@ export type GatewayInstalledDaemonCanaryStatus = {
   redactionVerified: boolean | null;
   denialReceiptPresent: boolean | null;
   duplicatePreventionReceiptPresent: boolean | null;
+  receiptProofComplete: boolean;
+  requiredReceiptSurfaces: string[];
+  missingReceiptSurfaces: string[];
   receiptSurfaces: string[];
   blockers: string[];
   error: string | null;
@@ -472,6 +475,9 @@ export async function collectGatewayAuthorityLocalRehearsal(
         redactionVerified: null,
         denialReceiptPresent: null,
         duplicatePreventionReceiptPresent: null,
+        receiptProofComplete: false,
+        requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+        missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
         receiptSurfaces: [],
         blockers: ["pass --confirm-local-only before checking after-canary rehearsal status"],
         error: null,
@@ -867,6 +873,9 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
         redactionVerified: null,
         denialReceiptPresent: null,
         duplicatePreventionReceiptPresent: null,
+        receiptProofComplete: false,
+        requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+        missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
         receiptSurfaces: [],
         blockers: ["pass --confirm-local-only before starting disposable loopback rehearsal"],
         error: null,
@@ -884,6 +893,9 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
         redactionVerified: null,
         denialReceiptPresent: null,
         duplicatePreventionReceiptPresent: null,
+        receiptProofComplete: false,
+        requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+        missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
         receiptSurfaces: [],
         blockers: ["pass --confirm-local-only before enabling local canary receipts"],
         error: null,
@@ -1028,6 +1040,9 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
       redactionVerified: null,
       denialReceiptPresent: null,
       duplicatePreventionReceiptPresent: null,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       receiptSurfaces: [],
       blockers: ["disposable loopback rehearsal failed"],
       error: error instanceof Error ? error.message : String(error),
@@ -1172,6 +1187,9 @@ async function collectInstalledDaemonCanaryStatus(
       redactionVerified: null,
       denialReceiptPresent: null,
       duplicatePreventionReceiptPresent: null,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       receiptSurfaces: [],
       blockers: [
         "installed daemon canary status is default-off; pass --installed-canary-url and explicit credentials to query",
@@ -1193,6 +1211,9 @@ async function collectInstalledDaemonCanaryStatus(
       redactionVerified: null,
       denialReceiptPresent: null,
       duplicatePreventionReceiptPresent: null,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       receiptSurfaces: [],
       blockers: ["explicit installed daemon token or password is required before querying"],
       error: null,
@@ -1212,6 +1233,9 @@ async function collectInstalledDaemonCanaryStatus(
       redactionVerified: null,
       denialReceiptPresent: null,
       duplicatePreventionReceiptPresent: null,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       receiptSurfaces: [],
       blockers: [
         "installed daemon canary URL must be loopback/local before querying; use a local daemon, localhost, 127.0.0.1, ::1, or an SSH-forwarded loopback URL",
@@ -1248,6 +1272,9 @@ async function collectInstalledDaemonCanaryStatus(
       redactionVerified: null,
       denialReceiptPresent: null,
       duplicatePreventionReceiptPresent: null,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       receiptSurfaces: [],
       blockers: ["installed daemon canary status query failed"],
       error: error instanceof Error ? error.message : String(error),
@@ -1293,6 +1320,14 @@ function normalizeInstalledDaemonCanaryPayload(
       ),
     ),
   ).toSorted();
+  const missingReceiptSurfaces = CANARY_RECEIPT_SURFACES.filter(
+    (surface) => !receiptSurfaces.includes(surface),
+  );
+  const receiptProofComplete =
+    missingReceiptSurfaces.length === 0 &&
+    denialReceiptPresent &&
+    duplicatePreventionReceiptPresent &&
+    redactionVerified;
 
   if (!record || record.status !== "ok") {
     blockers.push("status payload is missing or not ok");
@@ -1323,6 +1358,9 @@ function normalizeInstalledDaemonCanaryPayload(
     redactionVerified,
     denialReceiptPresent,
     duplicatePreventionReceiptPresent,
+    receiptProofComplete,
+    requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+    missingReceiptSurfaces,
     receiptSurfaces,
     blockers,
     error: null,
@@ -1444,6 +1482,9 @@ function buildLocalSmokeBlockers(params: {
   }
   if (status.duplicatePreventionReceiptPresent !== true) {
     blockers.push("RUST_CANARY_DUPLICATE_PREVENTED receipt must be present");
+  }
+  if (status.receiptProofComplete !== true) {
+    blockers.push("all required canary receipt surfaces must be present and redacted");
   }
   return blockers;
 }
