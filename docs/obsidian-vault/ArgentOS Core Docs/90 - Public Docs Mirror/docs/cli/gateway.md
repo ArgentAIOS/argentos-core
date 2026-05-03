@@ -105,6 +105,63 @@ Options:
 - `--no-probe`: skip the RPC probe (service-only view).
 - `--deep`: scan system-level services too.
 
+### `gateway authority`
+
+`gateway authority` is the read-only operator surface for Rust Gateway shadow/promotion checks.
+It does not switch authority. TypeScript remains live Gateway, scheduler, workflow, channel,
+session, and run authority unless a separate release/promotion process explicitly changes that.
+
+Status check:
+
+```bash
+argent gateway authority status --json
+```
+
+Local installed-canary smoke:
+
+```bash
+argent gateway authority smoke-local \
+  --reason "local canary receipt proof" \
+  --confirm-local-only \
+  --installed-canary-url ws://127.0.0.1:<port> \
+  --installed-canary-token <token> \
+  --json
+```
+
+Use `--installed-canary-password <password>` instead of `--installed-canary-token <token>`
+when the target daemon is configured for password auth. Do not put tokens, passwords, or
+command output containing sensitive local paths in git, docs, Threadmaster bus messages, or
+handoff artifacts.
+
+The smoke is intentionally default-blocked. It only queries
+`rustGateway.canaryReceipts.status`; it does not start, stop, restart, install, configure, or
+send traffic through a daemon. A passing local smoke requires:
+
+- `--confirm-local-only` was provided.
+- The installed canary URL and explicit token/password were provided.
+- `rustGateway.canaryReceipts.status` returned `status=ok`.
+- `productionTrafficUsed=false`.
+- `authoritySwitchAllowed=false`.
+- `canaryFlagEnabled=true` for a disposable local canary harness.
+- Receipt redaction is verified.
+- Denial and duplicate-prevention receipts are present.
+
+Common blocked states:
+
+- `not-configured`: rerun with `--installed-canary-url` and explicit credentials.
+- `blocked`: URL was configured but no explicit token/password was provided.
+- `unavailable`: the daemon could not be reached or the status RPC timed out.
+- `unsafe`: the daemon payload did not prove the safety invariants above.
+
+Generate the local parity proof separately:
+
+```bash
+pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000
+```
+
+The parity report is evidence only. It does not authorize production traffic or a Rust authority
+switch.
+
 ### `gateway probe`
 
 `gateway probe` is the “debug everything” command. It always probes:
