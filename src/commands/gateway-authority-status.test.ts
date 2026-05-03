@@ -95,6 +95,9 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(parsed.installedDaemonCanary.productionTrafficUsed).toBe(false);
     expect(parsed.installedDaemonCanary.authoritySwitchAllowed).toBe(false);
     expect(parsed.nextCommands).toContain(
+      "pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000",
+    );
+    expect(parsed.nextCommands).toContain(
       "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
     );
   });

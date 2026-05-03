@@ -159,6 +159,13 @@ Generate the local parity proof separately:
 pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000
 ```
 
+If `argent status` or `argent gateway authority status` reports that the Rust parity report is
+missing, stale, or invalid, it means the local `.omx/state/rust-gateway-parity/latest/` artifact
+has not been generated recently in that checkout. Generate it with the command above from the
+core repo, then rerun status. The parity report and `smoke-local` are complementary: parity proves
+read-only protocol/status shape, while `smoke-local` proves the local installed-canary receipt
+status path. Both remain evidence only.
+
 The parity report is evidence only. It does not authorize production traffic or a Rust authority
 switch.
 
