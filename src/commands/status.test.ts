@@ -601,6 +601,9 @@ describe("statusCommand", () => {
           dryRun: {
             graphPayloadAvailable: true,
             requiresPostgres: false,
+            method: "workflows.dryRun",
+            command: "argent gateway call workflows.dryRun --params '<canvas-payload-json>' --json",
+            noLiveSideEffects: true,
             message:
               "Canvas payload dry-runs can validate workflow shape and step readiness without PostgreSQL.",
           },
@@ -626,8 +629,10 @@ describe("statusCommand", () => {
     const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
     expect(logs.join("\n")).toContain("Workflows backend");
     expect(logs.join("\n")).toContain("dry-run available without PostgreSQL");
+    expect(logs.join("\n")).toContain("local dry-run workflows.dryRun");
     expect(logs.join("\n")).toContain("saved workflows need PostgreSQL");
-    expect(logs.join("\n")).toContain("cron reconciliation skipped without PostgreSQL");
+    expect(logs.join("\n")).toContain("cron reconciliation");
+    expect(logs.join("\n")).toContain("skipped without PostgreSQL");
 
     mocks.callGateway.mockReset().mockResolvedValue({});
   });

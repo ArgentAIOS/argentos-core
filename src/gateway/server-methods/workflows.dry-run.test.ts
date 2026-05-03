@@ -4,6 +4,7 @@ import {
   buildWorkflowAgentSessionKey,
   validateWorkflowAgentSessionIdentity,
 } from "../../infra/workflow-runner.js";
+import { listGatewayMethods } from "../server-methods-list.js";
 import { workflowsHandlers } from "./workflows.js";
 
 vi.mock("../../data/redis-client.js", () => ({ refreshPresence: vi.fn() }));
@@ -31,6 +32,10 @@ async function callDryRun(params: Record<string, unknown>) {
 }
 
 describe("workflow dry run", () => {
+  it("is available through gateway method discovery for local operator proof", () => {
+    expect(listGatewayMethods()).toContain("workflows.dryRun");
+  });
+
   it("preflights agent dispatch identity without live execution", async () => {
     const [ok, payload, error] = await callDryRun({
       name: "AI Morning Brief Podcast Workflow",

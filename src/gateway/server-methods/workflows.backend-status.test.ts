@@ -49,6 +49,8 @@ describe("workflow backend status", () => {
       dryRun: {
         graphPayloadAvailable: true,
         requiresPostgres: false,
+        method: "workflows.dryRun",
+        noLiveSideEffects: true,
       },
       savedWorkflows: {
         available: false,
@@ -62,6 +64,7 @@ describe("workflow backend status", () => {
     });
     expect(status.operatorMessages.join(" ")).toContain("without PostgreSQL");
     expect(status.operatorMessages.join(" ")).toContain("cron reconciliation is skipped");
+    expect(status.dryRun.command).toContain("argent gateway call workflows.dryRun");
   });
 
   it("marks saved workflow runtime configured when PostgreSQL is active", () => {

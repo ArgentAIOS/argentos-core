@@ -55,6 +55,9 @@ type WorkflowBackendStatus = {
   dryRun: {
     graphPayloadAvailable: true;
     requiresPostgres: false;
+    method?: string;
+    command?: string;
+    noLiveSideEffects?: boolean;
     message: string;
   };
   savedWorkflows: {
@@ -495,6 +498,9 @@ export async function statusCommand(
     const dryRun = status.dryRun.requiresPostgres
       ? warn("dry-run requires PostgreSQL")
       : ok("dry-run available without PostgreSQL");
+    const dryRunCommand = status.dryRun.method
+      ? `local dry-run ${status.dryRun.method}${status.dryRun.noLiveSideEffects ? " no-live" : ""}`
+      : null;
     const postgres =
       status.postgres.status === "configured"
         ? ok(`postgres ${status.postgres.connectionSource}`)
@@ -510,6 +516,7 @@ export async function statusCommand(
       `read ${status.readFrom}`,
       `write ${status.writeTo.join(",") || "none"}`,
       dryRun,
+      dryRunCommand,
       saved,
       postgres,
       scheduleCron,
