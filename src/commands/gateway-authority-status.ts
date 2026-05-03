@@ -572,6 +572,27 @@ async function collectInstalledDaemonCanaryStatus(
       error: null,
     });
   }
+  if (!isLoopbackInstalledCanaryUrl(url)) {
+    return installedCanaryStatus({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      url,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+      dashboardVisible: null,
+      receiptCount: null,
+      redactionVerified: null,
+      denialReceiptPresent: null,
+      duplicatePreventionReceiptPresent: null,
+      receiptSurfaces: [],
+      blockers: [
+        "installed daemon canary URL must be loopback/local before querying; use a local daemon, localhost, 127.0.0.1, ::1, or an SSH-forwarded loopback URL",
+      ],
+      error: null,
+    });
+  }
 
   const requestStatus =
     options?.requestStatus ??
@@ -691,6 +712,24 @@ function installedCanaryStatus(
   };
 }
 
+function isLoopbackInstalledCanaryUrl(url: string): boolean {
+  if (url === LOCAL_CANARY_SELF_CHECK_URL) {
+    return true;
+  }
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildLocalRehearsalBlockers(params: {
   explicitOptIn: boolean;
   before: GatewayInstalledDaemonCanaryStatus;
@@ -803,7 +842,9 @@ function buildLocalSmokeOperatorGuidance(
   }
   if (!status.queried) {
     return [
-      "Provide an explicit installed daemon token or password before querying.",
+      status.blockers.some((blocker) => blocker.includes("loopback/local"))
+        ? "Use only a local loopback Gateway daemon URL such as ws://127.0.0.1:<port> or an SSH-forwarded loopback URL."
+        : "Provide an explicit installed daemon token or password before querying.",
       "Do not put credentials in git or bus; pass them only through local operator shell/env handling.",
       "Rerun the smoke after credentials are available.",
     ];

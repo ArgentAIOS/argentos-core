@@ -158,6 +158,33 @@ describe("gatewayAuthorityStatusCommand", () => {
     });
   });
 
+  it("blocks non-loopback installed daemon canary URLs before querying", async () => {
+    const requestStatus = vi.fn();
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "wss://gateway.example.com",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      url: "wss://gateway.example.com",
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.installedDaemonCanary.blockers.join("\n")).toContain("loopback/local");
+  });
+
   it("accepts redacted installed daemon canary status with no production traffic or authority switch", async () => {
     const requestStatus = vi.fn().mockResolvedValue({
       status: "ok",
@@ -506,6 +533,35 @@ describe("gatewayAuthorityStatusCommand", () => {
     });
     expect(smoke.blockers).toEqual([]);
     expect(smoke.proof.join("\n")).toContain("in-process disposable canary receipt harness");
+  });
+
+  it("blocks local smoke against non-loopback daemon URLs before querying", async () => {
+    const requestStatus = vi.fn();
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "installed loopback boundary",
+        confirmLocalOnly: true,
+        installedCanary: {
+          url: "wss://gateway.example.com",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(smoke.blockers).toContain("installed daemon canary status was not queried");
+    expect(smoke.operatorGuidance.join("\n")).toContain("loopback");
   });
 
   it("blocks local smoke when duplicate-prevention receipt proof is missing", async () => {
