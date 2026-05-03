@@ -22,7 +22,7 @@ The Workflows threadmaster is also acting as the master threadmaster for core co
 5. Before pushing to `origin/dev`, bump the root `package.json` dev version using the daily sequence contract in `AGENTS.md`.
 6. Keep entries short. Link to detailed handoff files instead of pasting full plans here.
 
-Suggested poll cadence for active autonomous lanes: every few minutes while editing shared files, and always immediately before rebase, commit, push, or handoff.
+**Posting cadence:** Lanes post on state transitions ONLY: `STARTED`, `READY`, `BLOCKED`, `MERGED`, `CONTAINED`. Heartbeat / idle / standby / checkpoint posts are forbidden. The bus is a coordination ledger, not a liveness check. Lanes presumed alive between transitions.
 
 Checkpoint cadence: prefer small, verified checkpoints to `origin/dev` over large multi-lane batch merges. When a slice is clean, rebased on latest `origin/dev`, verified, truth-labeled, and safe for `argent update`, move it through custody and land it with the next dev version instead of waiting for unrelated lanes. READY packets should not sit while another lane is stale; keep clean packets moving and open rescue/escalation tasks for the stale lane. Every checkpoint must say what is enabled, what remains dry-run/shadow/deferred, and what is explicitly not live.
 
