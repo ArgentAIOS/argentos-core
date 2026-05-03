@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 
 const mocks = vi.hoisted(() => ({
   createExecutiveShadowClient: vi.fn(),
@@ -100,6 +101,7 @@ describe("getExecutiveShadowSummary", () => {
 
     expect(summary).toEqual({
       reachable: true,
+      kernelStatus: "fail-closed",
       activeLane: "operator",
       tickCount: 4,
       bootCount: 2,
@@ -112,6 +114,7 @@ describe("getExecutiveShadowSummary", () => {
       lastEventType: "lane_activated",
       stateDir: "/tmp/executive",
       readiness: {
+        status: "fail-closed",
         mode: "shadow-readiness",
         authoritySwitchAllowed: false,
         promotionStatus: "blocked",
@@ -153,7 +156,7 @@ describe("getExecutiveShadowSummary", () => {
     });
   });
 
-  it("keeps health visible when Kernel readiness fails closed", async () => {
+  it("keeps health visible when Kernel readiness is unsafe", async () => {
     mocks.createExecutiveShadowClient.mockReturnValue({
       getHealth: vi.fn(async () => ({
         status: "ok",
@@ -195,7 +198,14 @@ describe("getExecutiveShadowSummary", () => {
         lastReleaseOutcome: null,
       })),
       getReadiness: vi.fn(async () => {
-        throw new Error("Executive shadow readiness is not fail-closed");
+        throw new ZodError([
+          {
+            code: "invalid_value",
+            values: [false],
+            path: ["authoritySwitchAllowed"],
+            message: "Invalid input: expected false",
+          },
+        ]);
       }),
     });
 
@@ -203,12 +213,74 @@ describe("getExecutiveShadowSummary", () => {
     const summary = await getExecutiveShadowSummary();
 
     expect(summary.reachable).toBe(true);
+    expect(summary.kernelStatus).toBe("unsafe");
     expect(summary.readiness).toMatchObject({
+      status: "unsafe",
       promotionStatus: "blocked",
       authoritySwitchAllowed: false,
       failClosed: false,
     });
-    expect(summary.readiness?.error).toContain("not fail-closed");
+    expect(summary.readiness?.error).toContain("expected false");
+  });
+
+  it("distinguishes readiness endpoint unavailability from unsafe payloads", async () => {
+    mocks.createExecutiveShadowClient.mockReturnValue({
+      getHealth: vi.fn(async () => ({
+        status: "ok",
+        uptimeSeconds: 12,
+        bootCount: 2,
+        tickCount: 4,
+        activeLane: "operator",
+        journalEventCount: 8,
+        stateDir: "/tmp/executive",
+        nextTickDueAtMs: 12345,
+      })),
+      getMetrics: vi.fn(async () => ({
+        activeLane: "operator",
+        laneCounts: { idle: 1, pending: 2, active: 1 },
+        bootCount: 2,
+        tickCount: 4,
+        journalEventCount: 8,
+        nextTickDueAtMs: 12345,
+        lastTickAtMs: 12222,
+        lastRecoveredAtMs: 11111,
+        nextLeaseExpiryAtMs: 12456,
+        highestPendingPriority: 50,
+      })),
+      getTimeline: vi.fn(async () => ({
+        activeLane: "operator",
+        journalEventCount: 8,
+        recentEvents: [],
+        counts: {
+          booted: 1,
+          recovered: 1,
+          tick: 4,
+          lane_requested: 2,
+          lane_activated: 1,
+          lane_released: 0,
+        },
+        lastRequestAtMs: 12000,
+        lastActivationAtMs: 12456,
+        lastReleaseAtMs: null,
+        lastReleaseOutcome: null,
+      })),
+      getReadiness: vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
+    });
+
+    const { getExecutiveShadowSummary } = await import("./status.executive-shadow.js");
+    const summary = await getExecutiveShadowSummary();
+
+    expect(summary.reachable).toBe(true);
+    expect(summary.kernelStatus).toBe("unavailable");
+    expect(summary.readiness).toMatchObject({
+      status: "unavailable",
+      promotionStatus: "blocked",
+      authoritySwitchAllowed: false,
+      failClosed: false,
+    });
+    expect(summary.readiness?.error).toContain("ECONNREFUSED");
   });
 
   it("returns an unavailable summary when the shadow daemon errors", async () => {
@@ -231,6 +303,7 @@ describe("getExecutiveShadowSummary", () => {
     const summary = await getExecutiveShadowSummary();
 
     expect(summary.reachable).toBe(false);
+    expect(summary.kernelStatus).toBe("unavailable");
     expect(summary.error).toContain("ECONNREFUSED");
   });
 });

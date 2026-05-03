@@ -328,6 +328,7 @@ vi.mock("./status.rust-gateway-scheduler-authority.js", () => ({
 vi.mock("./status.executive-shadow.js", () => ({
   getExecutiveShadowSummary: vi.fn().mockResolvedValue({
     reachable: true,
+    kernelStatus: "fail-closed",
     activeLane: "operator",
     tickCount: 4,
     bootCount: 2,
@@ -340,6 +341,7 @@ vi.mock("./status.executive-shadow.js", () => ({
     lastEventType: "lane_activated",
     stateDir: "/tmp/executive",
     readiness: {
+      status: "fail-closed",
       mode: "shadow-readiness",
       authoritySwitchAllowed: false,
       promotionStatus: "blocked",
@@ -425,6 +427,7 @@ describe("statusCommand", () => {
     expect(payload.rustGatewaySchedulerAuthority.schedulerAuthority).toBe("node");
     expect(payload.rustGatewaySchedulerAuthority.rustSchedulerAuthority).toBe("shadow-only");
     expect(payload.executiveShadow.reachable).toBe(true);
+    expect(payload.executiveShadow.kernelStatus).toBe("fail-closed");
     expect(payload.executiveShadow.activeLane).toBe("operator");
     expect(payload.executiveShadow.laneCounts.pending).toBe(2);
     expect(payload.executiveShadow.readiness.failClosed).toBe(true);
@@ -452,6 +455,7 @@ describe("statusCommand", () => {
     expect(logs.some((l) => l.includes("Rust scheduler authority"))).toBe(true);
     expect(logs.some((l) => l.includes("scheduler node"))).toBe(true);
     expect(logs.some((l) => l.includes("Executive shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("kernel fail-closed"))).toBe(true);
     expect(logs.some((l) => l.includes("readiness fail-closed"))).toBe(true);
     expect(logs.some((l) => l.includes("switchBlocked"))).toBe(true);
     expect(logs.some((l) => l.includes("executive shadow-only"))).toBe(true);

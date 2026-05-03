@@ -32,6 +32,7 @@ export type HeartbeatStatus = {
 
 export type ExecutiveShadowStatus = {
   reachable: boolean;
+  kernelStatus: "fail-closed" | "unsafe" | "unavailable";
   activeLane: string | null;
   tickCount: number | null;
   bootCount: number | null;
@@ -44,6 +45,7 @@ export type ExecutiveShadowStatus = {
   lastEventType: string | null;
   stateDir: string | null;
   readiness: {
+    status: "fail-closed" | "unsafe" | "unavailable";
     mode: "shadow-readiness";
     promotionStatus: "blocked";
     authoritySwitchAllowed: false;

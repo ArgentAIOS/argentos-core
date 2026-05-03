@@ -370,17 +370,24 @@ export async function statusCommand(
             readiness.failClosed ? ok("readiness fail-closed") : warn("readiness not fail-closed"),
             `promotion ${readiness.promotionStatus}`,
             readiness.authoritySwitchAllowed ? warn("switchAllowed") : "switchBlocked",
+            `executive ${readiness.currentAuthority.executive}`,
             `gateway ${readiness.currentAuthority.gateway}`,
             `scheduler ${readiness.currentAuthority.scheduler}`,
             `workflows ${readiness.currentAuthority.workflows}`,
-            `executive ${readiness.currentAuthority.executive}`,
             `gates blocked ${readiness.gateCounts.blocked} proven ${readiness.gateCounts.proven}`,
           ]
         : readiness?.error
-          ? [warn(`readiness unavailable (${readiness.error})`)]
+          ? [
+              warn(
+                readiness.status === "unsafe"
+                  ? `readiness unsafe (${readiness.error})`
+                  : `readiness unavailable (${readiness.error})`,
+              ),
+            ]
           : [];
     const parts = [
       ok("reachable"),
+      `kernel ${status.kernelStatus}`,
       status.activeLane ? `lane ${status.activeLane}` : "lane none",
       ...readinessParts,
       status.laneCounts ? `pending ${status.laneCounts.pending}` : null,
