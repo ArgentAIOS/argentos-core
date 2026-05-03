@@ -1764,6 +1764,8 @@ function normalizeInstalledDaemonCanaryPayload(
   if (!redactionVerified) {
     blockers.push("one or more receipts are not marked redacted");
   }
+  const effectiveRuntimeProbe =
+    blockers.length === 0 && runtimeProbe?.helloReceived === false ? null : runtimeProbe;
 
   return installedCanaryStatus({
     status: blockers.length === 0 ? "ok" : "unsafe",
@@ -1783,7 +1785,7 @@ function normalizeInstalledDaemonCanaryPayload(
     requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
     missingReceiptSurfaces,
     receiptSurfaces,
-    runtimeProbe,
+    runtimeProbe: effectiveRuntimeProbe,
     blockers,
     error: null,
   });
