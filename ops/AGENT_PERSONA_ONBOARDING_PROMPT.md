@@ -53,15 +53,7 @@ pnpm threadmaster:task-update --id <task-id> --status done --note "<verification
 
 ## Automation
 
-Create or update a heartbeat automation for your thread that wakes every 3 minutes while this lane is active. Its job:
-
-- Check `agent-persona` unacked bus messages.
-- Check `agent-persona` tasks.
-- Check Master messages that affect Agent Persona/Profile work.
-- Post durable status when you start, block, need a decision, or submit a merge request.
-- Stay quiet when there is no new action.
-
-Do not rely on the operator to relay routine status.
+Heartbeat automation is suspended (per THREADMASTER_COORDINATION.md state-transition rule). Lanes do not self-heartbeat.
 
 ## Boundaries
 
