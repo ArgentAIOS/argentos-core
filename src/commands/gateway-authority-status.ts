@@ -10,6 +10,15 @@ export type GatewayAuthorityStatusOptions = {
   installedCanary?: GatewayInstalledDaemonCanaryOptions;
 };
 
+export type GatewayAuthorityLocalRehearsalOptions = {
+  json?: boolean;
+  reason: string;
+  confirmLocalOnly?: boolean;
+  installedCanary?: GatewayInstalledDaemonCanaryOptions;
+  beforeCanary?: GatewayInstalledDaemonCanaryOptions;
+  afterCanary?: GatewayInstalledDaemonCanaryOptions;
+};
+
 export type GatewayAuthorityRollbackPlanOptions = {
   json?: boolean;
   reason: string;
@@ -34,6 +43,33 @@ export type GatewayAuthorityRollbackPlan = {
   requiredBeforeExecutableRollback: string[];
   operatorRecoveryChecklist: string[];
   blockedActions: string[];
+};
+
+export type GatewayAuthorityLocalRehearsal = {
+  command: "argent gateway authority rehearse-local";
+  mode: "local-only-test-path";
+  status: "blocked" | "rehearsed";
+  reason: string;
+  explicitOptIn: boolean;
+  liveProductionTrafficAllowed: false;
+  authoritySwitchAllowed: false;
+  authorityChanges: [];
+  before: GatewayInstalledDaemonCanaryStatus;
+  after: GatewayInstalledDaemonCanaryStatus;
+  rollback: GatewayAuthorityRollbackPlan;
+  enablePath: {
+    executableHere: false;
+    requiredOperatorAction: string;
+    defaultFlagState: false;
+    localOnlyFlag: "ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1";
+  };
+  duplicateReceiptSafety: {
+    unchanged: true;
+    requiredReceipts: Array<"RUST_CANARY_DENIED" | "RUST_CANARY_DUPLICATE_PREVENTED">;
+    surfaces: Array<"chat.send" | "cron.add" | "workflows.run">;
+  };
+  blockers: string[];
+  proof: string[];
 };
 
 export type GatewayAuthorityStatusSummary = {
@@ -255,6 +291,98 @@ export async function gatewayAuthorityStatusCommand(
   return summary;
 }
 
+export async function collectGatewayAuthorityLocalRehearsal(
+  options: GatewayAuthorityLocalRehearsalOptions,
+): Promise<GatewayAuthorityLocalRehearsal> {
+  const baseCanary = options.installedCanary;
+  const before = await collectInstalledDaemonCanaryStatus(options.beforeCanary ?? baseCanary);
+  const after = options.confirmLocalOnly
+    ? await collectInstalledDaemonCanaryStatus(options.afterCanary ?? baseCanary)
+    : installedCanaryStatus({
+        status: "blocked",
+        configured: before.configured,
+        queried: false,
+        url: before.url,
+        productionTrafficUsed: false,
+        canaryFlagEnabled: false,
+        authoritySwitchAllowed: false,
+        dashboardVisible: null,
+        receiptCount: null,
+        redactionVerified: null,
+        blockers: ["pass --confirm-local-only before checking after-canary rehearsal status"],
+        error: null,
+      });
+  const rollback = buildGatewayAuthorityRollbackPlan({ json: false, reason: options.reason });
+  const blockers = buildLocalRehearsalBlockers({
+    explicitOptIn: options.confirmLocalOnly === true,
+    before,
+    after,
+  });
+
+  return {
+    command: "argent gateway authority rehearse-local",
+    mode: "local-only-test-path",
+    status: blockers.length === 0 ? "rehearsed" : "blocked",
+    reason: options.reason.trim(),
+    explicitOptIn: options.confirmLocalOnly === true,
+    liveProductionTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    authorityChanges: [],
+    before,
+    after,
+    rollback,
+    enablePath: {
+      executableHere: false,
+      requiredOperatorAction:
+        "Start a disposable local gateway test harness with ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1, then query rustGateway.canaryReceipts.status again.",
+      defaultFlagState: false,
+      localOnlyFlag: "ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1",
+    },
+    duplicateReceiptSafety: {
+      unchanged: true,
+      requiredReceipts: ["RUST_CANARY_DENIED", "RUST_CANARY_DUPLICATE_PREVENTED"],
+      surfaces: ["chat.send", "cron.add", "workflows.run"],
+    },
+    blockers,
+    proof: [
+      "before and after checks use only rustGateway.canaryReceipts.status",
+      "rollback is a read-only plan with authorityChanges=[]",
+      "productionTrafficUsed must remain false",
+      "authoritySwitchAllowed must remain false",
+      "receipt redaction must remain verified",
+    ],
+  };
+}
+
+export async function gatewayAuthorityLocalRehearsalCommand(
+  runtime: Pick<RuntimeEnv, "log">,
+  options: GatewayAuthorityLocalRehearsalOptions,
+): Promise<GatewayAuthorityLocalRehearsal> {
+  const rehearsal = await collectGatewayAuthorityLocalRehearsal(options);
+  if (options.json) {
+    runtime.log(JSON.stringify(rehearsal, null, 2));
+    return rehearsal;
+  }
+
+  runtime.log("Gateway authority local rehearsal");
+  runtime.log("");
+  runtime.log(`Mode: ${rehearsal.mode}`);
+  runtime.log(`Status: ${rehearsal.status}`);
+  runtime.log(`Explicit opt-in: ${rehearsal.explicitOptIn ? "yes" : "no"}`);
+  runtime.log(`Authority changes: none`);
+  runtime.log(`Before canary: ${rehearsal.before.status}`);
+  runtime.log(`After canary: ${rehearsal.after.status}`);
+  runtime.log(`Rollback: ${rehearsal.rollback.mode}`);
+  if (rehearsal.blockers.length > 0) {
+    runtime.log("");
+    runtime.log("Blockers:");
+    for (const blocker of rehearsal.blockers) {
+      runtime.log(`- ${blocker}`);
+    }
+  }
+  return rehearsal;
+}
+
 async function collectInstalledDaemonCanaryStatus(
   options: GatewayInstalledDaemonCanaryOptions | undefined,
 ): Promise<GatewayInstalledDaemonCanaryStatus> {
@@ -401,6 +529,50 @@ function installedCanaryStatus(
     method: "rustGateway.canaryReceipts.status",
     ...status,
   };
+}
+
+function buildLocalRehearsalBlockers(params: {
+  explicitOptIn: boolean;
+  before: GatewayInstalledDaemonCanaryStatus;
+  after: GatewayInstalledDaemonCanaryStatus;
+}): string[] {
+  const blockers: string[] = [];
+  if (!params.explicitOptIn) {
+    blockers.push("explicit local-only rehearsal opt-in is required");
+  }
+  if (params.before.status !== "ok" || !params.before.queried) {
+    blockers.push(
+      `before status must be a queried ok installed-canary snapshot; got ${params.before.status}`,
+    );
+  }
+  if (params.before.canaryFlagEnabled !== false) {
+    blockers.push("before status must prove canaryFlagEnabled=false by default");
+  }
+  if (params.before.productionTrafficUsed !== false) {
+    blockers.push("before status must prove productionTrafficUsed=false");
+  }
+  if (params.before.authoritySwitchAllowed !== false) {
+    blockers.push("before status must prove authoritySwitchAllowed=false");
+  }
+  if (params.after.status !== "ok") {
+    blockers.push(`after status must be ok; got ${params.after.status}`);
+  }
+  if (params.after.productionTrafficUsed !== false) {
+    blockers.push("after status must prove productionTrafficUsed=false");
+  }
+  if (params.after.authoritySwitchAllowed !== false) {
+    blockers.push("after status must prove authoritySwitchAllowed=false");
+  }
+  if (params.after.canaryFlagEnabled !== true) {
+    blockers.push("after status must prove the local canary flag was explicitly enabled");
+  }
+  if (params.after.redactionVerified !== true) {
+    blockers.push("after status must prove canary receipts are redacted");
+  }
+  if ((params.after.receiptCount ?? 0) < 2) {
+    blockers.push("after status must include denial and duplicate-prevention receipts");
+  }
+  return blockers;
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {

@@ -16,6 +16,7 @@ const serviceInstall = vi.fn(async () => {});
 const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityLocalRehearsalCommand = vi.fn(async () => {});
 const gatewayAuthorityRollbackPlanCommand = vi.fn(async () => {});
 
 const runtimeLogs: string[] = [];
@@ -109,6 +110,8 @@ vi.mock("../commands/gateway-status.js", () => ({
 }));
 
 vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityLocalRehearsalCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityLocalRehearsalCommand(runtime, opts),
   gatewayAuthorityRollbackPlanCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityRollbackPlanCommand(runtime, opts),
   gatewayAuthorityStatusCommand: (runtime: unknown, opts: unknown) =>
@@ -216,6 +219,45 @@ describe("gateway-cli coverage", () => {
     expect(gatewayAuthorityRollbackPlanCommand.mock.calls[0]?.[1]).toEqual({
       json: true,
       reason: "canary drift",
+    });
+  }, 30_000);
+
+  it("registers gateway authority rehearse-local as an explicit local-only test path", async () => {
+    gatewayAuthorityLocalRehearsalCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "rehearse-local",
+        "--reason",
+        "local canary rehearsal",
+        "--confirm-local-only",
+        "--installed-canary-url",
+        "ws://127.0.0.1:18789",
+        "--installed-canary-token",
+        "test-token",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityLocalRehearsalCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityLocalRehearsalCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "local canary rehearsal",
+      confirmLocalOnly: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: undefined,
+      },
     });
   }, 30_000);
 

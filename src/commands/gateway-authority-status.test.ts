@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityRollbackPlanCommand,
   gatewayAuthorityStatusCommand,
 } from "./gateway-authority-status.js";
@@ -248,6 +249,115 @@ describe("gatewayAuthorityStatusCommand", () => {
         "one or more receipts are not marked redacted",
       ]),
     );
+  });
+
+  it("blocks local authority rehearsal without explicit opt-in", async () => {
+    const beforeStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: { containsSecrets: false },
+      authority: { authoritySwitchAllowed: false },
+      receipts: [],
+    });
+    const afterStatus = vi.fn();
+
+    const rehearsal = await gatewayAuthorityLocalRehearsalCommand(
+      { log: () => undefined },
+      {
+        reason: "local proof",
+        beforeCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: beforeStatus,
+        },
+        afterCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: afterStatus,
+        },
+      },
+    );
+
+    expect(beforeStatus).toHaveBeenCalledTimes(1);
+    expect(afterStatus).not.toHaveBeenCalled();
+    expect(rehearsal.status).toBe("blocked");
+    expect(rehearsal.explicitOptIn).toBe(false);
+    expect(rehearsal.authorityChanges).toEqual([]);
+    expect(rehearsal.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.blockers).toContain("explicit local-only rehearsal opt-in is required");
+  });
+
+  it("rehearses local-only canary enable and rollback evidence without authority changes", async () => {
+    const beforeStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: { containsSecrets: false },
+      authority: { authoritySwitchAllowed: false },
+      receipts: [],
+    });
+    const afterStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ],
+    });
+
+    const rehearsal = await gatewayAuthorityLocalRehearsalCommand(
+      { log: () => undefined },
+      {
+        reason: "local proof",
+        confirmLocalOnly: true,
+        beforeCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: beforeStatus,
+        },
+        afterCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: afterStatus,
+        },
+      },
+    );
+
+    expect(rehearsal.status).toBe("rehearsed");
+    expect(rehearsal.before.canaryFlagEnabled).toBe(false);
+    expect(rehearsal.after.canaryFlagEnabled).toBe(true);
+    expect(rehearsal.after.productionTrafficUsed).toBe(false);
+    expect(rehearsal.after.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.after.redactionVerified).toBe(true);
+    expect(rehearsal.after.receiptCount).toBe(2);
+    expect(rehearsal.rollback.authorityChanges).toEqual([]);
+    expect(rehearsal.rollback.executable).toBe(false);
+    expect(rehearsal.duplicateReceiptSafety.requiredReceipts).toEqual([
+      "RUST_CANARY_DENIED",
+      "RUST_CANARY_DUPLICATE_PREVENTED",
+    ]);
+    expect(rehearsal.blockers).toEqual([]);
   });
 
   it("prints read-only rollback plan without authority changes", async () => {
