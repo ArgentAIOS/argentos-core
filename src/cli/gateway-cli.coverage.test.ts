@@ -246,6 +246,33 @@ describe("gateway-cli coverage", () => {
     });
   }, 30_000);
 
+  it("shows gateway authority smoke-local help without requiring a reason first", async () => {
+    gatewayAuthorityLocalSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    const helpOutput: string[] = [];
+    program.exitOverride();
+    program.configureOutput({
+      writeOut: (line) => helpOutput.push(line),
+      writeErr: (line) => helpOutput.push(line),
+    });
+    registerGatewayCli(program);
+
+    await expect(
+      program.parseAsync(["gateway", "authority", "smoke-local", "--help"], {
+        from: "user",
+      }),
+    ).rejects.toMatchObject({ code: "commander.helpDisplayed" });
+
+    const help = helpOutput.join("");
+    expect(help).toContain("smoke-local");
+    expect(help).toContain("--reason <reason>");
+    expect(help).toContain("--confirm-local-only");
+    expect(help).toContain("--installed-canary-url <url>");
+    expect(gatewayAuthorityLocalSmokeCommand).not.toHaveBeenCalled();
+  }, 30_000);
+
   it("registers gateway authority rollback-node as a read-only plan command", async () => {
     gatewayAuthorityRollbackPlanCommand.mockClear();
 

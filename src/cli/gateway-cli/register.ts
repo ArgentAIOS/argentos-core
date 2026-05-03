@@ -220,7 +220,7 @@ export function registerGatewayCli(program: Command) {
   authority
     .command("smoke-local")
     .description("Run a read-only local operator smoke for Rust Gateway canary authority proof")
-    .requiredOption("--reason <reason>", "Operator-visible reason for local smoke")
+    .option("--reason <reason>", "Operator-visible reason for local smoke")
     .option(
       "--confirm-local-only",
       "Confirm this is a local-only smoke against a test harness",
@@ -238,6 +238,14 @@ export function registerGatewayCli(program: Command) {
     )
     .option("--installed-canary-timeout <ms>", "Installed canary query timeout in ms")
     .action(async (opts) => {
+      const reason = typeof opts.reason === "string" && opts.reason.trim() ? opts.reason : null;
+      if (!reason) {
+        defaultRuntime.error(
+          "Gateway authority local smoke failed: required option '--reason <reason>' not specified",
+        );
+        defaultRuntime.exit(1);
+        return;
+      }
       await runGatewayCommand(async () => {
         const installedCanary =
           opts.installedCanaryUrl || opts.installedCanaryToken || opts.installedCanaryPassword
@@ -260,7 +268,7 @@ export function registerGatewayCli(program: Command) {
             : undefined;
         await gatewayAuthorityLocalSmokeCommand(defaultRuntime, {
           json: Boolean(opts.json),
-          reason: String(opts.reason),
+          reason,
           confirmLocalOnly: Boolean(opts.confirmLocalOnly),
           ...(installedCanary ? { installedCanary } : {}),
         });
