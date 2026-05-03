@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  collectGatewayAuthorityDisposableLoopbackSmoke,
   gatewayAuthorityLocalSmokeCommand,
   gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityRollbackPlanCommand,
@@ -533,6 +534,114 @@ describe("gatewayAuthorityStatusCommand", () => {
     });
     expect(smoke.blockers).toEqual([]);
     expect(smoke.proof.join("\n")).toContain("in-process disposable canary receipt harness");
+  });
+
+  it("blocks disposable loopback smoke without explicit local-only opt-in", async () => {
+    const smoke = await collectGatewayAuthorityDisposableLoopbackSmoke({
+      reason: "missing opt-in",
+      confirmLocalOnly: false,
+    });
+
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.disposableHarness.started).toBe(false);
+    expect(smoke.disposableHarness.installedServiceControlUsed).toBe(false);
+    expect(smoke.blockers).toContain("explicit local-only loopback smoke opt-in is required");
+  });
+
+  it("proves disposable loopback smoke with temp state and redacted receipts", async () => {
+    const close = vi.fn(async () => undefined);
+    const mkdir = vi.fn(async () => undefined);
+    const writeFile = vi.fn(async () => undefined);
+    const startEnv: Record<string, string | undefined> = {};
+    const calls: Array<{ method: string; params?: unknown }> = [];
+    const callGateway = vi.fn(async (request: { method: string; params?: unknown }) => {
+      calls.push(request);
+      if (request.method === "rustGateway.canaryReceipts.status") {
+        return {
+          status: "ok",
+          dashboardVisible: true,
+          productionTrafficUsed: false,
+          canaryFlagEnabled: true,
+          policy: { containsSecrets: false },
+          authority: {
+            nodeAuthority: "live",
+            rustAuthority: "shadow-only",
+            authoritySwitchAllowed: false,
+          },
+          receipts: [
+            ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+              surface,
+              receiptCode: "RUST_CANARY_DENIED",
+              tokenMaterialRedacted: true,
+              authoritySwitchAllowed: false,
+              mutationBlockedBeforeHandler: true,
+            })),
+            ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+              surface,
+              receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+              tokenMaterialRedacted: true,
+              authoritySwitchAllowed: false,
+              mutationBlockedBeforeHandler: true,
+            })),
+          ],
+        };
+      }
+      throw new Error("Rust canary denied before mutation");
+    });
+
+    const smoke = await collectGatewayAuthorityDisposableLoopbackSmoke({
+      reason: "disposable loopback proof",
+      confirmLocalOnly: true,
+      dependencies: {
+        mkdtemp: async () => "/tmp/rust-gateway-loopback-test",
+        rm: vi.fn(async () => undefined),
+        mkdir,
+        writeFile,
+        getFreePort: async () => 19876,
+        randomToken: () => "random-loopback-token",
+        startGateway: vi.fn(async () => {
+          startEnv.ARGENT_SKIP_PLUGINS = process.env.ARGENT_SKIP_PLUGINS;
+          startEnv.ARGENT_CONFIG_PATH = process.env.ARGENT_CONFIG_PATH;
+          return { close } as never;
+        }),
+        callGateway: callGateway as never,
+      },
+    });
+
+    expect(smoke.status).toBe("passed");
+    expect(mkdir).toHaveBeenCalledWith("/tmp/rust-gateway-loopback-test/.argentos");
+    expect(writeFile.mock.calls[0]?.[0]).toBe(
+      "/tmp/rust-gateway-loopback-test/.argentos/argent.json",
+    );
+    expect(writeFile.mock.calls[0]?.[1]).toContain('"enabled": false');
+    expect(startEnv.ARGENT_SKIP_PLUGINS).toBe("1");
+    expect(startEnv.ARGENT_CONFIG_PATH).toBe(
+      "/tmp/rust-gateway-loopback-test/.argentos/argent.json",
+    );
+    expect(smoke.disposableHarness).toMatchObject({
+      started: true,
+      url: "ws://127.0.0.1:19876",
+      tempHomeUsed: true,
+      tempStateUsed: true,
+      randomPortUsed: true,
+      randomTokenUsed: true,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(smoke.receiptProof).toMatchObject({
+      generatedSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      redactionVerified: true,
+      receiptCount: 6,
+    });
+    expect(calls.filter((call) => call.method === "chat.send")).toHaveLength(2);
+    expect(calls.filter((call) => call.method === "cron.add")).toHaveLength(2);
+    expect(calls.filter((call) => call.method === "workflows.run")).toHaveLength(2);
+    expect(close).toHaveBeenCalledWith({
+      reason: "disposable loopback canary smoke complete",
+    });
   });
 
   it("blocks local smoke against non-loopback daemon URLs before querying", async () => {

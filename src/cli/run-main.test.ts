@@ -51,4 +51,13 @@ describe("shouldSkipGlobalPluginRegistration", () => {
       false,
     );
   });
+
+  it("skips plugin registration for disposable loopback gateway smoke", () => {
+    expect(
+      shouldSkipGlobalPluginRegistration(
+        ["node", "entry.js", "gateway", "authority", "smoke-loopback", "--confirm-local-only"],
+        "gateway",
+      ),
+    ).toBe(true);
+  });
 });

@@ -145,6 +145,24 @@ argent gateway authority smoke-local \
   --json
 ```
 
+Disposable loopback daemon smoke:
+
+```bash
+ARGENT_SKIP_PLUGINS=1 argent gateway authority smoke-loopback \
+  --reason "disposable loopback canary proof" \
+  --confirm-local-only \
+  --json
+```
+
+`smoke-loopback` starts a disposable Gateway bound only to `127.0.0.1` with temp HOME/state, a
+random local port, a random token, and canary receipts enabled. It generates denied and
+duplicate-prevented receipts for `chat.send`, `cron.add`, and `workflows.run`, then runs the same
+installed-canary status proof against that loopback daemon. The command sets `ARGENT_SKIP_PLUGINS=1`
+for the disposable Gateway; prefixing the command with the same env var also keeps CLI bootstrap
+plugins out of the proof process. It does not use `launchctl`, `systemd`, `schtasks`, an installed
+production service, bundled plugins, connector credentials, production traffic, or an authority
+switch.
+
 The installed-canary URL must be loopback/local: `localhost`, `127.0.0.1`, `::1`, or an
 SSH-forwarded loopback URL. Non-loopback URLs are blocked before the CLI queries anything so this
 proof cannot accidentally become production daemon traffic.

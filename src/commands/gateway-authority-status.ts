@@ -1,6 +1,12 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import { createServer } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import type { RuntimeEnv } from "../runtime.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { callGateway } from "../gateway/call.js";
+import { startGatewayServer, type GatewayServer } from "../gateway/server.js";
 import { getRustGatewayParityReportStatus } from "./status.rust-gateway-parity-report.js";
 import { getRustGatewaySchedulerAuthoritySummary } from "./status.rust-gateway-scheduler-authority.js";
 import { getRustGatewayShadowSummary } from "./status.rust-gateway-shadow.js";
@@ -25,6 +31,13 @@ export type GatewayAuthorityLocalSmokeOptions = {
   confirmLocalOnly?: boolean;
   localCanarySelfCheck?: boolean;
   installedCanary?: GatewayInstalledDaemonCanaryOptions;
+};
+
+export type GatewayAuthorityDisposableLoopbackSmokeOptions = {
+  json?: boolean;
+  reason: string;
+  confirmLocalOnly?: boolean;
+  dependencies?: GatewayAuthorityDisposableLoopbackSmokeDependencies;
 };
 
 export type GatewayAuthorityRollbackPlanOptions = {
@@ -106,6 +119,36 @@ export type GatewayAuthorityLocalSmoke = {
   proof: string[];
 };
 
+export type GatewayAuthorityDisposableLoopbackSmoke = {
+  command: "argent gateway authority smoke-loopback";
+  mode: "disposable-loopback-canary-smoke";
+  status: "passed" | "blocked";
+  reason: string;
+  explicitOptIn: boolean;
+  disposableHarness: {
+    started: boolean;
+    url: string | null;
+    bind: "loopback";
+    tempHomeUsed: boolean;
+    tempStateUsed: boolean;
+    randomPortUsed: boolean;
+    randomTokenUsed: boolean;
+    installedServiceControlUsed: false;
+    productionTrafficUsed: false;
+    authoritySwitchAllowed: false;
+  };
+  receiptProof: {
+    generatedSurfaces: string[];
+    denialReceiptPresent: boolean;
+    duplicatePreventionReceiptPresent: boolean;
+    redactionVerified: boolean;
+    receiptCount: number;
+  };
+  smoke: GatewayAuthorityLocalSmoke;
+  blockers: string[];
+  proof: string[];
+};
+
 export type GatewayAuthorityStatusSummary = {
   liveGatewayAuthority: "node";
   rustGatewayAuthority: "shadow-only";
@@ -149,6 +192,20 @@ export type GatewayInstalledDaemonCanaryOptions = {
     password?: string;
     timeoutMs: number;
   }) => Promise<unknown>;
+};
+
+type GatewayAuthorityDisposableLoopbackSmokeDependencies = {
+  mkdtemp?: (prefix: string) => Promise<string>;
+  rm?: (targetPath: string) => Promise<void>;
+  mkdir?: (targetPath: string) => Promise<void>;
+  writeFile?: (targetPath: string, content: string) => Promise<void>;
+  getFreePort?: () => Promise<number>;
+  randomToken?: () => string;
+  startGateway?: (
+    port: number,
+    options: Parameters<typeof startGatewayServer>[1],
+  ) => Promise<GatewayServer>;
+  callGateway?: typeof callGateway;
 };
 
 export type GatewayInstalledDaemonCanaryStatus = {
@@ -514,6 +571,230 @@ export async function gatewayAuthorityLocalSmokeCommand(
   runtime.log("Operator guidance:");
   for (const line of smoke.operatorGuidance) {
     runtime.log(`- ${line}`);
+  }
+  return smoke;
+}
+
+export async function collectGatewayAuthorityDisposableLoopbackSmoke(
+  options: GatewayAuthorityDisposableLoopbackSmokeOptions,
+): Promise<GatewayAuthorityDisposableLoopbackSmoke> {
+  if (options.confirmLocalOnly !== true) {
+    const smoke = await collectGatewayAuthorityLocalSmoke({
+      reason: options.reason,
+      confirmLocalOnly: false,
+      localCanarySelfCheck: true,
+    });
+    return {
+      command: "argent gateway authority smoke-loopback",
+      mode: "disposable-loopback-canary-smoke",
+      status: "blocked",
+      reason: options.reason.trim(),
+      explicitOptIn: false,
+      disposableHarness: {
+        started: false,
+        url: null,
+        bind: "loopback",
+        tempHomeUsed: false,
+        tempStateUsed: false,
+        randomPortUsed: false,
+        randomTokenUsed: false,
+        installedServiceControlUsed: false,
+        productionTrafficUsed: false,
+        authoritySwitchAllowed: false,
+      },
+      receiptProof: {
+        generatedSurfaces: [],
+        denialReceiptPresent: false,
+        duplicatePreventionReceiptPresent: false,
+        redactionVerified: false,
+        receiptCount: 0,
+      },
+      smoke,
+      blockers: ["explicit local-only loopback smoke opt-in is required"],
+      proof: ["no disposable loopback daemon was started because --confirm-local-only was missing"],
+    };
+  }
+
+  const deps = options.dependencies ?? {};
+  const mkdtemp = deps.mkdtemp ?? ((prefix: string) => fs.mkdtemp(path.join(os.tmpdir(), prefix)));
+  const rm =
+    deps.rm ??
+    ((targetPath: string) => fs.rm(targetPath, { recursive: true, force: true }).then(() => {}));
+  const mkdir =
+    deps.mkdir ??
+    ((targetPath: string) => fs.mkdir(targetPath, { recursive: true }).then(() => {}));
+  const writeFile =
+    deps.writeFile ?? ((targetPath: string, content: string) => fs.writeFile(targetPath, content));
+  const getFreePort = deps.getFreePort ?? getFreeLoopbackPort;
+  const randomToken = deps.randomToken ?? (() => `loopback-canary-${randomUUID()}`);
+  const startGateway = deps.startGateway ?? startGatewayServer;
+  const requestGateway = deps.callGateway ?? callGateway;
+  const previousEnv = snapshotDisposableLoopbackEnv();
+  const tempHome = await mkdtemp("rust-gateway-loopback-home-");
+  const token = randomToken();
+  const port = await getFreePort();
+  const url = `ws://127.0.0.1:${port}`;
+  const storePath = path.join(tempHome, ".argentos", "rust-gateway", "receipts.jsonl");
+  const configPath = path.join(tempHome, ".argentos", "argent.json");
+  let server: GatewayServer | null = null;
+  let smoke: GatewayAuthorityLocalSmoke | null = null;
+
+  try {
+    await writeDisposableLoopbackConfig({ configPath, mkdir, writeFile });
+    applyDisposableLoopbackEnv({ tempHome, token, storePath, configPath });
+    server = await startGateway(port, {
+      bind: "loopback",
+      auth: { mode: "token", token },
+      controlUiEnabled: false,
+    });
+
+    for (const surface of CANARY_RECEIPT_SURFACES) {
+      const params = buildDisposableLoopbackCanaryParams(surface);
+      await expectRustCanaryDenial(requestGateway({ url, token, method: surface, params }));
+      await expectRustCanaryDenial(requestGateway({ url, token, method: surface, params }));
+    }
+
+    smoke = await collectGatewayAuthorityLocalSmoke({
+      reason: options.reason,
+      confirmLocalOnly: true,
+      installedCanary: {
+        url,
+        token,
+        requestStatus: (params) =>
+          requestGateway({
+            url: params.url,
+            token: params.token,
+            password: params.password,
+            timeoutMs: params.timeoutMs,
+            method: "rustGateway.canaryReceipts.status",
+            params: { limit: 20 },
+          }),
+      },
+    });
+    const status = smoke.installedDaemonCanary;
+    const blockers = [
+      ...smoke.blockers,
+      ...(status.receiptSurfaces.length === CANARY_RECEIPT_SURFACES.length
+        ? []
+        : ["not all required canary receipt surfaces were generated"]),
+    ];
+
+    return {
+      command: "argent gateway authority smoke-loopback",
+      mode: "disposable-loopback-canary-smoke",
+      status: blockers.length === 0 ? "passed" : "blocked",
+      reason: options.reason.trim(),
+      explicitOptIn: true,
+      disposableHarness: {
+        started: true,
+        url,
+        bind: "loopback",
+        tempHomeUsed: true,
+        tempStateUsed: true,
+        randomPortUsed: true,
+        randomTokenUsed: true,
+        installedServiceControlUsed: false,
+        productionTrafficUsed: false,
+        authoritySwitchAllowed: false,
+      },
+      receiptProof: {
+        generatedSurfaces: status.receiptSurfaces,
+        denialReceiptPresent: status.denialReceiptPresent === true,
+        duplicatePreventionReceiptPresent: status.duplicatePreventionReceiptPresent === true,
+        redactionVerified: status.redactionVerified === true,
+        receiptCount: status.receiptCount ?? 0,
+      },
+      smoke,
+      blockers,
+      proof: [
+        "started a disposable Gateway server bound to 127.0.0.1 with temp HOME/state",
+        "used a random local port and random token",
+        "enabled canary receipts only through ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1 in temp env",
+        "disabled bundled plugins through temp ARGENT_CONFIG_PATH",
+        "generated denied and duplicate-prevented receipts for chat.send, cron.add, and workflows.run",
+        "queried only rustGateway.canaryReceipts.status through the installed-canary smoke path",
+        "no launchctl/systemd/schtasks or installed production service control was used",
+        "productionTrafficUsed=false and authoritySwitchAllowed=false",
+      ],
+    };
+  } catch (error) {
+    smoke ??= await collectGatewayAuthorityLocalSmoke({
+      reason: options.reason,
+      confirmLocalOnly: true,
+      installedCanary: { url, token },
+    });
+    return {
+      command: "argent gateway authority smoke-loopback",
+      mode: "disposable-loopback-canary-smoke",
+      status: "blocked",
+      reason: options.reason.trim(),
+      explicitOptIn: true,
+      disposableHarness: {
+        started: server !== null,
+        url,
+        bind: "loopback",
+        tempHomeUsed: true,
+        tempStateUsed: true,
+        randomPortUsed: true,
+        randomTokenUsed: true,
+        installedServiceControlUsed: false,
+        productionTrafficUsed: false,
+        authoritySwitchAllowed: false,
+      },
+      receiptProof: {
+        generatedSurfaces: smoke.installedDaemonCanary.receiptSurfaces,
+        denialReceiptPresent: smoke.installedDaemonCanary.denialReceiptPresent === true,
+        duplicatePreventionReceiptPresent:
+          smoke.installedDaemonCanary.duplicatePreventionReceiptPresent === true,
+        redactionVerified: smoke.installedDaemonCanary.redactionVerified === true,
+        receiptCount: smoke.installedDaemonCanary.receiptCount ?? 0,
+      },
+      smoke,
+      blockers: [
+        "disposable loopback Gateway canary smoke failed",
+        error instanceof Error ? error.message : String(error),
+      ],
+      proof: [
+        "attempted only a disposable loopback Gateway harness",
+        "no installed production service control was used",
+        "no authority switch was attempted",
+      ],
+    };
+  } finally {
+    if (server) {
+      await server.close({ reason: "disposable loopback canary smoke complete" });
+    }
+    restoreDisposableLoopbackEnv(previousEnv);
+    await rm(tempHome);
+  }
+}
+
+export async function gatewayAuthorityDisposableLoopbackSmokeCommand(
+  runtime: Pick<RuntimeEnv, "log">,
+  options: GatewayAuthorityDisposableLoopbackSmokeOptions,
+): Promise<GatewayAuthorityDisposableLoopbackSmoke> {
+  const smoke = await collectGatewayAuthorityDisposableLoopbackSmoke(options);
+  if (options.json) {
+    runtime.log(JSON.stringify(smoke, null, 2));
+    return smoke;
+  }
+
+  runtime.log("Gateway authority disposable loopback smoke");
+  runtime.log("");
+  runtime.log(`Mode: ${smoke.mode}`);
+  runtime.log(`Status: ${smoke.status}`);
+  runtime.log(`Explicit local-only opt-in: ${smoke.explicitOptIn ? "yes" : "no"}`);
+  runtime.log(`Loopback URL: ${smoke.disposableHarness.url ?? "not-started"}`);
+  runtime.log(`Authority changes: none`);
+  runtime.log(`Production traffic allowed: no`);
+  runtime.log(`Authority switch allowed: no`);
+  runtime.log(`Receipt count: ${smoke.receiptProof.receiptCount}`);
+  if (smoke.blockers.length > 0) {
+    runtime.log("");
+    runtime.log("Blockers:");
+    for (const blocker of smoke.blockers) {
+      runtime.log(`- ${blocker}`);
+    }
   }
   return smoke;
 }
@@ -928,6 +1209,134 @@ function buildLocalCanaryReceiptSelfCheckPayload(): Record<string, unknown> {
     })),
     receipts,
   };
+}
+
+async function getFreeLoopbackPort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => {
+        if (address && typeof address === "object") {
+          resolve(address.port);
+          return;
+        }
+        reject(new Error("failed to allocate loopback port"));
+      });
+    });
+  });
+}
+
+function buildDisposableLoopbackCanaryParams(
+  surface: (typeof CANARY_RECEIPT_SURFACES)[number],
+): Record<string, unknown> {
+  if (surface === "chat.send") {
+    return {
+      sessionKey: "main",
+      idempotencyKey: "idem-disposable-loopback-canary",
+      message: "local canary",
+      token: "super-secret-token-value",
+    };
+  }
+  if (surface === "cron.add") {
+    return {
+      name: "disposable-loopback-canary",
+      schedule: { kind: "every", everyMs: 60_000 },
+      payload: { token: "super-secret-token-value" },
+    };
+  }
+  return {
+    workflowId: "wf-disposable-loopback-canary",
+    runId: "run-disposable-loopback-canary",
+    input: { token: "super-secret-token-value" },
+  };
+}
+
+async function expectRustCanaryDenial(promise: Promise<unknown>): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Rust canary denied before mutation")) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error("expected Rust canary denial before mutation");
+}
+
+function snapshotDisposableLoopbackEnv(): Record<string, string | undefined> {
+  return {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    ARGENT_STATE_DIR: process.env.ARGENT_STATE_DIR,
+    ARGENT_CONFIG_PATH: process.env.ARGENT_CONFIG_PATH,
+    ARGENT_GATEWAY_TOKEN: process.env.ARGENT_GATEWAY_TOKEN,
+    ARGENT_SKIP_CHANNELS: process.env.ARGENT_SKIP_CHANNELS,
+    ARGENT_SKIP_GMAIL_WATCHER: process.env.ARGENT_SKIP_GMAIL_WATCHER,
+    ARGENT_SKIP_CRON: process.env.ARGENT_SKIP_CRON,
+    ARGENT_SKIP_PLUGINS: process.env.ARGENT_SKIP_PLUGINS,
+    ARGENT_SKIP_CANVAS_HOST: process.env.ARGENT_SKIP_CANVAS_HOST,
+    ARGENT_SKIP_BROWSER_CONTROL_SERVER: process.env.ARGENT_SKIP_BROWSER_CONTROL_SERVER,
+    ARGENT_SKIP_DASHBOARD_API: process.env.ARGENT_SKIP_DASHBOARD_API,
+    ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS: process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS,
+    ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH: process.env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH,
+  };
+}
+
+function applyDisposableLoopbackEnv(params: {
+  tempHome: string;
+  token: string;
+  storePath: string;
+  configPath: string;
+}) {
+  process.env.HOME = params.tempHome;
+  process.env.USERPROFILE = params.tempHome;
+  process.env.ARGENT_STATE_DIR = path.join(params.tempHome, ".argent");
+  process.env.ARGENT_CONFIG_PATH = params.configPath;
+  process.env.ARGENT_GATEWAY_TOKEN = params.token;
+  process.env.ARGENT_SKIP_CHANNELS = "1";
+  process.env.ARGENT_SKIP_GMAIL_WATCHER = "1";
+  process.env.ARGENT_SKIP_CRON = "1";
+  process.env.ARGENT_SKIP_PLUGINS = "1";
+  process.env.ARGENT_SKIP_CANVAS_HOST = "1";
+  process.env.ARGENT_SKIP_BROWSER_CONTROL_SERVER = "1";
+  process.env.ARGENT_SKIP_DASHBOARD_API = "1";
+  process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "1";
+  process.env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH = params.storePath;
+}
+
+async function writeDisposableLoopbackConfig(params: {
+  configPath: string;
+  mkdir: (targetPath: string) => Promise<void>;
+  writeFile: (targetPath: string, content: string) => Promise<void>;
+}) {
+  await params.mkdir(path.dirname(params.configPath));
+  await params.writeFile(
+    params.configPath,
+    JSON.stringify(
+      {
+        gateway: { mode: "local" },
+        plugins: {
+          enabled: false,
+          slots: { memory: "none" },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function restoreDisposableLoopbackEnv(previousEnv: Record<string, string | undefined>) {
+  for (const [key, value] of Object.entries(previousEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
