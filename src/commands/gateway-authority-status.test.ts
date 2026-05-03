@@ -77,7 +77,7 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(logs.join("\n")).toContain("Live gateway authority: node");
     expect(logs.join("\n")).toContain("Session authority: node");
     expect(logs.join("\n")).toContain("Run authority: node");
-    expect(logs.join("\n")).toContain("Rollback command: planned, not implemented");
+    expect(logs.join("\n")).toContain("Rollback command: executable local-only proof");
   });
 
   it("prints JSON authority status", async () => {
@@ -91,7 +91,9 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(parsed.promotionGates.map((gate: { id: string }) => gate.id)).toContain(
       "rollback-rehearsal",
     );
-    expect(parsed.rollbackCommand.implemented).toBe(false);
+    expect(parsed.rollbackCommand.implemented).toBe(true);
+    expect(parsed.rollbackCommand.localOnly).toBe(true);
+    expect(parsed.rollbackCommand.authoritySwitchAllowed).toBe(false);
     expect(parsed.installedDaemonCanary.status).toBe("not-configured");
     expect(parsed.installedDaemonCanary.queried).toBe(false);
     expect(parsed.installedDaemonCanary.productionTrafficUsed).toBe(false);
@@ -388,7 +390,7 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(rehearsal.after.redactionVerified).toBe(true);
     expect(rehearsal.after.receiptCount).toBe(2);
     expect(rehearsal.rollback.authorityChanges).toEqual([]);
-    expect(rehearsal.rollback.executable).toBe(false);
+    expect(rehearsal.rollback.executable).toBe(true);
     expect(rehearsal.duplicateReceiptSafety.requiredReceipts).toEqual([
       "RUST_CANARY_DENIED",
       "RUST_CANARY_DUPLICATE_PREVENTED",
@@ -733,9 +735,11 @@ describe("gatewayAuthorityStatusCommand", () => {
       duplicatePreventionReceiptPresent: true,
     });
     expect(rehearsal.rollback).toMatchObject({
-      mode: "read-only-plan",
-      executable: false,
+      mode: "local-node-rollback-proof",
+      executable: true,
       authorityChanges: [],
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
     });
     expect(rehearsal.receiptProof.generatedSurfaces).toEqual([
       "chat.send",
@@ -873,7 +877,7 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(smoke.authorityChanges).toEqual([]);
   });
 
-  it("prints read-only rollback plan without authority changes", async () => {
+  it("runs local-only rollback-node proof without authority changes", async () => {
     const logs: string[] = [];
 
     const plan = await gatewayAuthorityRollbackPlanCommand(
@@ -881,17 +885,22 @@ describe("gatewayAuthorityStatusCommand", () => {
       { reason: "canary drift", json: false },
     );
 
-    expect(plan.mode).toBe("read-only-plan");
-    expect(plan.executable).toBe(false);
+    expect(plan.mode).toBe("local-node-rollback-proof");
+    expect(plan.status).toBe("passed");
+    expect(plan.executable).toBe(true);
     expect(plan.authorityChanges).toEqual([]);
-    expect(plan.currentAuthority.liveGateway).toBe("node");
-    expect(plan.currentAuthority.rustGateway).toBe("shadow-only");
-    expect(plan.blockedActions).toContain("Does not edit config or authority state.");
-    expect(logs.join("\n")).toContain("Gateway authority rollback plan");
+    expect(plan.before.liveGateway).toBe("node");
+    expect(plan.before.rustGateway).toBe("shadow-only");
+    expect(plan.after.liveGateway).toBe("node");
+    expect(plan.after.rustGateway).toBe("shadow-only");
+    expect(plan.productionTrafficUsed).toBe(false);
+    expect(plan.authoritySwitchAllowed).toBe(false);
+    expect(plan.preventedActions).toContain("Did not edit config or authority state.");
+    expect(logs.join("\n")).toContain("Gateway authority rollback-node proof");
     expect(logs.join("\n")).toContain("Authority changes: none");
   });
 
-  it("prints JSON rollback plan", async () => {
+  it("prints JSON rollback-node proof", async () => {
     const logs: string[] = [];
 
     await gatewayAuthorityRollbackPlanCommand(
@@ -900,9 +909,13 @@ describe("gatewayAuthorityStatusCommand", () => {
     );
 
     const parsed = JSON.parse(logs[0] ?? "{}");
-    expect(parsed.mode).toBe("read-only-plan");
+    expect(parsed.mode).toBe("local-node-rollback-proof");
+    expect(parsed.status).toBe("passed");
     expect(parsed.reason).toBe("operator rehearsal");
-    expect(parsed.currentAuthority.sessions).toBe("node");
-    expect(parsed.executable).toBe(false);
+    expect(parsed.before.sessions).toBe("node");
+    expect(parsed.after.sessions).toBe("node");
+    expect(parsed.executable).toBe(true);
+    expect(parsed.implemented).toBe(true);
+    expect(parsed.authoritySwitchAllowed).toBe(false);
   });
 });
