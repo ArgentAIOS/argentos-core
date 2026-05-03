@@ -343,6 +343,55 @@ describe("gatewayAuthorityStatusCommand", () => {
     });
   });
 
+  it("narrows installed daemon blockers when the runtime advertises the canary method but dispatch fails", async () => {
+    const requestStatus = vi.fn().mockRejectedValue(new Error("gateway closed 1006"));
+    const requestRuntimeProbe = vi.fn().mockResolvedValue({
+      queried: true,
+      helloReceived: true,
+      method: "rustGateway.canaryReceipts.status",
+      methodAdvertised: true,
+      protocolVersion: 1,
+      methodCount: 128,
+      closeCode: null,
+      closeReason: null,
+      error: null,
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestRuntimeProbe,
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestRuntimeProbe).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(summary.installedDaemonCanary.runtimeProbe).toMatchObject({
+      helloReceived: true,
+      methodAdvertised: true,
+      methodCount: 128,
+    });
+    expect(summary.installedServiceReadiness.methodExposure).toMatchObject({
+      exposed: false,
+      runtimeAdvertised: true,
+      runtimeProbeError: null,
+    });
+    expect(summary.installedServiceReadiness.missingCapabilities).toEqual([
+      "installed-daemon-canary-handler-dispatch-failed",
+      "receipt-persistence-complete-surfaces",
+      "rustGateway.canaryReceipts.status-exposure",
+    ]);
+  });
+
   it("blocks non-loopback installed daemon canary URLs before querying", async () => {
     const requestStatus = vi.fn();
 

@@ -15,6 +15,7 @@ Last updated: 2026-05-03 14:16 UTC
 - Gateway rehearsal: disposable loopback `rehearse-loopback` proves canary receipts for `chat.send`, `cron.add`, and `workflows.run` using temp HOME/state, random local port/token, and no installed service control.
 - Gateway installed-daemon canary: `authority status-installed --json` now uses the configured local Gateway URL plus explicit/env/config auth provenance without printing secrets; the older `authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json` path still reports `receiptProofComplete`, required receipt surfaces, and exact missing surfaces for the local daemon proof gate.
 - Gateway installed service readiness: the same status JSON now includes `installedServiceReadiness` to separate disposable/self-check proof from loopback-local daemon proof, name exact missing capabilities, and keep production installed daemon rollback blocked.
+- Gateway installed daemon runtime probe: `status-installed --json` now reports whether the daemon handshake advertised `rustGateway.canaryReceipts.status` before attempting the canary RPC, so blocked packets can distinguish missing method advertisement, handler dispatch failure, and handshake failure without service mutation.
 - Workflows: `workflows.backendStatus` now reports the workflow run/session handoff contract and duplicate-prevention expectations for future Rust ownership.
 - Workflows dry-run stays local/no-PostgreSQL. Live workflow runs remain Node-owned and PostgreSQL-gated.
 

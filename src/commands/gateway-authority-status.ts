@@ -8,6 +8,7 @@ import type { RuntimeEnv } from "../runtime.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { loadConfig, resolveConfigPath, resolveStateDir } from "../config/config.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
+import { GatewayClient } from "../gateway/client.js";
 import { startGatewayServer, type GatewayServer } from "../gateway/server.js";
 import { getRustGatewayParityReportStatus } from "./status.rust-gateway-parity-report.js";
 import { getRustGatewaySchedulerAuthoritySummary } from "./status.rust-gateway-scheduler-authority.js";
@@ -250,6 +251,12 @@ export type GatewayInstalledDaemonCanaryOptions = {
     password?: string;
     timeoutMs: number;
   }) => Promise<unknown>;
+  requestRuntimeProbe?: (options: {
+    url: string;
+    token?: string;
+    password?: string;
+    timeoutMs: number;
+  }) => Promise<GatewayInstalledDaemonRuntimeProbe>;
 };
 
 type GatewayAuthorityDisposableLoopbackSmokeDependencies = {
@@ -285,7 +292,20 @@ export type GatewayInstalledDaemonCanaryStatus = {
   requiredReceiptSurfaces: string[];
   missingReceiptSurfaces: string[];
   receiptSurfaces: string[];
+  runtimeProbe: GatewayInstalledDaemonRuntimeProbe | null;
   blockers: string[];
+  error: string | null;
+};
+
+export type GatewayInstalledDaemonRuntimeProbe = {
+  queried: boolean;
+  helloReceived: boolean;
+  method: "rustGateway.canaryReceipts.status";
+  methodAdvertised: boolean | null;
+  protocolVersion: number | null;
+  methodCount: number | null;
+  closeCode: number | null;
+  closeReason: string | null;
   error: string | null;
 };
 
@@ -302,6 +322,8 @@ export type GatewayInstalledServiceReadiness = {
     method: "rustGateway.canaryReceipts.status";
     exposed: boolean;
     source: "not-configured" | "queried-loopback" | "local-self-check";
+    runtimeAdvertised: boolean | null;
+    runtimeProbeError: string | null;
   };
   tokenDiscovery: {
     status: GatewayInstalledDaemonCredentialSource;
@@ -1553,6 +1575,14 @@ async function collectInstalledDaemonCanaryStatus(
     });
   }
 
+  const runtimeProbe =
+    url === LOCAL_CANARY_SELF_CHECK_URL
+      ? null
+      : options?.requestRuntimeProbe
+        ? await options.requestRuntimeProbe({ url, token, password, timeoutMs })
+        : options?.requestStatus
+          ? null
+          : await probeInstalledDaemonRuntime({ url, token, password, timeoutMs });
   const requestStatus =
     options?.requestStatus ??
     ((params) =>
@@ -1566,7 +1596,7 @@ async function collectInstalledDaemonCanaryStatus(
       }));
   try {
     const payload = await requestStatus({ url, token, password, timeoutMs });
-    return normalizeInstalledDaemonCanaryPayload(url, payload, credentialSource);
+    return normalizeInstalledDaemonCanaryPayload(url, payload, credentialSource, runtimeProbe);
   } catch (error) {
     return installedCanaryStatus({
       status: "unavailable",
@@ -1586,16 +1616,95 @@ async function collectInstalledDaemonCanaryStatus(
       requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
       receiptSurfaces: [],
+      runtimeProbe,
       blockers: ["installed daemon canary status query failed"],
       error: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
+async function probeInstalledDaemonRuntime(params: {
+  url: string;
+  token?: string;
+  password?: string;
+  timeoutMs: number;
+}): Promise<GatewayInstalledDaemonRuntimeProbe> {
+  return await new Promise<GatewayInstalledDaemonRuntimeProbe>((resolve) => {
+    let settled = false;
+    let connectError: string | null = null;
+    const finish = (probe: GatewayInstalledDaemonRuntimeProbe) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      client.stop();
+      resolve(probe);
+    };
+    const client = new GatewayClient({
+      url: params.url,
+      token: params.token,
+      password: params.password,
+      clientDisplayName: "rust-gateway-installed-canary-probe",
+      mode: "probe",
+      role: "operator",
+      scopes: ["operator.read"],
+      onHelloOk: (hello) => {
+        const features = objectRecord(hello.features);
+        const methods = Array.isArray(features?.methods)
+          ? features.methods.filter((method): method is string => typeof method === "string")
+          : [];
+        finish({
+          queried: true,
+          helloReceived: true,
+          method: "rustGateway.canaryReceipts.status",
+          methodAdvertised: methods.includes("rustGateway.canaryReceipts.status"),
+          protocolVersion: typeof hello.protocolVersion === "number" ? hello.protocolVersion : null,
+          methodCount: methods.length,
+          closeCode: null,
+          closeReason: null,
+          error: connectError,
+        });
+      },
+      onConnectError: (error) => {
+        connectError = error.message;
+      },
+      onClose: (code, reason) => {
+        finish({
+          queried: true,
+          helloReceived: false,
+          method: "rustGateway.canaryReceipts.status",
+          methodAdvertised: null,
+          protocolVersion: null,
+          methodCount: null,
+          closeCode: code,
+          closeReason: reason || null,
+          error: connectError ?? `gateway closed (${code}): ${reason || "no close reason"}`,
+        });
+      },
+    });
+    const timer = setTimeout(() => {
+      finish({
+        queried: true,
+        helloReceived: false,
+        method: "rustGateway.canaryReceipts.status",
+        methodAdvertised: null,
+        protocolVersion: null,
+        methodCount: null,
+        closeCode: null,
+        closeReason: null,
+        error: `gateway runtime probe timeout after ${params.timeoutMs}ms`,
+      });
+    }, params.timeoutMs);
+    client.start();
+  });
+}
+
 function normalizeInstalledDaemonCanaryPayload(
   url: string,
   payload: unknown,
   credentialSource: GatewayInstalledDaemonCredentialSource,
+  runtimeProbe: GatewayInstalledDaemonRuntimeProbe | null = null,
 ): GatewayInstalledDaemonCanaryStatus {
   const record = objectRecord(payload);
   const authority = objectRecord(record?.authority);
@@ -1674,16 +1783,19 @@ function normalizeInstalledDaemonCanaryPayload(
     requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
     missingReceiptSurfaces,
     receiptSurfaces,
+    runtimeProbe,
     blockers,
     error: null,
   });
 }
 
 function installedCanaryStatus(
-  status: Omit<GatewayInstalledDaemonCanaryStatus, "method">,
+  status: Omit<GatewayInstalledDaemonCanaryStatus, "method" | "runtimeProbe"> &
+    Partial<Pick<GatewayInstalledDaemonCanaryStatus, "runtimeProbe">>,
 ): GatewayInstalledDaemonCanaryStatus {
   return {
     method: "rustGateway.canaryReceipts.status",
+    runtimeProbe: status.runtimeProbe ?? null,
     ...status,
   };
 }
@@ -1695,6 +1807,8 @@ function buildInstalledServiceReadiness(
   const methodExposure = {
     method: "rustGateway.canaryReceipts.status" as const,
     exposed: status.status === "ok" || status.status === "unsafe",
+    runtimeAdvertised: status.runtimeProbe?.methodAdvertised ?? null,
+    runtimeProbeError: status.runtimeProbe?.error ?? null,
     source:
       proofKind === "local-self-check"
         ? ("local-self-check" as const)
@@ -1721,6 +1835,19 @@ function buildInstalledServiceReadiness(
   }
   if (!methodExposure.exposed) {
     missingCapabilities.add("rustGateway.canaryReceipts.status-exposure");
+    if (
+      status.runtimeProbe?.helloReceived === true &&
+      status.runtimeProbe.methodAdvertised === false
+    ) {
+      missingCapabilities.add("installed-daemon-method-not-advertised");
+    } else if (
+      status.runtimeProbe?.helloReceived === true &&
+      status.runtimeProbe.methodAdvertised === true
+    ) {
+      missingCapabilities.add("installed-daemon-canary-handler-dispatch-failed");
+    } else if (status.runtimeProbe?.queried === true) {
+      missingCapabilities.add("installed-daemon-handshake-failed");
+    }
   }
   if (!status.receiptProofComplete) {
     missingCapabilities.add("receipt-persistence-complete-surfaces");

@@ -274,6 +274,11 @@ Common blocked states:
 - `unavailable`: the daemon could not be reached or the status RPC timed out.
 - `unsafe`: the daemon payload did not prove the safety invariants above.
 
+`status-installed --json` also includes `installedDaemonCanary.runtimeProbe`, a read-only handshake
+probe that reports whether the daemon advertised `rustGateway.canaryReceipts.status` before the
+status RPC was attempted. This narrows the operator blocker without starting, restarting, or
+reconfiguring the installed service.
+
 Common `installedServiceReadiness.missingCapabilities`:
 
 - `explicit-loopback-url`: no local daemon URL was provided.
@@ -281,6 +286,12 @@ Common `installedServiceReadiness.missingCapabilities`:
 - `local-daemon-query`: the service readiness check has not queried a daemon.
 - `rustGateway.canaryReceipts.status-exposure`: the daemon did not expose the read-only canary
   status method.
+- `installed-daemon-method-not-advertised`: the daemon handshake succeeded but the method list did
+  not include `rustGateway.canaryReceipts.status`.
+- `installed-daemon-canary-handler-dispatch-failed`: the daemon advertised the method, but the
+  read-only status RPC still closed or failed.
+- `installed-daemon-handshake-failed`: the daemon did not complete a readable handshake before the
+  status RPC failed.
 - `receipt-persistence-complete-surfaces`: the daemon did not prove redacted denial and
   duplicate-prevention receipts for all guarded surfaces.
 
