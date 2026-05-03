@@ -167,6 +167,8 @@ pub struct KernelReadinessPayload {
     pub authority_switch_allowed: bool,
     #[serde(rename = "promotionStatus")]
     pub promotion_status: &'static str,
+    #[serde(rename = "kernelShadow")]
+    pub kernel_shadow: KernelShadowPayload,
     #[serde(rename = "currentAuthority")]
     pub current_authority: KernelAuthorityPayload,
     #[serde(rename = "nodeResponsibilities")]
@@ -177,6 +179,75 @@ pub struct KernelReadinessPayload {
     pub persistence_model: KernelPersistencePayload,
     #[serde(rename = "promotionGates")]
     pub promotion_gates: Vec<KernelPromotionGatePayload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelShadowPayload {
+    pub reachable: bool,
+    pub status: &'static str,
+    pub authority: &'static str,
+    pub wakefulness: &'static str,
+    pub agenda: KernelShadowAgendaPayload,
+    pub focus: Option<String>,
+    pub ticks: KernelShadowTicksPayload,
+    #[serde(rename = "reflectionQueue")]
+    pub reflection_queue: KernelShadowReflectionQueuePayload,
+    #[serde(rename = "persistedAt")]
+    pub persisted_at: u64,
+    #[serde(rename = "restartRecovery")]
+    pub restart_recovery: KernelShadowRestartRecoveryPayload,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelShadowAgendaPayload {
+    #[serde(rename = "activeLane")]
+    pub active_lane: Option<String>,
+    #[serde(rename = "pendingLanes")]
+    pub pending_lanes: Vec<String>,
+    pub focus: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelShadowTicksPayload {
+    pub count: u64,
+    #[serde(rename = "lastTickAtMs")]
+    pub last_tick_at_ms: Option<u64>,
+    #[serde(rename = "nextTickDueAtMs")]
+    pub next_tick_due_at_ms: u64,
+    #[serde(rename = "intervalMs")]
+    pub interval_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelShadowReflectionQueuePayload {
+    pub status: &'static str,
+    pub depth: usize,
+    pub items: Vec<KernelShadowReflectionItemPayload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelShadowReflectionItemPayload {
+    pub lane: String,
+    pub priority: u32,
+    pub reason: Option<String>,
+    #[serde(rename = "requestedAtMs")]
+    pub requested_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelShadowRestartRecoveryPayload {
+    pub model: &'static str,
+    pub status: &'static str,
+    #[serde(rename = "bootCount")]
+    pub boot_count: u64,
+    #[serde(rename = "lastRecoveredAtMs")]
+    pub last_recovered_at_ms: Option<u64>,
+    #[serde(rename = "journalEventCount")]
+    pub journal_event_count: u64,
+    #[serde(rename = "snapshotFile")]
+    pub snapshot_file: &'static str,
+    #[serde(rename = "journalFile")]
+    pub journal_file: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -407,6 +478,7 @@ impl ExecutiveRuntime {
             mode: "shadow-readiness",
             authority_switch_allowed: false,
             promotion_status: "blocked",
+            kernel_shadow: self.kernel_shadow_payload(),
             current_authority: KernelAuthorityPayload {
                 gateway: "node",
                 scheduler: "node",
@@ -467,6 +539,85 @@ impl ExecutiveRuntime {
                     ],
                 },
             ],
+        }
+    }
+
+    fn kernel_shadow_payload(&self) -> KernelShadowPayload {
+        let pending_items = self
+            .state
+            .lanes
+            .values()
+            .filter(|lane| lane.status == LaneStatus::Pending)
+            .map(|lane| KernelShadowReflectionItemPayload {
+                lane: lane.name.clone(),
+                priority: lane.priority,
+                reason: lane.reason.clone(),
+                requested_at_ms: lane.requested_at_ms,
+            })
+            .collect::<Vec<_>>();
+        let pending_lanes = pending_items
+            .iter()
+            .map(|item| item.lane.clone())
+            .collect::<Vec<_>>();
+        let active_focus = self
+            .state
+            .active_lane
+            .as_ref()
+            .and_then(|lane_name| self.state.lanes.get(lane_name))
+            .and_then(|lane| lane.reason.clone())
+            .or_else(|| self.state.active_lane.clone())
+            .or_else(|| pending_items.first().and_then(|item| item.reason.clone()))
+            .or_else(|| pending_items.first().map(|item| item.lane.clone()));
+        let persisted_at = self
+            .state
+            .last_tick_at_ms
+            .or(self.state.last_recovered_at_ms)
+            .unwrap_or(self.state.last_started_at_ms);
+        let wakefulness = if self.state.active_lane.is_some() {
+            "active"
+        } else if pending_items.is_empty() {
+            "watching"
+        } else {
+            "attentive"
+        };
+        let restart_status = if self.state.last_recovered_at_ms.is_some() {
+            "recovered"
+        } else {
+            "booted"
+        };
+
+        KernelShadowPayload {
+            reachable: true,
+            status: "fail-closed",
+            authority: "shadow",
+            wakefulness,
+            agenda: KernelShadowAgendaPayload {
+                active_lane: self.state.active_lane.clone(),
+                pending_lanes,
+                focus: active_focus.clone(),
+            },
+            focus: active_focus,
+            ticks: KernelShadowTicksPayload {
+                count: self.state.tick_count,
+                last_tick_at_ms: self.state.last_tick_at_ms,
+                next_tick_due_at_ms: self.state.next_tick_due_at_ms,
+                interval_ms: self.state.tick_interval_ms,
+            },
+            reflection_queue: KernelShadowReflectionQueuePayload {
+                status: "shadow-only",
+                depth: pending_items.len(),
+                items: pending_items,
+            },
+            persisted_at,
+            restart_recovery: KernelShadowRestartRecoveryPayload {
+                model: "snapshot-plus-journal-replay",
+                status: restart_status,
+                boot_count: self.state.boot_count,
+                last_recovered_at_ms: self.state.last_recovered_at_ms,
+                journal_event_count: self.journal_event_count,
+                snapshot_file: SNAPSHOT_FILE_NAME,
+                journal_file: JOURNAL_FILE_NAME,
+            },
         }
     }
 
@@ -535,7 +686,7 @@ impl ExecutiveRuntime {
 
 #[cfg(test)]
 mod tests {
-    use super::{now_ms, ExecutiveRuntime, RuntimeConfig};
+    use super::{now_ms, ExecutiveRuntime, RuntimeConfig, JOURNAL_FILE_NAME, SNAPSHOT_FILE_NAME};
     use std::env;
     use std::fs;
     use std::path::PathBuf;
@@ -573,6 +724,73 @@ mod tests {
         assert!(
             background.priority == 42
                 || recovered.state.active_lane.as_deref() == Some("background")
+        );
+    }
+
+    #[test]
+    fn reports_kernel_shadow_agenda_ticks_and_restart_recovery() {
+        let state_dir = temp_state_dir("kernel-shadow");
+        let config = RuntimeConfig {
+            bind_addr: "127.0.0.1:18809".to_string(),
+            state_dir,
+            tick_interval_ms: 50,
+            default_lease_ms: 500,
+        };
+
+        let mut runtime =
+            ExecutiveRuntime::load_or_boot(config.clone()).expect("runtime should boot");
+        runtime
+            .request_lane("background", 20, Some("reflection".to_string()), Some(500))
+            .expect("background lane request should persist");
+        runtime
+            .request_lane("operator", 90, Some("interactive".to_string()), Some(500))
+            .expect("operator lane request should persist");
+        runtime
+            .tick()
+            .expect("tick should activate highest priority lane");
+
+        let readiness = runtime.kernel_readiness_payload();
+        let shadow = readiness.kernel_shadow;
+
+        assert!(!readiness.authority_switch_allowed);
+        assert_eq!(readiness.current_authority.gateway, "node");
+        assert_eq!(shadow.status, "fail-closed");
+        assert_eq!(shadow.authority, "shadow");
+        assert_eq!(shadow.wakefulness, "active");
+        assert_eq!(shadow.agenda.active_lane.as_deref(), Some("operator"));
+        assert_eq!(shadow.agenda.focus.as_deref(), Some("interactive"));
+        assert_eq!(shadow.ticks.count, 1);
+        assert_eq!(shadow.reflection_queue.status, "shadow-only");
+        assert_eq!(shadow.reflection_queue.depth, 1);
+        assert_eq!(shadow.reflection_queue.items[0].lane, "background");
+        assert_eq!(
+            shadow.reflection_queue.items[0].reason.as_deref(),
+            Some("reflection")
+        );
+        assert_eq!(
+            shadow.restart_recovery.model,
+            "snapshot-plus-journal-replay"
+        );
+        assert_eq!(shadow.restart_recovery.status, "booted");
+        assert!(shadow.persisted_at >= shadow.ticks.last_tick_at_ms.unwrap_or(0));
+
+        let recovered = ExecutiveRuntime::load_or_boot(config).expect("runtime should recover");
+        let recovered_shadow = recovered.kernel_readiness_payload().kernel_shadow;
+
+        assert_eq!(recovered_shadow.restart_recovery.status, "recovered");
+        assert_eq!(recovered_shadow.restart_recovery.boot_count, 2);
+        assert!(recovered_shadow
+            .restart_recovery
+            .last_recovered_at_ms
+            .is_some());
+        assert!(recovered_shadow.restart_recovery.journal_event_count >= 5);
+        assert_eq!(
+            recovered_shadow.restart_recovery.snapshot_file,
+            SNAPSHOT_FILE_NAME
+        );
+        assert_eq!(
+            recovered_shadow.restart_recovery.journal_file,
+            JOURNAL_FILE_NAME
         );
     }
 }

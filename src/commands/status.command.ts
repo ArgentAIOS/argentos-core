@@ -472,6 +472,10 @@ export async function statusCommand(
             `gateway ${readiness.currentAuthority.gateway}`,
             `scheduler ${readiness.currentAuthority.scheduler}`,
             `workflows ${readiness.currentAuthority.workflows}`,
+            `wakefulness ${readiness.kernelShadow.wakefulness}`,
+            readiness.kernelShadow.focus ? `focus ${readiness.kernelShadow.focus}` : null,
+            `reflection queue ${readiness.kernelShadow.reflectionQueue.depth}`,
+            `restart ${readiness.kernelShadow.restartRecovery.status}`,
             `gates blocked ${readiness.gateCounts.blocked} proven ${readiness.gateCounts.proven}`,
           ]
         : readiness?.error

@@ -72,6 +72,44 @@ export type ExecutiveShadowReadiness = {
   mode: "shadow-readiness";
   authoritySwitchAllowed: false;
   promotionStatus: "blocked";
+  kernelShadow: {
+    reachable: boolean;
+    status: "fail-closed";
+    authority: "shadow";
+    wakefulness: "active" | "attentive" | "watching";
+    agenda: {
+      activeLane: string | null;
+      pendingLanes: string[];
+      focus: string | null;
+    };
+    focus: string | null;
+    ticks: {
+      count: number;
+      lastTickAtMs: number | null;
+      nextTickDueAtMs: number;
+      intervalMs: number;
+    };
+    reflectionQueue: {
+      status: "shadow-only";
+      depth: number;
+      items: Array<{
+        lane: string;
+        priority: number;
+        reason: string | null;
+        requestedAtMs: number | null;
+      }>;
+    };
+    persistedAt: number;
+    restartRecovery: {
+      model: "snapshot-plus-journal-replay";
+      status: "booted" | "recovered";
+      bootCount: number;
+      lastRecoveredAtMs: number | null;
+      journalEventCount: number;
+      snapshotFile: string;
+      journalFile: string;
+    };
+  };
   currentAuthority: {
     gateway: string;
     scheduler: string;
@@ -229,6 +267,46 @@ export const executiveShadowReadinessSchema = z.object({
   mode: z.literal("shadow-readiness"),
   authoritySwitchAllowed: z.literal(false),
   promotionStatus: z.literal("blocked"),
+  kernelShadow: z.object({
+    reachable: z.boolean(),
+    status: z.literal("fail-closed"),
+    authority: z.literal("shadow"),
+    wakefulness: z.enum(["active", "attentive", "watching"]),
+    agenda: z.object({
+      activeLane: z.string().nullable(),
+      pendingLanes: z.array(z.string()),
+      focus: z.string().nullable(),
+    }),
+    focus: z.string().nullable(),
+    ticks: z.object({
+      count: z.number(),
+      lastTickAtMs: z.number().nullable(),
+      nextTickDueAtMs: z.number(),
+      intervalMs: z.number(),
+    }),
+    reflectionQueue: z.object({
+      status: z.literal("shadow-only"),
+      depth: z.number(),
+      items: z.array(
+        z.object({
+          lane: z.string(),
+          priority: z.number(),
+          reason: z.string().nullable(),
+          requestedAtMs: z.number().nullable(),
+        }),
+      ),
+    }),
+    persistedAt: z.number(),
+    restartRecovery: z.object({
+      model: z.literal("snapshot-plus-journal-replay"),
+      status: z.enum(["booted", "recovered"]),
+      bootCount: z.number(),
+      lastRecoveredAtMs: z.number().nullable(),
+      journalEventCount: z.number(),
+      snapshotFile: z.string(),
+      journalFile: z.string(),
+    }),
+  }),
   currentAuthority: z.object({
     gateway: z.string(),
     scheduler: z.string(),
@@ -265,6 +343,11 @@ export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowRe
     readiness.currentAuthority.channels === "node" &&
     readiness.currentAuthority.sessions === "node" &&
     readiness.currentAuthority.executive === "shadow-only" &&
+    readiness.kernelShadow.reachable === true &&
+    readiness.kernelShadow.status === "fail-closed" &&
+    readiness.kernelShadow.authority === "shadow" &&
+    readiness.kernelShadow.reflectionQueue.status === "shadow-only" &&
+    readiness.kernelShadow.restartRecovery.model === "snapshot-plus-journal-replay" &&
     readiness.promotionGates.length > 0 &&
     readiness.promotionGates.every((gate) => gate.status === "blocked" || gate.status === "proven")
   );
@@ -431,6 +514,96 @@ export const executiveShadowProtocolJsonSchema = {
         mode: { type: "string", const: "shadow-readiness" },
         authoritySwitchAllowed: { type: "boolean", const: false },
         promotionStatus: { type: "string", const: "blocked" },
+        kernelShadow: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            reachable: { type: "boolean" },
+            status: { type: "string", const: "fail-closed" },
+            authority: { type: "string", const: "shadow" },
+            wakefulness: { type: "string", enum: ["active", "attentive", "watching"] },
+            agenda: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                activeLane: { type: ["string", "null"] },
+                pendingLanes: { type: "array", items: { type: "string" } },
+                focus: { type: ["string", "null"] },
+              },
+              required: ["activeLane", "pendingLanes", "focus"],
+            },
+            focus: { type: ["string", "null"] },
+            ticks: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                count: { type: "number" },
+                lastTickAtMs: { type: ["number", "null"] },
+                nextTickDueAtMs: { type: "number" },
+                intervalMs: { type: "number" },
+              },
+              required: ["count", "lastTickAtMs", "nextTickDueAtMs", "intervalMs"],
+            },
+            reflectionQueue: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                status: { type: "string", const: "shadow-only" },
+                depth: { type: "number" },
+                items: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      lane: { type: "string" },
+                      priority: { type: "number" },
+                      reason: { type: ["string", "null"] },
+                      requestedAtMs: { type: ["number", "null"] },
+                    },
+                    required: ["lane", "priority", "reason", "requestedAtMs"],
+                  },
+                },
+              },
+              required: ["status", "depth", "items"],
+            },
+            persistedAt: { type: "number" },
+            restartRecovery: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: { type: "string", const: "snapshot-plus-journal-replay" },
+                status: { type: "string", enum: ["booted", "recovered"] },
+                bootCount: { type: "number" },
+                lastRecoveredAtMs: { type: ["number", "null"] },
+                journalEventCount: { type: "number" },
+                snapshotFile: { type: "string" },
+                journalFile: { type: "string" },
+              },
+              required: [
+                "model",
+                "status",
+                "bootCount",
+                "lastRecoveredAtMs",
+                "journalEventCount",
+                "snapshotFile",
+                "journalFile",
+              ],
+            },
+          },
+          required: [
+            "reachable",
+            "status",
+            "authority",
+            "wakefulness",
+            "agenda",
+            "focus",
+            "ticks",
+            "reflectionQueue",
+            "persistedAt",
+            "restartRecovery",
+          ],
+        },
         currentAuthority: {
           type: "object",
           additionalProperties: false,
@@ -485,6 +658,7 @@ export const executiveShadowProtocolJsonSchema = {
         "mode",
         "authoritySwitchAllowed",
         "promotionStatus",
+        "kernelShadow",
         "currentAuthority",
         "nodeResponsibilities",
         "rustResponsibilities",

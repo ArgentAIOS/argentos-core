@@ -5,6 +5,40 @@ import {
   EXECUTIVE_SHADOW_DEFAULT_BASE_URL,
 } from "./executive-shadow-client.js";
 
+const kernelShadow = {
+  reachable: true,
+  status: "fail-closed",
+  authority: "shadow",
+  wakefulness: "active",
+  agenda: {
+    activeLane: "operator",
+    pendingLanes: [],
+    focus: "interactive",
+  },
+  focus: "interactive",
+  ticks: {
+    count: 4,
+    lastTickAtMs: 12222,
+    nextTickDueAtMs: 12345,
+    intervalMs: 5000,
+  },
+  reflectionQueue: {
+    status: "shadow-only",
+    depth: 0,
+    items: [],
+  },
+  persistedAt: 12222,
+  restartRecovery: {
+    model: "snapshot-plus-journal-replay",
+    status: "recovered",
+    bootCount: 2,
+    lastRecoveredAtMs: 11111,
+    journalEventCount: 8,
+    snapshotFile: "executive.state.json",
+    journalFile: "executive.journal.jsonl",
+  },
+};
+
 describe("ExecutiveShadowClient", () => {
   it("reads health from the default base URL", async () => {
     let seenUrl = "";
@@ -86,6 +120,7 @@ describe("ExecutiveShadowClient", () => {
           mode: "shadow-readiness",
           authoritySwitchAllowed: false,
           promotionStatus: "blocked",
+          kernelShadow,
           currentAuthority: {
             gateway: "node",
             scheduler: "node",
@@ -131,6 +166,7 @@ describe("ExecutiveShadowClient", () => {
             mode: "shadow-readiness",
             authoritySwitchAllowed: true,
             promotionStatus: "ready",
+            kernelShadow,
             currentAuthority: {
               gateway: "rust",
               scheduler: "node",
@@ -165,6 +201,7 @@ describe("ExecutiveShadowClient", () => {
             mode: "shadow-readiness",
             authoritySwitchAllowed: false,
             promotionStatus: "blocked",
+            kernelShadow,
             currentAuthority: {
               gateway: "rust",
               scheduler: "node",
