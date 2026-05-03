@@ -199,8 +199,8 @@ function jsonEqual(left: unknown, right: unknown): boolean {
   return stableJson(left ?? null) === stableJson(right ?? null);
 }
 
-function isPgBacked(): boolean {
-  const cfg = resolveRuntimeStorageConfig(process.env);
+function isPgBacked(env: NodeJS.ProcessEnv = process.env): boolean {
+  const cfg = resolveRuntimeStorageConfig(env);
   return cfg.backend === "postgres" || cfg.backend === "dual";
 }
 
@@ -224,6 +224,12 @@ type WorkflowBackendStatus = {
   savedWorkflows: {
     available: boolean;
     requiresPostgres: true;
+    message: string;
+  };
+  scheduleCron: {
+    available: boolean;
+    requiresPostgres: true;
+    status: "configured" | "skipped_no_postgres";
     message: string;
   };
   operatorMessages: string[];
@@ -259,6 +265,9 @@ export function buildWorkflowBackendStatus(options?: {
   const savedMessage = savedWorkflowsAvailable
     ? "Saved workflow create/list/run paths are configured to use PostgreSQL at runtime."
     : "Saved workflow create/list/run paths require PostgreSQL; use canvas payload dry-run or configure storage.backend=postgres/dual.";
+  const scheduleCronMessage = savedWorkflowsAvailable
+    ? "Scheduled workflow cron reconciliation is configured for saved workflows."
+    : "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.";
 
   return {
     ok: true,
@@ -284,7 +293,13 @@ export function buildWorkflowBackendStatus(options?: {
       requiresPostgres: true,
       message: savedMessage,
     },
-    operatorMessages: [dryRunMessage, savedMessage],
+    scheduleCron: {
+      available: savedWorkflowsAvailable,
+      requiresPostgres: true,
+      status: savedWorkflowsAvailable ? "configured" : "skipped_no_postgres",
+      message: scheduleCronMessage,
+    },
+    operatorMessages: [dryRunMessage, savedMessage, scheduleCronMessage],
   };
 }
 
@@ -882,7 +897,22 @@ export async function syncWorkflowScheduleCronJob(params: {
   };
 }
 
-export async function reconcileWorkflowScheduleCronJobs(cron: CronService) {
+export async function reconcileWorkflowScheduleCronJobs(
+  cron: CronService,
+  options?: { env?: NodeJS.ProcessEnv; storage?: StorageConfig },
+) {
+  const storage = options?.storage ?? resolveRuntimeStorageConfig(options?.env ?? process.env);
+  if (storage.backend !== "postgres" && storage.backend !== "dual") {
+    const message =
+      "workflow schedule cron reconciliation skipped: saved workflow schedules require PostgreSQL; local/parity gateways can still use workflow dry-run readiness.";
+    log.info(message);
+    return {
+      reconciled: [],
+      skipped: true,
+      reason: "postgres_not_configured" as const,
+      message,
+    };
+  }
   const sql = await getSql();
   const rows = await sql`SELECT * FROM workflows`;
   const scheduledWorkflowIds = new Set<string>();
