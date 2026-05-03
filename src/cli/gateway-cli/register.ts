@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
 import {
+  gatewayAuthorityDisposableLoopbackSmokeCommand,
   gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityLocalSmokeCommand,
   gatewayAuthorityRollbackPlanCommand,
@@ -279,6 +280,36 @@ export function registerGatewayCli(program: Command) {
           ...(installedCanary ? { installedCanary } : {}),
         });
       }, "Gateway authority local smoke failed");
+    });
+
+  authority
+    .command("smoke-loopback")
+    .description(
+      "Start a disposable loopback Gateway harness and run the local canary receipt smoke",
+    )
+    .option("--reason <reason>", "Operator-visible reason for disposable loopback smoke")
+    .option(
+      "--confirm-local-only",
+      "Confirm this starts only a disposable local loopback harness",
+      false,
+    )
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      const reason = typeof opts.reason === "string" && opts.reason.trim() ? opts.reason : null;
+      if (!reason) {
+        defaultRuntime.error(
+          "Gateway authority loopback smoke failed: required option '--reason <reason>' not specified",
+        );
+        defaultRuntime.exit(1);
+        return;
+      }
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityDisposableLoopbackSmokeCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason,
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+        });
+      }, "Gateway authority loopback smoke failed");
     });
 
   authority

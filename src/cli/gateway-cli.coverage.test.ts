@@ -17,6 +17,7 @@ const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityLocalSmokeCommand = vi.fn(async () => {});
+const gatewayAuthorityDisposableLoopbackSmokeCommand = vi.fn(async () => {});
 const gatewayAuthorityLocalRehearsalCommand = vi.fn(async () => {});
 const gatewayAuthorityRollbackPlanCommand = vi.fn(async () => {});
 
@@ -111,6 +112,8 @@ vi.mock("../commands/gateway-status.js", () => ({
 }));
 
 vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityDisposableLoopbackSmokeCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityDisposableLoopbackSmokeCommand(runtime, opts),
   gatewayAuthorityLocalSmokeCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityLocalSmokeCommand(runtime, opts),
   gatewayAuthorityLocalRehearsalCommand: (runtime: unknown, opts: unknown) =>
@@ -246,6 +249,61 @@ describe("gateway-cli coverage", () => {
         timeoutMs: 1250,
       },
     });
+  }, 30_000);
+
+  it("registers gateway authority smoke-loopback as a disposable local harness", async () => {
+    gatewayAuthorityDisposableLoopbackSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "smoke-loopback",
+        "--reason",
+        "disposable loopback proof",
+        "--confirm-local-only",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityDisposableLoopbackSmokeCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityDisposableLoopbackSmokeCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "disposable loopback proof",
+      confirmLocalOnly: true,
+    });
+  }, 30_000);
+
+  it("shows gateway authority smoke-loopback help without requiring a reason first", async () => {
+    gatewayAuthorityDisposableLoopbackSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    const helpOutput: string[] = [];
+    program.exitOverride();
+    program.configureOutput({
+      writeOut: (line) => helpOutput.push(line),
+      writeErr: (line) => helpOutput.push(line),
+    });
+    registerGatewayCli(program);
+
+    await expect(
+      program.parseAsync(["gateway", "authority", "smoke-loopback", "--help"], {
+        from: "user",
+      }),
+    ).rejects.toMatchObject({ code: "commander.helpDisplayed" });
+
+    const help = helpOutput.join("");
+    expect(help).toContain("smoke-loopback");
+    expect(help).toContain("--reason <reason>");
+    expect(help).toContain("--confirm-local-only");
+    expect(gatewayAuthorityDisposableLoopbackSmokeCommand).not.toHaveBeenCalled();
   }, 30_000);
 
   it("shows gateway authority smoke-local help without requiring a reason first", async () => {
