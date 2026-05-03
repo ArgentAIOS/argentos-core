@@ -100,9 +100,22 @@ echo "$STATE2" | grep -q '"active_lane": "operator"'
 JOURNAL="$(curl -fsS "http://$ADDR2/v1/executive/journal?limit=10")"
 echo "$JOURNAL" | grep -q '"recovered"'
 
+READINESS="$(curl -fsS "http://$ADDR2/v1/executive/readiness")"
+echo "$READINESS" | grep -q '"kernelShadow"'
+echo "$READINESS" | grep -q '"authority": "shadow"'
+echo "$READINESS" | grep -q '"status": "fail-closed"'
+echo "$READINESS" | grep -q '"wakefulness": "active"'
+echo "$READINESS" | grep -q '"focus": "smoke"'
+echo "$READINESS" | grep -q '"reflectionQueue"'
+echo "$READINESS" | grep -q '"restartRecovery"'
+echo "$READINESS" | grep -q '"status": "recovered"'
+echo "$READINESS" | grep -q '"authoritySwitchAllowed": false'
+echo "$READINESS" | grep -q '"gateway": "node"'
+echo "$READINESS" | grep -q '"executive": "shadow-only"'
+
 post_empty "$ADDR2" "/v1/executive/shutdown" >/dev/null
 wait_for_exit "$PID2"
 wait "$PID2" || true
 unset PID2
 
-echo "argent-execd restart smoke passed on $ADDR1 -> $ADDR2"
+echo "argent-execd restart+kernelShadow smoke passed on $ADDR1 -> $ADDR2"

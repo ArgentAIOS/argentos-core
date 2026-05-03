@@ -263,75 +263,87 @@ export const executiveShadowMetricsSchema = z.object({
   highestPendingPriority: z.number().nullable(),
 });
 
-export const executiveShadowReadinessSchema = z.object({
-  mode: z.literal("shadow-readiness"),
-  authoritySwitchAllowed: z.literal(false),
-  promotionStatus: z.literal("blocked"),
-  kernelShadow: z.object({
-    reachable: z.boolean(),
-    status: z.literal("fail-closed"),
-    authority: z.literal("shadow"),
-    wakefulness: z.enum(["active", "attentive", "watching"]),
-    agenda: z.object({
-      activeLane: z.string().nullable(),
-      pendingLanes: z.array(z.string()),
-      focus: z.string().nullable(),
-    }),
-    focus: z.string().nullable(),
-    ticks: z.object({
-      count: z.number(),
-      lastTickAtMs: z.number().nullable(),
-      nextTickDueAtMs: z.number(),
-      intervalMs: z.number(),
-    }),
-    reflectionQueue: z.object({
-      status: z.literal("shadow-only"),
-      depth: z.number(),
-      items: z.array(
-        z.object({
-          lane: z.string(),
-          priority: z.number(),
-          reason: z.string().nullable(),
-          requestedAtMs: z.number().nullable(),
+export const executiveShadowReadinessSchema = z
+  .object({
+    mode: z.literal("shadow-readiness"),
+    authoritySwitchAllowed: z.literal(false),
+    promotionStatus: z.literal("blocked"),
+    kernelShadow: z
+      .object({
+        reachable: z.boolean(),
+        status: z.literal("fail-closed"),
+        authority: z.literal("shadow"),
+        wakefulness: z.enum(["active", "attentive", "watching"]),
+        agenda: z.object({
+          activeLane: z.string().nullable(),
+          pendingLanes: z.array(z.string()),
+          focus: z.string().nullable(),
         }),
-      ),
-    }),
-    persistedAt: z.number(),
-    restartRecovery: z.object({
-      model: z.literal("snapshot-plus-journal-replay"),
-      status: z.enum(["booted", "recovered"]),
-      bootCount: z.number(),
-      lastRecoveredAtMs: z.number().nullable(),
-      journalEventCount: z.number(),
-      snapshotFile: z.string(),
-      journalFile: z.string(),
-    }),
-  }),
-  currentAuthority: z.object({
-    gateway: z.string(),
-    scheduler: z.string(),
-    workflows: z.string(),
-    channels: z.string(),
-    sessions: z.string(),
-    executive: z.string(),
-  }),
-  nodeResponsibilities: z.array(z.string()),
-  rustResponsibilities: z.array(z.string()),
-  persistenceModel: z.object({
-    snapshotFile: z.string(),
-    journalFile: z.string(),
-    restartRecovery: z.string(),
-    leaseRecovery: z.string(),
-  }),
-  promotionGates: z.array(
-    z.object({
-      id: z.string(),
-      status: z.enum(["blocked", "proven"]),
-      owner: z.string(),
-      requiredProof: z.array(z.string()),
-    }),
-  ),
-});
+        focus: z.string().nullable(),
+        ticks: z.object({
+          count: z.number(),
+          lastTickAtMs: z.number().nullable(),
+          nextTickDueAtMs: z.number(),
+          intervalMs: z.number(),
+        }),
+        reflectionQueue: z.object({
+          status: z.literal("shadow-only"),
+          depth: z.number(),
+          items: z.array(
+            z.object({
+              lane: z.string(),
+              priority: z.number(),
+              reason: z.string().nullable(),
+              requestedAtMs: z.number().nullable(),
+            }),
+          ),
+        }),
+        persistedAt: z.number(),
+        restartRecovery: z
+          .object({
+            model: z.literal("snapshot-plus-journal-replay"),
+            status: z.enum(["booted", "recovered"]),
+            bootCount: z.number(),
+            lastRecoveredAtMs: z.number().nullable(),
+            journalEventCount: z.number(),
+            snapshotFile: z.string(),
+            journalFile: z.string(),
+          })
+          .strict(),
+      })
+      .strict(),
+    currentAuthority: z
+      .object({
+        gateway: z.string(),
+        scheduler: z.string(),
+        workflows: z.string(),
+        channels: z.string(),
+        sessions: z.string(),
+        executive: z.string(),
+      })
+      .strict(),
+    nodeResponsibilities: z.array(z.string()),
+    rustResponsibilities: z.array(z.string()),
+    persistenceModel: z
+      .object({
+        snapshotFile: z.string(),
+        journalFile: z.string(),
+        restartRecovery: z.string(),
+        leaseRecovery: z.string(),
+      })
+      .strict(),
+    promotionGates: z.array(
+      z
+        .object({
+          id: z.string(),
+          status: z.enum(["blocked", "proven"]),
+          owner: z.string(),
+          requiredProof: z.array(z.string()),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
 
 export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowReadiness): boolean {
   return (
@@ -348,9 +360,70 @@ export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowRe
     readiness.kernelShadow.authority === "shadow" &&
     readiness.kernelShadow.reflectionQueue.status === "shadow-only" &&
     readiness.kernelShadow.restartRecovery.model === "snapshot-plus-journal-replay" &&
+    executiveShadowReadinessSemanticIssues(readiness).length === 0 &&
     readiness.promotionGates.length > 0 &&
     readiness.promotionGates.every((gate) => gate.status === "blocked" || gate.status === "proven")
   );
+}
+
+export function executiveShadowReadinessSemanticIssues(
+  readiness: ExecutiveShadowReadiness,
+): string[] {
+  const issues: string[] = [];
+  const shadow = readiness.kernelShadow;
+  const pendingLanes = shadow.reflectionQueue.items.map((item) => item.lane);
+
+  if (shadow.agenda.pendingLanes.length !== pendingLanes.length) {
+    issues.push("kernelShadow agenda pending lane count must match reflectionQueue depth");
+  }
+  if (shadow.reflectionQueue.depth !== shadow.reflectionQueue.items.length) {
+    issues.push("kernelShadow reflectionQueue depth must match item count");
+  }
+  if (shadow.agenda.pendingLanes.some((lane, index) => lane !== pendingLanes[index])) {
+    issues.push("kernelShadow agenda pending lanes must mirror reflectionQueue lanes");
+  }
+  if (shadow.focus !== shadow.agenda.focus) {
+    issues.push("kernelShadow focus must mirror agenda.focus");
+  }
+  if (shadow.ticks.lastTickAtMs !== null && shadow.persistedAt < shadow.ticks.lastTickAtMs) {
+    issues.push("kernelShadow persistedAt must not be older than lastTickAtMs");
+  }
+  if (
+    shadow.restartRecovery.lastRecoveredAtMs !== null &&
+    shadow.persistedAt < shadow.restartRecovery.lastRecoveredAtMs
+  ) {
+    issues.push("kernelShadow persistedAt must not be older than restart recovery");
+  }
+  if (
+    shadow.restartRecovery.status === "recovered" &&
+    (shadow.restartRecovery.lastRecoveredAtMs === null ||
+      shadow.restartRecovery.journalEventCount < 2)
+  ) {
+    issues.push("kernelShadow recovered status requires recoveredAt and replayed journal evidence");
+  }
+  if (
+    shadow.restartRecovery.status === "booted" &&
+    shadow.restartRecovery.lastRecoveredAtMs !== null
+  ) {
+    issues.push("kernelShadow booted status must not include recoveredAt evidence");
+  }
+  if (shadow.wakefulness === "active" && shadow.agenda.activeLane === null) {
+    issues.push("kernelShadow active wakefulness requires active agenda lane");
+  }
+  if (
+    shadow.wakefulness === "attentive" &&
+    (shadow.agenda.activeLane !== null || shadow.reflectionQueue.depth === 0)
+  ) {
+    issues.push("kernelShadow attentive wakefulness requires pending shadow work only");
+  }
+  if (
+    shadow.wakefulness === "watching" &&
+    (shadow.agenda.activeLane !== null || shadow.reflectionQueue.depth !== 0)
+  ) {
+    issues.push("kernelShadow watching wakefulness requires no active or pending shadow work");
+  }
+
+  return issues;
 }
 
 export const executiveShadowTimelineEventSchema = z.object({

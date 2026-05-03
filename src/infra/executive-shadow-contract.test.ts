@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   executiveShadowReadinessFailsClosed,
+  executiveShadowReadinessSemanticIssues,
   executiveShadowReadinessSchema,
   executiveShadowHealthSchema,
   executiveShadowJournalSchema,
@@ -43,6 +44,37 @@ const kernelShadow = {
   },
 } as const;
 
+const readinessPayload = {
+  mode: "shadow-readiness",
+  authoritySwitchAllowed: false,
+  promotionStatus: "blocked",
+  kernelShadow,
+  currentAuthority: {
+    gateway: "node",
+    scheduler: "node",
+    workflows: "node",
+    channels: "node",
+    sessions: "node",
+    executive: "shadow-only",
+  },
+  nodeResponsibilities: ["gateway live authority"],
+  rustResponsibilities: ["executive shadow state"],
+  persistenceModel: {
+    snapshotFile: "executive.state.json",
+    journalFile: "executive.journal.jsonl",
+    restartRecovery: "snapshot-plus-journal-replay",
+    leaseRecovery: "tick-expiry-before-promotion",
+  },
+  promotionGates: [
+    {
+      id: "authority-boundary",
+      status: "blocked",
+      owner: "master-operator",
+      requiredProof: ["no authority switch"],
+    },
+  ],
+} as const;
+
 describe("executive shadow contract schemas", () => {
   it("accepts a valid health payload", () => {
     const payload = executiveShadowHealthSchema.parse({
@@ -75,38 +107,10 @@ describe("executive shadow contract schemas", () => {
   });
 
   it("accepts readiness only when Kernel authority fails closed", () => {
-    const payload = executiveShadowReadinessSchema.parse({
-      mode: "shadow-readiness",
-      authoritySwitchAllowed: false,
-      promotionStatus: "blocked",
-      kernelShadow,
-      currentAuthority: {
-        gateway: "node",
-        scheduler: "node",
-        workflows: "node",
-        channels: "node",
-        sessions: "node",
-        executive: "shadow-only",
-      },
-      nodeResponsibilities: ["gateway live authority"],
-      rustResponsibilities: ["executive shadow state"],
-      persistenceModel: {
-        snapshotFile: "executive.state.json",
-        journalFile: "executive.journal.jsonl",
-        restartRecovery: "snapshot-plus-journal-replay",
-        leaseRecovery: "tick-expiry-before-promotion",
-      },
-      promotionGates: [
-        {
-          id: "authority-boundary",
-          status: "blocked",
-          owner: "master-operator",
-          requiredProof: ["no authority switch"],
-        },
-      ],
-    });
+    const payload = executiveShadowReadinessSchema.parse(readinessPayload);
 
     expect(executiveShadowReadinessFailsClosed(payload)).toBe(true);
+    expect(executiveShadowReadinessSemanticIssues(payload)).toEqual([]);
   });
 
   it("rejects readiness payloads that imply authority promotion", () => {
@@ -134,6 +138,88 @@ describe("executive shadow contract schemas", () => {
         promotionGates: [],
       }),
     ).toThrow();
+  });
+
+  it("rejects readiness payloads missing authoritySwitchAllowed=false", () => {
+    const { authoritySwitchAllowed: _authoritySwitchAllowed, ...payload } = readinessPayload;
+
+    expect(() => executiveShadowReadinessSchema.parse(payload)).toThrow();
+  });
+
+  it("rejects mutation-like fields while Kernel is shadow-only", () => {
+    expect(() =>
+      executiveShadowReadinessSchema.parse({
+        ...readinessPayload,
+        kernelShadow: {
+          ...kernelShadow,
+          mutation: { setAuthority: "rust" },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("fails closed on unsafe authority values that remain schema-shaped", () => {
+    const payload = executiveShadowReadinessSchema.parse({
+      ...readinessPayload,
+      currentAuthority: {
+        ...readinessPayload.currentAuthority,
+        gateway: "rust",
+      },
+    });
+
+    expect(executiveShadowReadinessFailsClosed(payload)).toBe(false);
+  });
+
+  it("fails closed when kernelShadow persistence is stale", () => {
+    const payload = executiveShadowReadinessSchema.parse({
+      ...readinessPayload,
+      kernelShadow: {
+        ...kernelShadow,
+        persistedAt: 100,
+      },
+    });
+
+    expect(executiveShadowReadinessSemanticIssues(payload)).toContain(
+      "kernelShadow persistedAt must not be older than lastTickAtMs",
+    );
+    expect(executiveShadowReadinessFailsClosed(payload)).toBe(false);
+  });
+
+  it("fails closed when recovered Kernel state lacks journal recovery shape", () => {
+    const payload = executiveShadowReadinessSchema.parse({
+      ...readinessPayload,
+      kernelShadow: {
+        ...kernelShadow,
+        restartRecovery: {
+          ...kernelShadow.restartRecovery,
+          lastRecoveredAtMs: null,
+          journalEventCount: 1,
+        },
+      },
+    });
+
+    expect(executiveShadowReadinessSemanticIssues(payload)).toContain(
+      "kernelShadow recovered status requires recoveredAt and replayed journal evidence",
+    );
+    expect(executiveShadowReadinessFailsClosed(payload)).toBe(false);
+  });
+
+  it("fails closed when reflection queue and agenda drift", () => {
+    const payload = executiveShadowReadinessSchema.parse({
+      ...readinessPayload,
+      kernelShadow: {
+        ...kernelShadow,
+        agenda: {
+          ...kernelShadow.agenda,
+          pendingLanes: ["different"],
+        },
+      },
+    });
+
+    expect(executiveShadowReadinessSemanticIssues(payload)).toContain(
+      "kernelShadow agenda pending lanes must mirror reflectionQueue lanes",
+    );
+    expect(executiveShadowReadinessFailsClosed(payload)).toBe(false);
   });
 
   it("accepts a valid state envelope", () => {
