@@ -233,9 +233,26 @@ export function registerGatewayCli(program: Command) {
     .option("--token <token>", "Explicit installed Gateway token for canary status")
     .option("--password <password>", "Explicit installed Gateway password for canary status")
     .option("--timeout <ms>", "Installed canary query timeout in ms")
+    .option(
+      "--generate-local-receipts",
+      "Generate local-only canary receipts through the installed daemon before querying status",
+      false,
+    )
+    .option(
+      "--confirm-local-only",
+      "Confirm receipt generation is against a local-only test path",
+      false,
+    )
+    .option("--reason <reason>", "Operator-visible reason for local receipt generation")
     .option("--json", "Output JSON", false)
     .action(async function (opts) {
       const merged = mergeGatewayCommandOptions(opts, this);
+      const generateLocalReceiptProof = merged.generateLocalReceipts
+        ? {
+            confirmLocalOnly: Boolean(merged.confirmLocalOnly),
+            reason: typeof merged.reason === "string" ? merged.reason : undefined,
+          }
+        : undefined;
       await runGatewayCommand(async () => {
         await gatewayAuthorityInstalledStatusCommand(defaultRuntime, {
           json: Boolean(merged.json),
@@ -244,6 +261,7 @@ export function registerGatewayCli(program: Command) {
             token: typeof merged.token === "string" ? merged.token : undefined,
             password: typeof merged.password === "string" ? merged.password : undefined,
             timeoutMs: typeof merged.timeout === "string" ? Number(merged.timeout) : undefined,
+            ...(generateLocalReceiptProof ? { generateLocalReceiptProof } : {}),
           },
         });
       }, "Gateway authority installed status failed");
