@@ -71,6 +71,39 @@ type WorkflowBackendStatus = {
     status: "configured" | "skipped_no_postgres";
     message: string;
   };
+  schedulerBoundary?: {
+    contractVersion: string;
+    schedulerAuthority: "node";
+    rustScheduler: "shadow";
+    workflowRunAuthority: "node";
+    workflowSessionAuthority: "node";
+    channelDeliveryAuthority: "node";
+    authoritySwitchAllowed: false;
+    localDryRunCompatible: true;
+    leases: {
+      requiredForLiveRuns: true;
+      storage: "postgres";
+      status: "configured" | "blocked_without_postgres";
+      owner: "node-workflows";
+      rustOwnership: "not_enabled";
+      message: string;
+    };
+    wakeups: {
+      owner: "node-cron";
+      mode: "next-heartbeat";
+      rustOwnership: "shadow";
+      duplicatePrevention: string;
+      message: string;
+    };
+    handoff: {
+      runPayload: string;
+      session: string;
+      dryRun: string;
+      liveRunRequiresPostgres: true;
+      message: string;
+    };
+    blockers: string[];
+  };
   operatorMessages?: string[];
 };
 
@@ -510,6 +543,18 @@ export async function statusCommand(
         ? ok("cron reconciliation configured")
         : muted("cron reconciliation skipped without PostgreSQL")
       : null;
+    const schedulerBoundary = status.schedulerBoundary
+      ? [
+          `scheduler ${status.schedulerBoundary.schedulerAuthority}`,
+          `rust ${status.schedulerBoundary.rustScheduler}`,
+          status.schedulerBoundary.leases.status === "configured"
+            ? ok("leases configured")
+            : warn("leases need PostgreSQL"),
+          status.schedulerBoundary.authoritySwitchAllowed
+            ? warn("authority switch allowed")
+            : muted("no authority switch"),
+        ].join(" · ")
+      : null;
     return [
       status.label,
       `backend ${status.backend}`,
@@ -520,6 +565,7 @@ export async function statusCommand(
       saved,
       postgres,
       scheduleCron,
+      schedulerBoundary,
     ]
       .filter(Boolean)
       .join(" · ");
