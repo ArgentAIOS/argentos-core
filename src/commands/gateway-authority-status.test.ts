@@ -88,6 +88,166 @@ describe("gatewayAuthorityStatusCommand", () => {
       "rollback-rehearsal",
     );
     expect(parsed.rollbackCommand.implemented).toBe(false);
+    expect(parsed.installedDaemonCanary.status).toBe("not-configured");
+    expect(parsed.installedDaemonCanary.queried).toBe(false);
+    expect(parsed.installedDaemonCanary.productionTrafficUsed).toBe(false);
+    expect(parsed.installedDaemonCanary.authoritySwitchAllowed).toBe(false);
+  });
+
+  it("keeps installed daemon canary status blocked without explicit credentials", async () => {
+    const logs: string[] = [];
+    const requestStatus = vi.fn();
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: (line) => logs.push(line) },
+      {
+        json: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.installedDaemonCanary.blockers.join("\n")).toContain("explicit");
+  });
+
+  it("reports installed daemon canary status unavailable without enabling traffic", async () => {
+    const requestStatus = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "unavailable",
+      queried: true,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      error: "ECONNREFUSED",
+    });
+  });
+
+  it("accepts redacted installed daemon canary status with no production traffic or authority switch", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: {
+        containsSecrets: false,
+      },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ],
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          timeoutMs: 1250,
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 1250,
+    });
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      queried: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+      dashboardVisible: true,
+      receiptCount: 1,
+      redactionVerified: true,
+      blockers: [],
+    });
+  });
+
+  it("marks unsafe installed daemon canary payloads without relabeling readiness", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      productionTrafficUsed: true,
+      canaryFlagEnabled: true,
+      policy: {
+        containsSecrets: false,
+      },
+      authority: {
+        authoritySwitchAllowed: true,
+      },
+      receipts: [
+        {
+          surface: "workflows.run",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: false,
+        },
+      ],
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(summary.installedDaemonCanary.status).toBe("unsafe");
+    expect(summary.installedDaemonCanary.productionTrafficUsed).toBe(true);
+    expect(summary.installedDaemonCanary.authoritySwitchAllowed).toBe(true);
+    expect(summary.installedDaemonCanary.redactionVerified).toBe(false);
+    expect(summary.promotionReady).toBe(false);
+    expect(summary.installedDaemonCanary.blockers).toEqual(
+      expect.arrayContaining([
+        "productionTrafficUsed is not false",
+        "authoritySwitchAllowed is not false",
+        "one or more receipts are not marked redacted",
+      ]),
+    );
   });
 
   it("prints read-only rollback plan without authority changes", async () => {

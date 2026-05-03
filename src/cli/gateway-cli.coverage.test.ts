@@ -163,6 +163,42 @@ describe("gateway-cli coverage", () => {
     expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({ json: true });
   }, 30_000);
 
+  it("routes explicit installed canary status options without enabling them by default", async () => {
+    gatewayAuthorityStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "status",
+        "--json",
+        "--installed-canary-url",
+        "ws://127.0.0.1:18789",
+        "--installed-canary-token",
+        "test-token",
+        "--installed-canary-timeout",
+        "1250",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: 1250,
+      },
+    });
+  }, 30_000);
+
   it("registers gateway authority rollback-node as a read-only plan command", async () => {
     gatewayAuthorityRollbackPlanCommand.mockClear();
 
