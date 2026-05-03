@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectGatewayAuthorityDisposableLoopbackRehearsal,
   collectGatewayAuthorityDisposableLoopbackSmoke,
+  gatewayAuthorityInstalledStatusCommand,
   gatewayAuthorityLocalSmokeCommand,
   gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityRollbackPlanCommand,
@@ -55,6 +56,138 @@ vi.mock("./status.rust-gateway-scheduler-authority.js", () => ({
     notes: ["Node remains live scheduler authority."],
   }),
 }));
+
+describe("gatewayAuthorityInstalledStatusCommand", () => {
+  it("queries configured local daemon status with config-redacted credentials and never prints the secret", async () => {
+    const logs: string[] = [];
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ]),
+    });
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: (line) => logs.push(line) },
+      {
+        json: true,
+        configPath: "/tmp/argent.json",
+        config: {
+          gateway: {
+            port: 18789,
+            auth: { mode: "token", token: "config-secret-token" },
+          },
+        },
+        installedCanary: { requestStatus },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "config-secret-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(status.status).toBe("read-only-ready");
+    expect(status.target).toMatchObject({
+      url: "ws://127.0.0.1:18789",
+      urlSource: "config-local",
+      credentialSource: "config-redacted",
+      credentialConfigured: true,
+      secretPrinted: false,
+    });
+    expect(status.installedDaemonCanary.credentialSource).toBe("config-redacted");
+    expect(status.installedServiceReadiness.tokenDiscovery).toMatchObject({
+      status: "config-redacted",
+      secretStoredOrExposed: false,
+    });
+    expect(status.authorityChanges).toEqual([]);
+    expect(status.productionTrafficUsed).toBe(false);
+    expect(status.authoritySwitchAllowed).toBe(false);
+    expect(logs.join("\n")).not.toContain("config-secret-token");
+  });
+
+  it("reports an exact blocked status when installed daemon credentials are missing", async () => {
+    const requestStatus = vi.fn();
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: () => undefined },
+      {
+        configPath: "/tmp/argent.json",
+        config: { gateway: { port: 18789 } },
+        installedCanary: { requestStatus },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(status.status).toBe("blocked");
+    expect(status.target).toMatchObject({
+      url: "ws://127.0.0.1:18789",
+      credentialSource: "missing",
+      credentialConfigured: false,
+      secretPrinted: false,
+    });
+    expect(status.blockers).toEqual(
+      expect.arrayContaining([
+        "installed daemon token/password source is missing",
+        "missing installed daemon capability: rustGateway.canaryReceipts.status-exposure",
+      ]),
+    );
+    expect(status.rollback.rollbackActions).toHaveLength(3);
+    expect(
+      status.installedServiceReadiness.rollbackReadiness.productionInstalledDaemonRollback,
+    ).toBe("blocked");
+  });
+
+  it("uses env-redacted credentials with an explicit loopback target", async () => {
+    const requestStatus = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: () => undefined },
+      {
+        env: { ARGENT_GATEWAY_TOKEN: "env-secret-token" },
+        configPath: "/tmp/argent.json",
+        config: {},
+        installedCanary: {
+          url: "ws://127.0.0.1:19999",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:19999",
+      token: "env-secret-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(status.target.credentialSource).toBe("env-redacted");
+    expect(status.installedDaemonCanary.status).toBe("unavailable");
+    expect(status.blockers).toEqual(
+      expect.arrayContaining(["installed daemon canary status query failed"]),
+    );
+  });
+});
 
 describe("gatewayAuthorityStatusCommand", () => {
   it("prints read-only human authority status", async () => {

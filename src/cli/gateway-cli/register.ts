@@ -4,6 +4,7 @@ import type { GatewayDiscoverOpts } from "./discover.js";
 import {
   gatewayAuthorityDisposableLoopbackRehearsalCommand,
   gatewayAuthorityDisposableLoopbackSmokeCommand,
+  gatewayAuthorityInstalledStatusCommand,
   gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityLocalSmokeCommand,
   gatewayAuthorityRollbackPlanCommand,
@@ -42,11 +43,15 @@ function mergeGatewayCommandOptions<T extends Record<string, unknown>>(
   opts: T,
   command?: Command,
 ): T {
-  const parent = command && typeof command.parent?.opts === "function" ? command.parent.opts() : {};
-  return {
-    ...parent,
-    ...opts,
-  } as T;
+  const parents: Record<string, unknown>[] = [];
+  let current = command?.parent;
+  while (current) {
+    if (typeof current.opts === "function") {
+      parents.unshift(current.opts());
+    }
+    current = current.parent;
+  }
+  return Object.assign({}, ...parents, opts) as T;
 }
 
 function styleHealthChannelLine(line: string, rich: boolean): string {
@@ -217,6 +222,31 @@ export function registerGatewayCli(program: Command) {
           ...(installedCanary ? { installedCanary } : {}),
         });
       }, "Gateway authority status failed");
+    });
+
+  authority
+    .command("status-installed")
+    .description(
+      "Query the configured installed local Gateway canary status without printing secrets",
+    )
+    .option("--url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option("--token <token>", "Explicit installed Gateway token for canary status")
+    .option("--password <password>", "Explicit installed Gateway password for canary status")
+    .option("--timeout <ms>", "Installed canary query timeout in ms")
+    .option("--json", "Output JSON", false)
+    .action(async function (opts) {
+      const merged = mergeGatewayCommandOptions(opts, this);
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityInstalledStatusCommand(defaultRuntime, {
+          json: Boolean(merged.json),
+          installedCanary: {
+            url: typeof merged.url === "string" ? merged.url : undefined,
+            token: typeof merged.token === "string" ? merged.token : undefined,
+            password: typeof merged.password === "string" ? merged.password : undefined,
+            timeoutMs: typeof merged.timeout === "string" ? Number(merged.timeout) : undefined,
+          },
+        });
+      }, "Gateway authority installed status failed");
     });
 
   authority
