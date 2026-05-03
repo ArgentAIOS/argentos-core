@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
 import {
   createRustGatewayReceiptStore,
@@ -406,6 +407,91 @@ async function buildRustGatewayCanaryReceiptStatus(params: Record<string, unknow
   };
 }
 
+async function generateRustGatewayLocalCanaryReceiptProof(params: unknown) {
+  const record =
+    typeof params === "object" && params !== null ? (params as Record<string, unknown>) : {};
+  if (record.confirmLocalOnly !== true) {
+    throw new Error("confirmLocalOnly=true is required for local canary receipt proof generation");
+  }
+  const reason =
+    typeof record.reason === "string" && record.reason.trim()
+      ? record.reason.trim()
+      : "installed daemon local canary receipt proof";
+  const proofRunId =
+    typeof record.proofRunId === "string" && record.proofRunId.trim()
+      ? record.proofRunId.trim()
+      : `installed-daemon-local-proof-${randomUUID()}`;
+  const store = createRustGatewayReceiptStore();
+  const receipts: RustGatewayPromotionReceipt[] = [];
+  for (const surface of CANARY_STATUS_SURFACES) {
+    const proofParams = buildRustGatewayLocalCanaryProofParams(surface, proofRunId);
+    const duplicateKey = deriveRustCanaryDuplicateKey(surface, proofParams);
+    receipts.push(
+      await store.append({
+        surface,
+        method: surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        sourceFixtureId: `rust-local-proof-${surface}`,
+        requestId: `${proofRunId}:${surface}:denied`,
+        duplicateKey,
+        reason,
+        params: proofParams,
+      }),
+    );
+    receipts.push(
+      await store.append({
+        surface,
+        method: surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        sourceFixtureId: `rust-local-proof-${surface}`,
+        requestId: `${proofRunId}:${surface}:duplicate`,
+        duplicateKey,
+        reason,
+        params: proofParams,
+      }),
+    );
+  }
+  return {
+    status: "ok",
+    proofRunId,
+    productionTrafficUsed: false,
+    authority: {
+      nodeAuthority: "live",
+      rustAuthority: "shadow-only",
+      authoritySwitchAllowed: false,
+    },
+    generatedSurfaces: [...CANARY_STATUS_SURFACES],
+    receiptCount: receipts.length,
+    receipts,
+  };
+}
+
+function buildRustGatewayLocalCanaryProofParams(
+  surface: RustGatewayReceiptSurface,
+  proofRunId: string,
+): Record<string, unknown> {
+  if (surface === "chat.send") {
+    return {
+      sessionKey: "main",
+      idempotencyKey: `idem-${proofRunId}`,
+      message: "installed daemon local canary proof",
+      token: "super-secret-token-value",
+    };
+  }
+  if (surface === "cron.add") {
+    return {
+      name: `cron-${proofRunId}`,
+      schedule: { kind: "every", everyMs: 60_000 },
+      payload: { token: "super-secret-token-value" },
+    };
+  }
+  return {
+    workflowId: `wf-${proofRunId}`,
+    runId: `run-${proofRunId}`,
+    input: { token: "super-secret-token-value" },
+  };
+}
+
 export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...connectHandlers,
   ...connectorsHandlers,
@@ -448,6 +534,20 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...specforgeHandlers,
   ...intentHandlers,
   ...workflowsHandlers,
+  "rustGateway.canaryReceipts.generateLocalProof": async ({ params, respond }) => {
+    try {
+      respond(true, await generateRustGatewayLocalCanaryReceiptProof(params), undefined);
+    } catch (error) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          error instanceof Error ? error.message : String(error),
+        ),
+      );
+    }
+  },
   "rustGateway.canaryReceipts.status": async ({ params, respond }) => {
     respond(true, await buildRustGatewayCanaryReceiptStatus(params), undefined);
   },

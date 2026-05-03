@@ -214,6 +214,47 @@ describe("gateway-cli coverage", () => {
     });
   }, 30_000);
 
+  it("routes status-installed local receipt generation only with explicit operator flags", async () => {
+    gatewayAuthorityInstalledStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "status-installed",
+        "--url",
+        "ws://127.0.0.1:18789",
+        "--token",
+        "test-token",
+        "--generate-local-receipts",
+        "--confirm-local-only",
+        "--reason",
+        "operator proof",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityInstalledStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityInstalledStatusCommand.mock.calls[0]?.[1]).toEqual({
+      json: false,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: undefined,
+        generateLocalReceiptProof: {
+          confirmLocalOnly: true,
+          reason: "operator proof",
+        },
+      },
+    });
+  }, 30_000);
+
   it("routes explicit installed canary status options without enabling them by default", async () => {
     gatewayAuthorityStatusCommand.mockClear();
 

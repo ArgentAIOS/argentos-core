@@ -245,11 +245,25 @@ export type GatewayInstalledDaemonCanaryOptions = {
   password?: string;
   timeoutMs?: number;
   credentialSource?: GatewayInstalledDaemonCredentialSource;
+  generateLocalReceiptProof?: {
+    confirmLocalOnly?: boolean;
+    reason?: string;
+    proofRunId?: string;
+  };
   requestStatus?: (options: {
     url: string;
     token?: string;
     password?: string;
     timeoutMs: number;
+  }) => Promise<unknown>;
+  requestGenerateLocalReceiptProof?: (options: {
+    url: string;
+    token?: string;
+    password?: string;
+    timeoutMs: number;
+    confirmLocalOnly?: boolean;
+    reason?: string;
+    proofRunId?: string;
   }) => Promise<unknown>;
   requestRuntimeProbe?: (options: {
     url: string;
@@ -605,7 +619,10 @@ function resolveInstalledDaemonOperatorCanary(options: GatewayAuthorityInstalled
       password: credential.password,
       timeoutMs: options.installedCanary?.timeoutMs,
       credentialSource: credential.source,
+      generateLocalReceiptProof: options.installedCanary?.generateLocalReceiptProof,
       requestStatus: options.installedCanary?.requestStatus,
+      requestGenerateLocalReceiptProof: options.installedCanary?.requestGenerateLocalReceiptProof,
+      requestRuntimeProbe: options.installedCanary?.requestRuntimeProbe,
     },
   };
 }
@@ -715,6 +732,12 @@ export async function collectGatewayAuthorityInstalledStatus(
     blockers,
     proof: [
       "queried only rustGateway.canaryReceipts.status",
+      ...(resolved.installedCanary.generateLocalReceiptProof
+        ? [
+            "generated installed daemon canary receipts only through explicit --generate-local-receipts and --confirm-local-only",
+            "local receipt proof generation used rustGateway.canaryReceipts.generateLocalProof and synthetic redaction fixtures",
+          ]
+        : []),
       "used only loopback/local installed daemon targets",
       "did not start, stop, restart, install, unload, or configure any daemon",
       "did not print raw token or password material",
@@ -1583,6 +1606,82 @@ async function collectInstalledDaemonCanaryStatus(
         : options?.requestStatus
           ? null
           : await probeInstalledDaemonRuntime({ url, token, password, timeoutMs });
+  const localReceiptProof = options?.generateLocalReceiptProof;
+  if (localReceiptProof && localReceiptProof.confirmLocalOnly !== true) {
+    return installedCanaryStatus({
+      status: "blocked",
+      configured: true,
+      credentialSource,
+      queried: false,
+      url,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+      dashboardVisible: null,
+      receiptCount: null,
+      redactionVerified: null,
+      denialReceiptPresent: null,
+      duplicatePreventionReceiptPresent: null,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+      receiptSurfaces: [],
+      runtimeProbe,
+      blockers: ["pass --confirm-local-only before generating installed daemon canary receipts"],
+      error: null,
+    });
+  }
+  if (localReceiptProof) {
+    const requestGenerate =
+      options.requestGenerateLocalReceiptProof ??
+      ((params) =>
+        callGateway({
+          url: params.url,
+          token: params.token,
+          password: params.password,
+          timeoutMs: params.timeoutMs,
+          method: "rustGateway.canaryReceipts.generateLocalProof",
+          params: {
+            confirmLocalOnly: params.confirmLocalOnly,
+            reason: params.reason,
+            proofRunId: params.proofRunId,
+          },
+        }));
+    try {
+      await requestGenerate({
+        url,
+        token,
+        password,
+        timeoutMs,
+        confirmLocalOnly: localReceiptProof.confirmLocalOnly,
+        reason: localReceiptProof.reason,
+        proofRunId: localReceiptProof.proofRunId,
+      });
+    } catch (error) {
+      return installedCanaryStatus({
+        status: "unavailable",
+        configured: true,
+        credentialSource,
+        queried: false,
+        url,
+        productionTrafficUsed: false,
+        canaryFlagEnabled: null,
+        authoritySwitchAllowed: false,
+        dashboardVisible: null,
+        receiptCount: null,
+        redactionVerified: null,
+        denialReceiptPresent: null,
+        duplicatePreventionReceiptPresent: null,
+        receiptProofComplete: false,
+        requiredReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+        missingReceiptSurfaces: [...CANARY_RECEIPT_SURFACES],
+        receiptSurfaces: [],
+        runtimeProbe,
+        blockers: ["installed daemon local canary receipt proof generation failed"],
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const requestStatus =
     options?.requestStatus ??
     ((params) =>
