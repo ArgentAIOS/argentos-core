@@ -7,6 +7,7 @@
 - `2026.5.3-dev.3` contained semantic guards and local restart smoke proof for `kernelShadow`.
 - `2026.5.3-dev.4` copied the simple Obsidian sprint notes into `origin/dev`.
 - `2026.5.3-dev.5` made `rollback-node` an executable local-only proof and paired it with loopback rehearsal.
+- `2026.5.3-dev.6` updated the human notes with the Master containment packet id.
 
 ## 2026-05-02
 

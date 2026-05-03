@@ -2,6 +2,7 @@
 
 ## Latest Rust packets
 
+- `tm-20260503134922-j5u217`: Master contained Gateway executable rollback proof into `origin/dev` `c4c5b3fc`, package `2026.5.3-dev.5`.
 - `tm-20260503134225-3qu1mw`: AOS/Rust READY for executable local-only `rollback-node` proof paired with loopback rehearsal.
 - `tm-20260503125330-lr8o7h`: Master contained kernel semantic guard into `origin/dev` `b82391cb`, package `2026.5.3-dev.3`.
 - `tm-20260503125035-duqdcr`: AOS/Rust READY for semantic guard and operator smoke.

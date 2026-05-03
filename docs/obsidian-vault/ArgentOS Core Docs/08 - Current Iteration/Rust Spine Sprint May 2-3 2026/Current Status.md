@@ -1,13 +1,13 @@
 # Current Status
 
-Last updated: 2026-05-03 13:45 UTC
+Last updated: 2026-05-03 13:50 UTC
 
 ## Latest contained build
 
-- Package: `2026.5.3-dev.5`
+- Package: `2026.5.3-dev.6`
 - Source READY packet: `tm-20260503134225-3qu1mw`
 - Contained source: `0d02d402` as custody `012d30ea`
-- Master packet: pending after push
+- Master packet: `tm-20260503134922-j5u217`
 
 ## What is now true
 
