@@ -145,6 +145,10 @@ argent gateway authority smoke-local \
   --json
 ```
 
+The installed-canary URL must be loopback/local: `localhost`, `127.0.0.1`, `::1`, or an
+SSH-forwarded loopback URL. Non-loopback URLs are blocked before the CLI queries anything so this
+proof cannot accidentally become production daemon traffic.
+
 Use `--installed-canary-password <password>` instead of `--installed-canary-token <token>`
 when the target daemon is configured for password auth. Do not put tokens, passwords, or
 command output containing sensitive local paths in git, docs, Threadmaster bus messages, or
@@ -168,6 +172,7 @@ Common blocked states:
 
 - `not-configured`: rerun with `--installed-canary-url` and explicit credentials.
 - `blocked`: URL was configured but no explicit token/password was provided.
+- `blocked`: URL is not loopback/local; use a disposable local daemon or SSH-forwarded loopback URL.
 - `unavailable`: the daemon could not be reached or the status RPC timed out.
 - `unsafe`: the daemon payload did not prove the safety invariants above.
 
