@@ -273,6 +273,7 @@ export async function collectGatewayAuthorityStatus(
     blockers,
     nextCommands: [
       "argent status",
+      "pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000",
       "argent gateway authority status --json",
       "argent gateway authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
       "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
