@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  gatewayAuthorityLocalSmokeCommand,
   gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityRollbackPlanCommand,
   gatewayAuthorityStatusCommand,
@@ -93,6 +94,9 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(parsed.installedDaemonCanary.queried).toBe(false);
     expect(parsed.installedDaemonCanary.productionTrafficUsed).toBe(false);
     expect(parsed.installedDaemonCanary.authoritySwitchAllowed).toBe(false);
+    expect(parsed.nextCommands).toContain(
+      "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
+    );
   });
 
   it("keeps installed daemon canary status blocked without explicit credentials", async () => {
@@ -358,6 +362,163 @@ describe("gatewayAuthorityStatusCommand", () => {
       "RUST_CANARY_DUPLICATE_PREVENTED",
     ]);
     expect(rehearsal.blockers).toEqual([]);
+  });
+
+  it("blocks local smoke by default with exact operator guidance", async () => {
+    const logs: string[] = [];
+    const requestStatus = vi.fn();
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: (line) => logs.push(line) },
+      {
+        reason: "dev.20 local smoke",
+        installedCanary: {
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.authorityChanges).toEqual([]);
+    expect(smoke.authoritySwitchAllowed).toBe(false);
+    expect(smoke.liveProductionTrafficAllowed).toBe(false);
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "not-configured",
+      configured: false,
+      queried: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(smoke.blockers).toContain("explicit local-only smoke opt-in is required");
+    expect(smoke.blockers).toContain("installed daemon canary status is not configured");
+    expect(smoke.operatorGuidance.join("\n")).toContain("--installed-canary-url");
+    expect(logs.join("\n")).toContain("Gateway authority local smoke");
+    expect(logs.join("\n")).toContain("Status: blocked");
+    expect(logs.join("\n")).toContain("Authority changes: none");
+  });
+
+  it("passes local smoke only when canary receipts prove no authority switch", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ],
+    });
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.20 local smoke",
+        confirmLocalOnly: true,
+        json: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(smoke.status).toBe("passed");
+    expect(smoke.explicitOptIn).toBe(true);
+    expect(smoke.noDefaultSwitchProof).toMatchObject({
+      liveGatewayAuthority: "node",
+      rustGatewayAuthority: "shadow-only",
+      schedulerAuthority: "node",
+      workflowAuthority: "node",
+      channelAuthority: "node",
+      sessionAuthority: "node",
+      runAuthority: "node",
+    });
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      queried: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      authoritySwitchAllowed: false,
+      receiptCount: 2,
+      redactionVerified: true,
+    });
+    expect(smoke.blockers).toEqual([]);
+    expect(smoke.operatorGuidance.join("\n")).toContain("PASS");
+    expect(smoke.proof).toContain(
+      "smoke does not start, stop, restart, install, or configure any daemon",
+    );
+  });
+
+  it("blocks local smoke when canary status implies production traffic or authority switch", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: true,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: { authoritySwitchAllowed: true },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+        },
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+        },
+      ],
+    });
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.20 local smoke",
+        confirmLocalOnly: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.installedDaemonCanary.status).toBe("unsafe");
+    expect(smoke.blockers).toEqual(
+      expect.arrayContaining([
+        "installed daemon canary status must be ok; got unsafe",
+        "productionTrafficUsed must be false",
+        "authoritySwitchAllowed must be false",
+      ]),
+    );
+    expect(smoke.authoritySwitchAllowed).toBe(false);
+    expect(smoke.authorityChanges).toEqual([]);
   });
 
   it("prints read-only rollback plan without authority changes", async () => {

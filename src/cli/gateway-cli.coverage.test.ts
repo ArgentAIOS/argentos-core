@@ -16,6 +16,7 @@ const serviceInstall = vi.fn(async () => {});
 const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityLocalSmokeCommand = vi.fn(async () => {});
 const gatewayAuthorityLocalRehearsalCommand = vi.fn(async () => {});
 const gatewayAuthorityRollbackPlanCommand = vi.fn(async () => {});
 
@@ -110,6 +111,8 @@ vi.mock("../commands/gateway-status.js", () => ({
 }));
 
 vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityLocalSmokeCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityLocalSmokeCommand(runtime, opts),
   gatewayAuthorityLocalRehearsalCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityLocalRehearsalCommand(runtime, opts),
   gatewayAuthorityRollbackPlanCommand: (runtime: unknown, opts: unknown) =>
@@ -193,6 +196,47 @@ describe("gateway-cli coverage", () => {
     expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
     expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({
       json: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: 1250,
+      },
+    });
+  }, 30_000);
+
+  it("registers gateway authority smoke-local as a read-only operator smoke", async () => {
+    gatewayAuthorityLocalSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "smoke-local",
+        "--reason",
+        "dev.20 operator smoke",
+        "--confirm-local-only",
+        "--installed-canary-url",
+        "ws://127.0.0.1:18789",
+        "--installed-canary-token",
+        "test-token",
+        "--installed-canary-timeout",
+        "1250",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityLocalSmokeCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityLocalSmokeCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "dev.20 operator smoke",
+      confirmLocalOnly: true,
       installedCanary: {
         url: "ws://127.0.0.1:18789",
         token: "test-token",
