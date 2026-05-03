@@ -344,7 +344,7 @@ export async function collectGatewayAuthorityStatus(
   ]);
   const blockers = [
     "Rust gateway is shadow-only.",
-    "Rollback/fallback command is planned but not implemented.",
+    "Rollback/fallback command is local-only and does not switch authority.",
     "Scheduler, workflows, and channels remain Node-owned.",
   ];
   if (parityReport.freshness !== "fresh") {
@@ -510,7 +510,7 @@ export async function collectGatewayAuthorityLocalRehearsal(
     blockers,
     proof: [
       "before and after checks use only rustGateway.canaryReceipts.status",
-      "rollback is a read-only plan with authorityChanges=[]",
+      "rollback-node is a local-only executable proof with authorityChanges=[]",
       "productionTrafficUsed must remain false",
       "authoritySwitchAllowed must remain false",
       "receipt redaction must remain verified",

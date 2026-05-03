@@ -19,4 +19,7 @@ Agent Persona semantic contract is still blocked/stale. Current `kernelShadow` s
 
 ## Next useful proof
 
-The next Rust slice should wait for Master assignment or Agent Persona semantics, unless a safe read-only/shadow parity or readiness summary task appears.
+Complete and contain the executable local `rollback-node` proof, then keep the next Rust slice focused on either:
+
+- a Master-assigned Gateway promotion blocker, or
+- Agent Persona semantic contract alignment for the shadow Kernel.

@@ -2,7 +2,7 @@
 
 ## Rust Gateway
 
-Status: shadow/local candidate proof is strong.
+Status: shadow/local candidate proof is strong; executable local rollback proof is in progress.
 
 Contained proof includes:
 
@@ -11,6 +11,12 @@ Contained proof includes:
 - local rehearsal with rollback proof
 - redacted denial and duplicate-prevention receipts
 - parity report reaching `promotionReady=YES` for the current shadow evidence set
+
+Active gate:
+
+- `rollback-node` now runs as a local-only proof command instead of a read-only plan.
+- The command proves Node remains live authority before and after rollback, Rust remains shadow-only, and no authority changes occur.
+- Paired `rehearse-loopback` proof still uses only disposable loopback state and canary receipts.
 
 ## Rust Kernel
 
