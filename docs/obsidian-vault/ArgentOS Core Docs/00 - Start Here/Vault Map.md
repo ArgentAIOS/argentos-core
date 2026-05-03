@@ -11,6 +11,7 @@ Generated from 299 public Core docs files.
 - [[05 - Concepts/Index]]
 - [[06 - Channels/Index]]
 - [[07 - Gateway/Index]]
+- [[08 - Current Iteration/Rust Spine Sprint May 2-3 2026/Start Here]]
 
 ## Full mirror
 
