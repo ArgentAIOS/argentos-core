@@ -329,6 +329,16 @@ vi.mock("./status.executive-shadow.js", () => ({
   getExecutiveShadowSummary: vi.fn().mockResolvedValue({
     reachable: true,
     kernelStatus: "fail-closed",
+    productionDaemon: {
+      binary: "argent-execd",
+      status: "fail-closed",
+      checkedEndpoint: "/v1/executive/readiness",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+      detail: "argent-execd reachable; readiness is fail-closed and authoritySwitchAllowed=false",
+    },
     activeLane: "operator",
     tickCount: 4,
     bootCount: 2,
@@ -428,6 +438,14 @@ describe("statusCommand", () => {
     expect(payload.rustGatewaySchedulerAuthority.rustSchedulerAuthority).toBe("shadow-only");
     expect(payload.executiveShadow.reachable).toBe(true);
     expect(payload.executiveShadow.kernelStatus).toBe("fail-closed");
+    expect(payload.executiveShadow.productionDaemon).toMatchObject({
+      binary: "argent-execd",
+      status: "fail-closed",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+    });
     expect(payload.executiveShadow.activeLane).toBe("operator");
     expect(payload.executiveShadow.laneCounts.pending).toBe(2);
     expect(payload.executiveShadow.readiness.failClosed).toBe(true);
@@ -456,6 +474,7 @@ describe("statusCommand", () => {
     expect(logs.some((l) => l.includes("scheduler node"))).toBe(true);
     expect(logs.some((l) => l.includes("Executive shadow"))).toBe(true);
     expect(logs.some((l) => l.includes("kernel fail-closed"))).toBe(true);
+    expect(logs.some((l) => l.includes("production-daemon fail-closed"))).toBe(true);
     expect(logs.some((l) => l.includes("readiness fail-closed"))).toBe(true);
     expect(logs.some((l) => l.includes("switchBlocked"))).toBe(true);
     expect(logs.some((l) => l.includes("executive shadow-only"))).toBe(true);

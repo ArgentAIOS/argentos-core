@@ -33,6 +33,16 @@ export type HeartbeatStatus = {
 export type ExecutiveShadowStatus = {
   reachable: boolean;
   kernelStatus: "fail-closed" | "unsafe" | "unavailable";
+  productionDaemon: {
+    binary: "argent-execd";
+    status: "fail-closed" | "unsafe" | "unavailable";
+    checkedEndpoint: "/v1/executive/readiness";
+    readOnly: true;
+    authoritySwitchAllowed: false;
+    destructiveProcessControlUsed: false;
+    productionRolloutAttempted: false;
+    detail: string;
+  };
   activeLane: string | null;
   tickCount: number | null;
   bootCount: number | null;

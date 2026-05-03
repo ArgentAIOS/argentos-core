@@ -290,7 +290,11 @@ export async function statusCommand(
       return muted("unknown");
     }
     if (!status.reachable) {
-      return muted(status.error ? `unavailable (${status.error})` : "unavailable");
+      return muted(
+        status.error
+          ? `production-daemon ${status.productionDaemon.status} (${status.error})`
+          : `production-daemon ${status.productionDaemon.status}`,
+      );
     }
     const parts = [
       ok("reachable"),
@@ -388,6 +392,7 @@ export async function statusCommand(
     const parts = [
       ok("reachable"),
       `kernel ${status.kernelStatus}`,
+      `production-daemon ${status.productionDaemon.status}`,
       status.activeLane ? `lane ${status.activeLane}` : "lane none",
       ...readinessParts,
       status.laneCounts ? `pending ${status.laneCounts.pending}` : null,
