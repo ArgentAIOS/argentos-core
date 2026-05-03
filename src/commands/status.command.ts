@@ -363,9 +363,26 @@ export async function statusCommand(
     if (!status.reachable) {
       return muted(status.error ? `unavailable (${status.error})` : "unavailable");
     }
+    const readiness = status.readiness;
+    const readinessParts =
+      readiness && !readiness.error
+        ? [
+            readiness.failClosed ? ok("readiness fail-closed") : warn("readiness not fail-closed"),
+            `promotion ${readiness.promotionStatus}`,
+            readiness.authoritySwitchAllowed ? warn("switchAllowed") : "switchBlocked",
+            `gateway ${readiness.currentAuthority.gateway}`,
+            `scheduler ${readiness.currentAuthority.scheduler}`,
+            `workflows ${readiness.currentAuthority.workflows}`,
+            `executive ${readiness.currentAuthority.executive}`,
+            `gates blocked ${readiness.gateCounts.blocked} proven ${readiness.gateCounts.proven}`,
+          ]
+        : readiness?.error
+          ? [warn(`readiness unavailable (${readiness.error})`)]
+          : [];
     const parts = [
       ok("reachable"),
       status.activeLane ? `lane ${status.activeLane}` : "lane none",
+      ...readinessParts,
       status.laneCounts ? `pending ${status.laneCounts.pending}` : null,
       status.highestPendingPriority != null
         ? `pending-priority ${status.highestPendingPriority}`
