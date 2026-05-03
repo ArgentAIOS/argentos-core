@@ -391,4 +391,127 @@ describe("useForgeStructuredData", () => {
       activeCell: { recordId: firstRecord.id, fieldId: ownerField.id },
     });
   });
+
+  it("recovers selected field and active cell when view visible fields change", async () => {
+    const host = installDom("?token=secret-token");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
+      throw new Error("Not connected to Gateway");
+    });
+    const emitWorkflowEvent = vi.fn(async () => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props: {
+            apps: [app()],
+            selectedAppId: "app-1",
+            onSelectApp: vi.fn(),
+            gatewayRequest,
+            emitWorkflowEvent,
+          },
+        }),
+      );
+    });
+
+    const initial = result as StructuredDataResult;
+    const firstRecord = initial.activeTable?.records[0];
+    const statusField = initial.activeTable?.fields.find((field) => field.id === "status");
+    const ownerField = initial.activeTable?.fields.find((field) => field.id === "owner");
+    if (!firstRecord || !statusField || !ownerField) {
+      throw new Error("record/status/owner field missing");
+    }
+
+    await act(async () => {
+      await initial.updateActiveViewSettings({ visibleFieldIds: [statusField.id] });
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).setActiveCell({
+        recordId: firstRecord.id,
+        fieldId: statusField.id,
+      });
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).addView({ name: "Owners", type: "grid" });
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).updateActiveViewSettings({
+        visibleFieldIds: [ownerField.id],
+      });
+    });
+
+    const saved = result as StructuredDataResult;
+    expect(saved.activeView).toMatchObject({
+      name: "Owners",
+      visibleFieldIds: [ownerField.id],
+    });
+    expect(saved.activeTable).toMatchObject({
+      selectedFieldId: ownerField.id,
+      activeCell: { recordId: firstRecord.id, fieldId: ownerField.id },
+    });
+  });
+
+  it("keeps newly created fields visible in saved views", async () => {
+    const host = installDom("?token=secret-token");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
+      throw new Error("Not connected to Gateway");
+    });
+    const emitWorkflowEvent = vi.fn(async () => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props: {
+            apps: [app()],
+            selectedAppId: "app-1",
+            onSelectApp: vi.fn(),
+            gatewayRequest,
+            emitWorkflowEvent,
+          },
+        }),
+      );
+    });
+
+    const initial = result as StructuredDataResult;
+    const statusField = initial.activeTable?.fields.find((field) => field.id === "status");
+    if (!statusField) {
+      throw new Error("status field missing");
+    }
+
+    await act(async () => {
+      await initial.updateActiveViewSettings({ visibleFieldIds: [statusField.id] });
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).addField({ name: "Priority", type: "single_select" });
+    });
+
+    const saved = result as StructuredDataResult;
+    const priorityField = saved.activeTable?.fields.find((field) => field.name === "Priority");
+    if (!priorityField) {
+      throw new Error("priority field missing");
+    }
+    expect(saved.activeTable).toMatchObject({
+      selectedFieldId: priorityField.id,
+    });
+    expect(saved.activeView?.visibleFieldIds).toEqual([statusField.id, priorityField.id]);
+  });
 });

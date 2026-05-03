@@ -358,6 +358,45 @@ function normalizeActiveCell(
   return { recordId, fieldId: nextFieldId };
 }
 
+function fieldIsVisibleInView(view: ForgeStructuredView | undefined, fieldId: string): boolean {
+  return !view?.visibleFieldIds?.length || view.visibleFieldIds.includes(fieldId);
+}
+
+function normalizeViewScopedTableState(table: ForgeStructuredTable): ForgeStructuredTable {
+  const resolvedActiveViewId = table.views.some((view) => view.id === table.activeViewId)
+    ? table.activeViewId
+    : table.defaultViewId && table.views.some((view) => view.id === table.defaultViewId)
+      ? table.defaultViewId
+      : (table.views[0]?.id ?? table.activeViewId);
+  const activeView = table.views.find((view) => view.id === resolvedActiveViewId);
+  const fieldIds = new Set(table.fields.map((field) => field.id));
+  const selectedFieldId =
+    table.selectedFieldId &&
+    fieldIds.has(table.selectedFieldId) &&
+    fieldIsVisibleInView(activeView, table.selectedFieldId)
+      ? table.selectedFieldId
+      : firstVisibleFieldId(activeView, table.fields);
+  const activeCellRecordId =
+    table.activeCell && table.records.some((record) => record.id === table.activeCell?.recordId)
+      ? table.activeCell.recordId
+      : undefined;
+  const activeCellFieldId =
+    table.activeCell?.fieldId &&
+    fieldIds.has(table.activeCell.fieldId) &&
+    fieldIsVisibleInView(activeView, table.activeCell.fieldId)
+      ? table.activeCell.fieldId
+      : selectedFieldId;
+  return {
+    ...table,
+    activeViewId: resolvedActiveViewId,
+    selectedFieldId,
+    activeCell:
+      activeCellRecordId && activeCellFieldId
+        ? { recordId: activeCellRecordId, fieldId: activeCellFieldId }
+        : undefined,
+  };
+}
+
 function selectOptionLabels(field: ForgeStructuredField): string[] {
   if (field.selectOptions?.length) {
     return field.selectOptions.map((option) => option.label);
@@ -1979,7 +2018,9 @@ export function useForgeStructuredData({
       ) {
         return;
       }
-      await updateActiveTable((table) => ({ ...table, activeViewId: viewId }));
+      await updateActiveTable((table) =>
+        normalizeViewScopedTableState({ ...table, activeViewId: viewId }),
+      );
     },
     [activeTable, updateActiveTable],
   );
@@ -2025,7 +2066,7 @@ export function useForgeStructuredData({
     async (viewId: string, updates: Partial<ForgeStructuredView>) => {
       await updateActiveTable((table) => {
         const fieldIds = new Set(table.fields.map((field) => field.id));
-        return {
+        const nextTable = {
           ...table,
           views: table.views.map((view) => {
             if (view.id !== viewId) {
@@ -2064,6 +2105,7 @@ export function useForgeStructuredData({
             };
           }),
         };
+        return table.activeViewId === viewId ? normalizeViewScopedTableState(nextTable) : nextTable;
       });
     },
     [updateActiveTable],
@@ -2104,7 +2146,7 @@ export function useForgeStructuredData({
       await updateActiveTable((table) => {
         const views = table.views.filter((view) => view.id !== viewId);
         const fallbackViewId = views[0]?.id ?? table.activeViewId;
-        return {
+        return normalizeViewScopedTableState({
           ...table,
           views,
           activeViewId: table.activeViewId === viewId ? fallbackViewId : table.activeViewId,
@@ -2112,7 +2154,7 @@ export function useForgeStructuredData({
             table.defaultViewId === viewId
               ? fallbackViewId
               : (table.defaultViewId ?? fallbackViewId),
-        };
+        });
       });
     },
     [activeTable, updateActiveTable],
@@ -2203,6 +2245,11 @@ export function useForgeStructuredData({
         ...table,
         selectedFieldId: field.id,
         fields: [...table.fields, field],
+        views: table.views.map((view) => ({
+          ...view,
+          visibleFieldIds: view.visibleFieldIds ? [...view.visibleFieldIds, field.id] : undefined,
+          updatedAt: nowIso(),
+        })),
         records: table.records.map((record) => ({
           ...record,
           values: { ...record.values, [field.id]: defaultValueForField(field) },
@@ -2273,6 +2320,25 @@ export function useForgeStructuredData({
           field,
           ...table.fields.slice(sourceIndex + 1),
         ],
+        views: table.views.map((view) => {
+          if (!view.visibleFieldIds) {
+            return view;
+          }
+          const sourceVisibleIndex = view.visibleFieldIds.indexOf(fieldId);
+          if (sourceVisibleIndex < 0) {
+            return view;
+          }
+          const visibleFieldIds = [
+            ...view.visibleFieldIds.slice(0, sourceVisibleIndex + 1),
+            field.id,
+            ...view.visibleFieldIds.slice(sourceVisibleIndex + 1),
+          ];
+          return {
+            ...view,
+            visibleFieldIds: normalizeVisibleFieldIds(visibleFieldIds, [...table.fields, field]),
+            updatedAt: nowIso(),
+          };
+        }),
         records: table.records.map((record) => ({
           ...record,
           values: {
@@ -2293,36 +2359,39 @@ export function useForgeStructuredData({
         return;
       }
       const nextField = activeTable.fields.find((field) => field.id !== fieldId);
-      await updateActiveTable((table) => ({
-        ...table,
-        selectedFieldId: nextField?.id,
-        fields: table.fields.filter((field) => field.id !== fieldId),
-        activeCell:
-          table.activeCell?.fieldId === fieldId
-            ? nextField && table.activeCell
-              ? { recordId: table.activeCell.recordId, fieldId: nextField.id }
-              : undefined
-            : table.activeCell,
-        views: table.views.map((view) => ({
-          ...view,
-          sortFieldId: view.sortFieldId === fieldId ? "" : view.sortFieldId,
-          groupFieldId: view.groupFieldId === fieldId ? "" : view.groupFieldId,
-          visibleFieldIds: normalizeVisibleFieldIds(
-            view.visibleFieldIds?.filter((candidate) => candidate !== fieldId),
-            table.fields.filter((field) => field.id !== fieldId),
-          ),
-          updatedAt: nowIso(),
-        })),
-        records: table.records.map((record) => {
-          return {
-            ...record,
-            values: Object.fromEntries(
-              Object.entries(record.values).filter(([key]) => key !== fieldId),
+      await updateActiveTable((table) => {
+        const fields = table.fields.filter((field) => field.id !== fieldId);
+        return normalizeViewScopedTableState({
+          ...table,
+          selectedFieldId: nextField?.id,
+          fields,
+          activeCell:
+            table.activeCell?.fieldId === fieldId
+              ? nextField && table.activeCell
+                ? { recordId: table.activeCell.recordId, fieldId: nextField.id }
+                : undefined
+              : table.activeCell,
+          views: table.views.map((view) => ({
+            ...view,
+            sortFieldId: view.sortFieldId === fieldId ? "" : view.sortFieldId,
+            groupFieldId: view.groupFieldId === fieldId ? "" : view.groupFieldId,
+            visibleFieldIds: normalizeVisibleFieldIds(
+              view.visibleFieldIds?.filter((candidate) => candidate !== fieldId),
+              fields,
             ),
             updatedAt: nowIso(),
-          };
-        }),
-      }));
+          })),
+          records: table.records.map((record) => {
+            return {
+              ...record,
+              values: Object.fromEntries(
+                Object.entries(record.values).filter(([key]) => key !== fieldId),
+              ),
+              updatedAt: nowIso(),
+            };
+          }),
+        });
+      });
       if (nextField) {
         setSelectedFieldId(nextField.id);
       }
