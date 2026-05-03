@@ -9,6 +9,7 @@ Contained proof includes:
 - local canary receipt harness
 - disposable loopback daemon canary proof
 - local rehearsal with rollback proof
+- executable local-only `rollback-node` proof
 - redacted denial and duplicate-prevention receipts
 - parity report reaching `promotionReady=YES` for the current shadow evidence set
 

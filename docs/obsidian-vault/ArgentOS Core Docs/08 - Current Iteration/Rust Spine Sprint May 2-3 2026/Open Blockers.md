@@ -5,6 +5,7 @@
 - No production Rust daemon rollout has been approved.
 - No live gateway, scheduler, workflow, channel, session, or run authority switch has been approved.
 - No connector execution, customer/company/API/OAuth data, or production traffic may be used for Rust proof.
+- The new `rollback-node` command is local proof only. It does not promote Rust and does not control the installed production daemon.
 
 ## Semantic blocker
 
@@ -19,4 +20,6 @@ Agent Persona semantic contract is still blocked/stale. Current `kernelShadow` s
 
 ## Next useful proof
 
-The next Rust slice should wait for Master assignment or Agent Persona semantics, unless a safe read-only/shadow parity or readiness summary task appears.
+The next Rust Gateway slice should prove an installed local daemon canary path without production traffic.
+
+The next Rust Kernel slice should keep moving the always-on consciousness kernel toward durable Rust ownership while staying shadow-only until promotion is explicitly approved.

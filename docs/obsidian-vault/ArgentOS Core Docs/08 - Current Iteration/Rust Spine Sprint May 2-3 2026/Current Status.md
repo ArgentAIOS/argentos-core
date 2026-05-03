@@ -1,17 +1,20 @@
 # Current Status
 
-Last updated: 2026-05-03 12:57 UTC
+Last updated: 2026-05-03 13:45 UTC
 
 ## Latest contained build
 
-- Package: `2026.5.3-dev.3`
-- `origin/dev`: `b82391cb`
-- Contained source: `7083f6cc` as custody `93102f72`
-- Master packet: `tm-20260503125330-lr8o7h`
+- Package: `2026.5.3-dev.5`
+- Source READY packet: `tm-20260503134225-3qu1mw`
+- Contained source: `0d02d402` as custody `012d30ea`
+- Master packet: pending after push
 
 ## What is now true
 
 - Rust Gateway local loopback rehearsal, rollback proof, and canary receipt proof are contained.
+- `argent gateway authority rollback-node` is now executable as a local-only proof command.
+- The rollback proof keeps `authorityChanges=[]`, `productionTrafficUsed=false`, and `authoritySwitchAllowed=false`.
+- `argent gateway authority rehearse-loopback` now proves canary receipts and pairs them with the executable rollback proof.
 - `argent-execd` exposes `kernelShadow` in readiness JSON.
 - `kernelShadow` reports wakefulness, focus, agenda, ticks, reflection queue, persisted timestamp, restart recovery, and `authority=shadow`.
 - The local restart smoke now proves `kernelShadow` after restart.
