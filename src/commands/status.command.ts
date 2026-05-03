@@ -102,6 +102,38 @@ type WorkflowBackendStatus = {
       liveRunRequiresPostgres: true;
       message: string;
     };
+    runSessionHandoff?: {
+      contractVersion: string;
+      dryRun: {
+        authority: "node-workflows";
+        input: string;
+        persistsWorkflowRun: false;
+        requiresPostgres: false;
+        duplicatePrevention: string;
+      };
+      liveRun: {
+        authority: "node-workflows";
+        input: string;
+        payloadKind: "workflowRun";
+        persistsWorkflowRun: true;
+        requiresPostgres: true;
+        sessionTarget: "isolated";
+      };
+      session: {
+        owner: "node-workflow-runner";
+        keyDerivation: string;
+        isolation: string;
+        rustOwnership: "not_enabled";
+      };
+      duplicatePrevention: {
+        scheduleCron: string;
+        duplicateWorkflow: string;
+        staleCronCleanup: string;
+        rustOwnership: "shadow_observe_only";
+      };
+      rustPromotionBlockers: string[];
+      message: string;
+    };
     blockers: string[];
   };
   operatorMessages?: string[];
@@ -554,10 +586,18 @@ export async function statusCommand(
           status.schedulerBoundary.leases.status === "configured"
             ? ok("leases configured")
             : warn("leases need PostgreSQL"),
+          status.schedulerBoundary.runSessionHandoff
+            ? `handoff ${status.schedulerBoundary.runSessionHandoff.liveRun.payloadKind} ${status.schedulerBoundary.runSessionHandoff.liveRun.sessionTarget}`
+            : null,
+          status.schedulerBoundary.runSessionHandoff
+            ? `dedupe ${status.schedulerBoundary.runSessionHandoff.duplicatePrevention.rustOwnership}`
+            : null,
           status.schedulerBoundary.authoritySwitchAllowed
             ? warn("authority switch allowed")
             : muted("no authority switch"),
-        ].join(" · ")
+        ]
+          .filter(Boolean)
+          .join(" · ")
       : null;
     return [
       status.label,
