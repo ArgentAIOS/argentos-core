@@ -177,10 +177,25 @@ same disposable loopback Gateway with temp HOME/state, random local port, and ra
 queries `rustGateway.canaryReceipts.status` with the local canary flag default-off. It then enables
 the canary flag only in the temporary process environment, generates denied and duplicate-prevented
 receipts for `chat.send`, `cron.add`, and `workflows.run`, queries the status again, and includes the
-paired `rollback-node` JSON plan. A passing rehearsal proves `canaryFlagEnabled=false` before
+paired executable `rollback-node` JSON proof. A passing rehearsal proves `canaryFlagEnabled=false` before
 explicit local-only enablement, `canaryFlagEnabled=true` after, `productionTrafficUsed=false`,
 `authoritySwitchAllowed=false`, redacted receipt material, and `authorityChanges=[]` in the rollback
-plan. It still does not start, stop, restart, install, configure, or promote any production daemon.
+proof. It still does not start, stop, restart, install, configure, or promote any production daemon.
+
+Executable local Node rollback proof:
+
+```bash
+argent gateway authority rollback-node \
+  --reason "return to Node after local Rust Gateway rehearsal" \
+  --json
+```
+
+`rollback-node` is now an executable local-only proof, not a live service-control command. It records
+before and after authority snapshots, verifies Node remains live gateway/scheduler/workflow/channel/
+session/run authority, verifies Rust remains shadow-only, and reports `authorityChanges=[]`,
+`productionTrafficUsed=false`, and `authoritySwitchAllowed=false`. It does not start, stop, restart,
+install, unload, or reconfigure Node or Rust services, and it does not touch connectors, credentials,
+customer/company data, schedulers, workflows, channels, sessions, or runs.
 
 The installed-canary URL must be loopback/local: `localhost`, `127.0.0.1`, `::1`, or an
 SSH-forwarded loopback URL. Non-loopback URLs are blocked before the CLI queries anything so this

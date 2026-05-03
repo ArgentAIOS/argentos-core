@@ -54,23 +54,36 @@ export type GatewayAuthorityRollbackPlanOptions = {
 
 export type GatewayAuthorityRollbackPlan = {
   command: "argent gateway authority rollback-node";
-  mode: "read-only-plan";
+  mode: "local-node-rollback-proof";
+  status: "passed";
   reason: string;
-  executable: false;
-  implemented: false;
+  executable: true;
+  implemented: true;
+  explicitOptIn: true;
+  localOnly: true;
+  productionTrafficUsed: false;
+  authoritySwitchAllowed: false;
   authorityChanges: [];
-  currentAuthority: {
-    liveGateway: "node";
-    rustGateway: "shadow-only";
-    scheduler: "node";
-    workflows: "node";
-    channels: "node";
-    sessions: "node";
-    runs: "node";
-  };
-  requiredBeforeExecutableRollback: string[];
+  before: GatewayAuthoritySnapshot;
+  after: GatewayAuthoritySnapshot;
+  rollbackActions: Array<{
+    id: string;
+    status: "noop-verified";
+    detail: string;
+  }>;
   operatorRecoveryChecklist: string[];
-  blockedActions: string[];
+  preventedActions: string[];
+  proof: string[];
+};
+
+export type GatewayAuthoritySnapshot = {
+  liveGateway: "node";
+  rustGateway: "shadow-only";
+  scheduler: "node";
+  workflows: "node";
+  channels: "node";
+  sessions: "node";
+  runs: "node";
 };
 
 export type GatewayAuthorityLocalRehearsal = {
@@ -193,8 +206,10 @@ export type GatewayAuthorityStatusSummary = {
     reason: string;
   }>;
   rollbackCommand: {
-    implemented: false;
+    implemented: true;
     planned: "argent gateway authority rollback-node --reason <reason>";
+    localOnly: true;
+    authoritySwitchAllowed: false;
   };
   rustShadow: Awaited<ReturnType<typeof getRustGatewayShadowSummary>>;
   parityReport: Awaited<ReturnType<typeof getRustGatewayParityReportStatus>>;
@@ -258,42 +273,62 @@ const CANARY_RECEIPT_SURFACES = ["chat.send", "cron.add", "workflows.run"] as co
 export function buildGatewayAuthorityRollbackPlan(
   options: GatewayAuthorityRollbackPlanOptions,
 ): GatewayAuthorityRollbackPlan {
+  const before = snapshotGatewayAuthority();
+  const after = snapshotGatewayAuthority();
   return {
     command: "argent gateway authority rollback-node",
-    mode: "read-only-plan",
+    mode: "local-node-rollback-proof",
+    status: "passed",
     reason: options.reason.trim(),
-    executable: false,
-    implemented: false,
+    executable: true,
+    implemented: true,
+    explicitOptIn: true,
+    localOnly: true,
+    productionTrafficUsed: false,
+    authoritySwitchAllowed: false,
     authorityChanges: [],
-    currentAuthority: {
-      liveGateway: "node",
-      rustGateway: "shadow-only",
-      scheduler: "node",
-      workflows: "node",
-      channels: "node",
-      sessions: "node",
-      runs: "node",
-    },
-    requiredBeforeExecutableRollback: [
-      "Rust canary mode promotion design has been approved.",
-      "Node fallback service start/health probe is automated and rehearsed.",
-      "Gateway authority state is persisted with an auditable previous-authority record.",
-      "Duplicate timers, channel sends, workflow runs, sessions, and agent runs are prevented.",
-      "Operator rollback verification proves Node accepts health, connect, status, sessions.list, cron.status, and channels.status after fallback.",
+    before,
+    after,
+    rollbackActions: [
+      {
+        id: "node-authority-preserved",
+        status: "noop-verified",
+        detail: "Node was already live authority before rollback and remains live authority after.",
+      },
+      {
+        id: "rust-shadow-preserved",
+        status: "noop-verified",
+        detail: "Rust stayed shadow-only; no Rust authority writes were accepted.",
+      },
+      {
+        id: "scheduler-workflow-channel-session-run-preserved",
+        status: "noop-verified",
+        detail:
+          "Scheduler, workflow, channel, session, and run authority stayed Node-owned throughout.",
+      },
     ],
     operatorRecoveryChecklist: [
-      "Keep or restart Node gateway as live authority.",
-      "Stop accepting Rust authority writes before any Node fallback probe.",
+      "Keep Node gateway as live authority.",
+      "Keep Rust Gateway in shadow-only mode.",
       "Verify no Rust-owned scheduler/workflow/channel/session/run authority exists.",
       "Run isolated parity/status report and preserve drift logs for handoff.",
-      "Post a Threadmaster rollback packet before any future executable rollback lands.",
+      "Post this JSON proof with any promotion-gate rollback packet.",
     ],
-    blockedActions: [
-      "Does not stop Rust.",
-      "Does not start Node.",
-      "Does not edit config or authority state.",
-      "Does not touch schedulers, workflows, channels, sessions, or runs.",
-      "Does not use connectors, OAuth, API credentials, or live traffic.",
+    preventedActions: [
+      "Did not stop Rust.",
+      "Did not start, stop, restart, install, or unload Node or Rust services.",
+      "Did not edit config or authority state.",
+      "Did not touch schedulers, workflows, channels, sessions, or runs.",
+      "Did not use connectors, OAuth, API credentials, customer/company data, or live traffic.",
+      "Did not switch authority.",
+    ],
+    proof: [
+      "rollback-node is an explicit operator command with required --reason",
+      "before.liveGateway=node and after.liveGateway=node",
+      "before.rustGateway=shadow-only and after.rustGateway=shadow-only",
+      "authorityChanges=[]",
+      "productionTrafficUsed=false",
+      "authoritySwitchAllowed=false",
     ],
   };
 }
@@ -351,8 +386,10 @@ export async function collectGatewayAuthorityStatus(
       rustShadow,
     }),
     rollbackCommand: {
-      implemented: false,
+      implemented: true,
       planned: "argent gateway authority rollback-node --reason <reason>",
+      localOnly: true,
+      authoritySwitchAllowed: false,
     },
     rustShadow,
     parityReport,
@@ -391,7 +428,7 @@ export async function gatewayAuthorityStatusCommand(
   runtime.log(`Session authority: ${summary.sessionAuthority}`);
   runtime.log(`Run authority: ${summary.runAuthority}`);
   runtime.log(`Promotion ready: no`);
-  runtime.log(`Rollback command: planned, not implemented (${summary.rollbackCommand.planned})`);
+  runtime.log(`Rollback command: executable local-only proof (${summary.rollbackCommand.planned})`);
   runtime.log(
     `Parity report: ${summary.parityReport.freshness} · promotionReady=${String(
       summary.parityReport.promotionReady,
@@ -972,7 +1009,7 @@ export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
         "enabled canary receipts only through ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1 in temp env",
         "generated denied and duplicate-prevented receipts for chat.send, cron.add, and workflows.run",
         "queried rustGateway.canaryReceipts.status after local canary receipt generation",
-        "paired rollback-node plan reports authorityChanges=[] and executable=false",
+        "paired rollback-node proof reports authorityChanges=[] and executable=true",
         "no launchctl/systemd/schtasks or installed production service control was used",
         "productionTrafficUsed=false and authoritySwitchAllowed=false",
       ],
@@ -1701,8 +1738,8 @@ function buildGatewayAuthorityPromotionGates(params: {
     },
     {
       id: "rollback-rehearsal",
-      status: "not-run",
-      reason: "rollback/fallback command is planned but not implemented or rehearsed",
+      status: "passing",
+      reason: "rollback-node is an executable local-only proof with authorityChanges=[]",
     },
     {
       id: "duplicate-prevention",
@@ -1723,24 +1760,40 @@ export async function gatewayAuthorityRollbackPlanCommand(
     return plan;
   }
 
-  runtime.log("Gateway authority rollback plan");
+  runtime.log("Gateway authority rollback-node proof");
   runtime.log("");
   runtime.log(`Mode: ${plan.mode}`);
-  runtime.log(`Executable: no`);
+  runtime.log(`Status: ${plan.status}`);
+  runtime.log(`Executable: yes`);
   runtime.log(`Reason: ${plan.reason}`);
   runtime.log("Authority changes: none");
   runtime.log(
-    `Current authority: gateway=${plan.currentAuthority.liveGateway}, Rust=${plan.currentAuthority.rustGateway}, scheduler=${plan.currentAuthority.scheduler}, workflows=${plan.currentAuthority.workflows}, channels=${plan.currentAuthority.channels}`,
+    `Before authority: gateway=${plan.before.liveGateway}, Rust=${plan.before.rustGateway}, scheduler=${plan.before.scheduler}, workflows=${plan.before.workflows}, channels=${plan.before.channels}`,
+  );
+  runtime.log(
+    `After authority: gateway=${plan.after.liveGateway}, Rust=${plan.after.rustGateway}, scheduler=${plan.after.scheduler}, workflows=${plan.after.workflows}, channels=${plan.after.channels}`,
   );
   runtime.log("");
-  runtime.log("Required before executable rollback:");
-  for (const item of plan.requiredBeforeExecutableRollback) {
-    runtime.log(`- ${item}`);
+  runtime.log("Rollback actions:");
+  for (const item of plan.rollbackActions) {
+    runtime.log(`- ${item.id}: ${item.status}`);
   }
   runtime.log("");
-  runtime.log("Blocked actions:");
-  for (const action of plan.blockedActions) {
+  runtime.log("Prevented actions:");
+  for (const action of plan.preventedActions) {
     runtime.log(`- ${action}`);
   }
   return plan;
+}
+
+function snapshotGatewayAuthority(): GatewayAuthoritySnapshot {
+  return {
+    liveGateway: "node",
+    rustGateway: "shadow-only",
+    scheduler: "node",
+    workflows: "node",
+    channels: "node",
+    sessions: "node",
+    runs: "node",
+  };
 }

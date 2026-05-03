@@ -377,8 +377,8 @@ export function registerGatewayCli(program: Command) {
 
   authority
     .command("rollback-node")
-    .description("Print the read-only Node rollback/fallback plan without changing authority")
-    .requiredOption("--reason <reason>", "Operator-visible reason for rollback planning")
+    .description("Run a local-only Node rollback proof without changing authority")
+    .requiredOption("--reason <reason>", "Operator-visible reason for local rollback proof")
     .option("--json", "Output JSON", false)
     .action(async (opts) => {
       await runGatewayCommand(async () => {
@@ -386,7 +386,7 @@ export function registerGatewayCli(program: Command) {
           json: Boolean(opts.json),
           reason: String(opts.reason),
         });
-      }, "Gateway authority rollback plan failed");
+      }, "Gateway authority rollback-node proof failed");
     });
 
   gateway
