@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { CanvasHostServer } from "../canvas-host/server.js";
+import type { ExecutionWorkerRunner } from "../infra/execution-worker-runner-core.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { ControlUiRootState } from "./control-ui.js";
@@ -135,43 +136,7 @@ const gatewayRuntime = runtimeForLogger(log);
 const canvasRuntime = runtimeForLogger(logCanvas);
 const requireModule = createRequire(import.meta.url);
 
-type ExecutionWorkerRunnerLike = {
-  stop: () => void;
-  updateConfig: (cfg: import("../config/config.js").ArgentConfig) => void;
-  getStatus: (opts?: { agentId?: string }) => {
-    enabled: boolean;
-    globalPaused: boolean;
-    agentCount: number;
-    agents: unknown[];
-  };
-  dispatchNow: (opts?: { agentId?: string; reason?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    dispatched: number;
-    paused: boolean;
-    running: boolean;
-    reason?: string;
-  };
-  pause: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    paused: boolean;
-  };
-  resume: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    paused: boolean;
-  };
-  resetMetrics: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    resetCount: number;
-  };
-};
+type ExecutionWorkerRunnerLike = ExecutionWorkerRunner;
 
 type ExecApprovalForwarderLike = {
   handleRequested: (request: unknown) => Promise<void>;
@@ -267,7 +232,7 @@ function createAuthProfileStatusResolver(
   const agentDir = resolveArgentAgentDir();
   return () => {
     try {
-      const store = ensureAuthProfileStore(agentDir, { config: cfg });
+      const store = ensureAuthProfileStore(agentDir);
       const profileIds = listProfilesForProvider(store, "anthropic");
       const now = Date.now();
       return profileIds.map((profileId) => {

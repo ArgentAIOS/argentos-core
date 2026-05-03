@@ -38,11 +38,13 @@ export function resolveDefaultLocalTextModel(choice: SupportedLocalRuntimeChoice
 }
 
 function resolveExistingPrimaryModel(config: ArgentConfig): string {
-  const model = config.agents?.defaults?.model;
+  const model = config.agents?.defaults?.model as unknown;
   if (typeof model === "string") {
     return model.trim();
   }
-  return model?.primary?.trim() ?? "";
+  return typeof (model as { primary?: unknown } | null)?.primary === "string"
+    ? ((model as { primary: string }).primary.trim() ?? "")
+    : "";
 }
 
 function preserveFallbacks(config: ArgentConfig): { fallbacks?: string[] } {

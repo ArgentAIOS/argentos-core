@@ -126,6 +126,7 @@ export const EXTRACTION_PROMPTS: Record<MemoryType, string> = {
   event: EVENT_PROMPT,
   knowledge: KNOWLEDGE_PROMPT,
   behavior: BEHAVIOR_PROMPT,
+  episode: EVENT_PROMPT,
   skill: SKILL_PROMPT,
   tool: TOOL_PROMPT,
   self: SELF_PROMPT,

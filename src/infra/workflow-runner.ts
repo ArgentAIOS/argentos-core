@@ -88,12 +88,15 @@ export interface ActionExecutors {
     channel: string,
     to: string,
     text: string,
+    opts?: { mediaUrl?: string; mediaUrls?: string[] },
   ) => Promise<{
     messageId?: string;
     ok: boolean;
     channel?: string;
     to?: string;
     via?: "direct" | "gateway";
+    mediaUrl?: string | null;
+    mediaUrls?: string[];
   }>;
   /** Send an email */
   sendEmail?: (
@@ -1259,6 +1262,20 @@ function extractPayloadText(value: unknown): string {
   return normalizeWorkflowText(directText);
 }
 
+function looksLikePlaceholderEnvelope(value: unknown): boolean {
+  const record = asRecord(value);
+  const keys = Object.keys(record);
+  if (!keys.length) {
+    return false;
+  }
+  if ("name" in record && "body" in record) {
+    const name = record.name;
+    const body = record.body;
+    return typeof name === "string" && typeof body === "string";
+  }
+  return false;
+}
+
 function normalizeRenderableWorkflowContent(value: string, label: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "[object Object]") {
@@ -1275,6 +1292,11 @@ function normalizeRenderableWorkflowContent(value: string, label: string): strin
         return extracted;
       }
       const record = asRecord(parsed);
+      if (looksLikePlaceholderEnvelope(record)) {
+        throw new Error(
+          `${label} is not renderable text. Upstream step returned a placeholder object envelope.`,
+        );
+      }
       if (
         Object.hasOwn(record, "payloads") ||
         Object.hasOwn(record, "meta") ||
@@ -1338,6 +1360,22 @@ function toolResultToItemSet(
   const record = asRecord(result);
   const details = asRecord(record.details);
   const text = extractToolResultText(result);
+  const payloadContract =
+    meta.actionType === "podcast_plan" && isRecordValue(details.podcast_generate)
+      ? {
+          kind: "structured_payload",
+          produces: "podcast_generate",
+          path: "json.podcast_generate",
+          requiredBy: "podcast_generate",
+        }
+      : meta.actionType === "podcast_generate" && typeof details.path === "string"
+        ? {
+            kind: "media_artifact",
+            produces: "audio",
+            path: "json.path",
+            artifactId: details.path,
+          }
+        : undefined;
   return {
     items: [
       {
@@ -1345,6 +1383,7 @@ function toolResultToItemSet(
           actionType: meta.actionType,
           label: meta.label,
           ...(Object.keys(details).length ? details : record),
+          ...(payloadContract ? { payloadContract } : {}),
         },
         text,
         artifacts:
@@ -1391,18 +1430,101 @@ function resolveWorkflowTemplateObject(
   }
 }
 
+function getPodcastPlanSource(
+  actionType: Extract<NonNullable<ActionNode["config"]["actionType"]>, { type: "podcast_plan" }>,
+  context: PipelineContext,
+): Record<string, unknown> | undefined {
+  const explicitPayload = actionType.payload;
+  if (isRecordValue(explicitPayload)) {
+    return explicitPayload;
+  }
+  const templatePayload = resolveWorkflowTemplateObject(actionType.payloadTemplate, context);
+  if (templatePayload) {
+    return templatePayload;
+  }
+  const previousJson = resolveFieldPath(getLastOutput(context), "json");
+  return isRecordValue(previousJson) ? previousJson : undefined;
+}
+
+function readPodcastPlanSourceRecord(
+  source: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!source) {
+    return undefined;
+  }
+  const nested = source.podcast_generate;
+  return isRecordValue(nested) ? nested : source;
+}
+
+function readPodcastPlanDialogue(
+  source: Record<string, unknown> | undefined,
+): Array<Record<string, unknown>> | undefined {
+  const record = readPodcastPlanSourceRecord(source);
+  const dialogue = record?.dialogue;
+  return Array.isArray(dialogue) ? dialogue.filter(isRecordValue) : undefined;
+}
+
+function readPodcastPlanPersonas(
+  source: Record<string, unknown> | undefined,
+): Array<Record<string, unknown>> | undefined {
+  const record = readPodcastPlanSourceRecord(source);
+  const personas = record?.personas;
+  return Array.isArray(personas) ? personas.filter(isRecordValue) : undefined;
+}
+
+function readPodcastPlanScript(source: Record<string, unknown> | undefined): string | undefined {
+  const record = readPodcastPlanSourceRecord(source);
+  if (!record) {
+    return undefined;
+  }
+  const candidates = [
+    record.script,
+    record.podcastScript,
+    record.podcast_script,
+    record.transcript,
+    record.body,
+    record.content,
+    record.markdown,
+    record.text,
+    record.brief,
+    record.summary,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function assertPodcastGenerateAudioResult(result: unknown): void {
+  const record = asRecord(result);
+  const details = asRecord(record.details);
+  if (typeof details.path === "string" && details.path.trim()) {
+    return;
+  }
+  const error =
+    typeof details.error === "string" && details.error.trim()
+      ? details.error
+      : extractToolResultText(result) || "podcast_generate did not return an audio artifact path.";
+  throw new Error(`podcast_generate failed to produce audio: ${error}`);
+}
+
 async function sendWorkflowMessage(
   channel: string,
   to: string,
   text: string,
   context: PipelineContext,
   nodeId: string,
+  opts?: { mediaUrl?: string; mediaUrls?: string[] },
 ): Promise<{
   ok: boolean;
   channel: string;
   to: string;
   via: "direct" | "gateway";
   messageId?: string;
+  mediaUrl?: string | null;
+  mediaUrls?: string[];
 }> {
   const [{ loadConfig }, { sendMessage }] = await Promise.all([
     import("../config/config.js"),
@@ -1413,6 +1535,8 @@ async function sendWorkflowMessage(
     to,
     content: text,
     channel,
+    mediaUrl: opts?.mediaUrl,
+    mediaUrls: opts?.mediaUrls,
     cfg,
     idempotencyKey: `wfrun:${context.runId}:step:${nodeId}:msg`,
   });
@@ -1423,6 +1547,8 @@ async function sendWorkflowMessage(
     to: result.to,
     via: result.via,
     messageId: typeof delivery.messageId === "string" ? delivery.messageId : undefined,
+    mediaUrl: result.mediaUrl,
+    mediaUrls: result.mediaUrls,
   };
 }
 
@@ -1528,12 +1654,26 @@ async function executeAction(
 
   switch (actionName) {
     case "send_message": {
-      const { channelType, channelId, template } = actionType;
+      const { channelType, channelId, template, mediaTemplate, mediaTemplates } = actionType;
       const rendered = resolveTemplate(template, context);
+      const mediaUrls = [
+        ...(mediaTemplate ? [resolveTemplate(mediaTemplate, context)] : []),
+        ...(mediaTemplates ?? []).map((entry) => resolveTemplate(entry, context)),
+      ].filter((entry) => entry.trim().length > 0);
+      const mediaOpts = mediaUrls.length
+        ? { mediaUrl: mediaUrls[0], mediaUrls: mediaUrls.length > 1 ? mediaUrls : undefined }
+        : undefined;
       try {
         const result = actions?.sendMessage
-          ? await actions.sendMessage(channelType, channelId, rendered)
-          : await sendWorkflowMessage(channelType, channelId, rendered, context, node.id);
+          ? await actions.sendMessage(channelType, channelId, rendered, mediaOpts)
+          : await sendWorkflowMessage(
+              channelType,
+              channelId,
+              rendered,
+              context,
+              node.id,
+              mediaOpts,
+            );
         const resolvedChannel = result.channel ?? channelType;
         const resolvedTo = result.to ?? channelId;
         const resolvedVia = result.via ?? "direct";
@@ -1541,6 +1681,7 @@ async function executeAction(
           channel: resolvedChannel,
           to: resolvedTo,
           via: resolvedVia,
+          mediaCount: mediaUrls.length,
         });
         return {
           items: [
@@ -1551,8 +1692,17 @@ async function executeAction(
                 to: resolvedTo,
                 via: resolvedVia,
                 messageId: result.messageId,
+                mediaUrl: result.mediaUrl ?? mediaUrls[0],
+                mediaUrls: result.mediaUrls ?? (mediaUrls.length > 1 ? mediaUrls : undefined),
               },
               text: rendered,
+              artifacts: mediaUrls.length
+                ? mediaUrls.map((url) => ({
+                    type: "audio" as const,
+                    id: url,
+                    title: "Delivered media",
+                  }))
+                : undefined,
             },
           ],
         };
@@ -1913,20 +2063,27 @@ async function executeAction(
         music,
         publish,
       } = actionType;
+      const planSource = getPodcastPlanSource(actionType, context);
       const resolvedScript = script ? resolveTemplate(script, context) : undefined;
+      const defaultPreviousTextScript = !script || script.trim() === "{{previous.text}}";
+      const sourceDialogue = readPodcastPlanDialogue(planSource);
+      const sourceScript = readPodcastPlanScript(planSource);
+      const sourcePersonas = readPodcastPlanPersonas(planSource);
       const args: Record<string, unknown> = {
         title: resolveTemplate(title, context),
         personas:
           personas && personas.length > 0
             ? personas
-            : [
-                {
-                  id: "argent",
-                  aliases: ["ARGENT", "HOST"],
-                  voice_id:
-                    defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
-                },
-              ],
+            : sourcePersonas && sourcePersonas.length > 0
+              ? sourcePersonas
+              : [
+                  {
+                    id: "argent",
+                    aliases: ["ARGENT", "HOST"],
+                    voice_id:
+                      defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+                  },
+                ],
         default_voice_id:
           defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
         timezone: timezone || "America/Chicago",
@@ -1935,8 +2092,14 @@ async function executeAction(
       };
       if (dialogue && dialogue.length > 0) {
         args.dialogue = dialogue;
+      } else if (defaultPreviousTextScript && sourceDialogue && sourceDialogue.length > 0) {
+        args.dialogue = sourceDialogue;
+      } else if (!defaultPreviousTextScript && resolvedScript) {
+        args.script = resolvedScript;
+      } else if (sourceScript) {
+        args.script = sourceScript;
       } else {
-        args.script = resolvedScript || "{{previous.text}}";
+        args.script = resolvedScript || resolveTemplate("{{previous.text}}", context);
       }
       if (music) {
         args.music = music;
@@ -1968,6 +2131,7 @@ async function executeAction(
       }
       const tool = createPodcastGenerateTool();
       const result = await tool.execute(`workflow-${context.runId}-${node.id}`, args);
+      assertPodcastGenerateAudioResult(result);
       return toolResultToItemSet(result, {
         nodeId: node.id,
         label: node.label,

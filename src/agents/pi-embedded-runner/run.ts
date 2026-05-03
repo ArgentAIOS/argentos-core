@@ -751,7 +751,7 @@ export async function runEmbeddedPiAgent(
       if (lockedProfileId && !profileOrder.includes(lockedProfileId)) {
         throw new Error(`Auth profile "${lockedProfileId}" is not configured for ${provider}.`);
       }
-      const profileCandidates = lockedProfileId
+      const profileCandidates: Array<string | undefined> = lockedProfileId
         ? [lockedProfileId]
         : profileOrder.length > 0
           ? profileOrder
@@ -806,7 +806,7 @@ export async function runEmbeddedPiAgent(
 
       const resolveApiKeyForCandidate = async (candidate?: string) => {
         return getApiKeyForModel({
-          model,
+          model: model!,
           cfg: params.config,
           profileId: candidate,
           store: authStore,
@@ -820,21 +820,21 @@ export async function runEmbeddedPiAgent(
         if (!apiKeyInfo.apiKey) {
           if (apiKeyInfo.mode !== "aws-sdk") {
             throw new Error(
-              `No API key resolved for provider "${model.provider}" (auth mode: ${apiKeyInfo.mode}).`,
+              `No API key resolved for provider "${model!.provider}" (auth mode: ${apiKeyInfo.mode}).`,
             );
           }
           lastProfileId = resolvedProfileId;
           return;
         }
-        if (model.provider === "github-copilot") {
+        if (model!.provider === "github-copilot") {
           const { resolveCopilotApiToken } =
             await import("../../providers/github-copilot-token.js");
           const copilotToken = await resolveCopilotApiToken({
             githubToken: apiKeyInfo.apiKey,
           });
-          authStorage.setRuntimeApiKey(model.provider, copilotToken.token);
+          authStorage.setRuntimeApiKey(model!.provider, copilotToken.token);
         } else {
-          authStorage.setRuntimeApiKey(model.provider, apiKeyInfo.apiKey);
+          authStorage.setRuntimeApiKey(model!.provider, apiKeyInfo.apiKey);
         }
         lastProfileId = apiKeyInfo.profileId;
       };
@@ -1267,8 +1267,9 @@ export async function runEmbeddedPiAgent(
                 modelRegistry = fallbackResolved.modelRegistry;
                 // Keep the same resolved auth material when staying on the same provider family.
                 // Without this, fallback attempts can hit "No API key found" despite a valid profile.
-                if (apiKeyInfo?.apiKey) {
-                  authStorage.setRuntimeApiKey(model.provider, apiKeyInfo.apiKey);
+                const runtimeApiKey = (apiKeyInfo as unknown as { apiKey?: string } | null)?.apiKey;
+                if (runtimeApiKey) {
+                  authStorage.setRuntimeApiKey(model.provider, runtimeApiKey);
                 }
                 continue;
               }
@@ -1322,8 +1323,9 @@ export async function runEmbeddedPiAgent(
                 model = fallbackResolved.model;
                 authStorage = fallbackResolved.authStorage;
                 modelRegistry = fallbackResolved.modelRegistry;
-                if (apiKeyInfo?.apiKey) {
-                  authStorage.setRuntimeApiKey(model.provider, apiKeyInfo.apiKey);
+                const runtimeApiKey = (apiKeyInfo as unknown as { apiKey?: string } | null)?.apiKey;
+                if (runtimeApiKey) {
+                  authStorage.setRuntimeApiKey(model.provider, runtimeApiKey);
                 }
                 promptText = basePromptText;
                 toolClaimRetryCount = 0;
@@ -1702,7 +1704,7 @@ export async function runEmbeddedPiAgent(
                 if (!block || typeof block !== "object") {
                   continue;
                 }
-                const record = block as Record<string, unknown>;
+                const record = block as unknown as Record<string, unknown>;
                 const directText =
                   (typeof record.text === "string" ? record.text : "") ||
                   (typeof record.output_text === "string" ? record.output_text : "") ||

@@ -1,9 +1,10 @@
 import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
 import { logWarn } from "../logger.js";
+import type JSZip from "jszip";
 
 type CanvasModule = typeof import("@napi-rs/canvas");
 type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-type JsZipModule = typeof import("jszip");
+type JsZipModule = typeof JSZip;
 
 let canvasModulePromise: Promise<CanvasModule> | null = null;
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
@@ -36,12 +37,14 @@ async function loadPdfJsModule(): Promise<PdfJsModule> {
 
 async function loadJsZipModule(): Promise<JsZipModule> {
   if (!jsZipModulePromise) {
-    jsZipModulePromise = import("jszip").catch((err) => {
-      jsZipModulePromise = null;
-      throw new Error(
-        `Optional dependency jszip is required for Office extraction: ${String(err)}`,
-      );
-    });
+    jsZipModulePromise = import("jszip")
+      .then((mod) => mod.default)
+      .catch((err) => {
+        jsZipModulePromise = null;
+        throw new Error(
+          `Optional dependency jszip is required for Office extraction: ${String(err)}`,
+        );
+      });
   }
   return jsZipModulePromise;
 }
@@ -246,7 +249,7 @@ function extractDocxXmlText(xml: string): string {
 
 async function extractDocxContent(buffer: Buffer): Promise<string> {
   const jszip = await loadJsZipModule();
-  const zip = await jszip.default.loadAsync(buffer);
+  const zip = await jszip.loadAsync(buffer);
 
   const docParts = Object.keys(zip.files)
     .filter((name) => /^word\/(document|header\d+|footer\d+|footnotes|endnotes)\.xml$/i.test(name))
@@ -343,7 +346,7 @@ function extractWorksheetText(xml: string, sharedStrings: string[]): string {
 
 async function extractXlsxContent(buffer: Buffer): Promise<string> {
   const jszip = await loadJsZipModule();
-  const zip = await jszip.default.loadAsync(buffer);
+  const zip = await jszip.loadAsync(buffer);
 
   const sharedStringsFile = zip.file("xl/sharedStrings.xml");
   const sharedStrings = sharedStringsFile

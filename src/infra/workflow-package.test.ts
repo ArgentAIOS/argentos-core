@@ -38,13 +38,30 @@ const dispatchMock = vi.fn(async () => ({
 const dispatcher: AgentDispatcher = { dispatch: dispatchMock };
 
 describe("owner-operator workflow packages", () => {
-  it("covers 21 concrete owner-operator workflow scenarios plus five highlighted variations", () => {
-    expect(OWNER_OPERATOR_WORKFLOW_PACKAGES).toHaveLength(21);
-    expect(new Set(OWNER_OPERATOR_WORKFLOW_PACKAGES.map((pkg) => pkg.slug)).size).toBe(21);
+  it("covers 34 concrete owner-operator workflow scenarios plus five highlighted variations", () => {
+    expect(OWNER_OPERATOR_WORKFLOW_PACKAGES).toHaveLength(34);
+    expect(new Set(OWNER_OPERATOR_WORKFLOW_PACKAGES.map((pkg) => pkg.slug)).size).toBe(34);
     expect(OWNER_OPERATOR_WORKFLOW_VARIATION_SLUGS).toHaveLength(5);
     for (const slug of OWNER_OPERATOR_WORKFLOW_VARIATION_SLUGS) {
       expect(OWNER_OPERATOR_WORKFLOW_PACKAGES.some((pkg) => pkg.slug === slug)).toBe(true);
     }
+    expect(OWNER_OPERATOR_WORKFLOW_PACKAGES.map((pkg) => pkg.slug)).toEqual(
+      expect.arrayContaining([
+        "workload-status-digest",
+        "reminder-router",
+        "docpane-channel-brief",
+        "incident-alert-router",
+        "workflow-failure-postmortem",
+        "connector-health-monitor",
+        "github-release-watch",
+        "meeting-prep-brief",
+        "knowledge-capture",
+        "customer-feedback-synthesis",
+        "content-quality-audit",
+        "cashflow-watch",
+        "operator-daily-standup",
+      ]),
+    );
     expect(new Set(OWNER_OPERATOR_WORKFLOW_PACKAGES.map((pkg) => pkg.scenario.department))).toEqual(
       new Set(["marketing", "sales", "operations", "finance", "hr", "support"]),
     );
@@ -115,6 +132,7 @@ describe("owner-operator workflow packages", () => {
 
   it("executes every package in pinned fixture mode without external side effects", async () => {
     const results = [];
+    const unresolvedOutputs: Array<{ slug: string; nodeId: string; output: string }> = [];
     for (const workflowPackage of OWNER_OPERATOR_WORKFLOW_PACKAGES) {
       const imported = importWorkflowPackage(workflowPackage);
       expect(imported.readiness.okForPinnedTestRun, workflowPackage.slug).toBe(true);
@@ -130,10 +148,17 @@ describe("owner-operator workflow packages", () => {
         status: result.status,
         steps: result.steps.length,
       });
+      for (const step of result.steps) {
+        const output = JSON.stringify(step.output);
+        if (output.includes("{{")) {
+          unresolvedOutputs.push({ slug: workflowPackage.slug, nodeId: step.nodeId, output });
+        }
+      }
     }
 
     expect(results.every((result) => result.status === "completed")).toBe(true);
     expect(results.every((result) => result.steps >= 3)).toBe(true);
+    expect(unresolvedOutputs).toEqual([]);
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 

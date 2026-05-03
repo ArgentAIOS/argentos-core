@@ -15,6 +15,14 @@ function createNoopJobOrchestratorRunner() {
   return {
     stop: () => {},
     updateConfig: (_cfg?: ArgentConfig) => {},
+    enqueueEvent: async (_event: {
+      eventType: string;
+      source: "manual" | "webhook" | "system" | "internal_hook";
+      idempotencyKey?: string;
+      targetAgentId?: string;
+      payload?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
+    }) => ({ accepted: false, reason: "job orchestrator unavailable" }),
     getStatus: () => ({
       enabled: false,
       pollMs: 0,

@@ -59,7 +59,9 @@ const TELEGRAM_POLL_RESTART_POLICY = {
   factor: 1.8,
   jitter: 0.25,
 };
-const TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS = (TELEGRAM_LONG_POLL_TIMEOUT_SECONDS + 5) * 1000;
+const TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS =
+  (TELEGRAM_LONG_POLL_TIMEOUT_SECONDS * 2 + 5) * 1000;
+const TELEGRAM_GET_UPDATES_CONFLICT_MAX_CONSECUTIVE = 3;
 
 const waitForAbort = async (abortSignal?: AbortSignal) => {
   if (!abortSignal || abortSignal.aborted) {
@@ -194,6 +196,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
 
     // Use grammyjs/runner for concurrent update processing
     let restartAttempts = 0;
+    let consecutiveGetUpdatesConflicts = 0;
 
     try {
       while (!opts.abortSignal?.aborted) {
@@ -226,12 +229,22 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
             throw err;
           }
           restartAttempts += 1;
+          const errMsg = formatErrorMessage(err);
+          if (isConflict) {
+            consecutiveGetUpdatesConflicts += 1;
+            if (consecutiveGetUpdatesConflicts >= TELEGRAM_GET_UPDATES_CONFLICT_MAX_CONSECUTIVE) {
+              const message = `Telegram getUpdates conflict persisted for ${consecutiveGetUpdatesConflicts} consecutive attempts on account "${account.accountId}"; stopping polling until channel restart to avoid fighting another poller.`;
+              (opts.runtime?.error ?? console.error)(`${message} Last error: ${errMsg}.`);
+              throw new Error(message, { cause: err });
+            }
+          } else {
+            consecutiveGetUpdatesConflicts = 0;
+          }
           const retryDelayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
           const delayMs = isConflict
             ? Math.max(retryDelayMs, TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS)
             : retryDelayMs;
           const reason = isConflict ? "getUpdates conflict" : "network error";
-          const errMsg = formatErrorMessage(err);
           (opts.runtime?.error ?? console.error)(
             `Telegram ${reason}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}.`,
           );

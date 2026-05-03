@@ -112,7 +112,7 @@ function normalizeAgentId(value: unknown): string | null {
 }
 
 async function ensureAgentRow(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   id: string,
   role: "elder" | "worker" = "worker",
 ): Promise<void> {
@@ -647,7 +647,11 @@ async function verify(
   dashDb: InstanceType<typeof Database> | null,
   db: ReturnType<typeof drizzle>,
 ) {
-  const tables = [
+  const tables: Array<{
+    name: string;
+    sqliteDb: InstanceType<typeof Database>;
+    pgTable: unknown;
+  }> = [
     { name: "resources", sqliteDb: memDb, pgTable: schema.resources },
     { name: "memory_items", sqliteDb: memDb, pgTable: schema.memoryItems },
     { name: "memory_categories", sqliteDb: memDb, pgTable: schema.memoryCategories },

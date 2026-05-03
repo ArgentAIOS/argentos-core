@@ -79,6 +79,23 @@ import {
 import { splitSdkTools } from "./tool-split.js";
 import { describeUnknownError, mapThinkingLevel, resolveExecToolDefaults } from "./utils.js";
 
+function replaceSessionMessages(
+  session: Awaited<ReturnType<typeof createAgentSession>>["session"],
+  messages: unknown[],
+): void {
+  const agent = session.agent as unknown as {
+    replaceMessages?: (nextMessages: unknown[]) => void;
+    state?: { messages: unknown[] };
+  };
+  if (typeof agent.replaceMessages === "function") {
+    agent.replaceMessages(messages);
+    return;
+  }
+  if (agent.state) {
+    agent.state.messages = messages;
+  }
+}
+
 export type CompactEmbeddedPiSessionParams = {
   sessionId: string;
   sessionKey?: string;
@@ -432,12 +449,17 @@ export async function compactEmbeddedPiSessionDirect(
           model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: builtInTools,
-          customTools,
+          customTools: customTools as unknown as NonNullable<
+            Parameters<typeof createAgentSession>[0]
+          >["customTools"],
           sessionManager,
           settingsManager,
         }));
       }
-      applySystemPromptOverrideToSession(session, systemPromptOverride());
+      applySystemPromptOverrideToSession(
+        session as unknown as Parameters<typeof applySystemPromptOverrideToSession>[0],
+        systemPromptOverride(),
+      );
 
       try {
         const prior = await sanitizeSessionHistory({
@@ -460,7 +482,7 @@ export async function compactEmbeddedPiSessionDirect(
           getDmHistoryLimitFromSessionKey(params.sessionKey, params.config),
         );
         if (limited.length > 0) {
-          session.agent.replaceMessages(limited);
+          replaceSessionMessages(session, limited);
         }
         // Estimate tokens BEFORE compaction so we have a local fallback
         // in case the SDK returns 0 (e.g. no successful API calls tracked tokens).
@@ -472,7 +494,12 @@ export async function compactEmbeddedPiSessionDirect(
         } catch {
           // Estimation failed — leave at 0
         }
-        const result = await session.compact(params.customInstructions);
+        const result = (await session.compact(params.customInstructions)) as {
+          summary: string;
+          firstKeptEntryId?: string;
+          tokensBefore: number;
+          details?: unknown;
+        };
         // Use SDK value if it's non-zero, otherwise fall back to our local estimate
         const tokensBefore =
           result.tokensBefore > 0 ? result.tokensBefore : estimatedTokensBefore || undefined;
@@ -510,8 +537,8 @@ export async function compactEmbeddedPiSessionDirect(
           compacted: true,
           result: {
             summary: result.summary,
-            firstKeptEntryId: result.firstKeptEntryId,
-            tokensBefore,
+            firstKeptEntryId: result.firstKeptEntryId ?? "",
+            tokensBefore: tokensBefore ?? 0,
             tokensAfter,
             details: result.details,
           },

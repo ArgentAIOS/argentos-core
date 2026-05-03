@@ -76,6 +76,10 @@ export type ArgentConfig = {
       avatar?: string;
     };
   };
+  dashboard?: {
+    /** Local dashboard API port used by dashboard-adjacent runners. */
+    apiPort?: number;
+  };
   distribution?: {
     /** Product surface profile for packaging/runtime exposure. */
     surfaceProfile?: "full" | "public-core";
@@ -106,6 +110,12 @@ export type ArgentConfig = {
   commands?: CommandsConfig;
   approvals?: ApprovalsConfig;
   session?: SessionConfig;
+  /** Legacy session store path retained for older runtime helpers. */
+  sessionStore?: string;
+  /** Legacy storage profile retained for older health/runtime helpers. */
+  storage?: unknown;
+  /** Config/runtime version label retained for gateway metadata. */
+  version?: string;
   web?: WebConfig;
   channels?: ChannelsConfig;
   cron?: CronConfig;

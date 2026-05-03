@@ -24,6 +24,8 @@ The Workflows threadmaster is also acting as the master threadmaster for core co
 
 Suggested poll cadence for active autonomous lanes: every few minutes while editing shared files, and always immediately before rebase, commit, push, or handoff.
 
+Checkpoint cadence: prefer small, verified checkpoints to `origin/dev` over large multi-lane batch merges. When a slice is clean, rebased on latest `origin/dev`, verified, truth-labeled, and safe for `argent update`, move it through custody and land it with the next dev version instead of waiting for unrelated lanes. READY packets should not sit while another lane is stale; keep clean packets moving and open rescue/escalation tasks for the stale lane. Every checkpoint must say what is enabled, what remains dry-run/shadow/deferred, and what is explicitly not live.
+
 For targeted lane-to-lane messages, prefer the threadmaster bus:
 
 ```sh
@@ -48,6 +50,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | OpenClaw 4.24 realtime/browser/marketplace comparison | Codex OpenClaw threadmaster      | Upstream 4.24 feature comparison and additive browser/realtime voice/Google Meet marketplace-plugin implementation slices | Active on `codex/openclaw-talk-realtime-session` from current `origin/dev` after wave 1 merged at `7a4ce141`; current slice owns public `talk.realtime.session` plus gateway relay controls, `talk.realtime` config/types, protocol schema/method registration, and changelog notes | Owns OpenClaw-approved Talk/realtime files only; no AOS connector files, no AppForge/Workflows internals, no schema migrations, no Google Meet live lifecycle/audio, no phone telephony realtime |
 | Agent Persona/Profile                                 | Agent Persona threadmaster       | Agent Profile tab, per-agent TTS/profile config, profile APIs, redacted agent-local auth/account summaries                | New lane `agent-persona`; canonical plan `.omx/plans/agent-profile-first-class-plan-2026-04-28.md`; onboarding prompt `ops/AGENT_PERSONA_ONBOARDING_PROMPT.md`; first task assigned through the bus.                                                                                | Must not touch Workflows/AppForge/AOS/OpenClaw Voice/Business surfaces without a specific Master bus task; secrets must stay redacted and out of persona markdown files                          |
 | OpenAI Codex device OAuth                             | Codex auth slice                 | OpenAI Codex OAuth reconnect/login, dashboard auth start/status UX, auth profile refresh/import                           | Clean handoff branch `codex/openai-codex-device-flow`; see `ops/HANDOFF_OPENAI_CODEX_DEVICE_FLOW.md`                                                                                                                                                                                | Coordinates with dashboard/settings and auth-profile owners before changing provider defaults                                                                                                    |
+| Business overlay                                      | Classified Business threadmaster | Thin private Business overlay repo split, descriptor/register contract, license-key onboarding, entitlement/status policy  | Reactivated through bus task `task-20260502105457-naln9e`; source `/Users/sem/code/ArgentOS-Business`, legacy/archive source `/Users/sem/code/ArgentOS-Legacy`; Core C1-C5 remains the blocker for real Core API imports                                                           | Must not duplicate Core runtime, expose private license/package details, import Business code from Core startup/update paths, or push/rename/delete repos without operator approval                |
 
 ## Overlap Zones
 
@@ -69,9 +72,11 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 ## Current Cross-Lane Contracts
 
 - Dev version contract: every successful `origin/dev` push must include a unique root `package.json` version using `YYYY.M.D-dev.N` in America/Chicago time. Start each new date at `dev.0`, increment `N` for every later push that day, and recompute after fetch/rebase if another lane landed first. Display/tag form may use `vYYYY.M.D-dev.N`; `package.json` stores no `v`.
+- Dev checkpoint cadence contract: land small, verified, safe checkpoints to `origin/dev` as soon as they are custody-clean. Do not batch unrelated lane work into giant merges. Do not block clean READY packets behind stale lanes. Use rescue tasks for stale/blocking lanes, and preserve explicit truth labels for dry-run, shadow-only, deferred, no-live-side-effect, and not-authorized surfaces.
 - AppForge -> Workflows: canonical local events through `workflows.emitAppForgeEvent`.
 - Workflows -> AppForge: metadata/capability discovery only. Do not couple to AppForge UI internals.
 - AOS connectors -> Workflows/AppForge: connector manifests, permissions, and capabilities are the source of truth.
+- Business overlay -> Core: Business remains a thin descriptor/register overlay until Core C1-C5 lands. Core must expose type/status/gateway-stub contracts without importing private Business code during public startup/update paths.
 - Workflow output channels: advertised choices should reflect real configured operator channels or explicit manual endpoints, not hard-coded wishful options.
 - Workflow import/export: canonical Argent workflow packages are executable definition first, canvas layout second, with credentials/dependencies and pinned test fixtures declared explicitly.
 - External writes/outbound delivery: default posture remains operator approval unless explicitly trusted.

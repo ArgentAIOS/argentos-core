@@ -233,7 +233,7 @@ export function registerMcpTools(
       {},
       async () => {
         const config = loadConfig();
-        const agentName = config.agents?.defaults?.name ?? "Argent";
+        const agentName = config.ui?.assistant?.name ?? "Argent";
         const model = config.agents?.defaults?.model?.primary ?? "unknown";
 
         // Probe local LLM (LM Studio default port)
@@ -470,9 +470,13 @@ export function registerMcpTools(
           .map((j) => {
             const sched = j.schedule;
             const schedStr =
-              (sched?.cron ?? sched?.intervalMinutes)
-                ? `every ${sched.intervalMinutes}m`
-                : (sched?.at ?? "unknown");
+              sched?.kind === "cron"
+                ? sched.expr
+                : sched?.kind === "every"
+                  ? `every ${Math.round(sched.everyMs / 60000)}m`
+                  : sched?.kind === "at"
+                    ? sched.at
+                    : "unknown";
             const agent = j.agentId ?? "default";
             const enabled = j.enabled !== false ? "on" : "off";
             return `- [${enabled}] ${j.name} (id=${j.id}, schedule=${schedStr}, agent=${agent})\n    ${j.description ?? ""}`;

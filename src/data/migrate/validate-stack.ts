@@ -17,7 +17,7 @@
  */
 
 import Database from "better-sqlite3";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import postgres from "postgres";

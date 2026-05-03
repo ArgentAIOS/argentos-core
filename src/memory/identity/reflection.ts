@@ -101,7 +101,7 @@ export async function runReflection(params: ReflectionParams): Promise<Reflectio
     lessonsExtracted: parsed.lessons,
     entitiesInvolved: parsed.entityInsights.map((e) => e.name),
     selfInsights: parsed.selfInsights,
-    mood: parsed.mood,
+    mood: parsed.mood ?? undefined,
   });
 
   return reflection;

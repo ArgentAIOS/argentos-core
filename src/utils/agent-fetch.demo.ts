@@ -26,7 +26,7 @@ async function demo() {
   console.log("Has llms-full.txt:", discovery.hasLlmsFullTxt);
   console.log("Has agent-card.json:", discovery.hasAgentCard);
   console.log("Supports native markdown:", discovery.supportsMarkdown);
-  if (discovery.manifest) {
+  if ("manifest" in discovery && discovery.manifest) {
     console.log("Site title:", discovery.manifest.title);
     console.log("Site description:", discovery.manifest.description);
   }

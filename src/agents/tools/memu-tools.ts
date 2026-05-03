@@ -65,7 +65,7 @@ interface RecallIntentSignal {
     | "synthesis"
     | "general";
   preferredMode?: RecallMode;
-  reason?: "query-intent";
+  reason?: "query-intent" | "latent-project-match";
   slotKey?: string;
   slotTerms: string[];
   siblingPenaltyTerms: string[];
@@ -756,7 +756,7 @@ function buildDogNameIntentSignal(): RecallIntentSignal {
 
 function buildDecisionProjectIntentSignal(params: {
   query: string;
-  reason: string;
+  reason: NonNullable<RecallIntentSignal["reason"]>;
   websiteProject?: boolean;
   recencyBias?: boolean;
   accomplishmentBias?: boolean;
@@ -2241,7 +2241,7 @@ function extractRecallAnswerCandidate(params: {
     }
   }
 
-  return makeCandidate(top, top.summary, "summary-best-hit", 0.62);
+  return makeCandidate(summaries[0]!, summaries[0]!.summary, "summary-best-hit", 0.62);
 }
 
 function applyIntentAwareRecallRerank(
@@ -3210,7 +3210,6 @@ export function createMemoryRecallTool(options: {
               summary: decompositionSummary,
             },
             recallTelemetry: {
-              decompositionUsed: true,
               subqueries: facts.map((fact) => ({
                 key: fact.key,
                 query: fact.query,
@@ -3249,7 +3248,6 @@ export function createMemoryRecallTool(options: {
             includeCoverage,
             resultCount: mergedResults.size,
             recallTelemetry: {
-              decompositionUsed: true,
               subqueries: facts.map((fact) => ({
                 key: fact.key,
                 query: fact.query,
@@ -3292,7 +3290,7 @@ export function createMemoryRecallTool(options: {
       const normalizedCollectionTagFilters = new Set(
         collectionFilters
           .map((value) => normalizeCollectionValue(value))
-          .filter(Boolean)
+          .filter((value): value is string => Boolean(value))
           .map((value) => toCollectionTag(value)),
       );
       const minSignificance = readStringParam(params, "min_significance") as
@@ -3453,7 +3451,7 @@ export function createMemoryRecallTool(options: {
           if (latentProjectIntent) {
             intentSignal = latentProjectIntent;
             queryClass = intentSignal.queryClass;
-            if (mode === "general" || mode === "identity") {
+            if (intentSignal.preferredMode && (mode === "general" || mode === "identity")) {
               mode = intentSignal.preferredMode;
               modeConfig = RECALL_MODES[mode] ?? RECALL_MODES.general;
               modeEscalationReason = latentProjectIntent.reason;
@@ -3907,7 +3905,10 @@ export function createMemoryRecallTool(options: {
 
         applyIntentAwareRecallRerank(results, intentSignal);
         results.sort((a, b) => b.score - a.score);
-        results = reorderPropertySlotResults(results, intentSignal);
+        results = reorderPropertySlotResults(results, intentSignal).map((result) => ({
+          ...result,
+          categories: "categories" in result && Array.isArray(result.categories) ? result.categories : [],
+        }));
         results = prunePropertyNoiseResults(results, intentSignal);
         results = pruneDecisionProjectNoiseResults(results, intentSignal);
         results = pruneTimelineNoiseResults(results, intentSignal);

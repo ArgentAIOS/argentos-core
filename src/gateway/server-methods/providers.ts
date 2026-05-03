@@ -2,6 +2,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { loadAuthProfileStore } from "../../agents/auth-profiles/store.js";
 import { loadProviderRegistry } from "../../agents/provider-registry.js";
 import { loadConfig } from "../../config/config.js";
+import { ErrorCodes } from "../protocol/index.js";
 
 export const providersHandlers: GatewayRequestHandlers = {
   /**
@@ -102,7 +103,7 @@ export const providersHandlers: GatewayRequestHandlers = {
       respond(true, { registry }, undefined);
     } catch (err) {
       respond(false, undefined, {
-        code: -32603,
+        code: ErrorCodes.INTERNAL_ERROR,
         message: err instanceof Error ? err.message : "failed to load registry",
       });
     }

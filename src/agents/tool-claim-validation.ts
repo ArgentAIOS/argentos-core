@@ -921,7 +921,7 @@ function extractCommitments(params: {
         const evidenceKinds =
           pattern.satisfactionMode === "questions"
             ? params.questionsAsked.length > 0
-              ? ["questions"]
+              ? (["questions"] satisfies CommitmentEvidenceKind[])
               : []
             : pattern.expectedEvidenceKinds.filter((expectedKind) =>
                 availableEvidenceKinds.includes(expectedKind),
@@ -932,7 +932,7 @@ function extractCommitments(params: {
             : collectEvidenceToolsForKinds(params.executedCanonical, pattern.expectedEvidenceKinds);
         const hasReplyEvidence =
           pattern.satisfactionMode === "tool_and_reply_evidence"
-            ? taskResultReplyEvidence.length > 0
+            ? taskResultReplyEvidence !== undefined
             : false;
         const satisfied =
           pattern.satisfactionMode === "questions"

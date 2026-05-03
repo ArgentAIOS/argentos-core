@@ -359,7 +359,7 @@ class ArgentAgentSessionImpl implements AgentSession {
                 args: toolCall.arguments,
               } as unknown as AgentSessionEvent);
 
-              let result: { content: unknown[]; details: unknown };
+              let result: { content: unknown[]; details?: unknown };
               let isError = false;
 
               try {

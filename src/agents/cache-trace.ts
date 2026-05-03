@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentMessage, StreamFn } from "../agent-core/core.js";
 import type { ArgentConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { resolveUserPath } from "../utils.js";
@@ -31,7 +30,7 @@ export type CacheTraceEvent = {
   system?: unknown;
   options?: Record<string, unknown>;
   model?: Record<string, unknown>;
-  messages?: AgentMessage[];
+  messages?: unknown[];
   messageCount?: number;
   messageRoles?: Array<string | undefined>;
   messageFingerprints?: string[];
@@ -45,7 +44,7 @@ export type CacheTrace = {
   enabled: true;
   filePath: string;
   recordStage: (stage: CacheTraceStage, payload?: Partial<CacheTraceEvent>) => void;
-  wrapStreamFn: (streamFn: StreamFn) => StreamFn;
+  wrapStreamFn: <T extends (...args: any[]) => any>(streamFn: T) => T;
 };
 
 type CacheTraceInit = {
@@ -164,7 +163,7 @@ function digest(value: unknown): string {
   return crypto.createHash("sha256").update(serialized).digest("hex");
 }
 
-function summarizeMessages(messages: AgentMessage[]): {
+function summarizeMessages(messages: unknown[]): {
   messageCount: number;
   messageRoles: Array<string | undefined>;
   messageFingerprints: string[];
@@ -269,20 +268,21 @@ export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
   };
 
   const wrapStreamFn: CacheTrace["wrapStreamFn"] = (streamFn) => {
-    const wrapped: StreamFn = (model, context, options) => {
+    const wrapped = (...args: Parameters<typeof streamFn>): ReturnType<typeof streamFn> => {
+      const [model, context, options] = args;
       recordStage("stream:context", {
         model: {
-          id: model?.id,
-          provider: model?.provider,
-          api: model?.api,
+          id: (model as { id?: unknown } | undefined)?.id,
+          provider: (model as { provider?: unknown } | undefined)?.provider,
+          api: (model as { api?: unknown } | undefined)?.api,
         },
         system: (context as { system?: unknown }).system,
-        messages: (context as { messages?: AgentMessage[] }).messages ?? [],
+        messages: (context as { messages?: unknown[] }).messages ?? [],
         options: (options ?? {}) as Record<string, unknown>,
       });
-      return streamFn(model, context, options);
+      return streamFn(...args);
     };
-    return wrapped;
+    return wrapped as typeof streamFn;
   };
 
   return {

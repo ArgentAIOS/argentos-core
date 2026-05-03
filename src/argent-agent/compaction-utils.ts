@@ -238,6 +238,7 @@ export async function generateSummary(
     {
       role: "user",
       content: [{ type: "text", text: promptText }],
+      timestamp: Date.now(),
     },
   ];
 

@@ -11,7 +11,10 @@ import path from "node:path";
 import type { DatabasePaths, DataAPIConfig } from "./types.js";
 
 type BetterSqlite3Database = import("better-sqlite3").Database;
-type BetterSqlite3Constructor = typeof import("better-sqlite3").default;
+type BetterSqlite3Constructor = new (
+  filename: string,
+  options?: import("better-sqlite3").Options,
+) => BetterSqlite3Database;
 
 let cachedSqliteConstructor: BetterSqlite3Constructor | null = null;
 
@@ -54,11 +57,12 @@ export class ConnectionManager {
 
     // Open primary connection (dashboard DB)
     const BetterSqlite3 = loadBetterSqlite3();
-    this.primary = new BetterSqlite3(this.config.paths.dashboard, {
+    const primary = new BetterSqlite3(this.config.paths.dashboard, {
       readonly: this.config.readOnly,
     });
-    this.primary.pragma("journal_mode = WAL");
-    this.primary.pragma("foreign_keys = ON");
+    primary.pragma("journal_mode = WAL");
+    primary.pragma("foreign_keys = ON");
+    this.primary = primary;
 
     // Attach other databases
     await this.attachDatabase("memo", this.config.paths.memo);

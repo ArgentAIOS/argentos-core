@@ -453,7 +453,7 @@ async function resolveMarketplacePackage(
     if (!match) {
       return null;
     }
-    return { pkg: match as MarketplacePackageRecord, source: "search" };
+    return { pkg: match as unknown as MarketplacePackageRecord, source: "search" };
   };
 
   if (isUuidLike(normalizedRef)) {

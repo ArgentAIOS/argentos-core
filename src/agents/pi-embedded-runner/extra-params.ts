@@ -1,5 +1,5 @@
-import type { SimpleStreamOptions } from "../../agent-core/ai.js";
 import type { StreamFn } from "../../agent-core/core.js";
+import type { SimpleStreamOptions } from "../../argent-ai/types.js";
 import type { ArgentConfig } from "../../config/config.js";
 import { streamSimple } from "../../agent-core/ai.js";
 import { resolveAgentCoreRuntimeMode } from "../../agent-core/runtime-policy.js";
@@ -213,7 +213,7 @@ function createStreamFnWithExtraParams(
     underlying(model, context, {
       ...(streamParams as Partial<SimpleStreamOptions>),
       ...options,
-    });
+    } as SimpleStreamOptions);
 
   return wrappedStreamFn;
 }

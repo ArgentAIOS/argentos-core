@@ -8,6 +8,7 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "../../agents/pi-embedded.js";
 import { getChatCommands } from "../../auto-reply/commands-registry.data.js";
+import { normalizeThinkLevel } from "../../auto-reply/thinking.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -69,7 +70,7 @@ export const commandsHandlers: GatewayRequestHandlers = {
     }
 
     const agentId = resolveDefaultAgentId(cfg);
-    const workspaceDir = resolveAgentWorkspaceDir({ cfg, agentId });
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
 
     // Resolve model/provider from session or config defaults
     const resolved = resolveSessionModelRef(cfg, entry, agentId);
@@ -90,7 +91,7 @@ export const commandsHandlers: GatewayRequestHandlers = {
       skillsSnapshot: entry.skillsSnapshot,
       provider,
       model,
-      thinkLevel: entry.thinkingLevel,
+      thinkLevel: normalizeThinkLevel(entry.thinkingLevel),
       bashElevated: { enabled: false, allowed: false, defaultLevel: "off" },
       customInstructions,
       senderIsOwner: true,

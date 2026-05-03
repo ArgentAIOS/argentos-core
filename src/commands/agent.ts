@@ -17,6 +17,7 @@ import { runCliAgent } from "../agents/cli-runner.js";
 import { getCliSessionId } from "../agents/cli-session.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import {
+  ensureAuthProfileStore,
   getCustomProviderApiKey,
   isModelProviderAvailableForAutomaticRouting,
 } from "../agents/model-auth.js";

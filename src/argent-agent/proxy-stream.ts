@@ -138,7 +138,7 @@ function processProxyEvent(
     case "text_end": {
       const content = partial.content[proxyEvent.contentIndex];
       if (content?.type === "text") {
-        (content as Record<string, unknown>).textSignature = proxyEvent.contentSignature;
+        (content as unknown as Record<string, unknown>).textSignature = proxyEvent.contentSignature;
         return {
           type: "text_end",
           contentIndex: proxyEvent.contentIndex,
@@ -170,7 +170,8 @@ function processProxyEvent(
     case "thinking_end": {
       const content = partial.content[proxyEvent.contentIndex];
       if (content?.type === "thinking") {
-        (content as Record<string, unknown>).thinkingSignature = proxyEvent.contentSignature;
+        (content as unknown as Record<string, unknown>).thinkingSignature =
+          proxyEvent.contentSignature;
         return {
           type: "thinking_end",
           contentIndex: proxyEvent.contentIndex,
@@ -193,7 +194,7 @@ function processProxyEvent(
     case "toolcall_delta": {
       const content = partial.content[proxyEvent.contentIndex];
       if (content?.type === "toolCall") {
-        const ext = content as Record<string, unknown>;
+        const ext = content as unknown as Record<string, unknown>;
         const partialJson = ((ext.partialJson as string) || "") + proxyEvent.delta;
         ext.partialJson = partialJson;
         content.arguments = parseStreamingJson(partialJson) || {};
@@ -212,7 +213,7 @@ function processProxyEvent(
     case "toolcall_end": {
       const content = partial.content[proxyEvent.contentIndex];
       if (content?.type === "toolCall") {
-        const ext = content as Record<string, unknown>;
+        const ext = content as unknown as Record<string, unknown>;
         delete ext.partialJson;
         return {
           type: "toolcall_end",

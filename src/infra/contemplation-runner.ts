@@ -1163,14 +1163,14 @@ async function runContemplationOnce(
           session_id: contemplationSessionKey,
           version: "0.1",
           duration_ms: durationMs,
-          fallback: true,
         };
+        const fallbackEpisode = episode;
 
         // ── DoD Evidence: fallback parse_error artifact captured ──
         log.info("contemplation: fallback episode artifact captured", {
           agentId: resolvedAgentId,
-          episodeId: episode.id,
-          type: episode.type,
+          episodeId: fallbackEpisode.id,
+          type: fallbackEpisode.type,
           isFallback: true,
         });
 
@@ -1178,7 +1178,7 @@ async function runContemplationOnce(
           const memuStore = await getMemoryAdapter();
           await memuStore.createItem({
             memoryType: "episode",
-            summary: `[fallback] ${episode.outcome.summary}`,
+            summary: `[fallback] ${fallbackEpisode.outcome.summary}`,
             happenedAt: now,
             emotionalValence: 0,
             emotionalArousal: 0.1,
@@ -1188,9 +1188,9 @@ async function runContemplationOnce(
               episodeType: "contemplation",
               episode_parse_source: "fallback",
               fallback: true,
-              trigger: episode.trigger,
-              observations: episode.observations,
-              outcome: episode.outcome,
+              trigger: fallbackEpisode.trigger,
+              observations: fallbackEpisode.observations,
+              outcome: fallbackEpisode.outcome,
             },
           });
           log.info("contemplation: fallback episode stored in MemU", {

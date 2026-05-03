@@ -42,15 +42,15 @@ import { createAssistantMessageEventStream } from "../argent-ai/utils/event-stre
  */
 export function piModelToArgentConfig(model: Model, options?: SimpleStreamOptions): ModelConfig {
   const thinkingLevel = resolveThinkingLevel(options);
-  const thinkingEnabled = model.reasoning && thinkingLevel !== "off";
+  const thinkingEnabled = Boolean(model.reasoning && thinkingLevel !== "off");
   return {
     id: model.id,
     maxTokens: options?.maxTokens ?? model.maxTokens,
     temperature: options?.temperature,
     thinking: thinkingEnabled,
     thinkingBudget:
-      thinkingEnabled && thinkingLevel !== "off"
-        ? options?.thinkingBudgets?.[thinkingLevel]
+      thinkingEnabled
+        ? (options?.thinkingBudgets as Record<string, number> | undefined)?.[thinkingLevel]
         : undefined,
   };
 }
@@ -62,18 +62,18 @@ function resolveThinkingLevel(
     return "medium";
   }
   if (options.reasoning) {
-    return options.reasoning;
+    return options.reasoning as "minimal" | "low" | "medium" | "high" | "xhigh";
   }
   const thinkingLevel = (options as { thinkingLevel?: string }).thinkingLevel;
   if (
-    thinkingLevel === "off" ||
+    (thinkingLevel as string | undefined) === "off" ||
     thinkingLevel === "minimal" ||
     thinkingLevel === "low" ||
     thinkingLevel === "medium" ||
     thinkingLevel === "high" ||
     thinkingLevel === "xhigh"
   ) {
-    return thinkingLevel;
+    return thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   }
   return "medium";
 }

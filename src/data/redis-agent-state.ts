@@ -12,7 +12,7 @@
  *   - stream:family            — STREAM for inter-agent messaging
  */
 
-import type Redis from "ioredis";
+import type { Redis as RedisClient } from "ioredis";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   setAgentState,
@@ -23,14 +23,14 @@ import {
 
 const log = createSubsystemLogger("data/redis-state");
 
-let _redis: Redis | null = null;
+let _redis: RedisClient | null = null;
 let _agentId = "argent";
 
 /**
  * Initialize the Redis agent state bridge.
  * Call once at gateway startup after Redis is connected.
  */
-export function initRedisAgentState(redis: Redis, agentId: string): void {
+export function initRedisAgentState(redis: RedisClient, agentId: string): void {
   _redis = redis;
   _agentId = agentId;
   log.info("redis agent state bridge initialized", { agentId });

@@ -163,10 +163,9 @@ async function discoverOpenAICompatModels(
       }
       return [];
     }
-    return models
-      .map((model) => {
+    return models.flatMap((model) => {
         const modelId = typeof model?.id === "string" ? model.id.trim() : "";
-        if (!modelId) return null;
+        if (!modelId) return [];
         return {
           id: modelId,
           name: modelId,
@@ -176,8 +175,7 @@ async function discoverOpenAICompatModels(
           contextWindow: 128000,
           maxTokens: 8192,
         } satisfies ModelDefinitionConfig;
-      })
-      .filter((entry): entry is ModelDefinitionConfig => entry !== null);
+      });
   } catch (error) {
     if (opts.warnOnFailure) {
       console.warn(`Failed to discover ${opts.providerLabel} models: ${String(error)}`);

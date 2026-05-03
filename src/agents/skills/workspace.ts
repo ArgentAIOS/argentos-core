@@ -226,7 +226,7 @@ function tokenizeSkillMatchInput(input: string): string[] {
     .filter((part) => part.length >= 3 && !SKILL_MATCH_STOPWORDS.has(part));
 }
 
-function toSkillSourceLabel(entry: { skill: { source?: string } }): string {
+function toSkillSourceLabel(entry: { skill: { source?: unknown } }): string {
   const raw = String(entry.skill.source ?? "")
     .trim()
     .toLowerCase();
@@ -388,7 +388,7 @@ export function matchSkillCandidatesForPrompt(params: {
     );
 
   const candidates = entries
-    .map((entry) => {
+    .flatMap((entry) => {
       const haystackTerms = new Set(
         tokenizeSkillMatchInput(
           [
@@ -405,7 +405,7 @@ export function matchSkillCandidatesForPrompt(params: {
       const exactName = tokenizeSkillMatchInput(entry.skill.name);
       const nameOverlap = exactName.filter((term) => queryTerms.has(term));
       const score = overlap.length * 1.5 + nameOverlap.length * 2.5;
-      if (score <= 0) return null;
+      if (score <= 0) return [];
       const reasons: string[] = [];
       if (nameOverlap.length > 0) {
         reasons.push(`name:${nameOverlap.join(",")}`);
@@ -414,15 +414,14 @@ export function matchSkillCandidatesForPrompt(params: {
       if (descOverlap.length > 0) {
         reasons.push(`context:${descOverlap.join(",")}`);
       }
-      return {
+      return [{
         name: entry.skill.name,
-        source: toSkillSourceLabel(entry),
+        source: toSkillSourceLabel(entry as unknown as { skill: { source?: unknown } }),
         kind: "generic",
         score: Math.round(score * 100) / 100,
         reasons,
-      } satisfies SkillMatchCandidate;
+      } satisfies SkillMatchCandidate];
     })
-    .filter((candidate): candidate is SkillMatchCandidate => Boolean(candidate))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
   return candidates.slice(0, Math.max(1, params.limit ?? 5));

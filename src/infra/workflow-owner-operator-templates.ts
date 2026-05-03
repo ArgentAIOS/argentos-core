@@ -356,7 +356,8 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         type: "send_message",
         channelType: "telegram",
         channelId: "{{operator.phone.telegramChatId}}",
-        template: "AI Morning Brief podcast finished: {{previous.text}}",
+        template: "AI Morning Brief podcast audio is ready: {{previous.json.path}}",
+        mediaTemplate: "{{previous.json.path}}",
       }),
       docOutput(
         "run-ledger",
@@ -1347,6 +1348,679 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
     ],
     dependencies: [{ kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" }],
     notes: ["Variation: event marketing and lead nurture."],
+  }),
+  makePackage({
+    slug: "workload-status-digest",
+    name: "Workload Status Digest",
+    description:
+      "Summarize open work across active projects and route a concise workload status update.",
+    scenario: scenario("operations", "schedule", "Daily workload status digest", [
+      "Projects",
+      "Tasks",
+    ]),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "30 16 * * 1-5",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-active-projects",
+        "Read active projects",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Operations",
+          table: "Projects",
+          filter: "status != archived",
+        },
+      ),
+      connectorAction(
+        "read-open-tasks",
+        "Read open tasks",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Operations",
+          table: "Tasks",
+          filter: "status != done",
+        },
+      ),
+      agent(
+        "summarize-load",
+        "Summarize workload",
+        "summarize",
+        "Create a terse workload status with overloaded owners, blocked tasks, stale work, and next actions.",
+      ),
+      docOutput(
+        "workload-doc",
+        "Workload Status Digest",
+        "## Workload status\n{{steps.summarize-load.output.text}}\n\n## Project source\n{{steps.read-active-projects.output.text}}\n\n## Task source\n{{steps.read-open-tasks.output.text}}",
+      ),
+      connectorOutput(
+        "notify-ops",
+        "Notify operations channel",
+        "aos-slack",
+        "message",
+        "message.send",
+        {
+          channel_id: "{{channels.slack.operations}}",
+          text: "{{steps.summarize-load.output.text}}",
+        },
+      ),
+    ],
+    dependencies: [
+      { kind: "appforge_base", id: "operations", label: "Operations" },
+      { kind: "connector", id: "aos-slack", label: "Slack" },
+      { kind: "channel", id: "slack.operations", label: "Operations Slack channel" },
+    ],
+    credentialIds: [
+      {
+        id: "slack.primary",
+        label: "Slack workspace",
+        provider: "slack",
+        purpose: "Post the daily workload status.",
+      },
+    ],
+  }),
+  makePackage({
+    slug: "reminder-router",
+    name: "Reminder Router",
+    description:
+      "Collect due reminders, group them by urgency, and route an approved reminder batch.",
+    scenario: scenario("operations", "schedule", "Due reminder routing", ["Reminders", "Tasks"]),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "0 7 * * *",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-reminders",
+        "Read due reminders",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Operations",
+          table: "Reminders",
+          filter: "due_at <= now AND status = open",
+        },
+      ),
+      agent(
+        "group-reminders",
+        "Group reminders",
+        "analyze",
+        "Group due reminders by urgency, owner, and escalation path. Flag anything that needs human review.",
+      ),
+      approval("approve-reminder-batch", "Approve the reminder batch before routing alerts."),
+      action("send-reminder-batch", "Send reminder batch", {
+        type: "send_message",
+        channelType: "telegram",
+        channelId: "{{channels.telegram.operator}}",
+        template: "{{steps.group-reminders.output.text}}",
+      }),
+      docOutput(
+        "reminder-ledger",
+        "Reminder Routing Ledger",
+        "## Reminder batch\n{{steps.group-reminders.output.text}}\n\n## Delivery\n{{steps.send-reminder-batch.output.text}}",
+      ),
+    ],
+    dependencies: [
+      { kind: "appforge_base", id: "operations", label: "Operations" },
+      { kind: "channel", id: "telegram.operator", label: "Operator Telegram" },
+    ],
+  }),
+  makePackage({
+    slug: "docpane-channel-brief",
+    name: "DocPane Channel Brief",
+    description:
+      "Turn recent channel activity into a cited DocPanel brief with decisions and tasks.",
+    scenario: scenario("operations", "message_event", "Channel digest requested"),
+    trigger: trigger("trigger", "channel_message", {
+      channelType: "slack",
+      command: "/argent-brief",
+    }),
+    nodes: [
+      connectorAction(
+        "read-channel",
+        "Read recent channel messages",
+        "aos-slack",
+        "message",
+        "message.history",
+        {
+          channel_id: "{{trigger.payload.channelId}}",
+          limit: 100,
+        },
+      ),
+      agent(
+        "summarize-channel",
+        "Summarize channel",
+        "summarize",
+        "Extract decisions, blockers, tasks, names, and unresolved questions from recent channel activity.",
+      ),
+      docOutput(
+        "channel-brief",
+        "Channel Brief — {{trigger.payload.channelName}}",
+        "## Channel brief\n{{steps.summarize-channel.output.text}}\n\n## Source channel\n{{steps.read-channel.output.text}}",
+      ),
+    ],
+    dependencies: [{ kind: "connector", id: "aos-slack", label: "Slack" }],
+    credentialIds: [
+      {
+        id: "slack.primary",
+        label: "Slack workspace",
+        provider: "slack",
+        purpose: "Read recent channel activity for DocPanel briefs.",
+      },
+    ],
+  }),
+  makePackage({
+    slug: "incident-alert-router",
+    name: "Incident Alert Router",
+    description:
+      "Classify an incident webhook, create an incident record, and route an escalation alert.",
+    scenario: scenario("support", "webhook", "Incident alert received", ["Incidents"]),
+    trigger: trigger("trigger", "webhook", { webhookPath: "/workflows/incidents/alert" }),
+    nodes: [
+      agent(
+        "classify-incident",
+        "Classify incident",
+        "analyze",
+        "Classify severity, affected surface, customer impact, likely owner, and first response steps.",
+      ),
+      connectorAction(
+        "create-incident",
+        "Create incident record",
+        "appforge-core",
+        "records",
+        "records.create",
+        {
+          base: "Support Ops",
+          table: "Incidents",
+          fields: {
+            source: "{{trigger.payload.source}}",
+            summary: "{{steps.classify-incident.output.text}}",
+            severity: "{{steps.classify-incident.output.json.severity}}",
+          },
+        },
+      ),
+      approval("approve-escalation", "Approve escalation message before notifying responders."),
+      connectorOutput(
+        "notify-responders",
+        "Notify responders",
+        "aos-slack",
+        "message",
+        "message.send",
+        {
+          channel_id: "{{channels.slack.incidents}}",
+          text: "{{steps.classify-incident.output.text}}",
+        },
+      ),
+      docOutput(
+        "incident-ledger",
+        "Incident Triage Ledger",
+        "## Incident triage\n{{steps.classify-incident.output.text}}\n\n## Incident record\n{{steps.create-incident.output.text}}",
+      ),
+    ],
+    dependencies: [
+      { kind: "appforge_base", id: "support-ops", label: "Support Ops" },
+      { kind: "connector", id: "aos-slack", label: "Slack" },
+      { kind: "channel", id: "slack.incidents", label: "Incident channel" },
+    ],
+  }),
+  makePackage({
+    slug: "workflow-failure-postmortem",
+    name: "Workflow Failure Postmortem",
+    description:
+      "Convert workflow failure events into an operator-readable postmortem and repair task.",
+    scenario: scenario("operations", "webhook", "Workflow failure event received", [
+      "Workflow Runs",
+      "Tasks",
+    ]),
+    trigger: trigger("trigger", "webhook", { webhookPath: "/workflows/runtime/failure" }),
+    nodes: [
+      agent(
+        "diagnose-failure",
+        "Diagnose failure",
+        "analyze",
+        "Analyze the failed workflow run payload. Identify failed node, root-cause hypothesis, operator impact, and repair owner.",
+      ),
+      action("create-repair-task", "Create repair task", {
+        type: "create_task",
+        title: "Repair failed workflow: {{trigger.payload.workflowName}}",
+        assignee: "{{operator.id}}",
+        priority: 1,
+        project: "Workflow Runtime",
+      }),
+      docOutput(
+        "postmortem-doc",
+        "Workflow Failure Postmortem",
+        "## Failure analysis\n{{steps.diagnose-failure.output.text}}\n\n## Repair task\n{{steps.create-repair-task.output.text}}",
+      ),
+      connectorOutput(
+        "notify-workflows",
+        "Notify workflow channel",
+        "aos-slack",
+        "message",
+        "message.send",
+        {
+          channel_id: "{{channels.slack.workflows}}",
+          text: "Workflow failure postmortem ready: {{steps.diagnose-failure.output.text}}",
+        },
+      ),
+    ],
+    dependencies: [
+      { kind: "connector", id: "aos-slack", label: "Slack" },
+      { kind: "channel", id: "slack.workflows", label: "Workflow runtime channel" },
+    ],
+  }),
+  makePackage({
+    slug: "connector-health-monitor",
+    name: "Connector Health Monitor",
+    description: "Check critical connector health and produce an operator readiness report.",
+    scenario: scenario("operations", "schedule", "Connector readiness health check"),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "*/30 * * * *",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "check-slack",
+        "Check Slack connector",
+        "aos-slack",
+        "health",
+        "health.check",
+        {},
+      ),
+      connectorAction(
+        "check-telegram",
+        "Check Telegram connector",
+        "aos-telegram",
+        "health",
+        "health.check",
+        {},
+      ),
+      connectorAction(
+        "check-email",
+        "Check email connector",
+        "aos-resend",
+        "health",
+        "health.check",
+        {},
+      ),
+      agent(
+        "summarize-health",
+        "Summarize connector health",
+        "summarize",
+        "Summarize connector readiness and identify any workflow-impacting delivery risks.",
+      ),
+      docOutput(
+        "health-report",
+        "Connector Health Report",
+        "## Connector health\n{{steps.summarize-health.output.text}}\n\n## Slack\n{{steps.check-slack.output.text}}\n\n## Telegram\n{{steps.check-telegram.output.text}}\n\n## Email\n{{steps.check-email.output.text}}",
+      ),
+    ],
+    dependencies: [
+      { kind: "connector", id: "aos-slack", label: "Slack" },
+      { kind: "connector", id: "aos-telegram", label: "Telegram" },
+      { kind: "connector", id: "aos-resend", label: "Resend" },
+    ],
+  }),
+  makePackage({
+    slug: "github-release-watch",
+    name: "GitHub Release Watch",
+    description:
+      "Watch key GitHub repositories for releases and summarize upgrade risk for the operator.",
+    scenario: scenario("operations", "schedule", "Daily GitHub release watch"),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "15 7 * * *",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-releases",
+        "Read watched releases",
+        "aos-github",
+        "repository",
+        "release.list",
+        {
+          repositories: "{{variables.github.watchlist}}",
+          since: "-24h",
+        },
+      ),
+      agent(
+        "assess-releases",
+        "Assess release impact",
+        "analyze",
+        "Summarize release changes, upgrade urgency, compatibility risks, and recommended follow-up tasks.",
+      ),
+      docOutput(
+        "release-brief",
+        "GitHub Release Watch",
+        "## Release watch\n{{steps.assess-releases.output.text}}\n\n## Raw releases\n{{steps.read-releases.output.text}}",
+      ),
+      action("store-release-memory", "Store release memory", {
+        type: "store_memory",
+        content: "{{steps.assess-releases.output.text}}",
+        memoryType: "release_watch",
+        significance: 2,
+      }),
+    ],
+    dependencies: [{ kind: "connector", id: "aos-github", label: "GitHub" }],
+    credentialIds: [
+      {
+        id: "github.primary",
+        label: "GitHub token",
+        provider: "github",
+        purpose: "Read release metadata from watched repositories.",
+      },
+    ],
+  }),
+  makePackage({
+    slug: "meeting-prep-brief",
+    name: "Meeting Prep Brief",
+    description:
+      "Prepare a concise meeting brief from calendar context, recent notes, and known follow-ups.",
+    scenario: scenario("operations", "schedule", "Upcoming meeting preparation"),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "*/15 7-17 * * 1-5",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-calendar",
+        "Read upcoming meetings",
+        "aos-calendar",
+        "event",
+        "event.upcoming",
+        {
+          windowMinutes: 60,
+        },
+      ),
+      agent(
+        "prepare-brief",
+        "Prepare meeting brief",
+        "write",
+        "Create a meeting prep brief with attendees, context, likely decisions, open questions, and useful links.",
+      ),
+      docOutput(
+        "meeting-brief",
+        "Meeting Prep Brief",
+        "## Meeting prep\n{{steps.prepare-brief.output.text}}\n\n## Calendar source\n{{steps.read-calendar.output.text}}",
+      ),
+      emailOutput(
+        "email-brief",
+        "Meeting prep brief",
+        OPERATOR_EMAIL,
+        "{{steps.prepare-brief.output.text}}",
+      ),
+    ],
+    dependencies: [{ kind: "connector", id: "aos-calendar", label: "Calendar" }],
+    credentialIds: [
+      {
+        id: "calendar.primary",
+        label: "Calendar account",
+        provider: "calendar",
+        purpose: "Read upcoming meeting context.",
+      },
+    ],
+  }),
+  makePackage({
+    slug: "knowledge-capture",
+    name: "Knowledge Capture",
+    description:
+      "Convert a selected message or document into durable knowledge with a DocPanel summary.",
+    scenario: scenario("operations", "message_event", "Knowledge capture requested"),
+    trigger: trigger("trigger", "channel_message", {
+      channelType: "slack",
+      command: "/argent-remember",
+    }),
+    nodes: [
+      agent(
+        "distill-knowledge",
+        "Distill knowledge",
+        "summarize",
+        "Extract durable facts, decisions, owners, caveats, and expiry risks from the provided message or document.",
+      ),
+      action("store-knowledge", "Store knowledge", {
+        type: "store_knowledge",
+        collectionId: "operator-knowledge",
+        content: "{{steps.distill-knowledge.output.text}}",
+        metadata: {
+          source: "{{trigger.payload.source}}",
+          requestedBy: "{{trigger.payload.userId}}",
+        },
+      }),
+      docOutput(
+        "knowledge-doc",
+        "Knowledge Capture",
+        "## Captured knowledge\n{{steps.distill-knowledge.output.text}}\n\n## Storage\n{{steps.store-knowledge.output.text}}",
+      ),
+    ],
+    dependencies: [
+      { kind: "knowledge_collection", id: "operator-knowledge", label: "Operator Knowledge" },
+    ],
+  }),
+  makePackage({
+    slug: "customer-feedback-synthesis",
+    name: "Customer Feedback Synthesis",
+    description: "Collect recent customer feedback, synthesize themes, and create follow-up tasks.",
+    scenario: scenario("support", "schedule", "Weekly customer feedback synthesis", [
+      "Feedback",
+      "Tasks",
+    ]),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "0 11 * * 5",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-feedback",
+        "Read recent feedback",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Support Ops",
+          table: "Feedback",
+          filter: "created_at >= -7d",
+        },
+      ),
+      agent(
+        "synthesize-feedback",
+        "Synthesize feedback",
+        "summarize",
+        "Find recurring themes, urgent accounts, product gaps, and recommended follow-up tasks.",
+      ),
+      approval("approve-feedback-tasks", "Approve customer feedback follow-up tasks."),
+      connectorAction(
+        "create-feedback-tasks",
+        "Create feedback tasks",
+        "appforge-core",
+        "records",
+        "records.create_many",
+        {
+          base: "Support Ops",
+          table: "Tasks",
+          tasks: "{{steps.synthesize-feedback.output.json.tasks}}",
+        },
+      ),
+      docOutput(
+        "feedback-report",
+        "Customer Feedback Synthesis",
+        "## Feedback themes\n{{steps.synthesize-feedback.output.text}}\n\n## Task creation\n{{steps.create-feedback-tasks.output.text}}",
+      ),
+    ],
+    dependencies: [{ kind: "appforge_base", id: "support-ops", label: "Support Ops" }],
+  }),
+  makePackage({
+    slug: "content-quality-audit",
+    name: "Content Quality Audit",
+    description:
+      "Audit ready-to-publish content for brand fit, broken promises, and required fixes.",
+    scenario: scenario("marketing", "appforge_event", "Content marked ready for QA", [
+      "Content Calendar",
+    ]),
+    trigger: trigger("trigger", "appforge_event", {
+      eventType: "forge.record.updated",
+      eventFilter: { table: "Content Calendar", status: "Ready for QA" },
+    }),
+    nodes: [
+      connectorAction(
+        "read-content",
+        "Read content record",
+        "appforge-core",
+        "records",
+        "records.get",
+        {
+          base: "Marketing Ops",
+          table: "Content Calendar",
+          record_id: "{{trigger.payload.recordId}}",
+        },
+      ),
+      agent(
+        "audit-content",
+        "Audit content",
+        "analyze",
+        "Audit the content for brand fit, factual risk, missing proof, CTA clarity, accessibility, and required edits.",
+      ),
+      connectorAction(
+        "update-content-status",
+        "Update content QA status",
+        "appforge-core",
+        "records",
+        "records.update",
+        {
+          base: "Marketing Ops",
+          table: "Content Calendar",
+          record_id: "{{trigger.payload.recordId}}",
+          qa_summary: "{{steps.audit-content.output.text}}",
+          status: "{{steps.audit-content.output.json.recommended_status}}",
+        },
+      ),
+      docOutput(
+        "quality-report",
+        "Content Quality Audit",
+        "## Audit\n{{steps.audit-content.output.text}}\n\n## Update\n{{steps.update-content-status.output.text}}",
+      ),
+    ],
+    dependencies: [{ kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" }],
+  }),
+  makePackage({
+    slug: "cashflow-watch",
+    name: "Cashflow Watch",
+    description:
+      "Summarize cashflow-sensitive finance records and notify the owner when action is needed.",
+    scenario: scenario("finance", "schedule", "Weekly cashflow watch", ["Invoices", "Expenses"]),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "0 8 * * 1",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-invoices",
+        "Read open invoices",
+        "aos-quickbooks",
+        "invoice",
+        "invoice.list_open",
+        {
+          include_overdue: true,
+        },
+      ),
+      connectorAction(
+        "read-expenses",
+        "Read upcoming expenses",
+        "aos-quickbooks",
+        "expense",
+        "expense.upcoming",
+        {
+          days: 14,
+        },
+      ),
+      agent(
+        "summarize-cashflow",
+        "Summarize cashflow",
+        "summarize",
+        "Summarize cashflow risks, overdue invoices, upcoming expenses, and recommended owner actions.",
+      ),
+      approval("approve-cashflow-alert", "Approve cashflow alert before notifying the owner."),
+      emailOutput(
+        "email-owner",
+        "Cashflow watch",
+        OPERATOR_EMAIL,
+        "{{steps.summarize-cashflow.output.text}}",
+      ),
+      docOutput(
+        "cashflow-report",
+        "Cashflow Watch",
+        "## Cashflow watch\n{{steps.summarize-cashflow.output.text}}\n\n## Invoices\n{{steps.read-invoices.output.text}}\n\n## Expenses\n{{steps.read-expenses.output.text}}",
+      ),
+    ],
+    dependencies: [{ kind: "connector", id: "aos-quickbooks", label: "QuickBooks" }],
+    credentialIds: [
+      {
+        id: "quickbooks.primary",
+        label: "QuickBooks",
+        provider: "quickbooks",
+        purpose: "Read invoices and expenses for cashflow monitoring.",
+      },
+    ],
+  }),
+  makePackage({
+    slug: "operator-daily-standup",
+    name: "Operator Daily Standup",
+    description:
+      "Compile yesterday, today, blockers, and reminders into a daily owner standup brief.",
+    scenario: scenario("operations", "schedule", "Daily owner standup brief", [
+      "Tasks",
+      "Reminders",
+      "Projects",
+    ]),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "45 7 * * 1-5",
+      timezone: "America/Chicago",
+    }),
+    nodes: [
+      connectorAction(
+        "read-yesterday",
+        "Read completed work",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Operations",
+          table: "Tasks",
+          filter: "completed_at >= -24h",
+        },
+      ),
+      connectorAction("read-today", "Read due work", "appforge-core", "records", "records.query", {
+        base: "Operations",
+        table: "Tasks",
+        filter: "due_at <= +24h AND status != done",
+      }),
+      agent(
+        "write-standup",
+        "Write standup",
+        "write",
+        "Create a daily standup with Yesterday, Today, Blockers, Reminders, and one recommended focus.",
+      ),
+      docOutput(
+        "standup-doc",
+        "Operator Daily Standup",
+        "## Daily standup\n{{steps.write-standup.output.text}}\n\n## Completed\n{{steps.read-yesterday.output.text}}\n\n## Due today\n{{steps.read-today.output.text}}",
+      ),
+      action("send-standup", "Send standup", {
+        type: "send_message",
+        channelType: "telegram",
+        channelId: "{{channels.telegram.operator}}",
+        template: "{{steps.write-standup.output.text}}",
+      }),
+    ],
+    dependencies: [
+      { kind: "appforge_base", id: "operations", label: "Operations" },
+      { kind: "channel", id: "telegram.operator", label: "Operator Telegram" },
+    ],
   }),
 ];
 

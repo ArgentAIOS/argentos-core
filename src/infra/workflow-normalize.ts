@@ -263,6 +263,10 @@ function normalizeActionType(
         channelType: asString(actionConfig.channelType, "telegram"),
         channelId: asString(actionConfig.channelId, asString(actionConfig.to)),
         template: asString(actionConfig.template ?? actionConfig.message, "{{previous.text}}"),
+        mediaTemplate: asString(actionConfig.mediaTemplate ?? actionConfig.media_url) || undefined,
+        mediaTemplates: Array.isArray(actionConfig.mediaTemplates)
+          ? actionConfig.mediaTemplates.map((entry) => asString(entry)).filter(Boolean)
+          : undefined,
       };
     case "send_email":
       return {
@@ -329,6 +333,9 @@ function normalizeActionType(
       return {
         type: "podcast_plan",
         title: asString(actionConfig.title, "Workflow podcast"),
+        payload: isRecord(actionConfig.payload) ? actionConfig.payload : undefined,
+        payloadTemplate:
+          asString(actionConfig.payloadTemplate ?? actionConfig.payload_template) || undefined,
         script: asString(actionConfig.script, "{{previous.text}}"),
         dialogue: Array.isArray(actionConfig.dialogue)
           ? actionConfig.dialogue.filter(isRecord)
@@ -894,6 +901,16 @@ function graphFromEdges(edges: WorkflowEdge[]) {
   return graph;
 }
 
+function reverseGraphFromEdges(edges: WorkflowEdge[]) {
+  const graph = new Map<string, string[]>();
+  for (const edge of edges) {
+    const prev = graph.get(edge.target) ?? [];
+    prev.push(edge.source);
+    graph.set(edge.target, prev);
+  }
+  return graph;
+}
+
 function reachableFrom(starts: string[], edges: WorkflowEdge[]) {
   const graph = graphFromEdges(edges);
   const seen = new Set<string>();
@@ -955,6 +972,8 @@ export function validateWorkflow(
 ): WorkflowIssue[] {
   const issues: WorkflowIssue[] = [];
   const nodeIds = new Set(workflow.nodes.map((node) => node.id));
+  const nodeMap = new Map(workflow.nodes.map((node) => [node.id, node] as const));
+  const reverseGraph = reverseGraphFromEdges(workflow.edges);
   const triggers = workflow.nodes.filter((node) => node.kind === "trigger");
 
   if (triggers.length !== 1) {
@@ -1012,6 +1031,59 @@ export function validateWorkflow(
           nodeId: node.id,
           message: "Connector action requires a credential before it can run live.",
         });
+      }
+    }
+
+    if (node.kind === "action" && node.config.actionType.type === "podcast_generate") {
+      const action = node.config.actionType;
+      const payloadTemplate = action.payloadTemplate?.trim() ?? "";
+      const incomingNodes = (reverseGraph.get(node.id) ?? [])
+        .map((id) => nodeMap.get(id))
+        .filter((candidate): candidate is WorkflowNode => Boolean(candidate));
+      const hasImmediatePodcastPlanParent = incomingNodes.some(
+        (candidate) =>
+          candidate.kind === "action" && candidate.config.actionType.type === "podcast_plan",
+      );
+
+      if (!action.payload && !payloadTemplate && !hasImmediatePodcastPlanParent) {
+        issues.push({
+          severity: "error",
+          code: "podcast_generate_payload_missing",
+          nodeId: node.id,
+          message:
+            "Podcast Generate requires a podcast_plan payload object. Add a Podcast Plan step immediately upstream or provide an explicit payload.",
+        });
+      }
+
+      if (
+        payloadTemplate === "{{previous.json.podcast_generate}}" &&
+        !hasImmediatePodcastPlanParent
+      ) {
+        issues.push({
+          severity: "error",
+          code: "podcast_generate_previous_payload_invalid",
+          nodeId: node.id,
+          message:
+            'Podcast Generate uses "{{previous.json.podcast_generate}}" but the immediate upstream node is not Podcast Plan.',
+        });
+      }
+
+      const stepMatch = /^\{\{\s*steps\.([^.]+)\.output\.json\.podcast_generate\s*\}\}$/.exec(
+        payloadTemplate,
+      );
+      if (stepMatch) {
+        const sourceNode = nodeMap.get(stepMatch[1] ?? "");
+        const isPodcastPlanSource =
+          sourceNode?.kind === "action" && sourceNode.config.actionType.type === "podcast_plan";
+        if (!isPodcastPlanSource) {
+          issues.push({
+            severity: "error",
+            code: "podcast_generate_step_payload_invalid",
+            nodeId: node.id,
+            message:
+              "Podcast Generate references a step payload that is not produced by Podcast Plan.",
+          });
+        }
       }
     }
 

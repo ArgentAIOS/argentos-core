@@ -1779,6 +1779,8 @@ export class MemuStore {
       totalTokens: input.totalTokens ?? 0,
       toolCallCount: input.toolCallCount ?? 0,
       userFeedback: null,
+      selfEvalScore: null,
+      selfEvalReasoning: null,
       sessionKey: input.sessionKey ?? null,
       profile: input.profile ?? null,
       createdAt,

@@ -1,6 +1,6 @@
 import type { ArgentConfig } from "../../config/config.js";
 import type { RuntimeEnv } from "../../runtime.js";
-import type { OnboardOptions } from "../onboard-types.js";
+import type { AuthChoice, OnboardOptions } from "../onboard-types.js";
 import { formatCliCommand } from "../../cli/command-format.js";
 import { resolveGatewayPort, writeConfigFile } from "../../config/config.js";
 import { logConfigUpdated } from "../../config/logging.js";
@@ -74,11 +74,12 @@ export async function runNonInteractiveOnboardingLocal(params: {
 
   const inferredAuthChoice = inferAuthChoiceFromFlags(opts);
 
-  let authChoice: string | undefined;
+  let authChoice: AuthChoice | undefined;
+  let authChoiceLabel: string | undefined;
 
   // Support multiple API key flags — set up all provided providers
   if (!opts.authChoice && inferredAuthChoice.matches.length > 1) {
-    authChoice = inferredAuthChoice.matches.map((m) => m.authChoice).join(",");
+    authChoiceLabel = inferredAuthChoice.matches.map((m) => m.authChoice).join(",");
     for (const match of inferredAuthChoice.matches) {
       const result = await applyNonInteractiveAuthChoice({
         nextConfig,
@@ -93,6 +94,7 @@ export async function runNonInteractiveOnboardingLocal(params: {
     }
   } else {
     authChoice = opts.authChoice ?? inferredAuthChoice.choice ?? "skip";
+    authChoiceLabel = authChoice;
     const nextConfigAfterAuth = await applyNonInteractiveAuthChoice({
       nextConfig,
       authChoice,
@@ -166,7 +168,7 @@ export async function runNonInteractiveOnboardingLocal(params: {
     runtime,
     mode,
     workspaceDir,
-    authChoice,
+    authChoice: authChoiceLabel,
     localRuntime,
     gateway: {
       port: gatewayResult.port,

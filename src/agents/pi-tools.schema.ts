@@ -2,7 +2,17 @@ import Ajv2020 from "ajv/dist/2020.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { cleanSchemaForGemini } from "./schema/clean-for-gemini.js";
 
-const ajv2020 = new Ajv2020({
+const Ajv2020Ctor = Ajv2020 as unknown as new (options?: {
+  allErrors?: boolean;
+  strict?: boolean;
+  validateFormats?: boolean;
+}) => {
+  validateSchema: (schema: unknown) => boolean;
+  errors?: unknown;
+  errorsText: (errors?: unknown, options?: { separator?: string }) => string;
+};
+
+const ajv2020 = new Ajv2020Ctor({
   allErrors: false,
   strict: false,
   validateFormats: false,

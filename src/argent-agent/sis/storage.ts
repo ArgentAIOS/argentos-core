@@ -108,7 +108,7 @@ export class LessonStorage {
       })
       .returning();
 
-    return lesson;
+    return lesson as Lesson;
   }
 
   /**
@@ -121,7 +121,7 @@ export class LessonStorage {
       .where(eq(this.schema.lessons.id, id))
       .limit(1);
 
-    return lesson ?? null;
+    return (lesson as Lesson | undefined) ?? null;
   }
 
   /**
@@ -134,7 +134,7 @@ export class LessonStorage {
       .where(eq(this.schema.lessons.text, text))
       .limit(1);
 
-    return lesson ?? null;
+    return (lesson as Lesson | undefined) ?? null;
   }
 
   /**
@@ -148,7 +148,7 @@ export class LessonStorage {
   ): Promise<Lesson[]> {
     const { minConfidence = 0, limit = 50 } = options;
 
-    return this.db
+    return (await this.db
       .select()
       .from(this.schema.lessons)
       .where(
@@ -158,7 +158,7 @@ export class LessonStorage {
         ),
       )
       .orderBy(desc(this.schema.lessons.confidence))
-      .limit(limit);
+      .limit(limit)) as Lesson[];
   }
 
   /**
@@ -238,12 +238,12 @@ export class LessonStorage {
    * Get injection history for a lesson
    */
   async getInjectionHistory(lessonId: number, limit = 100): Promise<LessonInjectionRecord[]> {
-    return this.db
+    return (await this.db
       .select()
       .from(this.schema.lessonHistory)
       .where(eq(this.schema.lessonHistory.lessonId, lessonId))
       .orderBy(desc(this.schema.lessonHistory.injectedAt))
-      .limit(limit);
+      .limit(limit)) as LessonInjectionRecord[];
   }
 
   // --------------------------------------------------------------------------
@@ -265,7 +265,7 @@ export class LessonStorage {
       })
       .returning();
 
-    return endorsement;
+    return endorsement as Endorsement;
   }
 
   /**
@@ -280,9 +280,10 @@ export class LessonStorage {
       .from(this.schema.endorsements)
       .where(eq(this.schema.endorsements.lessonId, lessonId));
 
+    const typed = endorsements as Endorsement[];
     return {
-      family: endorsements.filter((e) => e.endorserType === "family"),
-      operator: endorsements.filter((e) => e.endorserType === "operator"),
+      family: typed.filter((e) => e.endorserType === "family"),
+      operator: typed.filter((e) => e.endorserType === "operator"),
     };
   }
 
@@ -386,7 +387,7 @@ export class LessonStorage {
     const { maxConfidence = 0.3, minAge = 30 } = options;
     const cutoffDate = new Date(Date.now() - minAge * 24 * 60 * 60 * 1000);
 
-    return this.db
+    return (await this.db
       .select()
       .from(this.schema.lessons)
       .where(
@@ -395,7 +396,7 @@ export class LessonStorage {
           lte(this.schema.lessons.confidence, maxConfidence),
           lte(this.schema.lessons.createdAt, cutoffDate),
         ),
-      );
+      )) as Lesson[];
   }
 
   /**

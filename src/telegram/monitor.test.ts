@@ -186,7 +186,7 @@ describe("monitorTelegramProvider (grammY)", () => {
     expect(runSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("recreates the bot and waits a full long-poll window after getUpdates conflicts", async () => {
+  it("recreates the bot and waits two long-poll windows after getUpdates conflicts", async () => {
     const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
       error_code: 409,
       method: "getUpdates",
@@ -206,8 +206,33 @@ describe("monitorTelegramProvider (grammY)", () => {
 
     expect(failedRunnerStop).toHaveBeenCalled();
     expect(createBotSpy).toHaveBeenCalledTimes(2);
-    expect(sleepWithAbort).toHaveBeenCalledWith(35_000, undefined);
+    expect(sleepWithAbort).toHaveBeenCalledWith(65_000, undefined);
     expect(runSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops polling after repeated getUpdates conflicts", async () => {
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    const runtimeError = vi.fn();
+    runSpy.mockImplementation(() => ({
+      task: () => Promise.reject(conflictError),
+      stop: vi.fn(),
+    }));
+
+    await expect(
+      monitorTelegramProvider({
+        token: "tok",
+        runtime: { error: runtimeError } as never,
+      }),
+    ).rejects.toThrow("Telegram getUpdates conflict persisted");
+
+    expect(runSpy).toHaveBeenCalledTimes(3);
+    expect(sleepWithAbort).toHaveBeenCalledTimes(2);
+    expect(runtimeError).toHaveBeenLastCalledWith(
+      expect.stringContaining("stopping polling until channel restart"),
+    );
   });
 
   it("skips a duplicate poller for the same bot token", async () => {

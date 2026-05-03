@@ -41,8 +41,9 @@ type CatalogOptions = {
 const ORIGIN_PRIORITY: Record<PluginOrigin, number> = {
   config: 0,
   workspace: 1,
-  global: 2,
-  bundled: 3,
+  org: 2,
+  global: 3,
+  bundled: 4,
 };
 
 type ExternalCatalogEntry = {

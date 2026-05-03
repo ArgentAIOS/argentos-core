@@ -102,6 +102,95 @@ describe("workflow-normalize", () => {
     );
   });
 
+  it("flags podcast_generate when previous payload is not fed by podcast_plan", () => {
+    const result = normalizeWorkflow({
+      id: "wf-podcast-invalid",
+      name: "Podcast invalid",
+      nodes: [
+        { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+        {
+          id: "script-agent",
+          type: "agentStep",
+          data: { label: "Script", agentId: "argent", rolePrompt: "Write the script" },
+        },
+        {
+          id: "podcast-generate",
+          type: "action",
+          data: {
+            label: "Podcast Generate",
+            actionType: "podcast_generate",
+            config: {
+              title: "Morning Brief",
+              payloadTemplate: "{{previous.json.podcast_generate}}",
+            },
+          },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "trigger", target: "script-agent" },
+        { id: "e2", source: "script-agent", target: "podcast-generate" },
+      ],
+    });
+
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "error",
+          code: "podcast_generate_previous_payload_invalid",
+          nodeId: "podcast-generate",
+        }),
+      ]),
+    );
+  });
+
+  it("accepts podcast_generate when previous payload comes from podcast_plan", () => {
+    const result = normalizeWorkflow({
+      id: "wf-podcast-valid",
+      name: "Podcast valid",
+      nodes: [
+        { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+        {
+          id: "podcast-plan",
+          type: "action",
+          data: {
+            label: "Podcast Plan",
+            actionType: "podcast_plan",
+            config: {
+              title: "Morning Brief",
+              script: "{{previous.text}}",
+              personas: [{ id: "argent", voice_id: "21m00Tcm4TlvDq8ikWAM" }],
+            },
+          },
+        },
+        {
+          id: "podcast-generate",
+          type: "action",
+          data: {
+            label: "Podcast Generate",
+            actionType: "podcast_generate",
+            config: {
+              title: "Morning Brief",
+              payloadTemplate: "{{previous.json.podcast_generate}}",
+            },
+          },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "trigger", target: "podcast-plan" },
+        { id: "e2", source: "podcast-plan", target: "podcast-generate" },
+      ],
+    });
+
+    expect(
+      result.issues.filter(
+        (issue) =>
+          issue.code === "podcast_generate_previous_payload_invalid" ||
+          issue.code === "podcast_generate_payload_missing" ||
+          issue.code === "podcast_generate_step_payload_invalid",
+      ),
+    ).toEqual([]);
+  });
+
   it("validates canonical definitions without treating canvas layout as executable", () => {
     const result = normalizeWorkflow({
       id: "wf-canonical",

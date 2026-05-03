@@ -1076,7 +1076,7 @@ function* walkFiles(root: string, opts: WalkOpts): Generator<string> {
   const stack: string[] = [root];
   while (stack.length > 0) {
     const dir = stack.pop()!;
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: import("node:fs").Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {

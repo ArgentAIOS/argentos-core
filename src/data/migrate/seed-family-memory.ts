@@ -146,7 +146,7 @@ async function seedAgent(
   `;
 
   let taskInserted = 0;
-  for (const task of taskRows as Array<{
+  for (const task of taskRows as unknown as Array<{
     id: string;
     title: string;
     description: string | null;
@@ -190,7 +190,7 @@ async function seedAgent(
   `;
 
   let knowledgeInserted = 0;
-  for (const row of knowledgeRows as Array<{
+  for (const row of knowledgeRows as unknown as Array<{
     id: string;
     title: string;
     content: string;
@@ -232,7 +232,7 @@ async function main() {
     const agentsToSeed =
       EXPLICIT_AGENTS.length > 0
         ? EXPLICIT_AGENTS
-        : (
+        : ((
             await sql`
               SELECT a.id
               FROM agents a
@@ -245,7 +245,8 @@ async function main() {
                 AND COALESCE(mi.cnt, 0) = 0
               ORDER BY a.id
             `
-          ).map((row: { id: string }) => row.id);
+          ) as unknown as Array<{ id: string }>
+        ).map((row) => row.id);
 
     if (agentsToSeed.length === 0) {
       log("No family agents require seeding.");

@@ -137,6 +137,10 @@ export function createArgentTools(options?: {
   hasRepliedRef?: { value: boolean };
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
+  /** If true, omit inbound image tooling. */
+  disableImageTool?: boolean;
+  /** If true, omit image generation tooling. */
+  disableImageGenerationTool?: boolean;
   /** Explicit agent ID override for cron/hook sessions. */
   requesterAgentIdOverride?: string;
   /** Require explicit message targets (no implicit last-route sends). */
@@ -163,14 +167,16 @@ export function createArgentTools(options?: {
     "./tools/copilot-system-tool.js",
     "createCopilotSystemTool",
   );
-  const imageTool = options?.agentDir?.trim()
-    ? createImageTool({
-        config: options?.config,
-        agentDir: options.agentDir,
-        sandboxRoot: options?.sandboxRoot,
-        modelHasVision: options?.modelHasVision,
-      })
-    : null;
+  const imageTool = options?.disableImageTool
+    ? null
+    : options?.agentDir?.trim()
+      ? createImageTool({
+          config: options?.config,
+          agentDir: options.agentDir,
+          sandboxRoot: options?.sandboxRoot,
+          modelHasVision: options?.modelHasVision,
+        })
+      : null;
   const webSearchTool = createWebSearchTool({
     config: options?.config,
     sandboxed: options?.sandboxed,
@@ -348,7 +354,7 @@ export function createArgentTools(options?: {
     createWidgetBuilderTool(),
     createWorkflowBuilderTool({ agentSessionKey: options?.agentSessionKey }),
     // Media generation tools
-    createImageGenerationTool(),
+    ...(options?.disableImageGenerationTool ? [] : [createImageGenerationTool()]),
     createVideoGenerationTool(),
     createAudioGenerationTool({
       agentSessionKey: options?.agentSessionKey,

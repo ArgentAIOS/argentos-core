@@ -104,7 +104,7 @@ function splitToolExecuteArgs(args: ToolExecuteArgsAny): {
   signal: AbortSignal | undefined;
 } {
   if (isLegacyToolExecuteArgs(args)) {
-    const [toolCallId, params, signal, onUpdate] = args;
+    const [toolCallId, params, signal, onUpdate] = args as ToolExecuteArgsLegacy;
     return {
       toolCallId,
       params,
@@ -112,12 +112,21 @@ function splitToolExecuteArgs(args: ToolExecuteArgsAny): {
       signal,
     };
   }
-  const [toolCallId, params, onUpdate, _ctx, signal] = args;
+  const [toolCallId, params, onUpdate, _ctx, signal] = args as ToolExecuteArgsCurrent;
   return {
     toolCallId,
     params,
     onUpdate,
     signal,
+  };
+}
+
+function normalizeToolResult(result: AgentToolResult<unknown>): AgentToolResult<unknown> & {
+  details: unknown;
+} {
+  return {
+    ...result,
+    details: result.details ?? {},
   };
 }
 
@@ -129,11 +138,11 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
       name,
       label: tool.label ?? name,
       description: tool.description ?? "",
-      parameters: tool.parameters,
-      execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
+      parameters: tool.parameters as unknown as ToolDefinition["parameters"],
+      execute: async (...args: ToolExecuteArgs) => {
         const { toolCallId, params, onUpdate, signal } = splitToolExecuteArgs(args);
         try {
-          return await tool.execute(toolCallId, params, signal, onUpdate);
+          return normalizeToolResult(await tool.execute(toolCallId, params, signal, onUpdate));
         } catch (err) {
           if (signal?.aborted) {
             throw err;
@@ -151,15 +160,15 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
           }
           const paramSummary = summarizeToolParams(normalizedName, params);
           logError(`[tools] ${normalizedName} failed: ${described.message}${paramSummary}`);
-          return jsonResult({
+          return normalizeToolResult(jsonResult({
             status: "error",
             tool: normalizedName,
             error: described.message,
-          });
+          }));
         }
       },
     } satisfies ToolDefinition;
-  });
+  }) as unknown as ToolDefinition[];
 }
 
 // Convert client tools (OpenResponses hosted tools) to ToolDefinition format
@@ -176,8 +185,8 @@ export function toClientToolDefinitions(
       label: func.name,
       description: func.description ?? "",
       // oxlint-disable-next-line typescript/no-explicit-any
-      parameters: func.parameters as any,
-      execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
+      parameters: func.parameters as unknown as ToolDefinition["parameters"],
+      execute: async (...args: ToolExecuteArgs) => {
         const { toolCallId, params } = splitToolExecuteArgs(args);
         const outcome = await runBeforeToolCallHook({
           toolName: func.name,
@@ -195,12 +204,12 @@ export function toClientToolDefinitions(
           onClientToolCall(func.name, paramsRecord);
         }
         // Return a pending result - the client will execute this tool
-        return jsonResult({
+        return normalizeToolResult(jsonResult({
           status: "pending",
           tool: func.name,
           message: "Tool execution delegated to client",
-        });
+        }));
       },
     } satisfies ToolDefinition;
-  });
+  }) as unknown as ToolDefinition[];
 }

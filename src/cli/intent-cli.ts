@@ -39,7 +39,7 @@ export function registerIntentCli(program: Command): void {
           await import("../infra/intent-simulation-runner.js");
         const { T1_MSP_SCENARIOS } = await import("../infra/intent-simulation-scenarios-t1.js");
 
-        let scenarios;
+        let scenarios: import("../infra/intent-simulation-runner.js").IntentSimulationScenario[];
 
         if (opts.config) {
           const path = await import("node:path");
@@ -48,7 +48,7 @@ export function registerIntentCli(program: Command): void {
           scenarios = await loadScenariosFromFile(resolved);
         } else if (opts.builtinT1) {
           console.log(`Using built-in MSP T1 scenarios (${T1_MSP_SCENARIOS.length} scenarios)`);
-          scenarios = T1_MSP_SCENARIOS;
+          scenarios = T1_MSP_SCENARIOS as import("../infra/intent-simulation-runner.js").IntentSimulationScenario[];
         } else {
           console.error("Error: provide --config <path> or --builtin-t1");
           process.exit(1);

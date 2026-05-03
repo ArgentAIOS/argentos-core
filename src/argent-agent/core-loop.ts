@@ -620,10 +620,11 @@ export async function* coreLoop(config: CoreLoopConfig): AsyncGenerator<CoreEven
       };
 
       const extraction = await sis.extractor.extractFromEpisode(episode);
-      if (extraction.candidates.length > 0) {
+      const candidates = [...extraction.promoted, ...extraction.skipped];
+      if (candidates.length > 0) {
         yield {
           type: "core:sis_extraction",
-          lessonsExtracted: extraction.candidates.filter((c) => c.promoted).length,
+          lessonsExtracted: extraction.promoted.length,
         };
       }
     } catch (error) {

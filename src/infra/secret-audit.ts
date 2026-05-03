@@ -158,20 +158,37 @@ async function queryAuditFromPg(query: SecretAuditQuery): Promise<SecretAuditRec
       LIMIT ${Math.min(limit * 5, 5000)}
     `;
 
-    const filtered = rows
-      .map((row) => ({
+    const filtered = (rows as Array<{
+      id: string;
+      timestamp: Date | string | null;
+      actor_id: string | null;
+      actor_role: string | null;
+      actor_team: string | null;
+      action: string;
+      secret_id: string | null;
+      secret_variable: string;
+      secret_name: string | null;
+      source: string | null;
+      result: string;
+      denial_reason: string | null;
+      old_value_hash: string | null;
+      new_value_hash: string | null;
+      session_key: string | null;
+      ip_address: string | null;
+    }>)
+      .map((row): SecretAuditRecord => ({
         id: row.id,
         timestamp:
           row.timestamp instanceof Date ? row.timestamp.toISOString() : String(row.timestamp ?? ""),
         actorId: row.actor_id ?? undefined,
         actorRole: row.actor_role ?? undefined,
         actorTeam: row.actor_team ?? undefined,
-        action: row.action,
+        action: row.action as SecretAuditAction,
         secretId: row.secret_id ?? undefined,
         secretVariable: row.secret_variable,
         secretName: row.secret_name ?? undefined,
         source: row.source ?? undefined,
-        result: row.result,
+        result: row.result as SecretAuditRecord["result"],
         denialReason: row.denial_reason ?? undefined,
         oldValueHash: row.old_value_hash ?? undefined,
         newValueHash: row.new_value_hash ?? undefined,

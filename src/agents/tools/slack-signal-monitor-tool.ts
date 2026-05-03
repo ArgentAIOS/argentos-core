@@ -480,7 +480,7 @@ function selectCronMonitorJobs(params: {
     }))
     .toSorted((a, b) => b.score - a.score || a.index - b.index);
 
-  const selected = preferred ?? scored[0]?.job;
+  const selected = preferred || scored[0]?.job;
   const duplicates = selected ? candidates.filter((job) => job.id !== selected.id) : [];
   return { selected, duplicates };
 }
@@ -725,7 +725,7 @@ async function createTasksForActionableMentions(params: {
     return { created: 0, failed: 0, tasks: [], errors: [] };
   }
 
-  const storage = getStorageAdapter();
+  const storage = await getStorageAdapter();
   let created = 0;
   let failed = 0;
   const tasks: Array<{ id: string; title: string }> = [];

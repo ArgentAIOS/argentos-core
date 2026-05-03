@@ -38,7 +38,7 @@ export const specforgeHandlers: GatewayRequestHandlers = {
         defaultModel: "claude-3-5-haiku-latest",
       });
 
-      const model = getModel(decision.provider, decision.model);
+      const model = getModel(decision.provider as never, decision.model);
       if (!model) {
         respond(
           false,

@@ -1,8 +1,7 @@
 import { vi } from "vitest";
-import type { MockFn } from "../test-utils/vitest-mock-fn.js";
 
-export const connectOverCdpMock: MockFn = vi.fn();
-export const getChromeWebSocketUrlMock: MockFn = vi.fn();
+export const connectOverCdpMock = vi.fn<(...args: unknown[]) => unknown>();
+export const getChromeWebSocketUrlMock = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock("playwright-core", () => ({
   chromium: {

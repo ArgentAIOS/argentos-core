@@ -78,7 +78,7 @@ function normalizeAllowlist(input: unknown): string[] | undefined {
 const BUNDLED_SOURCES = new Set(["argent-bundled"]);
 
 function isBundledSkill(entry: SkillEntry): boolean {
-  return BUNDLED_SOURCES.has(entry.skill.source);
+  return BUNDLED_SOURCES.has(String((entry.skill as { source?: unknown }).source ?? ""));
 }
 
 export function resolveBundledAllowlist(config?: ArgentConfig): string[] | undefined {

@@ -94,7 +94,7 @@ function sanitizeToolResultForPersistence(message: AgentMessage): AgentMessage {
     return message;
   }
 
-  const sanitized = sanitizedUnknown as AgentMessage & {
+  const sanitized = sanitizedUnknown as unknown as AgentMessage & {
     details?: unknown;
     role?: string;
   };

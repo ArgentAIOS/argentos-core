@@ -48,7 +48,7 @@ export async function evaluateIntentSimulationGateForConfig(params: {
       mode: gate?.mode ?? "warn",
       minPassRate: gate?.minPassRate ?? 0,
       minComponentScores: gate?.minComponentScores ?? {},
-      requiredSuites: gate?.requiredSuites ?? [],
+      requiredSuites: gate?.suites ?? [],
       overallPassRate: null,
       aggregateScores: null,
       blocking: false,

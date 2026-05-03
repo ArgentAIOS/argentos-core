@@ -53,16 +53,17 @@ export async function ensureBrowserControlAuth(params: {
     return { auth };
   }
 
+  const configuredMode = params.cfg.gateway?.auth?.mode as string | undefined;
   // Respect explicit password mode even if currently unset.
-  if (params.cfg.gateway?.auth?.mode === "password") {
+  if (configuredMode === "password") {
     return { auth };
   }
 
-  if (params.cfg.gateway?.auth?.mode === "none") {
+  if (configuredMode === "none") {
     return { auth };
   }
 
-  if (params.cfg.gateway?.auth?.mode === "trusted-proxy") {
+  if (configuredMode === "trusted-proxy") {
     return { auth };
   }
 
@@ -72,13 +73,14 @@ export async function ensureBrowserControlAuth(params: {
   if (latestAuth.token || latestAuth.password) {
     return { auth: latestAuth };
   }
-  if (latestCfg.gateway?.auth?.mode === "password") {
+  const latestMode = latestCfg.gateway?.auth?.mode as string | undefined;
+  if (latestMode === "password") {
     return { auth: latestAuth };
   }
-  if (latestCfg.gateway?.auth?.mode === "none") {
+  if (latestMode === "none") {
     return { auth: latestAuth };
   }
-  if (latestCfg.gateway?.auth?.mode === "trusted-proxy") {
+  if (latestMode === "trusted-proxy") {
     return { auth: latestAuth };
   }
 

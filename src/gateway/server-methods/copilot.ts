@@ -222,7 +222,7 @@ export const copilotHandlers: GatewayRequestHandlers = {
           run,
           assignment,
           template,
-          task: context?.task ?? null,
+          task: (context as { task?: unknown } | null | undefined)?.task ?? null,
           assignmentRuns,
           events: linkedEvents,
         },

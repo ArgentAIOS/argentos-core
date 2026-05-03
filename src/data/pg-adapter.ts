@@ -3398,6 +3398,7 @@ export class PgAdapter implements StorageAdapter {
   private sqlClient: ReturnType<typeof postgres>;
   private db: PostgresJsDatabase<typeof schema>;
   private jobAdapter: PgJobAdapter;
+  private agentId: string;
 
   constructor(pgConfig: PostgresConfig, agentId: string = "argent") {
     this.agentId = agentId;

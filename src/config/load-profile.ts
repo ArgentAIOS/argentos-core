@@ -1,5 +1,6 @@
 import type {
   AgentDefaultsConfig,
+  AgentExecutionWorkerConfig,
   AgentRuntimeLoadProfileConfig,
   RuntimeLoadProfileId,
 } from "./types.agent-defaults.js";
@@ -31,9 +32,17 @@ export const RUNTIME_LOAD_PROFILE_PRESETS: Record<RuntimeLoadProfileId, RuntimeL
         "Keep interactive work responsive while slowing background loops and UI polling.",
       pollingMultiplier: 2,
       patch: {
-        heartbeat: { enabled: true, every: "45m" },
-        contemplation: { enabled: true, every: "2h", maxCyclesPerHour: 1 },
-        sis: { enabled: true, every: "2h", episodesPerConsolidation: 3 },
+        heartbeat: { enabled: true, every: "45m" } as AgentDefaultsConfig["heartbeat"],
+        contemplation: {
+          enabled: true,
+          every: "2h",
+          maxCyclesPerHour: 1,
+        } as AgentDefaultsConfig["contemplation"],
+        sis: {
+          enabled: true,
+          every: "2h",
+          episodesPerConsolidation: 3,
+        } as AgentDefaultsConfig["sis"],
         executionWorker: {
           enabled: true,
           every: "1h",
@@ -42,7 +51,7 @@ export const RUNTIME_LOAD_PROFILE_PRESETS: Record<RuntimeLoadProfileId, RuntimeL
           scope: "assigned",
           requireEvidence: true,
           maxNoProgressAttempts: 2,
-        },
+        } as AgentExecutionWorkerConfig,
         maxConcurrent: 2,
         backgroundConcurrency: 1,
         subagents: { maxConcurrent: 1 },
@@ -54,9 +63,17 @@ export const RUNTIME_LOAD_PROFILE_PRESETS: Record<RuntimeLoadProfileId, RuntimeL
       description: "Prioritize thermals and battery life; keep background behavior sparse.",
       pollingMultiplier: 4,
       patch: {
-        heartbeat: { enabled: true, every: "1h" },
-        contemplation: { enabled: true, every: "3h", maxCyclesPerHour: 1 },
-        sis: { enabled: true, every: "3h", episodesPerConsolidation: 3 },
+        heartbeat: { enabled: true, every: "1h" } as AgentDefaultsConfig["heartbeat"],
+        contemplation: {
+          enabled: true,
+          every: "3h",
+          maxCyclesPerHour: 1,
+        } as AgentDefaultsConfig["contemplation"],
+        sis: {
+          enabled: true,
+          every: "3h",
+          episodesPerConsolidation: 3,
+        } as AgentDefaultsConfig["sis"],
         executionWorker: {
           enabled: true,
           every: "90m",
@@ -65,7 +82,7 @@ export const RUNTIME_LOAD_PROFILE_PRESETS: Record<RuntimeLoadProfileId, RuntimeL
           scope: "assigned",
           requireEvidence: true,
           maxNoProgressAttempts: 2,
-        },
+        } as AgentExecutionWorkerConfig,
         maxConcurrent: 1,
         backgroundConcurrency: 1,
         subagents: { maxConcurrent: 1 },

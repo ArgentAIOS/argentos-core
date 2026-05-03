@@ -86,7 +86,8 @@ export function sanitizeMessagesForModelAdapter(messages: AgentMessage[]): Sanit
         continue;
       }
 
-      const content = (message as { content?: unknown; details?: unknown }).content;
+      const resultPayload = message as { content?: unknown; details?: unknown };
+      const content = resultPayload.content;
       if (isContentBlockArray(content)) {
         sanitized.push(message);
         continue;
@@ -95,7 +96,7 @@ export function sanitizeMessagesForModelAdapter(messages: AgentMessage[]): Sanit
       repairs.push("repaired tool result with missing content");
       sanitized.push({
         ...message,
-        content: [{ type: "text", text: fallbackText(content ?? message.details) }],
+        content: [{ type: "text", text: fallbackText(content ?? resultPayload.details) }],
       } as AgentMessage);
       continue;
     }

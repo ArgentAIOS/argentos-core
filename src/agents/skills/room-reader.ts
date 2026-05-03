@@ -190,7 +190,7 @@ function selectRecommendedSkill(params: {
     return {
       kind: "skill",
       name: skill.name,
-      source: skill.source,
+      source: (skill as { source?: string }).source,
     };
   }
 

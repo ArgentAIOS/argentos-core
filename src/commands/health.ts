@@ -24,6 +24,7 @@ import { loadConfig } from "../config/config.js";
 import { validateGatewayAuthConfig } from "../config/gateway-auth-validation.js";
 import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import { isPostgresEnabled, resolveStorageConfig } from "../data/storage-config.js";
+import type { StorageConfig } from "../data/storage-config.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { info } from "../globals.js";
 import {
@@ -189,7 +190,7 @@ async function probePostgresHealth(cfg: ReturnType<typeof loadConfig>): Promise<
   enabled: boolean;
   detail?: string;
 }> {
-  const storage = resolveStorageConfig(cfg.storage);
+  const storage = resolveStorageConfig(cfg.storage as Partial<StorageConfig> | undefined);
   const enabled = isPostgresEnabled(storage);
   if (!enabled) {
     return { healthy: true, enabled: false };

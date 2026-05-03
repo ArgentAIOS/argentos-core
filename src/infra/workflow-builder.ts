@@ -472,7 +472,10 @@ function draftVisibleScoutWorkflow(input: {
         config: {
           channelType: "telegram",
           channelId: "",
-          template: "{{previous.text}}",
+          template: requestedPodcast
+            ? "AI Morning Brief podcast audio is ready: {{previous.json.path}}"
+            : "{{previous.text}}",
+          ...(requestedPodcast ? { mediaTemplate: "{{previous.json.path}}" } : {}),
         },
       },
     });

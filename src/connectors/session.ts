@@ -64,17 +64,16 @@ export function normalizeSessionConnectorSelections(raw: unknown): SessionConnec
   if (!Array.isArray(raw)) {
     return [];
   }
-  return raw
-    .map((entry) => {
+  return raw.flatMap((entry): SessionConnectorSelection[] => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        return null;
+        return [];
       }
       const typed = entry as Record<string, unknown>;
       const tool = typeof typed.tool === "string" ? typed.tool.trim() : "";
       if (!tool) {
-        return null;
+        return [];
       }
-      return {
+      return [{
         tool,
         label: typeof typed.label === "string" ? typed.label.trim() || undefined : undefined,
         selectedCommands: Array.isArray(typed.selectedCommands)
@@ -87,9 +86,8 @@ export function normalizeSessionConnectorSelections(raw: unknown): SessionConnec
           typed.scope && typeof typed.scope === "object" && !Array.isArray(typed.scope)
             ? (typed.scope as Record<string, unknown>)
             : undefined,
-      } satisfies SessionConnectorSelection;
-    })
-    .filter((entry): entry is SessionConnectorSelection => Boolean(entry));
+      } satisfies SessionConnectorSelection];
+    });
 }
 
 export function readSessionConnectorSelections(params: {

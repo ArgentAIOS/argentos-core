@@ -52,6 +52,13 @@ export type MemoryRecallTelemetryMeta = {
   knowledgeFallbackUsed?: boolean;
   knowledgeFallbackQueries?: string[];
   knowledgeFallbackCount?: number;
+  subqueries?: Array<{
+    key?: string;
+    query?: string;
+    mode?: unknown;
+    queryClass?: unknown;
+    state?: string;
+  }>;
 };
 
 export type MemoryRecallTelemetryEntry = {

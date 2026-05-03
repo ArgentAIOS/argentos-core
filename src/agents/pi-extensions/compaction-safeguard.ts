@@ -166,7 +166,7 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
     const toolFailures = collectToolFailures([
       ...preparation.messagesToSummarize,
       ...preparation.turnPrefixMessages,
-    ]);
+    ] as unknown as AgentMessage[]);
     const toolFailureSection = formatToolFailuresSection(toolFailures);
     const fallbackSummary = `${FALLBACK_SUMMARY}${toolFailureSection}${fileOpsSummary}`;
 
@@ -182,7 +182,8 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
       };
     }
 
-    const apiKey = await ctx.modelRegistry.getApiKey(model);
+    const apiKeyResult = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    const apiKey = apiKeyResult.ok ? apiKeyResult.apiKey : undefined;
     if (!apiKey) {
       return {
         compaction: {
@@ -198,8 +199,8 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
       const runtime = getCompactionSafeguardRuntime(ctx.sessionManager);
       const modelContextWindow = resolveContextWindowTokens(model);
       const contextWindowTokens = runtime?.contextWindowTokens ?? modelContextWindow;
-      const turnPrefixMessages = preparation.turnPrefixMessages ?? [];
-      let messagesToSummarize = preparation.messagesToSummarize;
+      const turnPrefixMessages = (preparation.turnPrefixMessages ?? []) as unknown as AgentMessage[];
+      let messagesToSummarize = preparation.messagesToSummarize as unknown as AgentMessage[];
 
       const maxHistoryShare = runtime?.maxHistoryShare ?? 0.5;
 

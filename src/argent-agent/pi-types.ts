@@ -87,7 +87,7 @@ export interface AgentToolResult<T = unknown> {
   /** Content blocks returned by the tool */
   content: (TextContent | ImageContent)[];
   /** Tool-specific details for logging/display */
-  details: T;
+  details?: T;
 }
 
 /**

@@ -65,6 +65,7 @@ interface VisualPresenceToolOptions {
 }
 
 export function createVisualPresenceTool(opts?: VisualPresenceToolOptions): AnyAgentTool {
+  const gatewayOpts = {};
   return {
     label: "Visual Presence",
     name: "visual_presence",
@@ -123,9 +124,7 @@ Examples:
         // Broadcast via gateway
         await callGatewayTool(
           "aevp.presence",
-          {
-            agentSessionKey: opts?.agentSessionKey,
-          },
+          gatewayOpts,
           payload,
         );
 
@@ -156,9 +155,7 @@ Examples:
 
         await callGatewayTool(
           "aevp.presence",
-          {
-            agentSessionKey: opts?.agentSessionKey,
-          },
+          gatewayOpts,
           payload,
         );
 
@@ -199,9 +196,7 @@ Examples:
 
         await callGatewayTool(
           "aevp.presence",
-          {
-            agentSessionKey: opts?.agentSessionKey,
-          },
+          gatewayOpts,
           payload,
         );
 
@@ -237,9 +232,7 @@ Examples:
 
         await callGatewayTool(
           "aevp.presence",
-          {
-            agentSessionKey: opts?.agentSessionKey,
-          },
+          gatewayOpts,
           payload,
         );
 

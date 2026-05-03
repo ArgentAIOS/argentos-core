@@ -21,7 +21,7 @@ export default function contextPruningExtension(api: ExtensionAPI): void {
     }
 
     const next = pruneContextMessages({
-      messages: event.messages,
+      messages: event.messages as unknown as Parameters<typeof pruneContextMessages>[0]["messages"],
       settings: runtime.settings,
       ctx,
       isToolPrunable: runtime.isToolPrunable,
@@ -36,6 +36,6 @@ export default function contextPruningExtension(api: ExtensionAPI): void {
       runtime.lastCacheTouchAt = Date.now();
     }
 
-    return { messages: next };
+    return { messages: next as unknown as ContextEvent["messages"] };
   });
 }

@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { Redis as RedisClient } from "ioredis";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { getRedisClient } from "./redis-client.js";
@@ -30,7 +30,7 @@ function crossChannelStreamKey(agentId: string): string {
   return `${CROSS_CHANNEL_STREAM_PREFIX}${normalizeAgentId(agentId)}`;
 }
 
-function resolveSharedContextRedisClient(): Redis | null {
+function resolveSharedContextRedisClient(): RedisClient | null {
   const redisConfig = resolveRedisConfig();
   if (!redisConfig) {
     return null;

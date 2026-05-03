@@ -626,12 +626,12 @@ function normalizeConnectorCommands(raw: unknown): ConnectorCatalogCommand[] {
     return [];
   }
   return raw
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
       const typed = entry as Record<string, unknown>;
       const id = typeof typed.id === "string" ? typed.id.trim() : "";
-      if (!id) return null;
-      return {
+      if (!id) return [];
+      return [{
         id,
         summary: typeof typed.summary === "string" ? typed.summary : humanizeCommandId(id),
         requiredMode: typeof typed.required_mode === "string" ? typed.required_mode : undefined,
@@ -640,9 +640,8 @@ function normalizeConnectorCommands(raw: unknown): ConnectorCatalogCommand[] {
           typeof typed.resource === "string" ? typed.resource : inferResourceFromCommandId(id),
         actionClass:
           typeof typed.action_class === "string" ? typed.action_class : inferActionClass(id),
-      } satisfies ConnectorCatalogCommand;
+      } satisfies ConnectorCatalogCommand];
     })
-    .filter((entry): entry is ConnectorCatalogCommand => Boolean(entry))
     .filter((entry) => isWorkerVisibleConnectorCommand(entry.id))
     .sort((left, right) => left.id.localeCompare(right.id));
 }
@@ -796,7 +795,10 @@ async function buildCatalogEntry(params: {
   } else if (discoveredBinaryPath) {
     installState = "error";
     statusLabel = "Error";
-    statusDetail = capabilityResult?.detail || "Connector binary exists but capabilities failed.";
+    statusDetail =
+      capabilityResult && !capabilityResult.ok
+        ? capabilityResult.detail
+        : "Connector binary exists but capabilities failed.";
   } else if (params.repo) {
     installState = "repo-only";
     statusLabel = "Repo only";

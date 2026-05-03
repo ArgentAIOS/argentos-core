@@ -199,12 +199,12 @@
         "kind": "base-table-record",
         "surface": null,
         "scaffold_only": null,
-        "live_backend_available": null,
-        "live_read_available": null,
-        "write_bridge_available": null
+        "live_backend_available": true,
+        "live_read_available": true,
+        "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["AIRTABLE_API_TOKEN"],
+        "service_keys": ["AIRTABLE_API_BASE_URL", "AIRTABLE_API_TOKEN"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -3527,7 +3527,12 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID", "DISCORD_WEBHOOK_URL"],
+        "service_keys": [
+          "DISCORD_API_BASE_URL",
+          "DISCORD_BOT_TOKEN",
+          "DISCORD_CHANNEL_ID",
+          "DISCORD_WEBHOOK_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8031,7 +8036,7 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["PINECONE_API_KEY"],
+        "service_keys": ["PINECONE_API_KEY", "PINECONE_ENVIRONMENT"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8419,7 +8424,17 @@
         "write_bridge_available": null
       },
       "auth": {
-        "service_keys": ["QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_REFRESH_TOKEN"],
+        "service_keys": [
+          "QBO_API_BASE_URL",
+          "QBO_CLIENT_ID",
+          "QBO_CLIENT_SECRET",
+          "QBO_ENVIRONMENT",
+          "QBO_HTTP_TIMEOUT_SECONDS",
+          "QBO_MINOR_VERSION",
+          "QBO_REALM_ID",
+          "QBO_REFRESH_TOKEN",
+          "QBO_TOKEN_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9619,7 +9634,13 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["SLACK_APP_TOKEN", "SLACK_BOT_TOKEN", "SLACK_CHANNEL_ID"],
+        "service_keys": [
+          "SLACK_APP_TOKEN",
+          "SLACK_BASE_URL",
+          "SLACK_BOT_TOKEN",
+          "SLACK_CHANNEL_ID",
+          "SLACK_USER_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9823,7 +9844,7 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["SQUARE_ACCESS_TOKEN"],
+        "service_keys": ["SQUARE_ACCESS_TOKEN", "SQUARE_ENVIRONMENT"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -10376,10 +10397,14 @@
       },
       "auth": {
         "service_keys": [
+          "TEAMS_CHANNEL_ID",
           "TEAMS_CLIENT_ID",
           "TEAMS_CLIENT_SECRET",
+          "TEAMS_GRAPH_BASE_URL",
+          "TEAMS_HTTP_TIMEOUT_SECONDS",
           "TEAMS_TEAM_ID",
           "TEAMS_TENANT_ID",
+          "TEAMS_TOKEN_URL",
           "TEAMS_USER_ID"
         ],
         "operator_service_keys_preferred": true,
@@ -10468,7 +10493,7 @@
         },
         {
           "id": "meeting.list",
-          "summary": "List upcoming Teams meetings",
+          "summary": "List online calendar events for a scoped user",
           "required_mode": "readonly",
           "action_class": "read",
           "readiness": "read-only",

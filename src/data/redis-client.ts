@@ -5,49 +5,50 @@
  * session cache, and dashboard pub/sub.
  */
 
-import Redis from "ioredis";
+import { Redis, type Redis as RedisClient } from "ioredis";
 import type { RedisConfig } from "./storage-config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("data/redis");
 
-let _redis: Redis | null = null;
+let _redis: RedisClient | null = null;
 
 /**
  * Get or create the Redis connection.
  * ioredis handles reconnection automatically.
  */
-export function getRedisClient(config: RedisConfig): Redis {
+export function getRedisClient(config: RedisConfig): RedisClient {
   if (_redis) return _redis;
 
   // ArgentOS uses port 6380 (not default 6379) to avoid conflicts
-  _redis = new Redis({
+  const redis = new Redis({
     host: config.host,
     port: config.port, // Default: 6380 (see ARGENT_REDIS_PORT)
     password: config.password,
     db: config.db ?? 0,
     maxRetriesPerRequest: 3,
     lazyConnect: true,
-    retryStrategy(times) {
+    retryStrategy(times: number) {
       // Exponential backoff: 100ms, 200ms, 400ms, ... max 5s
       const delay = Math.min(times * 100, 5000);
       return delay;
     },
   });
+  _redis = redis;
 
-  _redis.on("connect", () => {
+  redis.on("connect", () => {
     log.info("redis: connected", { host: config.host, port: config.port });
   });
 
-  _redis.on("error", (err) => {
+  redis.on("error", (err: Error) => {
     log.error("redis: connection error", { error: err.message });
   });
 
-  _redis.on("close", () => {
+  redis.on("close", () => {
     log.debug("redis: connection closed");
   });
 
-  return _redis;
+  return redis;
 }
 
 /**
@@ -80,7 +81,7 @@ export interface AgentState {
 
 /** Set agent state hash */
 export async function setAgentState(
-  redis: Redis,
+  redis: RedisClient,
   agentId: string,
   state: Partial<AgentState>,
 ): Promise<void> {
@@ -95,7 +96,7 @@ export async function setAgentState(
 }
 
 /** Get agent state hash */
-export async function getAgentState(redis: Redis, agentId: string): Promise<AgentState | null> {
+export async function getAgentState(redis: RedisClient, agentId: string): Promise<AgentState | null> {
   const key = `${AGENT_STATE_PREFIX}${agentId}`;
   const data = await redis.hgetall(key);
   if (!data || Object.keys(data).length === 0) return null;
@@ -111,21 +112,21 @@ export async function getAgentState(redis: Redis, agentId: string): Promise<Agen
 }
 
 /** Refresh agent presence TTL (call from heartbeat) */
-export async function refreshPresence(redis: Redis, agentId: string): Promise<void> {
+export async function refreshPresence(redis: RedisClient, agentId: string): Promise<void> {
   const key = `${AGENT_PRESENCE_PREFIX}${agentId}`;
   await redis.set(key, "1", "EX", PRESENCE_TTL_SECONDS);
 }
 
 /** Check if an agent is alive (presence key exists) */
-export async function isAgentAlive(redis: Redis, agentId: string): Promise<boolean> {
+export async function isAgentAlive(redis: RedisClient, agentId: string): Promise<boolean> {
   const key = `${AGENT_PRESENCE_PREFIX}${agentId}`;
   return (await redis.exists(key)) === 1;
 }
 
 /** Get all alive agent IDs */
-export async function getAliveAgents(redis: Redis): Promise<string[]> {
+export async function getAliveAgents(redis: RedisClient): Promise<string[]> {
   const keys = await redis.keys(`${AGENT_PRESENCE_PREFIX}*`);
-  return keys.map((k) => k.slice(AGENT_PRESENCE_PREFIX.length));
+  return keys.map((k: string) => k.slice(AGENT_PRESENCE_PREFIX.length));
 }
 
 // ── Inter-Agent Streams ───────────────────────────────────────────────────
@@ -146,8 +147,8 @@ export interface StreamMessage {
 }
 
 /** Send a message to the family stream */
-export async function sendFamilyMessage(redis: Redis, msg: StreamMessage): Promise<string> {
-  return redis.xadd(
+export async function sendFamilyMessage(redis: RedisClient, msg: StreamMessage): Promise<string> {
+  const id = await redis.xadd(
     FAMILY_STREAM,
     "*",
     "sender",
@@ -159,11 +160,12 @@ export async function sendFamilyMessage(redis: Redis, msg: StreamMessage): Promi
     "payload",
     msg.payload,
   );
+  return id ?? "";
 }
 
 /** Read pending messages for an agent from the family stream */
 export async function readFamilyMessages(
-  redis: Redis,
+  redis: RedisClient,
   agentId: string,
   count = 10,
 ): Promise<Array<{ id: string; message: StreamMessage }>> {
@@ -176,7 +178,7 @@ export async function readFamilyMessages(
     // Group already exists — fine
   }
 
-  const results = await redis.xreadgroup(
+  const results = (await redis.xreadgroup(
     "GROUP",
     groupName,
     agentId,
@@ -185,7 +187,7 @@ export async function readFamilyMessages(
     "STREAMS",
     FAMILY_STREAM,
     ">",
-  );
+  )) as Array<[string, Array<[string, string[]]>]> | null;
 
   if (!results) return [];
 
@@ -213,7 +215,7 @@ export async function readFamilyMessages(
 
 /** Acknowledge processed messages in a consumer group */
 export async function ackFamilyMessages(
-  redis: Redis,
+  redis: RedisClient,
   agentId: string,
   messageIds: string[],
 ): Promise<number> {
@@ -233,6 +235,6 @@ export interface DashboardEvent {
 }
 
 /** Publish an event to the dashboard channel */
-export async function publishDashboardEvent(redis: Redis, event: DashboardEvent): Promise<void> {
+export async function publishDashboardEvent(redis: RedisClient, event: DashboardEvent): Promise<void> {
   await redis.publish(DASHBOARD_CHANNEL, JSON.stringify(event));
 }

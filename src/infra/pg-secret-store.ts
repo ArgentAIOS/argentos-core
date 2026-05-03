@@ -423,7 +423,10 @@ export async function migrateSecretsToPg(
 // ============================================================================
 
 function decryptServiceKeyRow(row: PgServiceKeyRow): PgServiceKey {
-  const encryptedValue = row.encryptedValue ?? row.encrypted_value;
+  const encryptedValue = row.encryptedValue ?? row.encrypted_value ?? "";
+  const allowedRoles = row.allowedRoles ?? row.allowed_roles;
+  const allowedAgents = row.allowedAgents ?? row.allowed_agents;
+  const allowedTeams = row.allowedTeams ?? row.allowed_teams;
   return {
     id: row.id,
     variable: row.variable,
@@ -433,15 +436,9 @@ function decryptServiceKeyRow(row: PgServiceKeyRow): PgServiceKey {
     category: row.category ?? undefined,
     enabled: row.enabled,
     source: row.source ?? undefined,
-    allowedRoles: Array.isArray(row.allowedRoles ?? row.allowed_roles)
-      ? (row.allowedRoles ?? row.allowed_roles)
-      : undefined,
-    allowedAgents: Array.isArray(row.allowedAgents ?? row.allowed_agents)
-      ? (row.allowedAgents ?? row.allowed_agents)
-      : undefined,
-    allowedTeams: Array.isArray(row.allowedTeams ?? row.allowed_teams)
-      ? (row.allowedTeams ?? row.allowed_teams)
-      : undefined,
+    allowedRoles: Array.isArray(allowedRoles) ? allowedRoles : undefined,
+    allowedAgents: Array.isArray(allowedAgents) ? allowedAgents : undefined,
+    allowedTeams: Array.isArray(allowedTeams) ? allowedTeams : undefined,
     denyAll: (row.denyAll ?? row.deny_all) === true,
     createdAt: (row.createdAt ?? row.created_at ?? new Date()) as Date,
     updatedAt: (row.updatedAt ?? row.updated_at ?? new Date()) as Date,
@@ -469,7 +466,7 @@ async function ensureServiceKeyPolicyColumns(sql: ReturnType<typeof postgres>): 
 function decryptAuthRow(row: PgAuthCredentialRow): PgAuthCredential {
   let payload: Record<string, unknown> = {};
   try {
-    payload = JSON.parse(decryptSecret(row.encryptedPayload ?? row.encrypted_payload));
+    payload = JSON.parse(decryptSecret(row.encryptedPayload ?? row.encrypted_payload ?? ""));
   } catch {
     log.warn("failed to decrypt auth credential", { profileId: row.profileId ?? row.profile_id });
   }

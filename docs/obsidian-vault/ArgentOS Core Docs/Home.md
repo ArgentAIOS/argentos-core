@@ -25,6 +25,7 @@ Use it as the local source of truth for operator help, setup questions, troubles
 - [[05 - Concepts/Index]]
 - [[06 - Channels/Index]]
 - [[07 - Gateway/Index]]
+- [[08 - Current Iteration/Rust Spine Sprint May 2-3 2026/Start Here]]
 
 ## Generation
 

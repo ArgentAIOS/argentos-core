@@ -47,6 +47,24 @@ Rules:
 - Threadmaster merge/coordination-only pushes are not exempt. They still need a fresh dev version so `argent update` and operator reports have a known build id.
 - If a push is rejected because another lane landed first, fetch/rebase/merge, recompute the next dev version, and update it before retrying.
 
+## Dev Checkpoint Cadence Contract
+
+Prefer small, verified checkpoints to `origin/dev` over large multi-lane batch merges.
+
+Rules:
+
+- Land a slice when it is clean, rebased on latest `origin/dev`, verified, truth-labeled, and safe for `argent update`.
+- Do not hold READY packets in custody waiting for unrelated product areas to finish.
+- Keep checkpoint scope narrow: one lane, one behavior/proof slice, or one contained custody packet.
+- Every checkpoint must state what is enabled, what is still dry-run/shadow/deferred, and what is explicitly not live.
+- Risky systems must advance through honest gates:
+  - Rust Gateway/Kernel may land shadow/no-live evidence slices, but no authority switch without separate canary, rollback, duplicate-prevention, token/auth, and operator approval gates.
+  - Workflows may land dry-run, run-detail, canary-readiness, and UI visibility slices, but no live connector, podcast, or channel side effects without explicit approval.
+  - AppForge/TableForge may land focused UI/storage/browser-smoke slices, but no fake/demo code or unverified persistence claims.
+  - Agent Persona may land diagnosis, tests, and enforceable receipt guardrails, but no broad harness rewrite without proof.
+- If a lane is stale or blocked, keep other clean READY packets moving to `dev`; open a rescue task for the stalled lane instead of freezing all progress.
+- If a checkpoint breaks `argent update`, fixing the update path becomes the next highest-priority dev checkpoint.
+
 Every AppForge/Workflow handoff must start with:
 
 ```text

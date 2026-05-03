@@ -234,10 +234,16 @@ vi.mock("../agents/pi-model-discovery.js", async () => {
     "../agents/pi-model-discovery.js",
   );
 
-  class MockModelRegistry extends actual.ModelRegistry {
-    override getAll(): ReturnType<typeof actual.ModelRegistry.prototype.getAll> {
+  class MockModelRegistry {
+    static create(...args: Parameters<typeof actual.ModelRegistry.create>) {
+      const registry = actual.ModelRegistry.create(...args);
+      Object.setPrototypeOf(registry, MockModelRegistry.prototype);
+      return registry;
+    }
+
+    getAll(): ReturnType<typeof actual.ModelRegistry.prototype.getAll> {
       if (!piSdkMock.enabled) {
-        return super.getAll();
+        return actual.ModelRegistry.prototype.getAll.call(this);
       }
       piSdkMock.discoverCalls += 1;
       // Cast to expected type for testing purposes

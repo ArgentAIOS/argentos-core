@@ -725,7 +725,7 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
         (candidate.state === "promoted" || candidate.state === "incubating") &&
         !candidate.supersededByCandidateId,
     )
-    .map((candidate) => {
+    .flatMap((candidate) => {
       const titleTerms = tokenize(candidate.title);
       const triggerTerms = tokenize(candidate.triggerPatterns.join(" "));
       const haystackTerms = new Set(
@@ -755,7 +755,7 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
         Math.min(2, provenanceCount * 0.25) +
         stateBias;
       if (score <= stateBias) {
-        return null;
+        return [];
       }
       const reasons = dedupePreserveOrder([
         titleOverlap.length > 0 ? `name:${titleOverlap.join(",")}` : "",
@@ -768,7 +768,7 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
         candidate.relatedTools.length > 0 ? `tools:${candidate.relatedTools.join(",")}` : "",
       ]).filter((reason) => !reason.endsWith(":"));
 
-      return {
+      return [{
         id: candidate.id,
         name: candidate.title,
         source: "personal",
@@ -778,9 +778,8 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
         confidence: candidate.confidence,
         provenanceCount,
         reasons,
-      } satisfies SkillMatchCandidate;
+      } satisfies SkillMatchCandidate];
     })
-    .filter((candidate): candidate is SkillMatchCandidate => Boolean(candidate))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, Math.max(1, params.limit ?? 5));
 }

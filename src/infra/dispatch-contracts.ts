@@ -297,7 +297,7 @@ async function getSql(): Promise<ReturnType<typeof postgres> | null> {
   return _initPromise;
 }
 
-function requireStoreAvailable(sql: ReturnType<typeof postgres> | null) {
+function requireStoreAvailable(sql: ReturnType<typeof postgres> | null): asserts sql is ReturnType<typeof postgres> {
   if (sql || isTestEnv()) return;
   throw new Error(
     "Dispatch contracts require PostgreSQL storage (backend=postgres|dual) or test mode.",

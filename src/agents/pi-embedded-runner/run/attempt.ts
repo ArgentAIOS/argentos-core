@@ -230,7 +230,7 @@ function messageHasInlineImages(message: unknown): boolean {
       typeof block === "object" &&
       (block as { type?: unknown }).type === "image" &&
       typeof (block as { data?: unknown }).data === "string" &&
-      (block as { data?: string }).data.length > 0,
+      ((block as { data: string }).data.length > 0),
   );
 }
 
@@ -253,7 +253,7 @@ function buildOpenAICodexVisionFallbackOrder(modelId: string): string[] {
 }
 
 type OpenAICodexModelRegistryLike = {
-  find: (provider: string, modelId: string) => Model<Api> | null;
+  find: (provider: string, modelId: string) => Model<Api> | null | undefined;
   getAll: () => Array<Model<Api>>;
 };
 
@@ -264,6 +264,20 @@ type AuthStorageWithRuntimeOverrides = {
     options?: { includeFallback?: boolean },
   ) => Promise<string | undefined>;
 };
+
+function replaceSessionMessages(session: AgentSession, messages: unknown[]): void {
+  const agent = session.agent as unknown as {
+    replaceMessages?: (nextMessages: unknown[]) => void;
+    state?: { messages: unknown[] };
+  };
+  if (typeof agent.replaceMessages === "function") {
+    agent.replaceMessages(messages);
+    return;
+  }
+  if (agent.state) {
+    agent.state.messages = messages;
+  }
+}
 
 export async function resolveRuntimeProviderApiKey(
   authStorage: AuthStorageWithRuntimeOverrides,
@@ -1117,7 +1131,9 @@ export async function runEmbeddedAttempt(
           model: params.model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: builtInTools,
-          customTools: allCustomTools,
+          customTools: allCustomTools as unknown as NonNullable<
+            Parameters<typeof createAgentSession>[0]
+          >["customTools"],
           sessionManager,
           settingsManager: piSettingsManager,
         }));
@@ -1127,7 +1143,7 @@ export async function runEmbeddedAttempt(
       }
       // Cast to Pi's AgentSession for downstream compatibility — Argent session
       // implements the same runtime interface (setSystemPrompt, subscribe, prompt, etc.).
-      const activeSession = session as AgentSession;
+      const activeSession = session as unknown as AgentSession;
       const sessionBootstrapHint = buildSessionBootstrapBlock({
         nowMs: Date.now(),
         status: activeSession.messages.length > 0 ? "resumed" : "fresh",
@@ -1169,7 +1185,7 @@ export async function runEmbeddedAttempt(
       // but it needs apiKey in options since getEnvApiKey has no mapping for openai-codex.
       // Wrap streamSimple to inject the OAuth JWT from authStorage.runtimeOverrides.
       const providerApiKey = await resolveRuntimeProviderApiKey(
-        params.authStorage as AuthStorageWithRuntimeOverrides,
+        params.authStorage as unknown as AuthStorageWithRuntimeOverrides,
         params.provider,
       );
       if (params.provider === "openai-codex") {
@@ -1179,7 +1195,7 @@ export async function runEmbeddedAttempt(
             const effectiveModelId = resolveOpenAICodexVisionModelId({
               model,
               context,
-              modelRegistry: params.modelRegistry,
+              modelRegistry: params.modelRegistry as unknown as OpenAICodexModelRegistryLike,
             });
             const effectiveModel =
               effectiveModelId && effectiveModelId !== model.id
@@ -1262,21 +1278,23 @@ export async function runEmbeddedAttempt(
 
       if (cacheTrace) {
         cacheTrace.recordStage("session:loaded", {
-          messages: activeSession.messages,
+          messages: activeSession.messages as unknown[],
           system: systemPromptText,
           note: "after session create",
         });
-        activeSession.agent.streamFn = cacheTrace.wrapStreamFn(activeSession.agent.streamFn);
+        activeSession.agent.streamFn = cacheTrace.wrapStreamFn(
+          activeSession.agent.streamFn,
+        ) as unknown as typeof activeSession.agent.streamFn;
       }
       if (anthropicPayloadLogger) {
         activeSession.agent.streamFn = anthropicPayloadLogger.wrapStreamFn(
           activeSession.agent.streamFn,
-        );
+        ) as unknown as typeof activeSession.agent.streamFn;
       }
 
       try {
         const prior = await sanitizeSessionHistory({
-          messages: activeSession.messages,
+          messages: activeSession.messages as unknown as AgentMessage[],
           modelApi: params.model.api,
           modelId: params.modelId,
           provider: params.provider,
@@ -1307,7 +1325,7 @@ export async function runEmbeddedAttempt(
         });
 
         if (visionReady.length > 0) {
-          activeSession.agent.replaceMessages(visionReady);
+          replaceSessionMessages(activeSession, visionReady);
         }
       } catch (err) {
         sessionManager.flushPendingToolResults?.();
@@ -1520,7 +1538,7 @@ export async function runEmbeddedAttempt(
             sessionManager.resetLeaf();
           }
           const sessionContext = sessionManager.buildSessionContext();
-          activeSession.agent.replaceMessages(sessionContext.messages);
+          replaceSessionMessages(activeSession, sessionContext.messages);
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +
               `runId=${params.runId} sessionId=${params.sessionId}`,
@@ -1529,9 +1547,11 @@ export async function runEmbeddedAttempt(
         promptStartMessageCount = activeSession.messages.length;
 
         try {
-          const sanitizedHistory = sanitizeMessagesForModelAdapter(activeSession.messages);
+          const sanitizedHistory = sanitizeMessagesForModelAdapter(
+            activeSession.messages as unknown as AgentMessage[],
+          );
           if (sanitizedHistory.changed) {
-            activeSession.agent.replaceMessages(sanitizedHistory.messages);
+            replaceSessionMessages(activeSession, sanitizedHistory.messages);
             const onlySummaryNormalization = sanitizedHistory.repairs.every((repair) =>
               repair.startsWith("normalized summary message role: "),
             );
@@ -1561,12 +1581,12 @@ export async function runEmbeddedAttempt(
           // Inject history images into their original message positions.
           // This ensures the model sees images in context (e.g., "compare to the first image").
           const didMutate = injectHistoryImagesIntoMessages(
-            activeSession.messages,
+            activeSession.messages as unknown as AgentMessage[],
             imageResult.historyImagesByIndex,
           );
           if (didMutate) {
             // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
-            activeSession.agent.replaceMessages(activeSession.messages);
+            replaceSessionMessages(activeSession, activeSession.messages);
           }
 
           cacheTrace?.recordStage("prompt:images", {
@@ -1650,7 +1670,7 @@ export async function runEmbeddedAttempt(
           }
         }
 
-        messagesSnapshot = activeSession.messages.slice();
+        messagesSnapshot = activeSession.messages.slice() as unknown as AgentMessage[];
         sessionIdUsed = activeSession.sessionId;
         cacheTrace?.recordStage("session:after", {
           messages: messagesSnapshot,
