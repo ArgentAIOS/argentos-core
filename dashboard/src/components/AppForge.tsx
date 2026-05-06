@@ -42,6 +42,12 @@ import {
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi } from "../utils/localApiFetch";
+import {
+  MultiSelectCellDisplay,
+  MultiSelectCellEditor,
+  UrlCellDisplay,
+  UrlCellEditor,
+} from "./app-forge/GridCellEditor";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -3458,7 +3464,24 @@ export function AppForge({
                                               }`}
                                             >
                                               {activeEditingCell &&
-                                              field.type === "single_select" ? (
+                                              field.type === "multi_select" ? (
+                                                <MultiSelectCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
+                                              ) : activeEditingCell && field.type === "url" ? (
+                                                <UrlCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
+                                              ) : activeEditingCell &&
+                                                field.type === "single_select" ? (
                                                 <select
                                                   autoFocus
                                                   value={activeEditingCell.value}
@@ -3531,6 +3554,12 @@ export function AppForge({
                                                   }}
                                                   className="w-full rounded-md border border-sky-400/40 bg-black/45 px-2 py-1 text-sm text-white outline-none"
                                                 />
+                                              ) : field.type === "multi_select" ? (
+                                                <MultiSelectCellDisplay
+                                                  value={record.values[field.id]}
+                                                />
+                                              ) : field.type === "url" ? (
+                                                <UrlCellDisplay value={value} />
                                               ) : field.type === "single_select" && value ? (
                                                 <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
                                                   {value}
