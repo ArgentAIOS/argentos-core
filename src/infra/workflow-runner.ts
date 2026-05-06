@@ -45,6 +45,7 @@ import type {
 } from "./workflow-types.js";
 import { createPodcastGenerateTool } from "../agents/tools/podcast-generate-tool.js";
 import { createPodcastPlanTool } from "../agents/tools/podcast-plan-tool.js";
+import { dispatchToolSendPayload, isToolSendPayloadNode } from "../connectors/tool-send-payload.js";
 // Real system integrations — these are the actual delivery systems, not stubs
 import { refreshPresence } from "../data/redis-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -398,7 +399,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
             break;
 
           case "gate":
-            stepResult = executeGate(node, context, workflow.edges);
+            stepResult = await executeGate(node, context, workflow.edges);
             break;
 
           case "output":
@@ -2589,7 +2590,11 @@ async function executeConnectorAction(
  * Sprint 2 implements: condition (simple field comparison), and pass-through
  * for all other gate types (parallel, join, approval, etc.)
  */
-function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowEdge[]): ItemSet {
+async function executeGate(
+  node: GateNode,
+  context: PipelineContext,
+  _edges: WorkflowEdge[],
+): Promise<ItemSet> {
   const config = node.config;
   const gateType = config.gateType;
 
@@ -2701,6 +2706,18 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
       };
 
     case "error_handler":
+      // Special-case the `tool-send-payload` workflow node: it's
+      // currently normalized into an error_handler gate (see
+      // workflow-normalize.ts:normalizeSubPortNode), but it represents
+      // the Telegram delivery step in the AI Morning Brief recipe and
+      // must actually dispatch via the Telegram bot API. Without this
+      // hook, every run records the placeholder
+      // `{"gateType":"error_handler","status":"standby"}` instead of a
+      // real delivery receipt (see ops/artifacts/playwright/morning-brief
+      // /2026-05-06T1523/SUMMARY.md capture (d)).
+      if (isToolSendPayloadNode(node)) {
+        return dispatchToolSendPayload(node, context);
+      }
       // Pass through — error_handler only activates on failure
       return {
         items: [
@@ -3702,7 +3719,7 @@ async function executeBranch(
           stepResult = await executeAction(node, context, params.actions);
           break;
         case "gate":
-          stepResult = executeGate(node, context, workflow.edges);
+          stepResult = await executeGate(node, context, workflow.edges);
           break;
         case "output":
           stepResult = await executeOutput(node, context);
