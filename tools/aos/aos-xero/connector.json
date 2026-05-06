@@ -9,13 +9,7 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
-    "workerFields": [
-      "tenant_id",
-      "contact_id",
-      "invoice_id",
-      "payment_id",
-      "date"
-    ],
+    "workerFields": ["tenant_id", "contact_id", "invoice_id", "payment_id", "date"],
     "worker_visible_actions": [
       "invoice.list",
       "invoice.get",
@@ -63,9 +57,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "contact.get"
-        ],
+        "applies_to": ["contact.get"],
         "example": "c1d2e3f4-a5b6-7890-cdef-ab1234567890",
         "placeholder": "Select contact...",
         "description": "The Xero contact (customer/supplier) ID."
@@ -78,9 +70,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "invoice.get"
-        ],
+        "applies_to": ["invoice.get"],
         "example": "i1j2k3l4-m5n6-7890-opqr-st1234567890",
         "placeholder": "Select invoice...",
         "description": "The Xero invoice ID."
@@ -93,9 +83,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "payment.get"
-        ],
+        "applies_to": ["payment.get"],
         "example": "p1q2r3s4-t5u6-7890-vwxy-z1234567890",
         "placeholder": "Select payment...",
         "description": "The Xero payment ID."
@@ -108,10 +96,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "datetime",
-        "applies_to": [
-          "report.profit_loss",
-          "report.balance_sheet"
-        ],
+        "applies_to": ["report.profit_loss", "report.balance_sheet"],
         "example": "2026-03-26",
         "placeholder": "YYYY-MM-DD",
         "description": "Transaction date in ISO 8601 format."
@@ -121,16 +106,11 @@
       "invoice.list": {
         "selection_surface": "invoice",
         "limit": 25,
-        "statuses": [
-          "AUTHORISED",
-          "SUBMITTED"
-        ]
+        "statuses": ["AUTHORISED", "SUBMITTED"]
       },
       "invoice.get": {
         "selection_surface": "invoice",
-        "args": [
-          "XERO_INVOICE_ID"
-        ]
+        "args": ["XERO_INVOICE_ID"]
       },
       "contact.list": {
         "selection_surface": "contact",
@@ -138,9 +118,7 @@
       },
       "contact.get": {
         "selection_surface": "contact",
-        "args": [
-          "XERO_CONTACT_ID"
-        ]
+        "args": ["XERO_CONTACT_ID"]
       },
       "payment.list": {
         "selection_surface": "payment",
@@ -148,9 +126,7 @@
       },
       "payment.get": {
         "selection_surface": "payment",
-        "args": [
-          "XERO_PAYMENT_ID"
-        ]
+        "args": ["XERO_PAYMENT_ID"]
       },
       "account.list": {
         "selection_surface": "account",
@@ -162,15 +138,11 @@
       },
       "report.profit_loss": {
         "selection_surface": "report",
-        "args": [
-          "XERO_DATE"
-        ]
+        "args": ["XERO_DATE"]
       },
       "report.balance_sheet": {
         "selection_surface": "report",
-        "args": [
-          "XERO_DATE"
-        ]
+        "args": ["XERO_DATE"]
       },
       "quote.list": {
         "selection_surface": "quote",
@@ -215,81 +187,36 @@
         "selection_surface": "payment",
         "resource": "xero.payment",
         "source_command": "payment.list",
-        "source_fields": [
-          "id",
-          "invoice",
-          "amount",
-          "currency",
-          "date",
-          "status",
-          "payment_type"
-        ]
+        "source_fields": ["id", "invoice", "amount", "currency", "date", "status", "payment_type"]
       },
       "account": {
         "kind": "account",
         "selection_surface": "account",
         "resource": "xero.account",
         "source_command": "account.list",
-        "source_fields": [
-          "code",
-          "name",
-          "type",
-          "class",
-          "status",
-          "tax_type",
-          "description"
-        ]
+        "source_fields": ["code", "name", "type", "class", "status", "tax_type", "description"]
       },
       "bank_transaction": {
         "kind": "bank_transaction",
         "selection_surface": "bank_transaction",
         "resource": "xero.bank_transaction",
         "source_command": "bank_transaction.list",
-        "source_fields": [
-          "id",
-          "type",
-          "contact",
-          "total",
-          "date",
-          "status",
-          "bank_account"
-        ]
+        "source_fields": ["id", "type", "contact", "total", "date", "status", "bank_account"]
       },
       "quote": {
         "kind": "quote",
         "selection_surface": "quote",
         "resource": "xero.quote",
         "source_command": "quote.list",
-        "source_fields": [
-          "id",
-          "number",
-          "contact",
-          "status",
-          "total",
-          "date",
-          "expiry_date"
-        ]
+        "source_fields": ["id", "number", "contact", "status", "total", "date", "expiry_date"]
       }
     }
   },
   "connector": {
     "label": "Xero",
     "category": "finance-accounting",
-    "categories": [
-      "finance-accounting",
-      "accounting",
-      "invoicing",
-      "reporting"
-    ],
-    "resources": [
-      "invoice",
-      "contact",
-      "payment",
-      "account",
-      "bank_transaction",
-      "report",
-      "quote"
-    ]
+    "categories": ["finance-accounting", "accounting", "invoicing", "reporting"],
+    "resources": ["invoice", "contact", "payment", "account", "bank_transaction", "report", "quote"]
   },
   "auth": {
     "kind": "oauth2",

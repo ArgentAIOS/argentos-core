@@ -9,16 +9,17 @@
 When two or more Claude Code sessions are running in parallel tmux panes/windows — each with its own orchestrator + team agents — and they need to coordinate on shared work, this runbook is the contract.
 
 Applies when:
+
 - One session lives in `/Users/sem/code/argent-core` (the canonical core)
 - One or more other sessions live elsewhere (`/Users/sem/code/open-design`, `/Users/sem/code/ArgentOS-Business`, future siblings)
 - Sessions need to register lanes, hand off integration specs, push file changes, or coordinate releases
 
 ## Roles
 
-| Role | Owns | Lives in |
-|---|---|---|
-| **Master Threadmaster** | `THREADMASTER_COORDINATION.md`; cross-lane lane assignment; merge custody for `dev` pushes; the `master` bus inbox | argent-core (canonical) |
-| **Lane Threadmaster** | A specific lane scope (workflows / appforge / open-design-composio / etc); their own bus inbox; their owned files per the coord doc | argent-core or external repo |
+| Role                    | Owns                                                                                                                                | Lives in                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| **Master Threadmaster** | `THREADMASTER_COORDINATION.md`; cross-lane lane assignment; merge custody for `dev` pushes; the `master` bus inbox                  | argent-core (canonical)      |
+| **Lane Threadmaster**   | A specific lane scope (workflows / appforge / open-design-composio / etc); their own bus inbox; their owned files per the coord doc | argent-core or external repo |
 
 A session can be a Lane Threadmaster only — or it can also be the Master simultaneously if the operator says so. Don't wear both hats silently — call the role out loud at session start.
 
@@ -68,11 +69,13 @@ Each side runs a /loop that checks for unacked messages. Default interval: **30 
 ```
 
 When a tick produces a non-empty result:
+
 1. Read each message
 2. Take the action OR escalate to the operator
 3. `pnpm threadmaster:ack --lane <YOUR_LANE> --id <msg-id>` after handling
 
 Adjust interval based on activity:
+
 - **Hot coordination** (active back-and-forth): 5–10m
 - **Steady state** (waiting on infrequent events): 30m
 - **Dormant lane** (no expected traffic): pause the /loop entirely
@@ -87,27 +90,28 @@ Adjust interval based on activity:
 
 ## Bus message conventions
 
-| Field | Convention |
-|---|---|
-| `from` | Your lane name (matches `THREADMASTER_COORDINATION.md` Active Lanes row) |
-| `to` | Recipient lane name, or `all` for broadcast |
-| `subject` | ≤ 8 words, no JSON, no quotes inside |
-| `body` | Plain text/markdown, ONE concrete fact or action per message |
+| Field     | Convention                                                               |
+| --------- | ------------------------------------------------------------------------ |
+| `from`    | Your lane name (matches `THREADMASTER_COORDINATION.md` Active Lanes row) |
+| `to`      | Recipient lane name, or `all` for broadcast                              |
+| `subject` | ≤ 8 words, no JSON, no quotes inside                                     |
+| `body`    | Plain text/markdown, ONE concrete fact or action per message             |
 
 Anti-patterns:
+
 - ❌ Posting `{"type":"idle"}` / `{"type":"task_completed"}` JSON status pings — the team-agent system already shows that
 - ❌ Vague subjects like `update` or `status` — say what changed
 - ❌ Multi-fact messages — one fact per post; readers skim subject lines
 
 ## Escalation
 
-| Situation | Action |
-|---|---|
-| Ambiguous lane boundary | Ask the operator (Jason). Don't guess. |
-| Two sessions about to write the same file | The session with prior coordination claim (registered in `THREADMASTER_COORDINATION.md`) wins; the other waits. |
-| Destructive operation (force-push, branch-delete, schema migration, package.json bump from a non-master lane) | Require operator confirmation BEFORE executing |
-| Lane goes silent >24h during active coordination | Master posts a status check. If no response in 24 more hours, mark dormant + close. |
-| Conflicting decisions across master replies | Newer decision wins; cite the older decision's commit/file in the new reply for traceability. |
+| Situation                                                                                                     | Action                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Ambiguous lane boundary                                                                                       | Ask the operator (Jason). Don't guess.                                                                          |
+| Two sessions about to write the same file                                                                     | The session with prior coordination claim (registered in `THREADMASTER_COORDINATION.md`) wins; the other waits. |
+| Destructive operation (force-push, branch-delete, schema migration, package.json bump from a non-master lane) | Require operator confirmation BEFORE executing                                                                  |
+| Lane goes silent >24h during active coordination                                                              | Master posts a status check. If no response in 24 more hours, mark dormant + close.                             |
+| Conflicting decisions across master replies                                                                   | Newer decision wins; cite the older decision's commit/file in the new reply for traceability.                   |
 
 ## Quick reference: registering a lane
 
@@ -135,6 +139,7 @@ pnpm threadmaster:post \
 ## Versioning
 
 This runbook is durable cross-lane SOP. When changing it:
+
 - Bump the date in the header
 - Post a `--to all --subject "runbook updated"` message on the bus
 - Add a Threadmaster Messages entry in `THREADMASTER_COORDINATION.md` summarizing the change

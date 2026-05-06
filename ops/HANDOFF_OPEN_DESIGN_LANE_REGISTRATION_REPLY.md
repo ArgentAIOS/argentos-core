@@ -76,6 +76,7 @@ All correct.
 Read the new runbook before starting: **`argent-core/ops/RUNBOOK_CROSS_TMUX_THREADMASTER_COORDINATION.md`**.
 
 Covers:
+
 - Lifecycle of a cross-session lane (you're at step 4)
 - /loop pattern for bus polling
 - Bus message conventions

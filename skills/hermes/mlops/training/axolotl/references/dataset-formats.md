@@ -83,7 +83,7 @@ When using streaming for large datasets, Axolotl does not know in advance how la
 
 Therefore, it is necessary to set max_steps: int in your config for pre-training to run, so that Axolotl knows when to stop training.
 
-One step is equal to sequence_len _ micro_batch_size _ gradient_accumulation_steps \* total_num_gpus tokens.
+One step is equal to sequence*len * micro*batch_size * gradient_accumulation_steps \* total_num_gpus tokens.
 
 It is recommended to leave this off if downloading from Hugging Face hub as it would download the entire dataset which can be very large.
 
@@ -569,7 +569,7 @@ When using streaming for large datasets, Axolotl does not know in advance how la
 
 Therefore, it is necessary to set max_steps: int in your config for pre-training to run, so that Axolotl knows when to stop training.
 
-One step is equal to sequence_len _ micro_batch_size _ gradient_accumulation_steps \* total_num_gpus tokens.
+One step is equal to sequence*len * micro*batch_size * gradient_accumulation_steps \* total_num_gpus tokens.
 
 It is recommended to leave this off if downloading from Hugging Face hub as it would download the entire dataset which can be very large.
 
@@ -787,7 +787,7 @@ When using streaming for large datasets, Axolotl does not know in advance how la
 
 Therefore, it is necessary to set max_steps: int in your config for pre-training to run, so that Axolotl knows when to stop training.
 
-One step is equal to sequence_len _ micro_batch_size _ gradient_accumulation_steps \* total_num_gpus tokens.
+One step is equal to sequence*len * micro*batch_size * gradient_accumulation_steps \* total_num_gpus tokens.
 
 It is recommended to leave this off if downloading from Hugging Face hub as it would download the entire dataset which can be very large.
 

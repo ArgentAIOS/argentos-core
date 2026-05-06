@@ -12,7 +12,12 @@
     "kind": "oauth-service-key",
     "required": true,
     "service_keys": ["HUBSPOT_ACCESS_TOKEN", "HUBSPOT_PORTAL_ID"],
-    "optional_service_keys": ["HUBSPOT_ACCOUNT_ALIAS", "HUBSPOT_APP_ID", "HUBSPOT_WEBHOOK_SECRET", "HUBSPOT_BASE_URL"],
+    "optional_service_keys": [
+      "HUBSPOT_ACCOUNT_ALIAS",
+      "HUBSPOT_APP_ID",
+      "HUBSPOT_WEBHOOK_SECRET",
+      "HUBSPOT_BASE_URL"
+    ],
     "interactive_setup": [
       "Create a HubSpot app or private app for the target portal.",
       "Add HUBSPOT_ACCESS_TOKEN and HUBSPOT_PORTAL_ID in operator-controlled service keys for the portal you want this worker to use.",
@@ -34,7 +39,12 @@
     "write_bridge_available": true,
     "live_write_smoke_tested": false,
     "required": ["HUBSPOT_ACCESS_TOKEN", "HUBSPOT_PORTAL_ID"],
-    "optional": ["HUBSPOT_ACCOUNT_ALIAS", "HUBSPOT_APP_ID", "HUBSPOT_WEBHOOK_SECRET", "HUBSPOT_BASE_URL"],
+    "optional": [
+      "HUBSPOT_ACCOUNT_ALIAS",
+      "HUBSPOT_APP_ID",
+      "HUBSPOT_WEBHOOK_SECRET",
+      "HUBSPOT_BASE_URL"
+    ],
     "workerFields": [
       "contact_id",
       "company_id",

@@ -60,10 +60,7 @@
         "id": "client_id",
         "label": "Client ID",
         "required": false,
-        "applies_to": [
-          "client.get",
-          "case.list"
-        ],
+        "applies_to": ["client.get", "case.list"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -73,9 +70,7 @@
         "id": "document_id",
         "label": "Document ID",
         "required": false,
-        "applies_to": [
-          "document.get"
-        ],
+        "applies_to": ["document.get"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -85,9 +80,7 @@
         "id": "settlement_id",
         "label": "Settlement ID",
         "required": false,
-        "applies_to": [
-          "settlement.get"
-        ],
+        "applies_to": ["settlement.get"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -97,10 +90,7 @@
         "id": "attorney_id",
         "label": "Attorney",
         "required": false,
-        "applies_to": [
-          "case.list",
-          "report.pipeline"
-        ],
+        "applies_to": ["case.list", "report.pipeline"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -110,10 +100,7 @@
         "id": "case_type",
         "label": "Case Type",
         "required": false,
-        "applies_to": [
-          "case.list",
-          "deadline.check_statute"
-        ],
+        "applies_to": ["case.list", "deadline.check_statute"],
         "example": "personal_injury",
         "renderAs": "text",
         "expressionEnabled": true,
@@ -124,9 +111,7 @@
         "id": "statute_state",
         "label": "State",
         "required": false,
-        "applies_to": [
-          "deadline.check_statute"
-        ],
+        "applies_to": ["deadline.check_statute"],
         "example": "CA",
         "renderAs": "text",
         "expressionEnabled": true,
@@ -137,24 +122,16 @@
     "commandDefaults": {
       "case.list": {
         "selection_surface": "case",
-        "args": [
-          "HOLACE_ATTORNEY_ID",
-          "HOLACE_CLIENT_ID",
-          "HOLACE_CASE_TYPE"
-        ],
+        "args": ["HOLACE_ATTORNEY_ID", "HOLACE_CLIENT_ID", "HOLACE_CASE_TYPE"],
         "limit": 25
       },
       "case.get": {
         "selection_surface": "case",
-        "args": [
-          "HOLACE_CASE_ID"
-        ]
+        "args": ["HOLACE_CASE_ID"]
       },
       "case.timeline": {
         "selection_surface": "case",
-        "args": [
-          "HOLACE_CASE_ID"
-        ]
+        "args": ["HOLACE_CASE_ID"]
       },
       "client.list": {
         "selection_surface": "client",
@@ -162,78 +139,55 @@
       },
       "client.get": {
         "selection_surface": "client",
-        "args": [
-          "HOLACE_CLIENT_ID"
-        ]
+        "args": ["HOLACE_CLIENT_ID"]
       },
       "document.list": {
         "selection_surface": "document",
-        "args": [
-          "HOLACE_CASE_ID"
-        ],
+        "args": ["HOLACE_CASE_ID"],
         "limit": 25
       },
       "document.get": {
         "selection_surface": "document",
-        "args": [
-          "HOLACE_DOCUMENT_ID"
-        ]
+        "args": ["HOLACE_DOCUMENT_ID"]
       },
       "deadline.list": {
         "selection_surface": "deadline",
-        "args": [
-          "HOLACE_CASE_ID"
-        ],
+        "args": ["HOLACE_CASE_ID"],
         "limit": 20
       },
       "deadline.check_statute": {
         "selection_surface": "deadline",
-        "args": [
-          "HOLACE_STATUTE_STATE",
-          "HOLACE_CASE_TYPE"
-        ]
+        "args": ["HOLACE_STATUTE_STATE", "HOLACE_CASE_TYPE"]
       },
       "settlement.list": {
         "selection_surface": "settlement",
-        "args": [
-          "HOLACE_CASE_ID"
-        ],
+        "args": ["HOLACE_CASE_ID"],
         "limit": 10
       },
       "settlement.get": {
         "selection_surface": "settlement",
-        "args": [
-          "HOLACE_SETTLEMENT_ID"
-        ]
+        "args": ["HOLACE_SETTLEMENT_ID"]
       },
       "settlement.tracker": {
         "selection_surface": "settlement"
       },
       "billing.list": {
         "selection_surface": "billing",
-        "args": [
-          "HOLACE_CASE_ID"
-        ],
+        "args": ["HOLACE_CASE_ID"],
         "limit": 25
       },
       "communication.list": {
         "selection_surface": "communication",
-        "args": [
-          "HOLACE_CASE_ID"
-        ],
+        "args": ["HOLACE_CASE_ID"],
         "limit": 25
       },
       "report.case_status": {
         "selection_surface": "report",
-        "args": [
-          "HOLACE_CASE_ID"
-        ]
+        "args": ["HOLACE_CASE_ID"]
       },
       "report.pipeline": {
         "selection_surface": "report",
-        "args": [
-          "HOLACE_ATTORNEY_ID"
-        ]
+        "args": ["HOLACE_ATTORNEY_ID"]
       }
     },
     "pickerHints": {
@@ -257,66 +211,35 @@
         "selection_surface": "client",
         "resource": "holace.client",
         "source_command": "client.list",
-        "source_fields": [
-          "id",
-          "name",
-          "email",
-          "phone",
-          "intake_date",
-          "case_count"
-        ]
+        "source_fields": ["id", "name", "email", "phone", "intake_date", "case_count"]
       },
       "document": {
         "kind": "document",
         "selection_surface": "document",
         "resource": "holace.document",
         "source_command": "document.list",
-        "source_fields": [
-          "id",
-          "title",
-          "type",
-          "case_id",
-          "created",
-          "status"
-        ]
+        "source_fields": ["id", "title", "type", "case_id", "created", "status"]
       },
       "deadline": {
         "kind": "deadline",
         "selection_surface": "deadline",
         "resource": "holace.deadline",
         "source_command": "deadline.list",
-        "source_fields": [
-          "id",
-          "title",
-          "due_date",
-          "case_id",
-          "type",
-          "status"
-        ]
+        "source_fields": ["id", "title", "due_date", "case_id", "type", "status"]
       },
       "settlement": {
         "kind": "settlement",
         "selection_surface": "settlement",
         "resource": "holace.settlement",
         "source_command": "settlement.list",
-        "source_fields": [
-          "id",
-          "case_id",
-          "amount",
-          "status",
-          "date"
-        ]
+        "source_fields": ["id", "case_id", "amount", "status", "date"]
       }
     }
   },
   "connector": {
     "label": "HoLaCe",
     "category": "legal-practice",
-    "categories": [
-      "legal-practice",
-      "case-management",
-      "personal-injury"
-    ],
+    "categories": ["legal-practice", "case-management", "personal-injury"],
     "resources": [
       "case",
       "client",
@@ -331,10 +254,7 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": [
-      "HOLACE_API_KEY",
-      "HOLACE_API_BASE_URL"
-    ],
+    "service_keys": ["HOLACE_API_KEY", "HOLACE_API_BASE_URL"],
     "optional_scope_service_keys": [
       "HOLACE_ATTORNEY_ID",
       "HOLACE_CASE_ID",

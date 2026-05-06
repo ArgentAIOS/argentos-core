@@ -9,12 +9,7 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
-    "workerFields": [
-      "folder_id",
-      "file_id",
-      "mime_type",
-      "query"
-    ],
+    "workerFields": ["folder_id", "file_id", "mime_type", "query"],
     "worker_visible_actions": [
       "file.list",
       "file.get",
@@ -35,12 +30,7 @@
         "valueType": "string",
         "description": "Google Drive file ID for file operations",
         "placeholder": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
-        "applies_to": [
-          "file.get",
-          "share.list",
-          "export.pdf",
-          "export.docx"
-        ],
+        "applies_to": ["file.get", "share.list", "export.pdf", "export.docx"],
         "example": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
       },
       {
@@ -53,10 +43,7 @@
         "valueType": "string",
         "description": "Google Drive folder ID for listing files or folders",
         "placeholder": "0BwwA4oUTeiV1TGRPeTVjaWRDY1E",
-        "applies_to": [
-          "file.list",
-          "folder.list"
-        ],
+        "applies_to": ["file.list", "folder.list"],
         "example": "0BwwA4oUTeiV1TGRPeTVjaWRDY1E"
       },
       {
@@ -99,9 +86,7 @@
             "label": "Text"
           }
         ],
-        "applies_to": [
-          "file.list"
-        ],
+        "applies_to": ["file.list"],
         "example": "application/vnd.google-apps.document"
       },
       {
@@ -114,57 +99,40 @@
         "valueType": "string",
         "description": "Google Drive search query (supports operators like name contains, mimeType)",
         "placeholder": "name contains 'budget' and mimeType = 'application/pdf'",
-        "applies_to": [
-          "search.query"
-        ],
+        "applies_to": ["search.query"],
         "example": "name contains 'budget' and mimeType = 'application/pdf'"
       }
     ],
     "commandDefaults": {
       "file.list": {
         "selection_surface": "file",
-        "args": [
-          "GOOGLE_DRIVE_FOLDER_ID",
-          "GOOGLE_DRIVE_MIME_TYPE"
-        ],
+        "args": ["GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_DRIVE_MIME_TYPE"],
         "limit": 25
       },
       "file.get": {
         "selection_surface": "file",
-        "args": [
-          "GOOGLE_DRIVE_FILE_ID"
-        ]
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
       },
       "folder.list": {
         "selection_surface": "folder",
-        "args": [
-          "GOOGLE_DRIVE_FOLDER_ID"
-        ],
+        "args": ["GOOGLE_DRIVE_FOLDER_ID"],
         "limit": 25
       },
       "share.list": {
         "selection_surface": "share",
-        "args": [
-          "GOOGLE_DRIVE_FILE_ID"
-        ]
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
       },
       "export.pdf": {
         "selection_surface": "file",
-        "args": [
-          "GOOGLE_DRIVE_FILE_ID"
-        ]
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
       },
       "export.docx": {
         "selection_surface": "file",
-        "args": [
-          "GOOGLE_DRIVE_FILE_ID"
-        ]
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
       },
       "search.query": {
         "selection_surface": "file",
-        "args": [
-          "GOOGLE_DRIVE_QUERY"
-        ],
+        "args": ["GOOGLE_DRIVE_QUERY"],
         "limit": 25
       }
     },
@@ -174,55 +142,29 @@
         "selection_surface": "file",
         "resource": "google-drive.file",
         "source_command": "file.list",
-        "source_fields": [
-          "id",
-          "name",
-          "mimeType",
-          "size",
-          "modifiedTime",
-          "owners"
-        ]
+        "source_fields": ["id", "name", "mimeType", "size", "modifiedTime", "owners"]
       },
       "folder": {
         "kind": "folder",
         "selection_surface": "folder",
         "resource": "google-drive.folder",
         "source_command": "folder.list",
-        "source_fields": [
-          "id",
-          "name",
-          "modifiedTime",
-          "owners"
-        ]
+        "source_fields": ["id", "name", "modifiedTime", "owners"]
       },
       "share": {
         "kind": "permission",
         "selection_surface": "share",
         "resource": "google-drive.permission",
         "source_command": "share.list",
-        "source_fields": [
-          "id",
-          "type",
-          "role",
-          "emailAddress",
-          "displayName"
-        ]
+        "source_fields": ["id", "type", "role", "emailAddress", "displayName"]
       }
     }
   },
   "connector": {
     "label": "Google Drive",
     "category": "document-storage",
-    "categories": [
-      "document-storage",
-      "productivity",
-      "collaboration"
-    ],
-    "resources": [
-      "file",
-      "folder",
-      "share"
-    ]
+    "categories": ["document-storage", "productivity", "collaboration"],
+    "resources": ["file", "folder", "share"]
   },
   "auth": {
     "kind": "oauth2",
