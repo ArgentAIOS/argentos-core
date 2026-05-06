@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRelationPickerCandidates,
+  filterRelationPickerCandidates,
   isValidEmailInput,
   isValidNumberInput,
   isValidUrlInput,
+  parseLinkedRecordValue,
   parseMultiSelectValue,
+  pickRelationTitleField,
+  resolveRelationLabel,
+  serializeLinkedRecordValue,
   serializeMultiSelectValue,
+  type RelationPickerCandidate,
+  type RelationPickerSourceField,
+  type RelationPickerSourceRecord,
 } from "./app-forge-cell-editing.js";
 
 describe("app-forge cell editing — multi-select helpers", () => {
@@ -90,5 +99,185 @@ describe("app-forge cell editing — email validation", () => {
     expect(isValidEmailInput("ada@")).toBe(false);
     expect(isValidEmailInput("ada@localhost")).toBe(false);
     expect(isValidEmailInput("ada @example.com")).toBe(false);
+  });
+});
+
+describe("app-forge cell editing — linked-record value parsing", () => {
+  it("parses comma-separated record IDs and dedupes", () => {
+    expect(parseLinkedRecordValue("rec-1, rec-2, rec-1")).toEqual(["rec-1", "rec-2"]);
+  });
+
+  it("parses array-shaped values (gateway-mirrored shape)", () => {
+    expect(parseLinkedRecordValue(["rec-1", " rec-2 ", "", "rec-1"])).toEqual(["rec-1", "rec-2"]);
+  });
+
+  it("returns empty list for null/undefined/empty input", () => {
+    expect(parseLinkedRecordValue("")).toEqual([]);
+    expect(parseLinkedRecordValue("   ")).toEqual([]);
+    expect(parseLinkedRecordValue(null)).toEqual([]);
+    expect(parseLinkedRecordValue(undefined)).toEqual([]);
+  });
+
+  it("serializes selected IDs into the canonical comma-separated form", () => {
+    expect(serializeLinkedRecordValue(["rec-1", "rec-2"])).toBe("rec-1, rec-2");
+  });
+
+  it("round-trips parse/serialize without drift", () => {
+    const stored = "rec-1, rec-2, rec-3";
+    expect(serializeLinkedRecordValue(parseLinkedRecordValue(stored))).toBe(stored);
+  });
+});
+
+describe("app-forge cell editing — relation picker title field", () => {
+  it("prefers a literal name field when present", () => {
+    const fields: RelationPickerSourceField[] = [
+      { id: "id", name: "ID" },
+      { id: "name", name: "Name" },
+      { id: "status", name: "Status" },
+    ];
+    expect(pickRelationTitleField(fields)).toEqual({ id: "name", name: "Name" });
+  });
+
+  it("matches the name field case-insensitively", () => {
+    const fields: RelationPickerSourceField[] = [
+      { id: "id", name: "ID" },
+      { id: "name", name: "name" },
+    ];
+    expect(pickRelationTitleField(fields)).toEqual({ id: "name", name: "name" });
+  });
+
+  it("falls back to the first field when no name field exists", () => {
+    const fields: RelationPickerSourceField[] = [
+      { id: "title", name: "Title" },
+      { id: "owner", name: "Owner" },
+    ];
+    expect(pickRelationTitleField(fields)).toEqual({ id: "title", name: "Title" });
+  });
+
+  it("returns null for an empty field list", () => {
+    expect(pickRelationTitleField([])).toBeNull();
+  });
+});
+
+describe("app-forge cell editing — relation picker candidates", () => {
+  const fields: RelationPickerSourceField[] = [
+    { id: "name", name: "Name" },
+    { id: "status", name: "Status" },
+  ];
+  const records: RelationPickerSourceRecord[] = [
+    { id: "rec-1", values: { name: "Acme Corp", status: "Active" } },
+    { id: "rec-2", values: { name: "Globex", status: "Active" } },
+    { id: "rec-3", values: { name: "Initech", status: "Archived" } },
+  ];
+
+  it("builds candidates with labels resolved from the title field", () => {
+    expect(buildRelationPickerCandidates(fields, records)).toEqual([
+      { id: "rec-1", label: "Acme Corp" },
+      { id: "rec-2", label: "Globex" },
+      { id: "rec-3", label: "Initech" },
+    ]);
+  });
+
+  it("falls back to the record ID when the title cell is empty", () => {
+    const sparseRecords: RelationPickerSourceRecord[] = [
+      { id: "rec-1", values: {} },
+      { id: "rec-2", values: { name: "" } },
+      { id: "rec-3", values: { name: "Globex" } },
+    ];
+    expect(buildRelationPickerCandidates(fields, sparseRecords)).toEqual([
+      { id: "rec-1", label: "rec-1" },
+      { id: "rec-2", label: "rec-2" },
+      { id: "rec-3", label: "Globex" },
+    ]);
+  });
+
+  it("flattens array-shaped title values (e.g. multi_select used as title)", () => {
+    const arrayRecords: RelationPickerSourceRecord[] = [
+      { id: "rec-1", values: { name: ["Acme", "Corp"] } },
+    ];
+    expect(buildRelationPickerCandidates(fields, arrayRecords)).toEqual([
+      { id: "rec-1", label: "Acme, Corp" },
+    ]);
+  });
+
+  it("uses the first field when no `name` field exists", () => {
+    const altFields: RelationPickerSourceField[] = [
+      { id: "title", name: "Title" },
+      { id: "summary", name: "Summary" },
+    ];
+    const altRecords: RelationPickerSourceRecord[] = [
+      { id: "rec-1", values: { title: "Press release" } },
+    ];
+    expect(buildRelationPickerCandidates(altFields, altRecords)).toEqual([
+      { id: "rec-1", label: "Press release" },
+    ]);
+  });
+});
+
+describe("app-forge cell editing — relation picker filter", () => {
+  const candidates: RelationPickerCandidate[] = [
+    { id: "rec-acme", label: "Acme Corp" },
+    { id: "rec-globex", label: "Globex" },
+    { id: "rec-initech", label: "Initech" },
+    { id: "rec-soylent", label: "Soylent" },
+  ];
+
+  it("returns all candidates when query is empty", () => {
+    expect(filterRelationPickerCandidates(candidates, "", [])).toEqual(candidates);
+  });
+
+  it("filters candidates by case-insensitive label substring", () => {
+    expect(filterRelationPickerCandidates(candidates, "GLO", [])).toEqual([
+      { id: "rec-globex", label: "Globex" },
+    ]);
+  });
+
+  it("matches against the candidate ID so users can paste a known record ID", () => {
+    expect(filterRelationPickerCandidates(candidates, "soylent", [])).toEqual([
+      { id: "rec-soylent", label: "Soylent" },
+    ]);
+    expect(filterRelationPickerCandidates(candidates, "rec-init", [])).toEqual([
+      { id: "rec-initech", label: "Initech" },
+    ]);
+  });
+
+  it("excludes already-selected IDs from the result", () => {
+    expect(
+      filterRelationPickerCandidates(candidates, "", ["rec-acme", "rec-soylent"]),
+    ).toEqual([
+      { id: "rec-globex", label: "Globex" },
+      { id: "rec-initech", label: "Initech" },
+    ]);
+  });
+
+  it("caps the result at the configured limit", () => {
+    const big: RelationPickerCandidate[] = Array.from({ length: 200 }, (_, i) => ({
+      id: `rec-${i}`,
+      label: `Record ${i}`,
+    }));
+    expect(filterRelationPickerCandidates(big, "Record", [], 5)).toHaveLength(5);
+  });
+
+  it("returns an empty list when no candidate matches", () => {
+    expect(filterRelationPickerCandidates(candidates, "xyz-no-match", [])).toEqual([]);
+  });
+});
+
+describe("app-forge cell editing — relation label resolution", () => {
+  const candidates: RelationPickerCandidate[] = [
+    { id: "rec-1", label: "Acme Corp" },
+    { id: "rec-2", label: "Globex" },
+  ];
+
+  it("resolves a known record ID to its display label", () => {
+    expect(resolveRelationLabel("rec-1", candidates)).toBe("Acme Corp");
+  });
+
+  it("falls back to the raw ID for orphan / cross-base / deleted links", () => {
+    expect(resolveRelationLabel("rec-deleted", candidates)).toBe("rec-deleted");
+  });
+
+  it("returns empty string for empty IDs", () => {
+    expect(resolveRelationLabel("", candidates)).toBe("");
   });
 });

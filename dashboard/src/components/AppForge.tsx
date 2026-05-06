@@ -45,6 +45,7 @@ import { fetchLocalApi } from "../utils/localApiFetch";
 import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
 import {
   EmailCellEditor,
+  LinkedRecordCellEditor,
   MultiSelectCellDisplay,
   MultiSelectCellEditor,
   NumberCellEditor,
@@ -3678,6 +3679,24 @@ export function AppForge({
                                                   onChange={setEditingCell}
                                                   onCommit={() => void commitEditingCell()}
                                                   onCancel={() => setEditingCell(null)}
+                                                />
+                                              ) : activeEditingCell &&
+                                                field.type === "linked_record" ? (
+                                                <LinkedRecordCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                  targetTable={
+                                                    structured.activeBase?.tables.find(
+                                                      (table) => table.id === field.linkedTableId,
+                                                    ) ?? null
+                                                  }
+                                                  targetTableName={linkedTargetTableName(
+                                                    structured.activeBase,
+                                                    field,
+                                                  )}
                                                 />
                                               ) : activeEditingCell &&
                                                 field.type === "single_select" ? (
