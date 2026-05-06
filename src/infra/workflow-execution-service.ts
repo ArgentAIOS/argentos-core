@@ -233,12 +233,31 @@ export async function finishWorkflowRun(
   const failedStep = steps.find((step) => step.status === "failed");
   const runError =
     status === "failed" ? (failedStep?.error ?? failedStep?.output.items[0]?.text ?? null) : null;
+  // Aggregate per-step token + cost into the run-level totals. We sum the
+  // in-memory `steps` array first, but fall back to a SQL-side aggregation
+  // over `workflow_step_runs` when the in-memory value is zero. This guards
+  // against runs that were resumed with empty in-memory history (where the
+  // earlier steps live only in the persisted step-run rows).
+  const memoryTokens = steps.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0);
+  const memoryCostUsd = steps.reduce((sum, step) => sum + (step.costUsd ?? 0), 0);
   await sql`
     UPDATE workflow_runs SET
       status = ${status},
       error = COALESCE(${runError}, error),
-      total_tokens_used = ${steps.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0)},
-      total_cost_usd = ${steps.reduce((sum, step) => sum + (step.costUsd ?? 0), 0)},
+      total_tokens_used = GREATEST(
+        ${memoryTokens}::int,
+        COALESCE(
+          (SELECT SUM(tokens_used)::int FROM workflow_step_runs WHERE run_id = ${runId}),
+          0
+        )
+      ),
+      total_cost_usd = GREATEST(
+        ${memoryCostUsd}::numeric,
+        COALESCE(
+          (SELECT SUM(cost_usd)::numeric FROM workflow_step_runs WHERE run_id = ${runId}),
+          0::numeric
+        )
+      ),
       ended_at = CASE
         WHEN ${status} IN ('waiting_approval', 'waiting_event', 'waiting_duration') THEN ended_at
         ELSE NOW()
