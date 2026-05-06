@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { AgentVisualIdentity, AccessibilityConfig, IdentityStyleCategory } from "./aevp/types";
 import { getPreset } from "./aevp/identityPresets";
 import { AmplitudeTracker } from "./aevp/speechAnalyser";
@@ -881,6 +881,21 @@ function resolveGatewayToken(): string {
   return tokenFromEnv;
 }
 
+/**
+ * Read a `?widget=<name>` query param for nav deep-links (e.g.
+ * `?widget=workflows` lands directly in Operations → Workflows).
+ * Returns lowercase value or null when absent / unparsable.
+ */
+function readWidgetDeepLink(): string | null {
+  try {
+    const value = new URLSearchParams(window.location.search).get("widget");
+    const trimmed = value?.trim().toLowerCase() ?? "";
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 function readStoredTtsDisplayMode(): TtsDisplayMode {
   try {
     const raw = localStorage.getItem(TTS_DISPLAY_MODE_KEY);
@@ -1232,6 +1247,26 @@ function App() {
     }
   }, [allowOperationsSurface, workspaceTabs]);
 
+  // Deep-link via `?widget=<name>` (e.g. `?widget=workflows` jumps directly
+  // into Operations → Workflows so Playwright + bookmarks can land on the
+  // pipeline builder without first navigating the workspace tabs).
+  const initialWidgetDeepLink = useMemo(() => readWidgetDeepLink(), []);
+  const widgetDeepLinkAppliedRef = useRef(false);
+
+  // Apply `?widget=<name>` deep-link once the surface profile has loaded.
+  // Currently supports `?widget=workflows` → Operations → Workflows so the
+  // pipeline builder is reachable from a bookmarkable URL.
+  useEffect(() => {
+    if (widgetDeepLinkAppliedRef.current) return;
+    if (!initialWidgetDeepLink) return;
+    if (initialWidgetDeepLink === "workflows" && allowOperationsSurface) {
+      widgetDeepLinkAppliedRef.current = true;
+      setActiveWorkspace("operations");
+      setDashboardMode("operations");
+      setOpsView("workflows");
+    }
+  }, [initialWidgetDeepLink, allowOperationsSurface]);
+
   // Task management via backend API
   const {
     tasks,
@@ -1264,7 +1299,7 @@ function App() {
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
   const [opsView, setOpsView] = useState<
     "map" | "workers" | "jobs" | "tasks" | "org" | "schedule" | "workflows"
-  >("map");
+  >(initialWidgetDeepLink === "workflows" ? "workflows" : "map");
   const [operationsChatOpen, setOperationsChatOpen] = useState(false);
   const [operationsPresenceVisible, setOperationsPresenceVisible] = useState(false);
   const [operationsPresencePosition, setOperationsPresencePosition] = useState(() => {
