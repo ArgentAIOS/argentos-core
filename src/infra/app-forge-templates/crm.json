@@ -1,0 +1,228 @@
+{
+  "id": "airtable-crm",
+  "name": "Airtable CRM",
+  "category": "Sales",
+  "description": "Single-operator CRM with contacts, companies, deals, and activities.",
+  "tables": [
+    {
+      "id": "contacts",
+      "name": "Contacts",
+      "fields": [
+        {
+          "id": "name",
+          "name": "Contact",
+          "type": "text",
+          "required": true,
+          "description": "Person name"
+        },
+        {
+          "id": "company",
+          "name": "Company",
+          "type": "linked_record",
+          "linkedTableId": "companies",
+          "description": "Related company"
+        },
+        { "id": "email", "name": "Email", "type": "email", "description": "Primary contact email" },
+        { "id": "phone", "name": "Phone", "type": "text", "description": "Phone number" },
+        {
+          "id": "tags",
+          "name": "Tags",
+          "type": "multi_select",
+          "description": "Contact tags",
+          "options": ["VIP", "Investor", "Partner", "Customer", "Prospect"]
+        },
+        { "id": "linkedin", "name": "LinkedIn", "type": "url", "description": "LinkedIn profile" },
+        { "id": "owner", "name": "Owner", "type": "text", "description": "Internal owner" },
+        { "id": "notes", "name": "Notes", "type": "long_text", "description": "Contact context" }
+      ],
+      "views": [
+        {
+          "id": "view-all-contacts",
+          "name": "All contacts",
+          "type": "grid",
+          "sortFieldId": "name"
+        },
+        { "id": "view-by-tag", "name": "By tag", "type": "kanban", "groupFieldId": "tags" }
+      ]
+    },
+    {
+      "id": "companies",
+      "name": "Companies",
+      "fields": [
+        {
+          "id": "name",
+          "name": "Company",
+          "type": "text",
+          "required": true,
+          "description": "Company or organization name"
+        },
+        { "id": "website", "name": "Website", "type": "url", "description": "Company website" },
+        {
+          "id": "industry",
+          "name": "Industry",
+          "type": "single_select",
+          "description": "Market segment",
+          "options": ["SaaS", "Services", "Retail", "Finance", "Healthcare", "Other"]
+        },
+        {
+          "id": "size",
+          "name": "Size",
+          "type": "single_select",
+          "description": "Company size",
+          "options": ["1-10", "11-50", "51-200", "201-1000", "1000+"]
+        },
+        {
+          "id": "status",
+          "name": "Status",
+          "type": "single_select",
+          "description": "Relationship status",
+          "options": ["Prospect", "Active", "At risk", "Former"]
+        },
+        { "id": "owner", "name": "Account owner", "type": "text", "description": "Internal owner" },
+        { "id": "notes", "name": "Notes", "type": "long_text", "description": "Account context" }
+      ],
+      "views": [
+        {
+          "id": "view-all-companies",
+          "name": "All companies",
+          "type": "grid",
+          "sortFieldId": "name"
+        },
+        { "id": "view-by-status", "name": "By status", "type": "kanban", "groupFieldId": "status" }
+      ]
+    },
+    {
+      "id": "deals",
+      "name": "Deals",
+      "fields": [
+        {
+          "id": "name",
+          "name": "Deal",
+          "type": "text",
+          "required": true,
+          "description": "Deal name"
+        },
+        {
+          "id": "company",
+          "name": "Company",
+          "type": "linked_record",
+          "linkedTableId": "companies",
+          "description": "Related company"
+        },
+        {
+          "id": "primary_contact",
+          "name": "Primary contact",
+          "type": "linked_record",
+          "linkedTableId": "contacts",
+          "description": "Primary deal contact"
+        },
+        {
+          "id": "stage",
+          "name": "Stage",
+          "type": "single_select",
+          "description": "Pipeline stage",
+          "options": ["Discovery", "Proposal", "Negotiation", "Won", "Lost"]
+        },
+        { "id": "value", "name": "Value", "type": "number", "description": "Estimated deal value" },
+        {
+          "id": "close_date",
+          "name": "Close date",
+          "type": "date",
+          "description": "Expected close date"
+        },
+        { "id": "owner", "name": "Owner", "type": "text", "description": "Deal owner" },
+        {
+          "id": "tags",
+          "name": "Tags",
+          "type": "multi_select",
+          "description": "Deal tags",
+          "options": ["Strategic", "Quick win", "Renewal", "Expansion", "Inbound"]
+        },
+        {
+          "id": "notes",
+          "name": "Notes",
+          "type": "long_text",
+          "description": "Deal context and risks"
+        }
+      ],
+      "views": [
+        {
+          "id": "view-all-deals",
+          "name": "All deals",
+          "type": "grid",
+          "sortFieldId": "close_date"
+        },
+        { "id": "view-pipeline", "name": "Pipeline", "type": "kanban", "groupFieldId": "stage" },
+        {
+          "id": "view-closing",
+          "name": "Closing soon",
+          "type": "review",
+          "sortFieldId": "close_date"
+        }
+      ]
+    },
+    {
+      "id": "activities",
+      "name": "Activities",
+      "fields": [
+        {
+          "id": "name",
+          "name": "Activity",
+          "type": "text",
+          "required": true,
+          "description": "Call, email, meeting, or task"
+        },
+        {
+          "id": "deal",
+          "name": "Deal",
+          "type": "linked_record",
+          "linkedTableId": "deals",
+          "description": "Related deal"
+        },
+        {
+          "id": "contact",
+          "name": "Contact",
+          "type": "linked_record",
+          "linkedTableId": "contacts",
+          "description": "Related contact"
+        },
+        {
+          "id": "type",
+          "name": "Type",
+          "type": "single_select",
+          "description": "Activity type",
+          "options": ["Call", "Email", "Meeting", "Task"]
+        },
+        { "id": "due_date", "name": "Due date", "type": "date", "description": "When this is due" },
+        {
+          "id": "status",
+          "name": "Status",
+          "type": "single_select",
+          "description": "Completion state",
+          "options": ["Todo", "Done", "Waiting"]
+        },
+        {
+          "id": "follow_up_link",
+          "name": "Follow-up link",
+          "type": "url",
+          "description": "External resource link"
+        },
+        {
+          "id": "notes",
+          "name": "Notes",
+          "type": "long_text",
+          "description": "Outcome or next step"
+        }
+      ],
+      "views": [
+        {
+          "id": "view-all-activities",
+          "name": "All activities",
+          "type": "grid",
+          "sortFieldId": "due_date"
+        },
+        { "id": "view-by-status", "name": "By status", "type": "kanban", "groupFieldId": "status" }
+      ]
+    }
+  ]
+}
