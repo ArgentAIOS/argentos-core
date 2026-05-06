@@ -839,4 +839,79 @@ describe("AppForge gateway handlers", () => {
       expect.objectContaining({ message: "missing scope: operator.write" }),
     );
   });
+
+  it("lists app-forge templates from the substrate registry", async () => {
+    const respond = await invokeAppForgeHandler("appforge.templates.list", {});
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        templates: expect.arrayContaining([
+          expect.objectContaining({
+            id: "airtable-crm",
+            name: "Airtable CRM",
+            tables: expect.arrayContaining([expect.objectContaining({ id: "contacts" })]),
+          }),
+        ]),
+      },
+      undefined,
+    );
+  });
+
+  it("fetches a single template by id and returns 400 when missing", async () => {
+    const ok = await invokeAppForgeHandler("appforge.templates.get", {
+      templateId: "airtable-crm",
+    });
+    expect(ok).toHaveBeenCalledWith(
+      true,
+      { template: expect.objectContaining({ id: "airtable-crm" }) },
+      undefined,
+    );
+
+    const missing = await invokeAppForgeHandler("appforge.templates.get", {
+      templateId: "no-such",
+    });
+    expect(missing).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "template not found" }),
+    );
+
+    const empty = await invokeAppForgeHandler("appforge.templates.get", {});
+    expect(empty).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "templateId is required" }),
+    );
+  });
+
+  it("builds a CSV import preview through the gateway", async () => {
+    const csv = "Name,Email,Status\nAlice,alice@example.com,New\nBob,bob@example.com,Contacted\n";
+    const respond = await invokeAppForgeHandler("appforge.import.preview", {
+      csv,
+      tableName: "Imported Leads",
+      maxRows: 10,
+    });
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        preview: expect.objectContaining({
+          tableName: "Imported Leads",
+          columns: expect.arrayContaining([
+            expect.objectContaining({ header: "Email", type: "email" }),
+            expect.objectContaining({ header: "Status", type: "single_select" }),
+          ]),
+          rows: expect.any(Array),
+          totalRows: 2,
+        }),
+      },
+      undefined,
+    );
+
+    const missing = await invokeAppForgeHandler("appforge.import.preview", {});
+    expect(missing).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "csv is required" }),
+    );
+  });
 });

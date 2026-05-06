@@ -3,6 +3,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { getPgClient } from "../../data/pg-client.js";
 import { isPostgresEnabled } from "../../data/storage-config.js";
 import { resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
+import { buildAppForgeImportPreview } from "../../infra/app-forge-import.js";
 import {
   buildAppForgePermissionCheckAuditEvent,
   canWriteAppForge,
@@ -14,6 +15,10 @@ import {
   createInMemoryAppForgeStore,
   createPostgresAppForgeStore,
 } from "../../infra/app-forge-store.js";
+import {
+  getAppForgeTemplate,
+  listAppForgeTemplates,
+} from "../../infra/app-forge-templates/index.js";
 import {
   buildAppForgeRecordMutationEvent,
   buildAppForgeTableMutationEvent,
@@ -241,6 +246,57 @@ export function resetAppForgeAdapterForTests(seed: AppForgeBase[] = []) {
 }
 
 export const appForgeHandlers: GatewayRequestHandlers = {
+  "appforge.templates.list": async ({ respond }) => {
+    respond(true, { templates: listAppForgeTemplates() }, undefined);
+  },
+
+  "appforge.templates.get": async ({ params, respond }) => {
+    const templateId = stringParam(params, "templateId");
+    if (!templateId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "templateId is required"));
+      return;
+    }
+    const template = getAppForgeTemplate(templateId);
+    if (!template) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "template not found"));
+      return;
+    }
+    respond(true, { template }, undefined);
+  },
+
+  "appforge.import.preview": async ({ params, respond }) => {
+    const csv = stringParam(params, "csv");
+    if (!csv) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "csv is required"));
+      return;
+    }
+    const tableName = stringParam(params, "tableName") ?? undefined;
+    const targetTableId = stringParam(params, "targetTableId") ?? undefined;
+    const maxRows = optionalNumberParam(params, "maxRows");
+    const baseValue = isRecord(params.base) ? asAppForgeBase(params.base) : null;
+    try {
+      const preview = buildAppForgeImportPreview({
+        csv,
+        tableName,
+        targetTableId,
+        maxRows,
+        base: baseValue
+          ? { activeTableId: baseValue.activeTableId, tables: baseValue.tables }
+          : null,
+      });
+      respond(true, { preview }, undefined);
+    } catch (error) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          error instanceof Error ? error.message : "failed to build CSV import preview",
+        ),
+      );
+    }
+  },
+
   "appforge.bases.list": async ({ params, respond }) => {
     const adapter = getAppForgeAdapter();
     const appId = stringParam(params, "appId") ?? undefined;
