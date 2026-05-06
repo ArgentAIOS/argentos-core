@@ -42,6 +42,7 @@ import {
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi } from "../utils/localApiFetch";
+import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
 import {
   MultiSelectCellDisplay,
   MultiSelectCellEditor,
@@ -1214,6 +1215,8 @@ export function AppForge({
   const [newAppName, setNewAppName] = useState("");
   const [newAppDescription, setNewAppDescription] = useState("");
   const [pendingTemplate, setPendingTemplate] = useState<ForgeBaseTemplate | null>(null);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [csvImportBusy, setCsvImportBusy] = useState(false);
   const [localCreatedApps, setLocalCreatedApps] = useState<ForgeApp[]>([]);
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [gatewayReloadNonce, setGatewayReloadNonce] = useState(0);
@@ -1267,6 +1270,8 @@ export function AppForge({
         setNewAppName("");
         setNewAppDescription("");
         setPendingTemplate(null);
+        setCsvImportOpen(false);
+        setCsvImportBusy(false);
         setBuilding(false);
         setWorkflowEventStatus(null);
         setActiveFilter("all");
@@ -1489,6 +1494,185 @@ export function AppForge({
       setBuilding(false);
     }
   }, [newAppName, pendingTemplate, apps.length, newAppDescription, gatewayRequest]);
+
+  const handleApplyCsvImport = useCallback(
+    async ({ baseName, preview }: { baseName: string; preview: AppForgeImportPreview }) => {
+      if (!preview.fields.length) {
+        return;
+      }
+      const description = `Imported from CSV (${preview.totalRows} row${
+        preview.totalRows === 1 ? "" : "s"
+      }).`;
+      setCsvImportBusy(true);
+      setBuilding(true);
+      appCountAtBuild.current = apps.length;
+      try {
+        const baseId = createBaseId();
+        const updatedAt = new Date().toISOString();
+        const tableId = `${baseId}-table-import`;
+        const fields: ForgeStructuredField[] = preview.fields.map((field) => ({
+          id: field.id,
+          name: field.name,
+          type: field.type as ForgeFieldType,
+          required: field.required,
+          options: field.options,
+          selectOptions: field.options?.map((label, index) => ({
+            id: `opt-${field.id}-${index}`,
+            label,
+            color: SELECT_OPTION_PALETTE[index % SELECT_OPTION_PALETTE.length].id,
+          })),
+        }));
+        const records: ForgeStructuredRecord[] = preview.rows.map((row, index) => ({
+          id: `${tableId}-rec-${index + 1}`,
+          values: row.values as Record<string, ForgeStructuredRecordValue>,
+          revision: 0,
+          createdAt: updatedAt,
+          updatedAt,
+        }));
+        const view: ForgeStructuredView = {
+          id: `${tableId}-view-all`,
+          name: "All records",
+          type: "grid",
+          sortDirection: "asc",
+          visibleFieldIds: fields.map((field) => field.id),
+          createdAt: updatedAt,
+          updatedAt,
+        };
+        const pendingBase: ForgeStructuredBase = {
+          id: baseId,
+          appId: "",
+          name: baseName,
+          description,
+          activeTableId: tableId,
+          tables: [
+            {
+              id: tableId,
+              name: preview.tableName || "Imported Table",
+              fields,
+              records,
+              views: [view],
+              activeViewId: view.id,
+              defaultViewId: view.id,
+              selectedFieldId: fields[0]?.id,
+              revision: 0,
+            },
+          ],
+          updatedAt,
+        };
+        const createResponse = await fetchAppForgeApi(
+          "/api/apps",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: baseName,
+              description,
+              icon: structuredBaseIcon(),
+              code: structuredBaseAppCode(baseName, description),
+              metadata: structuredBaseMetadata({ workflowCapabilities: [] }, pendingBase),
+            }),
+          },
+          10_000,
+        );
+        if (!createResponse.ok) {
+          throw new Error(`Failed to create base app (${createResponse.status})`);
+        }
+        const created = (await createResponse.json()) as { app?: ForgeApp };
+        if (!created.app?.id) {
+          throw new Error("Create base response did not include an app id");
+        }
+        const finalBase = { ...pendingBase, appId: created.app.id };
+        let gatewayWriteFailed = false;
+        if (gatewayRequest) {
+          try {
+            await withTimeout(
+              gatewayRequest(
+                "appforge.bases.put",
+                {
+                  base: toGatewayBase(finalBase),
+                  expectedRevision: 0,
+                  idempotencyKey: `csv-import:initial:${created.app.id}`,
+                },
+                { timeoutMs: 5_000 },
+              ),
+              5_000,
+              "Gateway base create timed out",
+            );
+            for (const table of finalBase.tables) {
+              await withTimeout(
+                gatewayRequest(
+                  "appforge.tables.put",
+                  {
+                    baseId: finalBase.id,
+                    table: toGatewayTable(table),
+                    idempotencyKey: `csv-import:initial:${created.app.id}:table:${table.id}`,
+                  },
+                  { timeoutMs: 5_000 },
+                ),
+                5_000,
+                "Gateway table seed timed out",
+              );
+            }
+          } catch (err) {
+            gatewayWriteFailed = true;
+            console.warn(
+              "[AppForge] Gateway CSV-import seed failed; metadata fallback in use.",
+              err,
+            );
+          }
+        }
+        const metadata = metadataWithStructuredBase(created.app, finalBase);
+        const patchResponse = await fetchAppForgeApi(
+          `/api/apps/${created.app.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ metadata }),
+          },
+          10_000,
+        );
+        if (!patchResponse.ok) {
+          throw new Error(`Failed to attach structured base metadata (${patchResponse.status})`);
+        }
+        const patched = (await patchResponse.json().catch(() => undefined)) as
+          | { app?: ForgeApp }
+          | undefined;
+        const localApp = {
+          ...(patched?.app ?? created.app),
+          metadata,
+          updatedAt: finalBase.updatedAt,
+        };
+        setLocalCreatedApps((current) => [
+          localApp,
+          ...current.filter((app) => app.id !== localApp.id),
+        ]);
+        setSelectedAppId(localApp.id);
+        setActiveSection("data");
+        setCsvImportOpen(false);
+        if (!gatewayWriteFailed) {
+          setGatewayReloadNonce((nonce) => nonce + 1);
+        }
+        setWorkflowEventStatus({
+          kind: "success",
+          appId: created.app.id,
+          message: gatewayWriteFailed
+            ? `${baseName} imported in metadata fallback (${preview.totalRows} rows).`
+            : `${baseName} imported with ${preview.totalRows} rows.`,
+        });
+      } catch (err) {
+        console.warn("[AppForge] CSV import failed.", err);
+        setWorkflowEventStatus({
+          kind: "error",
+          appId: "csv-import",
+          message: err instanceof Error ? err.message : "Failed to import CSV.",
+        });
+      } finally {
+        setCsvImportBusy(false);
+        setBuilding(false);
+      }
+    },
+    [apps.length, gatewayRequest],
+  );
 
   // Close context menu on click outside
   useEffect(() => {
@@ -2480,7 +2664,7 @@ export function AppForge({
                                 label: "Quickly upload",
                                 detail: "CSV and spreadsheet import",
                                 icon: ArrowRight,
-                                enabled: false,
+                                enabled: true,
                               },
                               {
                                 label: "Build an app on your own",
@@ -2502,6 +2686,10 @@ export function AppForge({
                                       document
                                         .getElementById("appforge-templates")
                                         ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                      return;
+                                    }
+                                    if (action.label === "Quickly upload") {
+                                      setCsvImportOpen(true);
                                       return;
                                     }
                                     handleOpenBlankBaseDialog();
@@ -4471,6 +4659,19 @@ export function AppForge({
             apps={displayApps}
             onRestore={onRestoreApp}
             onFocus={onFocusApp}
+          />
+
+          <CsvImportDialog
+            open={csvImportOpen}
+            busy={csvImportBusy}
+            gatewayRequest={effectiveGatewayRequest}
+            onCancel={() => {
+              if (csvImportBusy) {
+                return;
+              }
+              setCsvImportOpen(false);
+            }}
+            onApply={handleApplyCsvImport}
           />
 
           {/* Context Menu */}
