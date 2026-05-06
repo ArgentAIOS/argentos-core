@@ -661,11 +661,14 @@ const APP_FORGE_BASE_TEMPLATES: ForgeBaseTemplate[] = [
   },
 ];
 
+// Workspace-level UI shell preferences that are operator-local only.
+// View mode (grid/kanban/form/review) and inspector mode are NOT persisted
+// here — they're derived from the gateway-backed active named view per
+// table (see src/infra/app-forge-views.ts) so they survive token rotation
+// and browser restart for any operator with access.
 type AppForgeUiState = {
   selectedAppId?: string | null;
   activeSection?: (typeof APP_FORGE_NAV)[number]["id"];
-  activeViewMode?: ForgeViewMode;
-  inspectorMode?: ForgeInspectorMode;
 };
 
 function isForgeSection(value: unknown): value is (typeof APP_FORGE_NAV)[number]["id"] {
@@ -685,14 +688,6 @@ function normalizeForgeSection(value: unknown): (typeof APP_FORGE_NAV)[number]["
   return undefined;
 }
 
-function isForgeViewMode(value: unknown): value is ForgeViewMode {
-  return typeof value === "string" && FORGE_VIEW_MODES.some((item) => item.id === value);
-}
-
-function isForgeInspectorMode(value: unknown): value is ForgeInspectorMode {
-  return value === "field" || value === "table";
-}
-
 function loadAppForgeUiState(): AppForgeUiState {
   if (typeof window === "undefined") {
     return {};
@@ -707,8 +702,6 @@ function loadAppForgeUiState(): AppForgeUiState {
     return {
       selectedAppId: typeof parsed.selectedAppId === "string" ? parsed.selectedAppId : null,
       activeSection: normalizeForgeSection(parsed.activeSection),
-      activeViewMode: isForgeViewMode(parsed.activeViewMode) ? parsed.activeViewMode : undefined,
-      inspectorMode: isForgeInspectorMode(parsed.inspectorMode) ? parsed.inspectorMode : undefined,
     };
   } catch {
     return {};
@@ -1224,12 +1217,11 @@ export function AppForge({
   const [activeSection, setActiveSection] = useState<(typeof APP_FORGE_NAV)[number]["id"]>(
     persistedUiState.activeSection ?? "home",
   );
-  const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>(
-    persistedUiState.activeViewMode ?? "grid",
-  );
-  const [inspectorMode, setInspectorMode] = useState<ForgeInspectorMode>(
-    persistedUiState.inspectorMode ?? "field",
-  );
+  // Active view mode is hydrated from the gateway-backed active named view
+  // for the current table (see useEffect below). Initial fallback is "grid"
+  // so the shell renders something coherent before the gateway responds.
+  const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>("grid");
+  const [inspectorMode, setInspectorMode] = useState<ForgeInspectorMode>("field");
   const [selectedAppId, setSelectedAppId] = useState<string | null>(
     persistedUiState.selectedAppId ?? null,
   );
@@ -1292,16 +1284,17 @@ export function AppForge({
     if (typeof window === "undefined") {
       return;
     }
+    // Only persist workspace shell preferences locally. View mode and
+    // inspector mode derive from gateway-backed state so they survive
+    // browser restart and token rotation.
     window.localStorage.setItem(
       APP_FORGE_UI_STATE_KEY,
       JSON.stringify({
         selectedAppId,
         activeSection,
-        activeViewMode,
-        inspectorMode,
       }),
     );
-  }, [activeSection, activeViewMode, inspectorMode, selectedAppId]);
+  }, [activeSection, selectedAppId]);
 
   // Focus name input when form shown
   useEffect(() => {
