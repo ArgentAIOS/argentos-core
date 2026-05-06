@@ -9,13 +9,7 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
-    "workerFields": [
-      "location_id",
-      "customer_id",
-      "order_id",
-      "payment_id",
-      "item_id"
-    ],
+    "workerFields": ["location_id", "customer_id", "order_id", "payment_id", "item_id"],
     "worker_visible_actions": [
       "payment.list",
       "payment.get",
@@ -37,11 +31,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "payment.list",
-          "order.list",
-          "invoice.list"
-        ],
+        "applies_to": ["payment.list", "order.list", "invoice.list"],
         "example": "L1BQFNKJ0AB1C",
         "placeholder": "Select location...",
         "description": "The Square location to scope read operations."
@@ -54,9 +44,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "customer.get"
-        ],
+        "applies_to": ["customer.get"],
         "example": "JDKYHBWT1D4F8MFH63DBMEN8Y4",
         "placeholder": "Select customer...",
         "description": "The Square customer ID."
@@ -69,9 +57,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "order.get"
-        ],
+        "applies_to": ["order.get"],
         "example": "CAISENgvlJ6jLWAzERDzjyHVREo",
         "placeholder": "e.g., CAISENgvlJ6jLWAzERDzjyHVREo",
         "description": "The Square order ID."
@@ -84,9 +70,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "payment.get"
-        ],
+        "applies_to": ["payment.get"],
         "example": "PAYMENT_ID",
         "placeholder": "e.g., PAYMENT_ID",
         "description": "The Square payment ID."
@@ -99,9 +83,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "item.get"
-        ],
+        "applies_to": ["item.get"],
         "example": "ITEM_ID",
         "placeholder": "e.g., ITEM_ID",
         "description": "The Square catalog item ID."
@@ -110,16 +92,12 @@
     "commandDefaults": {
       "payment.list": {
         "selection_surface": "payment",
-        "args": [
-          "SQUARE_LOCATION_ID"
-        ],
+        "args": ["SQUARE_LOCATION_ID"],
         "limit": 10
       },
       "payment.get": {
         "selection_surface": "payment",
-        "args": [
-          "SQUARE_PAYMENT_ID"
-        ]
+        "args": ["SQUARE_PAYMENT_ID"]
       },
       "customer.list": {
         "selection_surface": "customer",
@@ -127,22 +105,16 @@
       },
       "customer.get": {
         "selection_surface": "customer",
-        "args": [
-          "SQUARE_CUSTOMER_ID"
-        ]
+        "args": ["SQUARE_CUSTOMER_ID"]
       },
       "order.list": {
         "selection_surface": "order",
-        "args": [
-          "SQUARE_LOCATION_ID"
-        ],
+        "args": ["SQUARE_LOCATION_ID"],
         "limit": 10
       },
       "order.get": {
         "selection_surface": "order",
-        "args": [
-          "SQUARE_ORDER_ID"
-        ]
+        "args": ["SQUARE_ORDER_ID"]
       },
       "item.list": {
         "selection_surface": "item",
@@ -150,15 +122,11 @@
       },
       "item.get": {
         "selection_surface": "item",
-        "args": [
-          "SQUARE_ITEM_ID"
-        ]
+        "args": ["SQUARE_ITEM_ID"]
       },
       "invoice.list": {
         "selection_surface": "invoice",
-        "args": [
-          "SQUARE_LOCATION_ID"
-        ],
+        "args": ["SQUARE_LOCATION_ID"],
         "limit": 10
       },
       "location.list": {
@@ -172,100 +140,50 @@
         "selection_surface": "payment",
         "resource": "square.payment",
         "source_command": "payment.list",
-        "source_fields": [
-          "id",
-          "amount_money",
-          "status",
-          "source_type",
-          "created_at",
-          "order_id"
-        ]
+        "source_fields": ["id", "amount_money", "status", "source_type", "created_at", "order_id"]
       },
       "customer": {
         "kind": "customer",
         "selection_surface": "customer",
         "resource": "square.customer",
         "source_command": "customer.list",
-        "source_fields": [
-          "id",
-          "given_name",
-          "family_name",
-          "email_address",
-          "created_at"
-        ]
+        "source_fields": ["id", "given_name", "family_name", "email_address", "created_at"]
       },
       "order": {
         "kind": "order",
         "selection_surface": "order",
         "resource": "square.order",
         "source_command": "order.list",
-        "source_fields": [
-          "id",
-          "state",
-          "total_money",
-          "created_at",
-          "line_items"
-        ]
+        "source_fields": ["id", "state", "total_money", "created_at", "line_items"]
       },
       "item": {
         "kind": "item",
         "selection_surface": "item",
         "resource": "square.item",
         "source_command": "item.list",
-        "source_fields": [
-          "id",
-          "name",
-          "type",
-          "variations",
-          "updated_at"
-        ]
+        "source_fields": ["id", "name", "type", "variations", "updated_at"]
       },
       "invoice": {
         "kind": "invoice",
         "selection_surface": "invoice",
         "resource": "square.invoice",
         "source_command": "invoice.list",
-        "source_fields": [
-          "id",
-          "status",
-          "invoice_number",
-          "payment_requests",
-          "created_at"
-        ]
+        "source_fields": ["id", "status", "invoice_number", "payment_requests", "created_at"]
       },
       "location": {
         "kind": "location",
         "selection_surface": "location",
         "resource": "square.location",
         "source_command": "location.list",
-        "source_fields": [
-          "id",
-          "name",
-          "address",
-          "status",
-          "timezone",
-          "currency"
-        ]
+        "source_fields": ["id", "name", "address", "status", "timezone", "currency"]
       }
     }
   },
   "connector": {
     "label": "Square",
     "category": "commerce-ops",
-    "categories": [
-      "commerce-ops",
-      "payments",
-      "invoicing",
-      "crm-revenue"
-    ],
-    "resources": [
-      "payment",
-      "customer",
-      "order",
-      "item",
-      "invoice",
-      "location"
-    ]
+    "categories": ["commerce-ops", "payments", "invoicing", "crm-revenue"],
+    "resources": ["payment", "customer", "order", "item", "invoice", "location"]
   },
   "auth": {
     "kind": "service-key",

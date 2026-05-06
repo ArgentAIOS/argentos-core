@@ -83,7 +83,12 @@
     "commandDefaults": {
       "timesheet.list": {
         "selection_surface": "timesheet",
-        "args": ["PAYPUNCH_TENANT_ID", "PAYPUNCH_COMPANY_ID", "PAYPUNCH_EMPLOYEE_ID", "PAYPUNCH_PAY_PERIOD"],
+        "args": [
+          "PAYPUNCH_TENANT_ID",
+          "PAYPUNCH_COMPANY_ID",
+          "PAYPUNCH_EMPLOYEE_ID",
+          "PAYPUNCH_PAY_PERIOD"
+        ],
         "limit": 50
       },
       "timesheet.get": {

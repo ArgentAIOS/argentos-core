@@ -18,13 +18,7 @@
       "BUFFER_PROFILE_ID",
       "BUFFER_POST_ID"
     ],
-    "workerFields": [
-      "account",
-      "organization_id",
-      "channel_id",
-      "profile_id",
-      "post_id"
-    ],
+    "workerFields": ["account", "organization_id", "channel_id", "profile_id", "post_id"],
     "worker_visible_actions": [
       "account.read",
       "channel.list",

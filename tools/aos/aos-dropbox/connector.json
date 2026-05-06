@@ -10,7 +10,14 @@
     "live_read_available": true,
     "write_bridge_available": false,
     "workerFields": ["path", "file_id", "query", "cursor"],
-    "worker_visible_actions": ["file.list", "file.get", "file.download", "folder.list", "share.list", "search.query"],
+    "worker_visible_actions": [
+      "file.list",
+      "file.get",
+      "file.download",
+      "folder.list",
+      "share.list",
+      "search.query"
+    ],
     "fields": [
       {
         "id": "path",
@@ -22,13 +29,7 @@
         "valueType": "string",
         "description": "Dropbox file or folder path",
         "placeholder": "/Documents/Reports/Q4.pdf",
-        "applies_to": [
-          "file.list",
-          "file.get",
-          "file.download",
-          "folder.list",
-          "share.list"
-        ],
+        "applies_to": ["file.list", "file.get", "file.download", "folder.list", "share.list"],
         "example": "/Documents/Reports/Q4.pdf"
       },
       {

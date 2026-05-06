@@ -37,10 +37,7 @@
         "id": "call_id",
         "label": "Call ID",
         "required": false,
-        "applies_to": [
-          "call.get",
-          "transcript.get"
-        ],
+        "applies_to": ["call.get", "transcript.get"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -50,11 +47,7 @@
         "id": "agent_name",
         "label": "Sales Agent",
         "required": false,
-        "applies_to": [
-          "call.list",
-          "agent.stats",
-          "agent.scorecard"
-        ],
+        "applies_to": ["call.list", "agent.stats", "agent.scorecard"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -64,10 +57,7 @@
         "id": "team_id",
         "label": "Team",
         "required": false,
-        "applies_to": [
-          "team.stats",
-          "call.list"
-        ],
+        "applies_to": ["team.stats", "call.list"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -77,12 +67,7 @@
         "id": "date_range",
         "label": "Date Range",
         "required": false,
-        "applies_to": [
-          "call.list",
-          "agent.stats",
-          "team.stats",
-          "report.list"
-        ],
+        "applies_to": ["call.list", "agent.stats", "team.stats", "report.list"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -92,9 +77,7 @@
         "id": "coaching_id",
         "label": "Coaching Report ID",
         "required": false,
-        "applies_to": [
-          "coaching.get"
-        ],
+        "applies_to": ["coaching.get"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -104,9 +87,7 @@
         "id": "search_query",
         "label": "Search Query",
         "required": false,
-        "applies_to": [
-          "transcript.search"
-        ],
+        "applies_to": ["transcript.search"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
@@ -116,9 +97,7 @@
         "id": "report_type",
         "label": "Report Type",
         "required": false,
-        "applies_to": [
-          "report.list"
-        ],
+        "applies_to": ["report.list"],
         "example": "weekly_scorecard",
         "renderAs": "text",
         "expressionEnabled": true,
@@ -129,30 +108,20 @@
     "commandDefaults": {
       "call.list": {
         "selection_surface": "call",
-        "args": [
-          "CALLSCRUB_TEAM_ID",
-          "CALLSCRUB_AGENT_NAME",
-          "CALLSCRUB_DATE_RANGE"
-        ],
+        "args": ["CALLSCRUB_TEAM_ID", "CALLSCRUB_AGENT_NAME", "CALLSCRUB_DATE_RANGE"],
         "limit": 25
       },
       "call.get": {
         "selection_surface": "call",
-        "args": [
-          "CALLSCRUB_CALL_ID"
-        ]
+        "args": ["CALLSCRUB_CALL_ID"]
       },
       "transcript.get": {
         "selection_surface": "transcript",
-        "args": [
-          "CALLSCRUB_CALL_ID"
-        ]
+        "args": ["CALLSCRUB_CALL_ID"]
       },
       "transcript.search": {
         "selection_surface": "transcript",
-        "args": [
-          "CALLSCRUB_SEARCH_QUERY"
-        ],
+        "args": ["CALLSCRUB_SEARCH_QUERY"],
         "limit": 20
       },
       "coaching.list": {
@@ -161,9 +130,7 @@
       },
       "coaching.get": {
         "selection_surface": "coaching",
-        "args": [
-          "CALLSCRUB_COACHING_ID"
-        ]
+        "args": ["CALLSCRUB_COACHING_ID"]
       },
       "agent.list": {
         "selection_surface": "agent",
@@ -171,16 +138,11 @@
       },
       "agent.stats": {
         "selection_surface": "agent",
-        "args": [
-          "CALLSCRUB_AGENT_NAME",
-          "CALLSCRUB_DATE_RANGE"
-        ]
+        "args": ["CALLSCRUB_AGENT_NAME", "CALLSCRUB_DATE_RANGE"]
       },
       "agent.scorecard": {
         "selection_surface": "agent",
-        "args": [
-          "CALLSCRUB_AGENT_NAME"
-        ]
+        "args": ["CALLSCRUB_AGENT_NAME"]
       },
       "team.list": {
         "selection_surface": "team",
@@ -188,17 +150,11 @@
       },
       "team.stats": {
         "selection_surface": "team",
-        "args": [
-          "CALLSCRUB_TEAM_ID",
-          "CALLSCRUB_DATE_RANGE"
-        ]
+        "args": ["CALLSCRUB_TEAM_ID", "CALLSCRUB_DATE_RANGE"]
       },
       "report.list": {
         "selection_surface": "report",
-        "args": [
-          "CALLSCRUB_REPORT_TYPE",
-          "CALLSCRUB_DATE_RANGE"
-        ],
+        "args": ["CALLSCRUB_REPORT_TYPE", "CALLSCRUB_DATE_RANGE"],
         "limit": 10
       }
     },
@@ -208,79 +164,41 @@
         "selection_surface": "call",
         "resource": "callscrub.call",
         "source_command": "call.list",
-        "source_fields": [
-          "id",
-          "agent_name",
-          "duration",
-          "date",
-          "score",
-          "disposition"
-        ]
+        "source_fields": ["id", "agent_name", "duration", "date", "score", "disposition"]
       },
       "agent": {
         "kind": "agent",
         "selection_surface": "agent",
         "resource": "callscrub.agent",
         "source_command": "agent.list",
-        "source_fields": [
-          "id",
-          "name",
-          "team",
-          "total_calls",
-          "avg_score"
-        ]
+        "source_fields": ["id", "name", "team", "total_calls", "avg_score"]
       },
       "team": {
         "kind": "team",
         "selection_surface": "team",
         "resource": "callscrub.team",
         "source_command": "team.list",
-        "source_fields": [
-          "id",
-          "name",
-          "agent_count",
-          "avg_score"
-        ]
+        "source_fields": ["id", "name", "agent_count", "avg_score"]
       },
       "coaching": {
         "kind": "coaching",
         "selection_surface": "coaching",
         "resource": "callscrub.coaching",
         "source_command": "coaching.list",
-        "source_fields": [
-          "id",
-          "call_id",
-          "agent_name",
-          "created",
-          "summary"
-        ]
+        "source_fields": ["id", "call_id", "agent_name", "created", "summary"]
       }
     }
   },
   "connector": {
     "label": "CallScrub",
     "category": "sales-analytics",
-    "categories": [
-      "sales-analytics",
-      "call-tracking",
-      "coaching"
-    ],
-    "resources": [
-      "call",
-      "transcript",
-      "coaching",
-      "agent",
-      "team",
-      "report"
-    ]
+    "categories": ["sales-analytics", "call-tracking", "coaching"],
+    "resources": ["call", "transcript", "coaching", "agent", "team", "report"]
   },
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": [
-      "CALLSCRUB_API_KEY",
-      "CALLSCRUB_API_BASE_URL"
-    ],
+    "service_keys": ["CALLSCRUB_API_KEY", "CALLSCRUB_API_BASE_URL"],
     "optional_scope_service_keys": [
       "CALLSCRUB_TEAM_ID",
       "CALLSCRUB_AGENT_NAME",

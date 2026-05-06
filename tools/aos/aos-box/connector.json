@@ -31,11 +31,7 @@
         "valueType": "string",
         "description": "Box file ID for file-level operations",
         "placeholder": "123456789",
-        "applies_to": [
-          "file.get",
-          "file.download",
-          "metadata.get"
-        ],
+        "applies_to": ["file.get", "file.download", "metadata.get"],
         "example": "123456789"
       },
       {
@@ -48,12 +44,7 @@
         "valueType": "string",
         "description": "Box folder ID for listing items and reading folder metadata",
         "placeholder": "987654321",
-        "applies_to": [
-          "file.list",
-          "folder.list",
-          "folder.get",
-          "collaboration.list"
-        ],
+        "applies_to": ["file.list", "folder.list", "folder.get", "collaboration.list"],
         "example": "987654321"
       },
       {

@@ -12,7 +12,12 @@
     "write_bridge_available": true,
     "live_write_smoke_tested": false,
     "required": ["N8N_API_URL", "N8N_API_KEY", "N8N_WEBHOOK_BASE_URL"],
-    "optional": ["N8N_WORKSPACE_NAME", "N8N_WORKFLOW_ID", "N8N_WORKFLOW_NAME", "N8N_WORKFLOW_STATUS"],
+    "optional": [
+      "N8N_WORKSPACE_NAME",
+      "N8N_WORKFLOW_ID",
+      "N8N_WORKFLOW_NAME",
+      "N8N_WORKFLOW_STATUS"
+    ],
     "worker_visible_actions": ["workflow.list", "workflow.status", "workflow.trigger"],
     "workerFields": ["workflow_id", "workflow_name", "event", "payload"],
     "fields": [

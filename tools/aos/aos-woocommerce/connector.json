@@ -9,14 +9,7 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
-    "workerFields": [
-      "store_url",
-      "order_id",
-      "product_id",
-      "customer_id",
-      "status",
-      "sku"
-    ],
+    "workerFields": ["store_url", "order_id", "product_id", "customer_id", "status", "sku"],
     "worker_visible_actions": [
       "order.list",
       "order.get",
@@ -60,9 +53,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "order.get"
-        ],
+        "applies_to": ["order.get"],
         "example": "1234",
         "placeholder": "e.g., 1234",
         "description": "The WooCommerce order ID."
@@ -75,9 +66,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "product.get"
-        ],
+        "applies_to": ["product.get"],
         "example": "567",
         "placeholder": "e.g., 567",
         "description": "The WooCommerce product ID."
@@ -90,10 +79,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "customer.get",
-          "order.list"
-        ],
+        "applies_to": ["customer.get", "order.list"],
         "example": "89",
         "placeholder": "e.g., 89",
         "description": "The WooCommerce customer ID."
@@ -106,10 +92,7 @@
         "required": false,
         "expressionEnabled": false,
         "valueType": "string",
-        "applies_to": [
-          "order.list",
-          "product.list"
-        ],
+        "applies_to": ["order.list", "product.list"],
         "example": "processing, completed, pending, publish, draft",
         "options": [
           {
@@ -144,9 +127,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "product.list"
-        ],
+        "applies_to": ["product.list"],
         "example": "WOO-WIDGET-001",
         "placeholder": "e.g., WOO-WIDGET-001",
         "description": "Product Stock Keeping Unit (SKU) for inventory tracking."
@@ -155,31 +136,23 @@
     "commandDefaults": {
       "order.list": {
         "selection_surface": "order",
-        "args": [
-          "WOO_CUSTOMER_ID"
-        ],
+        "args": ["WOO_CUSTOMER_ID"],
         "limit": 10,
         "status_env": "WOO_ORDER_STATUS"
       },
       "order.get": {
         "selection_surface": "order",
-        "args": [
-          "WOO_ORDER_ID"
-        ]
+        "args": ["WOO_ORDER_ID"]
       },
       "product.list": {
         "selection_surface": "product",
-        "args": [
-          "WOO_SKU"
-        ],
+        "args": ["WOO_SKU"],
         "limit": 10,
         "status_env": "WOO_PRODUCT_STATUS"
       },
       "product.get": {
         "selection_surface": "product",
-        "args": [
-          "WOO_PRODUCT_ID"
-        ]
+        "args": ["WOO_PRODUCT_ID"]
       },
       "customer.list": {
         "selection_surface": "customer",
@@ -187,9 +160,7 @@
       },
       "customer.get": {
         "selection_surface": "customer",
-        "args": [
-          "WOO_CUSTOMER_ID"
-        ]
+        "args": ["WOO_CUSTOMER_ID"]
       },
       "coupon.list": {
         "selection_surface": "coupon",
@@ -208,58 +179,28 @@
         "selection_surface": "order",
         "resource": "woocommerce.order",
         "source_command": "order.list",
-        "source_fields": [
-          "id",
-          "number",
-          "status",
-          "total",
-          "currency",
-          "date_created",
-          "billing"
-        ]
+        "source_fields": ["id", "number", "status", "total", "currency", "date_created", "billing"]
       },
       "product": {
         "kind": "product",
         "selection_surface": "product",
         "resource": "woocommerce.product",
         "source_command": "product.list",
-        "source_fields": [
-          "id",
-          "name",
-          "sku",
-          "status",
-          "price",
-          "stock_status",
-          "type"
-        ]
+        "source_fields": ["id", "name", "sku", "status", "price", "stock_status", "type"]
       },
       "customer": {
         "kind": "customer",
         "selection_surface": "customer",
         "resource": "woocommerce.customer",
         "source_command": "customer.list",
-        "source_fields": [
-          "id",
-          "email",
-          "first_name",
-          "last_name",
-          "date_created",
-          "orders_count"
-        ]
+        "source_fields": ["id", "email", "first_name", "last_name", "date_created", "orders_count"]
       },
       "coupon": {
         "kind": "coupon",
         "selection_surface": "coupon",
         "resource": "woocommerce.coupon",
         "source_command": "coupon.list",
-        "source_fields": [
-          "id",
-          "code",
-          "discount_type",
-          "amount",
-          "usage_count",
-          "date_expires"
-        ]
+        "source_fields": ["id", "code", "discount_type", "amount", "usage_count", "date_expires"]
       },
       "report": {
         "kind": "report",
@@ -279,19 +220,8 @@
   "connector": {
     "label": "WooCommerce",
     "category": "commerce-ops",
-    "categories": [
-      "commerce-ops",
-      "orders",
-      "inventory",
-      "crm-revenue"
-    ],
-    "resources": [
-      "order",
-      "product",
-      "customer",
-      "coupon",
-      "report"
-    ]
+    "categories": ["commerce-ops", "orders", "inventory", "crm-revenue"],
+    "resources": ["order", "product", "customer", "coupon", "report"]
   },
   "auth": {
     "kind": "service-key",

@@ -91,8 +91,8 @@ Oscillation is fine for _secondary_ parameters (saturation shimmer, hue drift). 
 
 Each scene should be built around a _visual idea_, not an effect name.
 
-**Bad:** "fx_plasma_cascade" — named after the effect. No concept.
-**Good:** "fx_emergence" — a point of light expands into a field. The name tells you _what happens_.
+**Bad:** "fx*plasma_cascade" — named after the effect. No concept.
+**Good:** "fx_emergence" — a point of light expands into a field. The name tells you \_what happens*.
 
 Good scene concepts have:
 

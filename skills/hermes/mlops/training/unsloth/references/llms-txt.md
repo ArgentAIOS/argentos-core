@@ -6266,9 +6266,9 @@ Defines how much the model’s weights are adjusted during each training step.
 - **Higher Learning Rates**: Lead to faster initial convergence but can cause training to become unstable or fail to find an optimal minimum if set too high.
 - **Lower Learning Rates**: Result in more stable and precise training but may require more epochs to converge, increasing overall training time. While low learning rates are often thought to cause underfitting, they actually can lead to **overfitting** or even prevent the model from learning.
 - **Typical Range**: `2e-4` (0.0002) to `5e-6` (0.000005). \
-  :green_square: **_For normal LoRA/QLoRA Fine-tuning_**, _we recommend_ **`2e-4`** _as a starting point._ \
+  :green\*square: \*\*\_For normal LoRA/QLoRA Fine-tuning**\*, *we recommend* **`2e-4`** _as a starting point._ \
   :blue_square: **\*For Reinforcement Learning** (DPO, GRPO etc.), we recommend\* **`5e-6` .** \
-  :white_large_square: **\*For Full Fine-tuning,** lower learning rates are generally more appropriate.\*
+  :white_large_square: **\*For Full Fine-tuning,\*\* lower learning rates are generally more appropriate.\*
 
 The number of times the model sees the full training dataset.
 
@@ -7662,7 +7662,7 @@ return None
 python
 from unsloth import create_locked_down_function, check_python_modules
 
-def function*works(completions, \*\*kwargs):
+def function\*works(completions, \*\*kwargs):
 scores = []
 for completion in completions:
 response = completion[0]["content"]
@@ -7675,25 +7675,26 @@ if "error" in info:
 scores.append(-2.0)
 continue
 try:
-* = create*locked_down_function(function)
-scores.append(1.0)
-except Exception:
-scores.append(-0.5)
-return scores
-python
-def no_cheating(completions, \*\*kwargs):
-scores = []
-for completion in completions:
-response = completion[0]["content"]
-function = extract_function(response)
-if function is None:
-scores.append(-1.0)
-continue
-ok, * = check_python_modules(function)
-scores.append(1.0 if ok else -20.0) # heavy penalty if cheating
-return scores
-python
-import numpy as np
+
+- = create*locked_down_function(function)
+  scores.append(1.0)
+  except Exception:
+  scores.append(-0.5)
+  return scores
+  python
+  def no_cheating(completions, \*\*kwargs):
+  scores = []
+  for completion in completions:
+  response = completion[0]["content"]
+  function = extract_function(response)
+  if function is None:
+  scores.append(-1.0)
+  continue
+  ok, * = check_python_modules(function)
+  scores.append(1.0 if ok else -20.0) # heavy penalty if cheating
+  return scores
+  python
+  import numpy as np
 
 PRINTER = 0 # occasionally print for debugging
 
@@ -9477,9 +9478,9 @@ addCriterion
 
 Figure is an overhead view of the path taken by a race car driver as his car collides with the racetrack wall. Just before the collision, he is traveling at speed $v_i=70 \mathrm{~m} / \mathrm{s}$ along a straight line at $30^{\circ}$ from the wall. Just after the collision, he is traveling at speed $v_f=50 \mathrm{~m} / \mathrm{s}$ along a straight line at $10^{\circ}$ from the wall. His mass $m$ is $80 \mathrm{~kg}$. The collision lasts for $14 \mathrm{~ms}$. What is the magnitude of the average force on the driver during the collision?
 python
-def formatting_reward_func(completions,\*_kwargs):
+def formatting*reward_func(completions,\*\_kwargs):
 import re
-thinking_pattern = f'{REASONING_START}(._?){REASONING_END}'
+thinking_pattern = f'{REASONING_START}(.*?){REASONING_END}'
 answer_pattern = f'{SOLUTION_START}(.\*?){SOLUTION_END}'
 
 scores = []
