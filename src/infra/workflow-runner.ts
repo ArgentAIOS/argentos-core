@@ -3430,22 +3430,69 @@ export class CoreAgentDispatcher implements AgentDispatcher {
             )
           : String(result ?? "");
 
-      // Extract token usage from result metadata when available
+      // Extract token usage + provider/model from result metadata when available.
+      // The embedded pi runner emits `meta.agentMeta.usage` (preferred); older
+      // call sites may emit `meta.usage` directly. Normalize both shapes so we
+      // capture token counts from any provider naming convention, then estimate
+      // cost from the configured per-million-token pricing for that model. This
+      // is what bubbles up into per-step `tokensUsed`/`costUsd` and ultimately
+      // into `workflow_runs.total_tokens_used` / `total_cost_usd`.
+      const { normalizeUsage } = await import("../agents/usage.js");
+      const { estimateUsageCost, resolveModelCostConfig } = await import(
+        "../utils/usage-format.js"
+      );
+      const { loadConfig } = await import("../config/config.js");
+
       let tokensUsed = 0;
       let costUsd = 0;
+      let resolvedProvider: string | undefined = modelBinding?.provider;
+      let resolvedModel: string | undefined = modelBinding?.model;
       if (typeof result === "object" && result !== null) {
         const meta = (result as Record<string, unknown>).meta as
           | Record<string, unknown>
           | undefined;
-        if (meta) {
-          const usage = meta.usage as Record<string, number> | undefined;
-          if (usage) {
-            tokensUsed = (usage.input ?? 0) + (usage.output ?? 0);
+        const agentMeta = meta?.agentMeta as Record<string, unknown> | undefined;
+        const rawUsage =
+          (agentMeta?.usage as Record<string, unknown> | undefined) ??
+          (meta?.usage as Record<string, unknown> | undefined);
+        const normalized = normalizeUsage(rawUsage as Parameters<typeof normalizeUsage>[0]);
+        if (normalized) {
+          const input = normalized.input ?? 0;
+          const output = normalized.output ?? 0;
+          const total = normalized.total ?? input + output;
+          tokensUsed = total > 0 ? total : input + output;
+        }
+        if (typeof agentMeta?.provider === "string" && agentMeta.provider) {
+          resolvedProvider = agentMeta.provider;
+        }
+        if (typeof agentMeta?.model === "string" && agentMeta.model) {
+          resolvedModel = agentMeta.model;
+        }
+        if (normalized && resolvedProvider && resolvedModel) {
+          try {
+            const costConfig = resolveModelCostConfig({
+              provider: resolvedProvider,
+              model: resolvedModel,
+              config: loadConfig(),
+            });
+            const estimated = estimateUsageCost({ usage: normalized, cost: costConfig });
+            if (typeof estimated === "number" && Number.isFinite(estimated)) {
+              costUsd = estimated;
+            }
+          } catch (err) {
+            log.warn(
+              `CoreAgentDispatcher: cost estimation failed for ${resolvedProvider}/${resolvedModel}: ${String(err)}`,
+            );
           }
         }
       }
 
-      const modelRef = resolved ? `${resolved.provider}/${resolved.model}` : "default";
+      const modelRef =
+        resolvedProvider && resolvedModel
+          ? `${resolvedProvider}/${resolvedModel}`
+          : resolved
+            ? `${resolved.provider}/${resolved.model}`
+            : "default";
 
       log.info("CoreAgentDispatcher: agent call completed", {
         agentId,
