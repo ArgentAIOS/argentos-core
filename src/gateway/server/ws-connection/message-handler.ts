@@ -25,7 +25,7 @@ import { upsertPresence } from "../../../infra/system-presence.js";
 import { loadVoiceWakeConfig } from "../../../infra/voicewake.js";
 import { rawDataToString } from "../../../infra/ws.js";
 import { isGatewayCliClient, isWebchatClient } from "../../../utils/message-channel.js";
-import { authorizeGatewayConnect, isLocalDirectRequest } from "../../auth.js";
+import { authorizeGatewayConnect, isLocalDirectRequest, resolveGatewayAuth } from "../../auth.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveNodeCommandAllowlist } from "../../node-command-policy.js";
@@ -410,18 +410,37 @@ export function attachGatewayWsMessageHandler(params: {
         const allowControlUiBypass = allowInsecureControlUi || disableControlUiDeviceAuth;
         const device = disableControlUiDeviceAuth ? null : deviceRaw;
 
+        // Re-read gateway auth from disk on each handshake so that token rotations
+        // in argent.json (e.g., from `argent gateway regenerate-token` or manual
+        // edits) take effect on the next connection without requiring a daemon
+        // restart. loadConfig() has its own ~200ms TTL cache, so under handshake
+        // bursts this is essentially free. Falls back to the captured
+        // `resolvedAuth` (which preserves any startup-time `opts.auth` override
+        // and env fallbacks) if disk read fails.
+        let effectiveAuth: ResolvedGatewayAuth = resolvedAuth;
+        try {
+          const cfgAtConnect = loadConfig();
+          effectiveAuth = resolveGatewayAuth({
+            authConfig: cfgAtConnect.gateway?.auth,
+            env: process.env,
+            tailscaleMode: cfgAtConnect.gateway?.tailscale?.mode,
+          });
+        } catch {
+          // Keep startup-resolved auth as the fallback when disk read fails.
+        }
+
         const authResult = await authorizeGatewayConnect({
-          auth: resolvedAuth,
+          auth: effectiveAuth,
           connectAuth: connectParams.auth,
           req: upgradeReq,
           trustedProxies,
         });
         let authOk = authResult.ok;
         let authMethod =
-          authResult.method ?? (resolvedAuth.mode === "password" ? "password" : "token");
+          authResult.method ?? (effectiveAuth.mode === "password" ? "password" : "token");
         const sharedAuthResult = hasSharedAuth
           ? await authorizeGatewayConnect({
-              auth: { ...resolvedAuth, allowTailscale: false },
+              auth: { ...effectiveAuth, allowTailscale: false },
               connectAuth: connectParams.auth,
               req: upgradeReq,
               trustedProxies,
@@ -441,16 +460,16 @@ export function attachGatewayWsMessageHandler(params: {
               ? "password"
               : "none";
           const authMessage = formatGatewayAuthFailureMessage({
-            authMode: resolvedAuth.mode,
+            authMode: effectiveAuth.mode,
             authProvided,
             reason: authResult.reason,
             client: connectParams.client,
           });
           setCloseCause("unauthorized", {
-            authMode: resolvedAuth.mode,
+            authMode: effectiveAuth.mode,
             authProvided,
             authReason: authResult.reason,
-            allowTailscale: resolvedAuth.allowTailscale,
+            allowTailscale: effectiveAuth.allowTailscale,
             client: connectParams.client.id,
             clientDisplayName: connectParams.client.displayName,
             mode: connectParams.client.mode,
