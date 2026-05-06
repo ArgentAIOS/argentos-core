@@ -2444,3 +2444,138 @@ fn websocket_workflows_backend_status_returns_shadow_payload() {
     drop(client);
     join_server(handle);
 }
+
+#[test]
+fn websocket_workflows_dry_run_returns_shadow_payload() {
+    // Mirrors src/gateway/server-methods/workflows.ts :: workflows.dryRun handler.
+    // Live workflow normalization + dry-run trace authority remains node-owned;
+    // the Rust shadow returns a structurally identical envelope (ok / steps /
+    // issues / definition / canvasLayout) with empty trace contents and a
+    // snapshot block that flags the payload as shadow.
+    let (addr, handle) = spawn_server("shadow-token");
+
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"workflows-dry-run-1","method":"workflows.dryRun","params":{"nodes":[],"edges":[]}}"#,
+    );
+    let dry_run =
+        read_server_text(&mut client).expect("workflows.dryRun response should arrive");
+    assert!(dry_run.contains("\"id\":\"workflows-dry-run-1\""));
+    assert!(dry_run.contains("\"ok\":true"));
+    assert!(dry_run.contains("\"steps\":[]"));
+    assert!(dry_run.contains("\"issues\":[]"));
+    assert!(dry_run.contains("\"definition\""));
+    assert!(dry_run.contains("\"canvasLayout\":{\"nodes\":[],\"edges\":[]}"));
+    assert!(dry_run.contains("\"snapshot\""));
+    assert!(dry_run.contains("\"id\":\"rust-parity-v1\""));
+    assert!(dry_run.contains("\"noLiveData\":true"));
+    assert!(dry_run.contains("\"workflowExecution\":false"));
+    assert!(dry_run.contains("\"authority\":\"node-live-rust-shadow\""));
+    assert!(dry_run.contains("\"dryRunAuthority\":\"node-workflows\""));
+
+    drop(client);
+    join_server(handle);
+}
+
+#[test]
+fn websocket_workflows_templates_list_returns_shadow_payload() {
+    // Mirrors src/gateway/server-methods/workflows.ts :: workflows.templates.list
+    // handler. Live owner/operator template catalog and live-readiness
+    // derivation remain node-owned (OWNER_OPERATOR_WORKFLOW_PACKAGES +
+    // workflowTemplateSummary); the Rust shadow surfaces a single shadow
+    // template entry mirroring the summary field shape.
+    let (addr, handle) = spawn_server("shadow-token");
+
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"workflows-templates-list-1","method":"workflows.templates.list"}"#,
+    );
+    let templates_list = read_server_text(&mut client)
+        .expect("workflows.templates.list response should arrive");
+    assert!(templates_list.contains("\"id\":\"workflows-templates-list-1\""));
+    assert!(templates_list.contains("\"templates\""));
+    assert!(templates_list.contains("\"id\":\"workflow-template-shadow-1\""));
+    assert!(templates_list.contains("\"slug\":\"rust-shadow-template\""));
+    assert!(templates_list.contains("\"name\":\"Rust Shadow Template\""));
+    assert!(templates_list.contains("\"scenario\""));
+    assert!(templates_list.contains("\"department\":\"shadow\""));
+    assert!(templates_list.contains("\"runPattern\":\"manual\""));
+    assert!(templates_list.contains("\"credentialCount\":0"));
+    assert!(templates_list.contains("\"dependencyCount\":0"));
+    assert!(templates_list.contains("\"nodeCount\":0"));
+    assert!(templates_list.contains("\"edgeCount\":0"));
+    assert!(templates_list.contains("\"okForImport\":false"));
+    assert!(templates_list.contains("\"okForPinnedTestRun\":false"));
+    assert!(templates_list.contains("\"liveRequirements\""));
+    assert!(templates_list.contains("\"dryRunEvidence\""));
+    assert!(templates_list.contains("\"liveReadiness\""));
+    assert!(templates_list.contains("\"requiresPostgres\":true"));
+    assert!(templates_list.contains("\"snapshot\""));
+    assert!(templates_list.contains("\"templateCatalogAuthority\":\"node-workflows\""));
+
+    drop(client);
+    join_server(handle);
+}
+
+#[test]
+fn websocket_workflows_templates_get_returns_shadow_payload() {
+    // Mirrors src/gateway/server-methods/workflows.ts :: workflows.templates.get
+    // handler. Live workflow package preview (importWorkflowPackage readiness
+    // + applyWorkflowPackageTestFixtures) remains node-owned. The Rust shadow
+    // returns a structurally identical workflowPackagePreviewPayload envelope
+    // (package / workflow / canvasLayout / readiness / validation) for the
+    // shadow template, with a snapshot block flagging the payload as shadow.
+    let (addr, handle) = spawn_server("shadow-token");
+
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"workflows-templates-get-1","method":"workflows.templates.get","params":{"slug":"rust-shadow-template"}}"#,
+    );
+    let templates_get = read_server_text(&mut client)
+        .expect("workflows.templates.get response should arrive");
+    assert!(templates_get.contains("\"id\":\"workflows-templates-get-1\""));
+    assert!(templates_get.contains("\"package\""));
+    assert!(templates_get.contains("\"id\":\"workflow-template-shadow-1\""));
+    assert!(templates_get.contains("\"slug\":\"rust-shadow-template\""));
+    assert!(templates_get.contains("\"name\":\"Rust Shadow Template\""));
+    assert!(templates_get.contains("\"workflow\""));
+    assert!(templates_get.contains("\"canvasLayout\":{\"nodes\":[],\"edges\":[]}"));
+    assert!(templates_get.contains("\"readiness\""));
+    assert!(templates_get.contains("\"okForImport\":false"));
+    assert!(templates_get.contains("\"okForPinnedTestRun\":false"));
+    assert!(templates_get.contains("\"liveReadiness\""));
+    assert!(templates_get.contains("\"requiresPostgres\":true"));
+    assert!(templates_get.contains("\"validation\":{\"ok\":false,\"issues\":[]}"));
+    assert!(templates_get.contains("\"snapshot\""));
+    assert!(templates_get.contains("\"templateCatalogAuthority\":\"node-workflows\""));
+
+    drop(client);
+    join_server(handle);
+}

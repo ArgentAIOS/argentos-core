@@ -646,6 +646,36 @@ pub fn workflows_backend_status_payload_json() -> String {
     )
 }
 
+pub fn workflows_dry_run_payload_json() -> String {
+    // Mirrors src/gateway/server-methods/workflows.ts :: workflows.dryRun handler.
+    // Live workflow normalization + dry-run trace authority remains node-owned;
+    // the Rust shadow returns a structurally identical envelope with no steps,
+    // no issues, and an empty canvas, plus a snapshot block that flags the
+    // payload as shadow (no real backing trace was computed).
+    "{\"ok\":true,\"steps\":[],\"issues\":[],\"definition\":{\"id\":\"dry-run\",\"name\":\"Untitled workflow\",\"nodes\":[],\"edges\":[],\"deploymentStage\":\"live\"},\"canvasLayout\":{\"nodes\":[],\"edges\":[]},\"snapshot\":{\"id\":\"rust-parity-v1\",\"noLiveData\":true,\"workflowExecution\":false,\"workflowRunsMutated\":false,\"authority\":\"node-live-rust-shadow\",\"dryRunAuthority\":\"node-workflows\"}}".to_string()
+}
+
+pub fn workflows_templates_list_payload_json() -> String {
+    // Mirrors src/gateway/server-methods/workflows.ts :: workflows.templates.list
+    // handler. Live template catalog + readiness derivation authority remains
+    // node-owned (OWNER_OPERATOR_WORKFLOW_PACKAGES + buildWorkflowPackageLive
+    // ReadinessContext). The Rust shadow surfaces a single shadow template
+    // entry that mirrors workflowTemplateSummary() field shape so consumers
+    // can exercise the contract against argentd. A snapshot marker flags the
+    // payload as shadow data.
+    "{\"templates\":[{\"id\":\"workflow-template-shadow-1\",\"slug\":\"rust-shadow-template\",\"name\":\"Rust Shadow Template\",\"description\":\"Rust shadow-only workflow template fixture\",\"scenario\":{\"department\":\"shadow\",\"runPattern\":\"manual\",\"summary\":\"Rust shadow parity fixture; live template catalog is node-owned.\"},\"credentialCount\":0,\"dependencyCount\":0,\"nodeCount\":0,\"edgeCount\":0,\"okForImport\":false,\"okForPinnedTestRun\":false,\"liveRequirements\":[],\"dryRunEvidence\":[],\"liveReadiness\":{\"ok\":false,\"requiresPostgres\":true,\"message\":\"Saved workflow templates require PostgreSQL; Rust shadow exposes contract shape only.\"},\"notes\":[\"Rust shadow fixture; live template catalog and readiness derivation remain node-owned.\"]}],\"snapshot\":{\"id\":\"rust-parity-v1\",\"noLiveData\":true,\"workflowExecution\":false,\"workflowRunsMutated\":false,\"authority\":\"node-live-rust-shadow\",\"templateCatalogAuthority\":\"node-workflows\"}}".to_string()
+}
+
+pub fn workflows_templates_get_payload_json() -> String {
+    // Mirrors src/gateway/server-methods/workflows.ts :: workflows.templates.get
+    // handler. Live workflow package preview (including importWorkflowPackage
+    // readiness) is node-owned. Rust shadow returns a structurally identical
+    // workflowPackagePreviewPayload envelope (package / workflow / canvasLayout
+    // / readiness / validation) for the shadow template, with a snapshot block
+    // marking the payload as shadow.
+    "{\"package\":{\"id\":\"workflow-template-shadow-1\",\"slug\":\"rust-shadow-template\",\"name\":\"Rust Shadow Template\",\"description\":\"Rust shadow-only workflow template fixture\",\"scenario\":{\"department\":\"shadow\",\"runPattern\":\"manual\",\"summary\":\"Rust shadow parity fixture; live template catalog is node-owned.\"},\"workflow\":{\"id\":\"workflow-template-shadow-1\",\"name\":\"Rust Shadow Template\",\"nodes\":[],\"edges\":[],\"deploymentStage\":\"live\"},\"credentials\":{\"required\":[]},\"dependencies\":[],\"notes\":[\"Rust shadow fixture; live template catalog and readiness derivation remain node-owned.\"]},\"workflow\":{\"id\":\"workflow-template-shadow-1\",\"name\":\"Rust Shadow Template\",\"nodes\":[],\"edges\":[],\"deploymentStage\":\"live\"},\"canvasLayout\":{\"nodes\":[],\"edges\":[]},\"readiness\":{\"okForImport\":false,\"okForPinnedTestRun\":false,\"liveRequirements\":[],\"dryRunEvidence\":[],\"liveReadiness\":{\"ok\":false,\"requiresPostgres\":true,\"message\":\"Saved workflow templates require PostgreSQL; Rust shadow exposes contract shape only.\"}},\"validation\":{\"ok\":false,\"issues\":[]},\"snapshot\":{\"id\":\"rust-parity-v1\",\"noLiveData\":true,\"workflowExecution\":false,\"workflowRunsMutated\":false,\"authority\":\"node-live-rust-shadow\",\"templateCatalogAuthority\":\"node-workflows\"}}".to_string()
+}
+
 pub fn jobs_overview_payload_json() -> String {
     "{\"templatesCount\":2,\"assignmentsCount\":3,\"enabledAssignmentsCount\":2,\"runningJobsCount\":1,\"blockedRunsCount\":0,\"dueNowCount\":1,\"agents\":[{\"agentId\":\"argent\",\"total\":2,\"enabled\":2,\"blockedTasks\":0,\"dueNow\":1,\"nextDueAt\":1776603600000},{\"agentId\":\"main\",\"total\":1,\"enabled\":0,\"blockedTasks\":1,\"dueNow\":0,\"nextDueAt\":1776607200000}]}".to_string()
 }

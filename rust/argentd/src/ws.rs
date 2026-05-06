@@ -9,7 +9,8 @@ use crate::http::{
     knowledge_collections_list_payload_json, node_pair_list_payload_json,
     agent_identity_get_payload_json,
     knowledge_library_list_payload_json, cron_list_payload_json, workflows_list_payload_json,
-    workflows_backend_status_payload_json,
+    workflows_backend_status_payload_json, workflows_dry_run_payload_json,
+    workflows_templates_get_payload_json, workflows_templates_list_payload_json,
     jobs_overview_payload_json,
     contemplation_run_once_payload_json, agent_wait_payload_json, node_event_payload_json,
     copilot_mode_set_payload_json, config_set_payload_json, family_register_payload_json,
@@ -564,6 +565,24 @@ pub fn serve_websocket_session(
                 send_text_frame(
                     &writer,
                     &ok_response(&meta.id, &workflows_backend_status_payload_json()),
+                )?;
+            }
+            "workflows.dryRun" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_dry_run_payload_json()),
+                )?;
+            }
+            "workflows.templates.list" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_templates_list_payload_json()),
+                )?;
+            }
+            "workflows.templates.get" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_templates_get_payload_json()),
                 )?;
             }
             "cron.add" => {
