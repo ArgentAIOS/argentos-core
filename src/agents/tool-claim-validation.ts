@@ -198,6 +198,15 @@ const TASK_RESULT_BEFORE_AFTER_COUNTS_RE =
 const TASK_ID_TOKEN_RE = /\b[A-Z][A-Z0-9]+-\d+\b|#\d{2,}\b|\b\d{3,}\b/g;
 const TASK_MUTATION_ACTION_RE =
   /^(?:create|update|delete|remove|resolve|complete|reopen|move|claim|unclaim|archive|clear|clean|block|start)$/i;
+const MUTATION_ACTION_RE =
+  /^(?:create|update|delete|remove|resolve|complete|reopen|move|claim|unclaim|archive|clear|clean|block|start|prune|cancel|save|publish|deactivate|disable|deprecate)$/i;
+
+const CLEANUP_VERB_FRAGMENT = String.raw`(?:archived?|archiving|delete[d]?|deleting|cleaned\s+up|cleaning\s+up|cleared\s+out|clearing\s+out|prune[d]?|pruning|removed?|removing|purged?|purging)`;
+const NON_TASK_CLEANUP_ENTITY_FRAGMENT = String.raw`(?:workflows?|docs?|documents?|docpanels?|projects?)`;
+const NON_TASK_CLEANUP_CLAIM_RE = new RegExp(
+  String.raw`\bI\s+${CLEANUP_VERB_FRAGMENT}\b[^.!?\n]{0,120}\b${NON_TASK_CLEANUP_ENTITY_FRAGMENT}\b`,
+  "gi",
+);
 
 const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
   {
@@ -394,6 +403,7 @@ export type CommitmentKind =
   | "planning"
   | "task"
   | "task_result"
+  | "mutation_cleanup"
   | "message"
   | "clarification"
   | "progress";
@@ -408,16 +418,24 @@ export type CommitmentSatisfactionMode =
   | "tool"
   | "artifact"
   | "questions"
-  | "tool_and_reply_evidence";
+  | "tool_and_reply_evidence"
+  | "mutation_receipt";
 export type CommitmentDisposition = "pass" | "repaired" | "blocked";
-export type TaskMutationEvidence = {
+export type MutationEntityType = "task" | "document" | "workflow" | "project";
+export type MutationEvidence = {
   toolName?: string;
+  entityType?: MutationEntityType;
   action?: string;
   entityIds?: string[];
   beforeCount?: number;
   afterCount?: number;
+  beforeStatus?: string;
+  afterStatus?: string;
   summary?: string;
 };
+// Back-compat alias: existing call sites and tests use TaskMutationEvidence.
+// The generalized MutationEvidence is a superset; task fields and tests stay intact.
+export type TaskMutationEvidence = MutationEvidence;
 
 type TaskResultReplyEvidence = {
   claimText: string;
@@ -831,7 +849,10 @@ function claimsShareScope(left: string, right: string): boolean {
   );
 }
 
-function isTaskMutationEntryRelevant(entry: TaskMutationEvidence): boolean {
+function isTaskMutationEntryRelevant(entry: MutationEvidence): boolean {
+  if (entry.entityType && entry.entityType !== "task") {
+    return false;
+  }
   const toolName = typeof entry.toolName === "string" ? entry.toolName.trim().toLowerCase() : "";
   if (toolName && toolName !== "tasks") {
     return false;
@@ -845,9 +866,65 @@ function isTaskMutationEntryRelevant(entry: TaskMutationEvidence): boolean {
   return TASK_MUTATION_ACTION_RE.test(action) || entityIds.length > 0;
 }
 
+function hasMutationReceiptForEntity(
+  entityType: MutationEntityType,
+  entries: MutationEvidence[],
+): boolean {
+  return entries.some((entry) => {
+    if (entry.entityType !== entityType) {
+      return false;
+    }
+    const action = typeof entry.action === "string" ? entry.action.trim() : "";
+    const entityIds = Array.isArray(entry.entityIds)
+      ? entry.entityIds.filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        )
+      : [];
+    return MUTATION_ACTION_RE.test(action) || entityIds.length > 0;
+  });
+}
+
+type MutationCleanupClaim = {
+  claimText: string;
+  entityTypes: MutationEntityType[];
+};
+
+function extractMutationCleanupClaim(text: string): MutationCleanupClaim | undefined {
+  const regex = new RegExp(NON_TASK_CLEANUP_CLAIM_RE.source, NON_TASK_CLEANUP_CLAIM_RE.flags);
+  let match: RegExpExecArray | null;
+  const entityTypes = new Set<MutationEntityType>();
+  let firstMatchIndex = -1;
+  let firstMatchText = "";
+  while ((match = regex.exec(text)) !== null) {
+    if (firstMatchIndex < 0) {
+      firstMatchIndex = match.index;
+      firstMatchText = match[0] ?? "";
+    }
+    const phrase = match[0]?.toLowerCase() ?? "";
+    if (/\bworkflows?\b/.test(phrase)) {
+      entityTypes.add("workflow");
+    }
+    if (/\b(?:docs?|documents?|docpanels?)\b/.test(phrase)) {
+      entityTypes.add("document");
+    }
+    if (/\bprojects?\b/.test(phrase)) {
+      entityTypes.add("project");
+    }
+  }
+  if (entityTypes.size === 0) {
+    return undefined;
+  }
+  const sentence =
+    firstMatchIndex >= 0 ? extractClaimSentence(text, firstMatchIndex) : trimClaimText(text);
+  const trimmedMatch = trimClaimText(firstMatchText);
+  const claimText =
+    sentence && sentence !== "Done." ? sentence : trimmedMatch || trimClaimText(text);
+  return { claimText, entityTypes: Array.from(entityTypes) };
+}
+
 function hasTaskMutationEvidenceForReply(
   replyEvidence: TaskResultReplyEvidence | undefined,
-  entries: TaskMutationEvidence[],
+  entries: MutationEvidence[],
 ): boolean {
   if (!replyEvidence) {
     return false;
@@ -887,7 +964,8 @@ function extractCommitments(params: {
   responseText: string;
   executedCanonical: Set<ExecutedToolName>;
   questionsAsked: string[];
-  taskMutationEvidence: TaskMutationEvidence[];
+  taskMutationEvidence: MutationEvidence[];
+  mutationEvidence: MutationEvidence[];
 }): CommitmentClaim[] {
   const out: CommitmentClaim[] = [];
   const seen = new Set<string>();
@@ -974,6 +1052,28 @@ function extractCommitments(params: {
     });
   }
 
+  // Non-task cleanup verb claims (cleanup/prune/archive/clear-out/delete/remove)
+  // over doc / workflow / project entities. Memory + read tools cannot satisfy
+  // these — only same-turn mutation receipts can.
+  const mutationCleanupClaim = extractMutationCleanupClaim(params.responseText);
+  if (mutationCleanupClaim) {
+    const mutationReceiptSatisfied = mutationCleanupClaim.entityTypes.every((entityType) =>
+      hasMutationReceiptForEntity(entityType, params.mutationEvidence),
+    );
+    out.push({
+      kind: "mutation_cleanup",
+      claimText: mutationCleanupClaim.claimText,
+      confidence: 0.95,
+      expectedEvidenceKinds: [],
+      expectedToolFamilies: [],
+      satisfactionMode: "mutation_receipt",
+      evidenceKinds: [],
+      evidenceTools: [],
+      blockableInChat: true,
+      satisfied: mutationReceiptSatisfied,
+    });
+  }
+
   const progressCompanionKinds = new Set<CommitmentKind>([
     "research",
     "planning",
@@ -1043,6 +1143,8 @@ function describeCommitmentLabel(commitment: CommitmentClaim): string {
       return "task/project update";
     case "task_result":
       return "task/board result evidence";
+    case "mutation_cleanup":
+      return "mutation receipt";
     case "message":
       return "message send";
     case "clarification":
@@ -1060,7 +1162,8 @@ export function validateToolClaims(params: {
   responseText: string;
   executedToolNames: string[];
   didSendViaMessagingTool?: boolean;
-  taskMutationEvidence?: TaskMutationEvidence[];
+  taskMutationEvidence?: MutationEvidence[];
+  mutationEvidence?: MutationEvidence[];
 }): ToolClaimValidation {
   const executedCanonical = new Set<ExecutedToolName>();
   for (const name of params.executedToolNames) {
@@ -1089,11 +1192,19 @@ export function validateToolClaims(params: {
   }
 
   const questionsAsked = extractConcreteQuestions(params.responseText);
+  const taskMutationEvidence = params.taskMutationEvidence ?? [];
+  const additionalMutationEvidence = params.mutationEvidence ?? [];
+  // Generalized receipt pool: existing task receipts plus any new doc/workflow/project receipts.
+  const allMutationEvidence: MutationEvidence[] = [
+    ...taskMutationEvidence,
+    ...additionalMutationEvidence,
+  ];
   const commitments = extractCommitments({
     responseText: params.responseText,
     executedCanonical,
     questionsAsked,
-    taskMutationEvidence: params.taskMutationEvidence ?? [],
+    taskMutationEvidence,
+    mutationEvidence: allMutationEvidence,
   });
 
   const missingClaims = Array.from(claimedCanonical).filter((tool) => !executedCanonical.has(tool));
