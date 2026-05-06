@@ -2396,3 +2396,51 @@ fn websocket_shutdown_event_is_broadcast_on_stop() {
     drop(client);
     join_server(handle);
 }
+
+#[test]
+fn websocket_workflows_backend_status_returns_shadow_payload() {
+    // Mirrors src/gateway/server-methods/workflows.ts :: buildWorkflowBackendStatus()
+    // for the "no PostgreSQL configured" path that the Rust shadow always returns.
+    // Live workflow authority remains node-owned; the Rust scheduler stays
+    // shadow-only and surfaces the same operator messaging.
+    let (addr, handle) = spawn_server("shadow-token");
+
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"workflows-backend-1","method":"workflows.backendStatus"}"#,
+    );
+    let backend_status =
+        read_server_text(&mut client).expect("workflows.backendStatus response should arrive");
+    assert!(backend_status.contains("\"id\":\"workflows-backend-1\""));
+    assert!(backend_status.contains("\"ok\":true"));
+    assert!(backend_status.contains("\"label\":\"Dry-run available; saved workflows need PostgreSQL\""));
+    assert!(backend_status.contains("\"backend\":\"sqlite\""));
+    assert!(backend_status.contains("\"postgres\":{\"requiredForSavedWorkflows\":true,\"activeForRuntime\":false,\"connectionSource\":\"default\",\"status\":\"not_configured\"}"));
+    assert!(backend_status.contains("\"dryRun\""));
+    assert!(backend_status.contains("\"method\":\"workflows.dryRun\""));
+    assert!(backend_status.contains("\"savedWorkflows\":{\"available\":false,\"requiresPostgres\":true"));
+    assert!(backend_status.contains("\"scheduleCron\":{\"available\":false,\"requiresPostgres\":true,\"status\":\"skipped_no_postgres\""));
+    assert!(backend_status.contains("\"schedulerBoundary\""));
+    assert!(backend_status.contains("\"contractVersion\":\"rust-spine-scheduler-v1\""));
+    assert!(backend_status.contains("\"schedulerAuthority\":\"node\""));
+    assert!(backend_status.contains("\"rustScheduler\":\"shadow\""));
+    assert!(backend_status.contains("\"authoritySwitchAllowed\":false"));
+    assert!(backend_status.contains("\"runSessionHandoff\""));
+    assert!(backend_status.contains("\"contractVersion\":\"workflow-run-session-handoff-v1\""));
+    assert!(backend_status.contains("\"postgres_required_for_live_scheduler_leases\""));
+    assert!(backend_status.contains("\"rust_scheduler_shadow_only\""));
+    assert!(backend_status.contains("\"authority_switch_not_allowed\""));
+    assert!(backend_status.contains("\"operatorMessages\""));
+
+    drop(client);
+    join_server(handle);
+}
