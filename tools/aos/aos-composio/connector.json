@@ -1,0 +1,50 @@
+{
+  "backend": "composio-sdk",
+  "connector": {
+    "label": "Composio",
+    "category": "agent-infrastructure",
+    "categories": ["agent-infrastructure", "tool-router", "ops-automation"],
+    "resources": ["toolkit", "tool", "connected-account", "auth-config"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["COMPOSIO_API_KEY"],
+    "interactive_setup": [
+      "Sign in at https://app.composio.dev and copy a personal API key (Hobby tier is free up to 20K calls/month).",
+      "Add COMPOSIO_API_KEY in operator-controlled API Keys (service-keys.json).",
+      "Scope the key with allowedAgents to enforce per-agent isolation per the Q2 decision in HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION_REPLY.md.",
+      "Slice 2.1 ships SDK install + connectivity gating only — no tool execution. Flip connectors.composio.enabled=true per agent to run the connectivity probe (default-off, Q4)."
+    ]
+  },
+  "scope": {
+    "kind": "per-agent-tool-router",
+    "live_backend_available": false,
+    "live_read_available": false,
+    "write_bridge_available": false,
+    "live_write_smoke_tested": false,
+    "required": ["COMPOSIO_API_KEY"],
+    "optional": [],
+    "workerFields": [],
+    "worker_visible_actions": [],
+    "fields": []
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector setup and readiness status (slice 2.1)",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

@@ -33,6 +33,9 @@ importers:
       '@clack/prompts':
         specifier: ^1.0.0
         version: 1.1.0
+      '@composio/core':
+        specifier: ^0.8.1
+        version: 0.8.1(ws@8.20.0)(zod@4.3.6)
       '@google/generative-ai':
         specifier: ^0.24.1
         version: 0.24.1
@@ -1233,6 +1236,19 @@ packages:
 
   '@cloudflare/workers-types@4.20260120.0':
     resolution: {integrity: sha512-B8pueG+a5S+mdK3z8oKu1ShcxloZ7qWb68IEyLLaepvdryIbNC7JVPcY0bWsjS56UQVKc5fnyRge3yZIwc9bxw==}
+
+  '@composio/client@0.1.0-alpha.68':
+    resolution: {integrity: sha512-hym21PsIELzlF0Fc9RASr3PfGR1alpGE8IlbRJU3ED6UllMZz7VzREsKUZfojG4yHjZMBlVXG5QGMBzuPEue3Q==}
+
+  '@composio/core@0.8.1':
+    resolution: {integrity: sha512-jgnpri5gVp8EbkbaoZxCWCHK4U2nPqq4LYK+JDHljme1Ruhtr0jFc/nV2hZwoquaIfvnLoNKMyADNBcDLf84Hw==}
+    peerDependencies:
+      zod: ^3.25 || ^4
+
+  '@composio/json-schema-to-zod@0.1.20':
+    resolution: {integrity: sha512-d4V34itLrUWG/VBh7ciznKcxF/T22MBLHmuEzHoX0zsBOHsUmjYz5qtDh20S2p3FE+HHvLZxpXiv8yfdd4yI+Q==}
+    peerDependencies:
+      zod: '>=3.25.76 <5'
 
   '@d-fischer/cache-decorators@4.0.1':
     resolution: {integrity: sha512-HNYLBLWs/t28GFZZeqdIBqq8f37mqDIFO6xNPof94VjpKvuP6ROqCZGafx88dk5zZUlBfViV9jD8iNNlXfc4CA==}
@@ -7744,6 +7760,9 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
+  pusher-js@8.5.0:
+    resolution: {integrity: sha512-V7uzGi9bqOOOyM/6IkJdpFyjGZj7llz1v0oWnYkZKcYLvbz6VcHVLmzKqkvegjuMumpfIEKGLmWHwFb39XFCpw==}
+
   qified@0.9.0:
     resolution: {integrity: sha512-4q61YgkHbY6gmwkqm0BsxyLDO3UYdrdiJTJ7JiaZb3xpW1duxn135SB7KqUEkCiuu5O4W+TtwEWP2VjmSRanvA==}
     engines: {node: '>=20'}
@@ -8580,15 +8599,17 @@ packages:
 
   uuid@3.4.0:
     resolution: {integrity: sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==}
-    deprecated: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   validate-npm-package-name@6.0.2:
@@ -9836,6 +9857,26 @@ snapshots:
   '@cloudflare/workers-types@4.20260120.0':
     optional: true
 
+  '@composio/client@0.1.0-alpha.68': {}
+
+  '@composio/core@0.8.1(ws@8.20.0)(zod@4.3.6)':
+    dependencies:
+      '@composio/client': 0.1.0-alpha.68
+      '@composio/json-schema-to-zod': 0.1.20(zod@4.3.6)
+      '@types/json-schema': 7.0.15
+      chalk: 4.1.2
+      openai: 6.32.0(ws@8.20.0)(zod@4.3.6)
+      pusher-js: 8.5.0
+      semver: 7.7.4
+      zod: 4.3.6
+      zod-to-json-schema: 3.25.1(zod@4.3.6)
+    transitivePeerDependencies:
+      - ws
+
+  '@composio/json-schema-to-zod@0.1.20(zod@4.3.6)':
+    dependencies:
+      zod: 4.3.6
+
   '@d-fischer/cache-decorators@4.0.1':
     dependencies:
       '@d-fischer/shared-utils': 3.6.4
@@ -10485,7 +10526,7 @@ snapshots:
 
   '@larksuiteoapi/node-sdk@1.59.0':
     dependencies:
-      axios: 1.13.6(debug@4.4.3)
+      axios: 1.13.6
       lodash.identity: 3.0.0
       lodash.merge: 4.6.2
       lodash.pickby: 4.6.0
@@ -10501,7 +10542,7 @@ snapshots:
     dependencies:
       '@types/node': 24.12.0
     optionalDependencies:
-      axios: 1.13.6(debug@4.4.3)
+      axios: 1.13.6
     transitivePeerDependencies:
       - debug
 
@@ -10706,7 +10747,7 @@ snapshots:
     dependencies:
       '@microsoft/agents-activity': 1.4.1
       '@microsoft/agents-hosting': 1.4.1
-      axios: 1.13.6(debug@4.4.3)
+      axios: 1.13.6
       zod: 3.25.76
     transitivePeerDependencies:
       - debug
@@ -10717,7 +10758,7 @@ snapshots:
       '@azure/core-auth': 1.10.1
       '@azure/msal-node': 5.1.1
       '@microsoft/agents-activity': 1.4.1
-      axios: 1.13.6(debug@4.4.3)
+      axios: 1.13.6
       jsonwebtoken: 9.0.3
       jwks-rsa: 4.0.1
       object-path: 0.11.8
@@ -12182,7 +12223,7 @@ snapshots:
       '@slack/types': 2.20.1
       '@slack/web-api': 7.15.0
       '@types/express': 5.0.6
-      axios: 1.13.6(debug@4.4.3)
+      axios: 1.13.6
       express: 5.2.1
       path-to-regexp: 8.3.0
       raw-body: 3.0.2
@@ -12228,7 +12269,7 @@ snapshots:
       '@slack/types': 2.20.1
       '@types/node': 25.5.0
       '@types/retry': 0.12.0
-      axios: 1.13.6(debug@4.4.3)
+      axios: 1.13.6
       eventemitter3: 5.0.4
       form-data: 2.5.4
       is-electron: 2.2.2
@@ -13742,6 +13783,14 @@ snapshots:
 
   aws4@1.13.2: {}
 
+  axios@1.13.6:
+    dependencies:
+      follow-redirects: 1.15.11
+      form-data: 2.5.4
+      proxy-from-env: 1.1.0
+    transitivePeerDependencies:
+      - debug
+
   axios@1.13.6(debug@4.4.3):
     dependencies:
       follow-redirects: 1.15.11(debug@4.4.3)
@@ -14883,6 +14932,8 @@ snapshots:
   flatbuffers@24.12.23: {}
 
   flatted@3.4.2: {}
+
+  follow-redirects@1.15.11: {}
 
   follow-redirects@1.15.11(debug@4.4.3):
     optionalDependencies:
@@ -16991,6 +17042,10 @@ snapshots:
   punycode@1.4.1: {}
 
   punycode@2.3.1: {}
+
+  pusher-js@8.5.0:
+    dependencies:
+      tweetnacl: 1.0.3
 
   qified@0.9.0:
     dependencies:
