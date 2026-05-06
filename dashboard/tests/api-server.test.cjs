@@ -6,17 +6,29 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 
 let baseUrl;
 let server;
+let tempHome;
+let prevHome;
+let prevDashboardToken;
 
 // Start the API server on a random port
 before(async () => {
   // Override port to avoid conflicting with running instance
   process.env.API_PORT = "0";
-  // Set HOME for DB paths
-  process.env.HOME = process.env.HOME || "/tmp";
+  // Sandbox HOME so this suite is isolated from the developer's real
+  // ~/.argentos/argent.json. The api-server's dashboard auth gate (re-applied
+  // from commit eb93ca3b) reads gateway.auth.token from HOME/.argentos at
+  // module-load time and would otherwise auto-enable auth from the developer
+  // box's real config, breaking these unauth'd integration tests.
+  prevHome = process.env.HOME;
+  prevDashboardToken = process.env.DASHBOARD_API_TOKEN;
+  tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "argent-api-server-test-"));
+  process.env.HOME = tempHome;
+  delete process.env.DASHBOARD_API_TOKEN;
   const { app } = require("../api-server.cjs");
   server = app.listen(0);
   const addr = server.address();
@@ -26,6 +38,21 @@ before(async () => {
 
 after(() => {
   if (server) server.close();
+  if (prevHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = prevHome;
+  }
+  if (prevDashboardToken !== undefined) {
+    process.env.DASHBOARD_API_TOKEN = prevDashboardToken;
+  }
+  if (tempHome) {
+    try {
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
 });
 
 // Helper to make requests
