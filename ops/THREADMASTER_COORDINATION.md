@@ -1,6 +1,6 @@
 # Threadmaster Coordination Board
 
-Last polled: 2026-04-26
+Last polled: 2026-05-06
 
 ## Lane Lock
 
@@ -50,6 +50,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | OpenClaw 4.24 realtime/browser/marketplace comparison | Codex OpenClaw threadmaster      | Upstream 4.24 feature comparison and additive browser/realtime voice/Google Meet marketplace-plugin implementation slices | Active on `codex/openclaw-talk-realtime-session` from current `origin/dev` after wave 1 merged at `7a4ce141`; current slice owns public `talk.realtime.session` plus gateway relay controls, `talk.realtime` config/types, protocol schema/method registration, and changelog notes | Owns OpenClaw-approved Talk/realtime files only; no AOS connector files, no AppForge/Workflows internals, no schema migrations, no Google Meet live lifecycle/audio, no phone telephony realtime |
 | Agent Persona/Profile                                 | Agent Persona threadmaster       | Agent Profile tab, per-agent TTS/profile config, profile APIs, redacted agent-local auth/account summaries                | New lane `agent-persona`; canonical plan `.omx/plans/agent-profile-first-class-plan-2026-04-28.md`; onboarding prompt `ops/AGENT_PERSONA_ONBOARDING_PROMPT.md`; first task assigned through the bus.                                                                                | Must not touch Workflows/AppForge/AOS/OpenClaw Voice/Business surfaces without a specific Master bus task; secrets must stay redacted and out of persona markdown files                          |
 | OpenAI Codex device OAuth                             | Codex auth slice                 | OpenAI Codex OAuth reconnect/login, dashboard auth start/status UX, auth profile refresh/import                           | Clean handoff branch `codex/openai-codex-device-flow`; see `ops/HANDOFF_OPENAI_CODEX_DEVICE_FLOW.md`                                                                                                                                                                                | Coordinates with dashboard/settings and auth-profile owners before changing provider defaults                                                                                                    |
+| open-design-composio                                  | open-design Composio threadmaster (separate Claude Code session in `/Users/sem/code/open-design`) | Composio integration spec authorship (Path β: `@composio/core` SDK + Tool Router + per-user `user_id` scoping). Hands off implementation to AOS connectors on delivery. | Phase 1+1.5 discovery complete; slice C (gap analysis + Phase 2 plan) in flight; spec doc `ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION.md` inbound. Registered 2026-05-06. | Writes ONLY `ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION.md` in argent-core. `tools/aos/composio/**` is provisional placement; AOS connectors threadmaster has final say at impl phase. |
 
 ## Overlap Zones
 
@@ -192,6 +193,19 @@ AOU:
 ## Threadmaster Messages
 
 (Older messages archived; bus is event-driven via threadmaster-bus JSONL.)
+
+### 2026-05-06 — Cross-TMUX Threadmaster Coordination Runbook
+
+Lane: master. Owned files for this entry: `ops/RUNBOOK_CROSS_TMUX_THREADMASTER_COORDINATION.md` and this board note.
+Shared contract change: durable SOP added for two-or-more-session coordination. Defines Master vs Lane Threadmaster roles, the threadmaster-bus lifecycle (request → reply → register → bus init → /loop → handoff doc → ack → close), /loop pattern for bus polling (default 30 min, 5–10m hot, paused dormant), permission boundaries across sessions, bus message conventions (subject ≤8 words, one fact per post), and escalation rules.
+Required reactions: every active lane should read this runbook once. Future external sessions register via `HANDOFF_<LANE>_LANE_REGISTRATION.md` → master replies via `HANDOFF_<LANE>_LANE_REGISTRATION_REPLY.md` → both sides /loop. No code changes required.
+
+### 2026-05-06 — open-design-composio lane registered
+
+Lane: `open-design-composio`. Source session: `/Users/sem/code/open-design`. Registration request: `ops/HANDOFF_OPEN_DESIGN_LANE_REGISTRATION.md`. Reply: `ops/HANDOFF_OPEN_DESIGN_LANE_REGISTRATION_REPLY.md`. Cross-session SOP: `ops/RUNBOOK_CROSS_TMUX_THREADMASTER_COORDINATION.md`.
+Scope: produce the Composio integration spec via Path β (`@composio/core` SDK + Tool Router + per-user `user_id` scoping); deliver as `ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION.md`; hand off implementation to AOS connectors on delivery.
+Write permission granted: `ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION.md` only.
+Required reactions: AOS connectors threadmaster — when the spec lands, you receive the implementation handoff. Provisional placement `tools/aos/composio/**` is a recommendation only; final placement is your call. None of your existing slices (Holace, Slack/Teams/Discord/Airtable/Buffer/Hootsuite hardening) need to react until the spec is in your hands.
 
 ## Verification Snapshot
 
