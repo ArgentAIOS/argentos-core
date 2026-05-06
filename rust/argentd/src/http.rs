@@ -611,6 +611,41 @@ pub fn workflows_list_payload_json() -> String {
     "{\"workflows\":[{\"id\":\"workflow-shadow-1\",\"name\":\"Shadow Workflow\",\"description\":\"Rust shadow-only workflow read fixture\",\"nodes\":[],\"edges\":[],\"canvasLayout\":{\"nodes\":[],\"edges\":[]},\"canvas_layout\":{\"nodes\":[],\"edges\":[]},\"definition\":{},\"validation\":{\"ok\":true,\"issues\":[]},\"is_active\":false,\"run_count\":0}],\"total\":1,\"limit\":50,\"offset\":0,\"snapshot\":{\"id\":\"rust-parity-v1\",\"noLiveData\":true,\"workflowExecution\":false,\"workflowRunsMutated\":false,\"authority\":\"node-live-rust-shadow\"}}".to_string()
 }
 
+pub fn workflows_backend_status_payload_json() -> String {
+    // Mirrors src/gateway/server-methods/workflows.ts :: buildWorkflowBackendStatus()
+    // for the "no PostgreSQL configured" path that the Rust shadow daemon always
+    // reports. Live workflow authority remains node-owned; the Rust scheduler
+    // stays shadow-only and surfaces the same operator messaging.
+    let dry_run_message =
+        "Canvas payload dry-runs can validate workflow shape and step readiness without PostgreSQL.";
+    let saved_message = "Saved workflow create/list/run paths require PostgreSQL; use canvas payload dry-run or configure storage.backend=postgres/dual.";
+    let schedule_cron_message = "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.";
+    let lease_message = "Live workflow scheduler leases require PostgreSQL and remain unavailable locally; Rust scheduler remains shadow-only.";
+    let wakeup_message = "Node cron owns workflow wakeups in next-heartbeat mode; duplicate prevention keeps one workflowRun cron job per active schedule and starts scheduled duplicates inactive.";
+    let handoff_message = "Node workflows own workflowRun payload handling and isolated workflow agent sessions; Rust may observe the contract but cannot take authority.";
+    let run_session_handoff_message = "Dry-run validates canvas payloads without persisted runs; live workflowRun payloads and isolated agent sessions remain Node-owned with PostgreSQL-backed duplicate prevention.";
+    let scheduler_blockers = "[\"postgres_required_for_live_scheduler_leases\",\"rust_scheduler_shadow_only\",\"authority_switch_not_allowed\"]";
+
+    format!(
+        "{{\"ok\":true,\"label\":\"Dry-run available; saved workflows need PostgreSQL\",\"backend\":\"sqlite\",\"readFrom\":\"sqlite\",\"writeTo\":\"sqlite\",\"postgres\":{{\"requiredForSavedWorkflows\":true,\"activeForRuntime\":false,\"connectionSource\":\"default\",\"status\":\"not_configured\"}},\"dryRun\":{{\"graphPayloadAvailable\":true,\"requiresPostgres\":false,\"method\":\"workflows.dryRun\",\"command\":\"argent gateway call workflows.dryRun --params '<canvas-payload-json>' --json\",\"noLiveSideEffects\":true,\"message\":{}}},\"savedWorkflows\":{{\"available\":false,\"requiresPostgres\":true,\"message\":{}}},\"scheduleCron\":{{\"available\":false,\"requiresPostgres\":true,\"status\":\"skipped_no_postgres\",\"message\":{}}},\"schedulerBoundary\":{{\"contractVersion\":\"rust-spine-scheduler-v1\",\"schedulerAuthority\":\"node\",\"rustScheduler\":\"shadow\",\"workflowRunAuthority\":\"node\",\"workflowSessionAuthority\":\"node\",\"channelDeliveryAuthority\":\"node\",\"authoritySwitchAllowed\":false,\"localDryRunCompatible\":true,\"leases\":{{\"requiredForLiveRuns\":true,\"storage\":\"postgres\",\"status\":\"blocked_without_postgres\",\"owner\":\"node-workflows\",\"rustOwnership\":\"not_enabled\",\"message\":{}}},\"wakeups\":{{\"owner\":\"node-cron\",\"mode\":\"next-heartbeat\",\"rustOwnership\":\"shadow\",\"duplicatePrevention\":\"one workflowRun cron job per active schedule; duplicate scheduled workflows start inactive\",\"message\":{}}},\"handoff\":{{\"runPayload\":\"cron payload kind=workflowRun workflowId\",\"session\":\"isolated workflow agent session\",\"dryRun\":\"canvas payload validation\",\"liveRunRequiresPostgres\":true,\"message\":{}}},\"runSessionHandoff\":{{\"contractVersion\":\"workflow-run-session-handoff-v1\",\"dryRun\":{{\"authority\":\"node-workflows\",\"input\":\"canvas payload\",\"persistsWorkflowRun\":false,\"requiresPostgres\":false,\"duplicatePrevention\":\"not_applicable_no_saved_run\"}},\"liveRun\":{{\"authority\":\"node-workflows\",\"input\":\"saved workflow row\",\"payloadKind\":\"workflowRun\",\"persistsWorkflowRun\":true,\"requiresPostgres\":true,\"sessionTarget\":\"isolated\"}},\"session\":{{\"owner\":\"node-workflow-runner\",\"keyDerivation\":\"buildWorkflowAgentSessionKey(agentId, stepIndex)\",\"isolation\":\"per agent step\",\"rustOwnership\":\"not_enabled\"}},\"duplicatePrevention\":{{\"scheduleCron\":\"one workflowRun cron job per active schedule\",\"duplicateWorkflow\":\"scheduled duplicates start inactive\",\"staleCronCleanup\":\"extra workflowRun cron jobs are removed during reconciliation\",\"rustOwnership\":\"shadow_observe_only\"}},\"rustPromotionBlockers\":{blockers},\"message\":{}}},\"blockers\":{blockers}}},\"operatorMessages\":[{},{},{},{},{},{},{}]}}",
+        json_string(dry_run_message),
+        json_string(saved_message),
+        json_string(schedule_cron_message),
+        json_string(lease_message),
+        json_string(wakeup_message),
+        json_string(handoff_message),
+        json_string(run_session_handoff_message),
+        json_string(dry_run_message),
+        json_string(saved_message),
+        json_string(schedule_cron_message),
+        json_string(lease_message),
+        json_string(wakeup_message),
+        json_string(handoff_message),
+        json_string(run_session_handoff_message),
+        blockers = scheduler_blockers,
+    )
+}
+
 pub fn jobs_overview_payload_json() -> String {
     "{\"templatesCount\":2,\"assignmentsCount\":3,\"enabledAssignmentsCount\":2,\"runningJobsCount\":1,\"blockedRunsCount\":0,\"dueNowCount\":1,\"agents\":[{\"agentId\":\"argent\",\"total\":2,\"enabled\":2,\"blockedTasks\":0,\"dueNow\":1,\"nextDueAt\":1776603600000},{\"agentId\":\"main\",\"total\":1,\"enabled\":0,\"blockedTasks\":1,\"dueNow\":0,\"nextDueAt\":1776607200000}]}".to_string()
 }
