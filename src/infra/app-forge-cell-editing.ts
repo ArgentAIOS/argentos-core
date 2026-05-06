@@ -33,3 +33,31 @@ export function isValidUrlInput(value: string): boolean {
     return false;
   }
 }
+
+/**
+ * Mirrors `validateAppForgeRecordValues` for the `number` field type so the
+ * cell editor can surface the same error inline. Empty input is treated as
+ * "clear the cell" and accepted.
+ */
+export function isValidNumberInput(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  // `Number()` parses an unambiguous numeric string into a finite number.
+  // `Number("abc")` and `Number("1.2.3")` are NaN; `Number("1e2")` is 100.
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed);
+}
+
+/**
+ * Mirrors the email regex in `validateAppForgeRecordValues`. Empty input is
+ * accepted (clears the cell).
+ */
+export function isValidEmailInput(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
