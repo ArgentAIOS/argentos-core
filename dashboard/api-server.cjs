@@ -311,9 +311,42 @@ app.use("/api", (req, res, next) => {
   });
 });
 
-// Optional bearer token auth — if DASHBOARD_API_TOKEN is set, enforce it
+// Dashboard API auth — accepts DASHBOARD_API_TOKEN env var OR the gateway auth
+// token from argent.json. This unifies auth so the browser-supplied
+// ?token=<gateway-token> works for both the gateway WebSocket AND the
+// REST API on this dashboard sidecar. Re-applied from commit eb93ca3b
+// "fix: api-server accepts gateway auth token", which was reverted by
+// 41f5caaa "fix: seed workspace bootstrap for Core installs". Without this,
+// the AppForge tokenized browser smoke and the Rust installed-daemon
+// receipt-persistence proof both fail with 401 on every REST call.
+//
+// SECURITY NOTE: The public-core route-blocking gate above (the
+// `getDashboardSurfaceProfile`/`isBlockedInPublicCore` middleware) runs
+// BEFORE this auth gate, so accepting an additional token here cannot
+// widen the public-core surface — blocked routes still 403 regardless of
+// which accepted token authenticates.
 const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
-if (DASHBOARD_API_TOKEN) {
+// NOTE: We can't call readArgentConfig() here — it's a function declaration
+// (so it's hoisted and callable), but its body references the
+// ARGENT_CONFIG_PATH `const` defined later in this file, which is in the
+// TDZ at module-load time. Inline the same path resolution it uses
+// (HOME/.argentos/argent.json) and read the gateway token directly.
+const GATEWAY_CONFIG_TOKEN = (() => {
+  try {
+    const argentConfigPath = path.join(
+      process.env.HOME || os.homedir(),
+      ".argentos",
+      "argent.json",
+    );
+    if (!fs.existsSync(argentConfigPath)) return null;
+    const cfg = JSON.parse(fs.readFileSync(argentConfigPath, "utf-8"));
+    return cfg?.gateway?.auth?.token || null;
+  } catch {
+    return null;
+  }
+})();
+const ACCEPTED_TOKENS = [DASHBOARD_API_TOKEN, GATEWAY_CONFIG_TOKEN].filter(Boolean);
+if (ACCEPTED_TOKENS.length > 0) {
   app.use("/api/", (req, res, next) => {
     // Allow preflight and health check (no auth needed)
     if (req.method === "OPTIONS") return next();
@@ -334,8 +367,11 @@ if (DASHBOARD_API_TOKEN) {
     }
     try {
       const a = Buffer.from(token);
-      const b = Buffer.from(DASHBOARD_API_TOKEN);
-      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      const matched = ACCEPTED_TOKENS.some((accepted) => {
+        const b = Buffer.from(accepted);
+        return a.length === b.length && crypto.timingSafeEqual(a, b);
+      });
+      if (!matched) {
         return res.status(401).json({ error: "Invalid token" });
       }
     } catch {
@@ -343,9 +379,15 @@ if (DASHBOARD_API_TOKEN) {
     }
     next();
   });
-  console.log("[Security] Dashboard API token auth ENABLED");
+  const sources = [
+    DASHBOARD_API_TOKEN ? "DASHBOARD_API_TOKEN" : null,
+    GATEWAY_CONFIG_TOKEN ? "gateway.auth.token" : null,
+  ].filter(Boolean);
+  console.log(`[Security] Dashboard API token auth ENABLED (sources: ${sources.join(", ")})`);
 } else {
-  console.log("[Security] Dashboard API token auth DISABLED (set DASHBOARD_API_TOKEN to enable)");
+  console.log(
+    "[Security] Dashboard API token auth DISABLED (set DASHBOARD_API_TOKEN or gateway.auth.token to enable)",
+  );
 }
 
 app.use(express.json({ limit: "50mb" }));
