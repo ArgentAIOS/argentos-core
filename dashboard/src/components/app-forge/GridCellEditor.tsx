@@ -1,4 +1,4 @@
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Search, X } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -8,7 +8,9 @@ import {
 } from "react";
 import type {
   ForgeStructuredField,
+  ForgeStructuredRecord,
   ForgeStructuredRecordValue,
+  ForgeStructuredTable,
 } from "../../hooks/useForgeStructuredData";
 
 export type GridCellEditorRequest = {
@@ -100,6 +102,112 @@ function isValidEmailInput(value: string): boolean {
     return true;
   }
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+// Linked-record relation-picker helpers. Mirror the substrate helpers in
+// `src/infra/app-forge-cell-editing.ts` (tested there) so the dashboard
+// component bundle stays self-contained without an extra import boundary.
+// See the substrate file for design notes — these copies must stay in sync.
+
+type RelationPickerCandidate = {
+  id: string;
+  label: string;
+};
+
+const DEFAULT_RELATION_PICKER_LIMIT = 50;
+
+function relationLabelFromValue(value: ForgeStructuredRecordValue | undefined): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+function pickRelationTitleField(
+  fields: ReadonlyArray<ForgeStructuredField>,
+): ForgeStructuredField | null {
+  if (fields.length === 0) {
+    return null;
+  }
+  const named = fields.find((field) => field.name.trim().toLowerCase() === "name");
+  return named ?? fields[0] ?? null;
+}
+
+function buildRelationPickerCandidates(
+  fields: ReadonlyArray<ForgeStructuredField>,
+  records: ReadonlyArray<ForgeStructuredRecord>,
+): RelationPickerCandidate[] {
+  const titleField = pickRelationTitleField(fields);
+  return records.map((record) => {
+    const raw = titleField ? record.values[titleField.id] : undefined;
+    const label = relationLabelFromValue(raw);
+    return {
+      id: record.id,
+      label: label || record.id,
+    };
+  });
+}
+
+function resolveRelationLabel(
+  id: string,
+  candidates: ReadonlyArray<RelationPickerCandidate>,
+): string {
+  if (!id) {
+    return "";
+  }
+  return candidates.find((candidate) => candidate.id === id)?.label ?? id;
+}
+
+function filterRelationPickerCandidates(
+  candidates: ReadonlyArray<RelationPickerCandidate>,
+  query: string,
+  excludeIds: ReadonlyArray<string>,
+  limit: number = DEFAULT_RELATION_PICKER_LIMIT,
+): RelationPickerCandidate[] {
+  const lowered = query.trim().toLowerCase();
+  const exclude = new Set(excludeIds);
+  const matches: RelationPickerCandidate[] = [];
+  for (const candidate of candidates) {
+    if (exclude.has(candidate.id)) {
+      continue;
+    }
+    if (lowered) {
+      const matchesLabel = candidate.label.toLowerCase().includes(lowered);
+      const matchesId = candidate.id.toLowerCase().includes(lowered);
+      if (!matchesLabel && !matchesId) {
+        continue;
+      }
+    }
+    matches.push(candidate);
+    if (matches.length >= limit) {
+      break;
+    }
+  }
+  return matches;
+}
+
+function parseLinkedRecordIds(value: string): string[] {
+  // Linked-record cells share the multi-select serialization shape (comma-
+  // separated). Reuse the existing parser so legacy cells edited with the
+  // old free-text input round-trip cleanly through the new picker.
+  return parseMultiSelectValue(value);
+}
+
+function serializeLinkedRecordIds(ids: ReadonlyArray<string>): string {
+  return serializeMultiSelectValue(ids);
 }
 
 export function MultiSelectCellEditor({
@@ -373,6 +481,214 @@ export function EmailCellEditor({
           Enter a valid email or press Escape to cancel.
         </span>
       )}
+    </div>
+  );
+}
+
+type LinkedRecordCellEditorProps = GridCellEditorProps & {
+  /**
+   * The linked target table (resolved from `field.linkedTableId`). When this
+   * is null the picker degrades gracefully — it still lets the user remove
+   * existing chips but cannot offer record suggestions because we have no
+   * target table to search.
+   */
+  targetTable: ForgeStructuredTable | null;
+  /** Display name for the target table — used in the empty-state hint. */
+  targetTableName?: string;
+};
+
+export function LinkedRecordCellEditor({
+  field,
+  draft,
+  onChange,
+  onCommit,
+  onCancel,
+  targetTable,
+  targetTableName,
+}: LinkedRecordCellEditorProps) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const suppressBlurCommitRef = useRef(false);
+
+  const selectedIds = useMemo(
+    () => parseLinkedRecordIds(draft.value),
+    [draft.value],
+  );
+
+  const candidates = useMemo<RelationPickerCandidate[]>(
+    () =>
+      targetTable
+        ? buildRelationPickerCandidates(targetTable.fields, targetTable.records)
+        : [],
+    [targetTable],
+  );
+
+  const matches = useMemo(
+    () => filterRelationPickerCandidates(candidates, query, selectedIds),
+    [candidates, query, selectedIds],
+  );
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const apply = (next: ReadonlyArray<string>) => {
+    onChange({ ...draft, value: serializeLinkedRecordIds(next) });
+  };
+
+  const handleAdd = (id: string) => {
+    if (!id || selectedIds.includes(id)) {
+      setQuery("");
+      return;
+    }
+    apply([...selectedIds, id]);
+    setQuery("");
+  };
+
+  const handleRemove = (id: string) => {
+    apply(selectedIds.filter((entry) => entry !== id));
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      // Pressing Enter selects the first match if one is showing; otherwise
+      // it commits whatever is already selected. Mirrors the multi-select
+      // editor's keyboard contract.
+      if (matches.length > 0) {
+        event.preventDefault();
+        handleAdd(matches[0].id);
+        return;
+      }
+      event.preventDefault();
+      onCommit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key === "Backspace" && !query && selectedIds.length > 0) {
+      event.preventDefault();
+      apply(selectedIds.slice(0, -1));
+    }
+  };
+
+  const fallbackTableName = targetTableName ?? "linked table";
+  const dropdownEmptyHint = !targetTable
+    ? `Configure a linked table for "${field.name}" in the field inspector to enable the picker.`
+    : candidates.length === 0
+      ? `No records yet in ${fallbackTableName} — add one in that table first.`
+      : query.trim()
+        ? `No matches for "${query.trim()}" in ${fallbackTableName}.`
+        : `Type to search ${fallbackTableName}.`;
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid="appforge-linked-record-editor"
+      className="relative flex w-full flex-col gap-1"
+    >
+      <div className="flex w-full flex-wrap items-center gap-1 rounded-md border border-sky-400/40 bg-black/55 px-2 py-1 text-sm text-white">
+        {selectedIds.map((id) => {
+          const label = resolveRelationLabel(id, candidates);
+          const orphan = !candidates.some((candidate) => candidate.id === id);
+          return (
+            <span
+              key={id}
+              data-testid="appforge-linked-record-chip"
+              data-orphan={orphan ? "true" : "false"}
+              title={orphan ? `Unresolved link (${id})` : `${label} (${id})`}
+              className={`inline-flex max-w-40 items-center gap-1 truncate rounded-md px-2 py-0.5 text-xs font-medium ${
+                orphan
+                  ? "border border-amber-300/35 bg-amber-400/15 text-amber-100"
+                  : "bg-sky-400/22 text-sky-100"
+              }`}
+            >
+              <span className="truncate">{label}</span>
+              <button
+                type="button"
+                aria-label={`Remove link to ${label}`}
+                onMouseDown={(event) => {
+                  // Stop the input from blurring & committing before the
+                  // click handler fires.
+                  event.preventDefault();
+                  suppressBlurCommitRef.current = true;
+                }}
+                onClick={() => handleRemove(id)}
+                className="rounded-full p-0.5 text-current/80 hover:bg-white/15 hover:text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          );
+        })}
+        <span className="flex min-w-[80px] flex-1 items-center gap-1">
+          <Search className="h-3 w-3 flex-shrink-0 text-white/35" aria-hidden />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onBlur={() => {
+              if (suppressBlurCommitRef.current) {
+                suppressBlurCommitRef.current = false;
+                // Refocus so further picks/removals don't dismiss the editor.
+                queueMicrotask(() => inputRef.current?.focus());
+                return;
+              }
+              onCommit();
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedIds.length === 0
+                ? `Search ${fallbackTableName}…`
+                : "Add another…"
+            }
+            aria-label={`Search ${fallbackTableName}`}
+            data-testid="appforge-linked-record-search-input"
+            className="min-w-[80px] flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+          />
+        </span>
+      </div>
+      <div
+        data-testid="appforge-linked-record-dropdown"
+        className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-md border border-white/12 bg-black/85 shadow-lg shadow-black/40 backdrop-blur"
+      >
+        {matches.length === 0 ? (
+          <div
+            data-testid="appforge-linked-record-empty"
+            className="px-3 py-2 text-xs text-white/55"
+          >
+            {dropdownEmptyHint}
+          </div>
+        ) : (
+          <ul className="flex flex-col py-1">
+            {matches.map((candidate) => (
+              <li key={candidate.id}>
+                <button
+                  type="button"
+                  data-testid="appforge-linked-record-option"
+                  data-record-id={candidate.id}
+                  onMouseDown={(event) => {
+                    // Suppress blur-commit so the search input keeps focus
+                    // and the picker stays open for multi-select.
+                    event.preventDefault();
+                    suppressBlurCommitRef.current = true;
+                  }}
+                  onClick={() => handleAdd(candidate.id)}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-white/85 hover:bg-sky-400/15 hover:text-white"
+                >
+                  <span className="truncate">{candidate.label}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-white/35">
+                    {candidate.id}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
