@@ -17,6 +17,7 @@ const knownLanes = [
   "appforge",
   "aou",
   "aos",
+  "aos-connectors",
   "openclaw",
   "hermes",
   "roomreader",
