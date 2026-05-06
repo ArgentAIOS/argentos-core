@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  isValidEmailInput,
+  isValidNumberInput,
   isValidUrlInput,
   parseMultiSelectValue,
   serializeMultiSelectValue,
@@ -45,5 +47,48 @@ describe("app-forge cell editing — URL validation", () => {
   it("rejects malformed URL input", () => {
     expect(isValidUrlInput("not a url")).toBe(false);
     expect(isValidUrlInput("just-a-bare-word")).toBe(false);
+  });
+});
+
+describe("app-forge cell editing — number validation", () => {
+  it("treats empty input as valid (clears the cell)", () => {
+    expect(isValidNumberInput("")).toBe(true);
+    expect(isValidNumberInput("   ")).toBe(true);
+  });
+
+  it("accepts numeric input including signed, decimal, and exponent forms", () => {
+    expect(isValidNumberInput("0")).toBe(true);
+    expect(isValidNumberInput("42")).toBe(true);
+    expect(isValidNumberInput("-3.14")).toBe(true);
+    expect(isValidNumberInput("1e3")).toBe(true);
+    expect(isValidNumberInput("  7 ")).toBe(true);
+  });
+
+  it("rejects non-numeric and ambiguous input", () => {
+    expect(isValidNumberInput("abc")).toBe(false);
+    expect(isValidNumberInput("12 dogs")).toBe(false);
+    expect(isValidNumberInput("1.2.3")).toBe(false);
+    expect(isValidNumberInput("Infinity")).toBe(false);
+    expect(isValidNumberInput("NaN")).toBe(false);
+  });
+});
+
+describe("app-forge cell editing — email validation", () => {
+  it("treats empty input as valid (clears the cell)", () => {
+    expect(isValidEmailInput("")).toBe(true);
+    expect(isValidEmailInput("   ")).toBe(true);
+  });
+
+  it("accepts well-formed addresses", () => {
+    expect(isValidEmailInput("ada@example.com")).toBe(true);
+    expect(isValidEmailInput("ada+tag@example.co")).toBe(true);
+    expect(isValidEmailInput(" ada@example.com ")).toBe(true);
+  });
+
+  it("rejects malformed addresses", () => {
+    expect(isValidEmailInput("ada")).toBe(false);
+    expect(isValidEmailInput("ada@")).toBe(false);
+    expect(isValidEmailInput("ada@localhost")).toBe(false);
+    expect(isValidEmailInput("ada @example.com")).toBe(false);
   });
 });

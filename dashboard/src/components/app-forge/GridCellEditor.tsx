@@ -65,7 +65,7 @@ function serializeMultiSelectValue(values: ReadonlyArray<string>): string {
   return Array.from(new Set(values.filter(Boolean))).join(", ");
 }
 
-export function isValidUrlInput(value: string): boolean {
+function isValidUrlInput(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) {
     return true;
@@ -76,6 +76,30 @@ export function isValidUrlInput(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Mirrors `validateAppForgeRecordValues` for the `number` field type so the
+// inline editor surfaces the same rejection the gateway/import paths apply.
+// Empty input is accepted (clears the cell). The canonical implementation
+// lives in `src/infra/app-forge-cell-editing.ts`; kept local here so the
+// dashboard component bundle stays self-contained.
+function isValidNumberInput(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed);
+}
+
+// Mirrors the email regex in `validateAppForgeRecordValues`. Empty input is
+// accepted (clears the cell).
+function isValidEmailInput(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 export function MultiSelectCellEditor({
@@ -236,6 +260,117 @@ export function UrlCellEditor({ field, draft, onChange, onCommit, onCancel }: Gr
           className="text-[11px] font-medium text-rose-200"
         >
           Enter a valid URL or press Escape to cancel.
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function NumberCellEditor({
+  field,
+  draft,
+  onChange,
+  onCommit,
+  onCancel,
+}: GridCellEditorProps) {
+  const [touched, setTouched] = useState(false);
+  const valid = isValidNumberInput(draft.value);
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <input
+        autoFocus
+        type="text"
+        inputMode="decimal"
+        value={draft.value}
+        onChange={(event) => {
+          setTouched(true);
+          onChange({ ...draft, value: event.target.value });
+        }}
+        onBlur={() => {
+          if (valid) {
+            onCommit();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            if (valid) {
+              onCommit();
+            }
+          }
+          if (event.key === "Escape") {
+            onCancel();
+          }
+        }}
+        placeholder="0"
+        aria-label={field.name}
+        data-testid="appforge-number-editor-input"
+        className={`w-full rounded-md border px-2 py-1 text-sm outline-none ${
+          valid
+            ? "border-sky-400/40 bg-black/45 text-white"
+            : "border-rose-400/55 bg-rose-500/8 text-white"
+        }`}
+      />
+      {touched && !valid && (
+        <span
+          data-testid="appforge-number-editor-error"
+          className="text-[11px] font-medium text-rose-200"
+        >
+          Enter a valid number or press Escape to cancel.
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function EmailCellEditor({
+  field,
+  draft,
+  onChange,
+  onCommit,
+  onCancel,
+}: GridCellEditorProps) {
+  const [touched, setTouched] = useState(false);
+  const valid = isValidEmailInput(draft.value);
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <input
+        autoFocus
+        type="email"
+        value={draft.value}
+        onChange={(event) => {
+          setTouched(true);
+          onChange({ ...draft, value: event.target.value });
+        }}
+        onBlur={() => {
+          if (valid) {
+            onCommit();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            if (valid) {
+              onCommit();
+            }
+          }
+          if (event.key === "Escape") {
+            onCancel();
+          }
+        }}
+        placeholder="name@example.com"
+        aria-label={field.name}
+        data-testid="appforge-email-editor-input"
+        className={`w-full rounded-md border px-2 py-1 text-sm outline-none ${
+          valid
+            ? "border-sky-400/40 bg-black/45 text-white"
+            : "border-rose-400/55 bg-rose-500/8 text-white"
+        }`}
+      />
+      {touched && !valid && (
+        <span
+          data-testid="appforge-email-editor-error"
+          className="text-[11px] font-medium text-rose-200"
+        >
+          Enter a valid email or press Escape to cancel.
         </span>
       )}
     </div>

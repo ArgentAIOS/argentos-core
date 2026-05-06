@@ -44,8 +44,10 @@ import {
 import { fetchLocalApi } from "../utils/localApiFetch";
 import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
 import {
+  EmailCellEditor,
   MultiSelectCellDisplay,
   MultiSelectCellEditor,
+  NumberCellEditor,
   UrlCellDisplay,
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
@@ -3655,6 +3657,22 @@ export function AppForge({
                                                 />
                                               ) : activeEditingCell && field.type === "url" ? (
                                                 <UrlCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
+                                              ) : activeEditingCell && field.type === "number" ? (
+                                                <NumberCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
+                                              ) : activeEditingCell && field.type === "email" ? (
+                                                <EmailCellEditor
                                                   field={field}
                                                   draft={activeEditingCell}
                                                   onChange={setEditingCell}
