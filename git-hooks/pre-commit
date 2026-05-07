@@ -1,7 +1,53 @@
 #!/bin/sh
+# Pre-commit hook for argentos.
+#
+# Two responsibilities, both regression-prevention:
+#
+#   1. FORMAT ROT — auto-fix oxfmt issues on staged JS/TS/CJS/MJS files and
+#      re-stage them. This silently absorbs format drift before it leaves the
+#      developer's machine, so we don't accumulate the kind of cleanup-PR
+#      churn we saw with PR #145 / #163-#165 / #166.
+#
+#   2. ARCHITECTURAL INVARIANTS — block commits that introduce drift in the
+#      classes the repo has had to fix repeatedly (gateway.auth.token reads,
+#      bare /api fetches, module-load config caching). See
+#      scripts/check-invariants.mjs for the full list.
+#
+# Emergency override: `git commit --no-verify` skips this hook. Use it only
+# in genuine emergencies (e.g., shipping a hotfix from a partial worktree).
+# Both checks below run again in CI, so the override only buys you minutes.
+
+set -e
+
 FILES=$(git diff --cached --name-only --diff-filter=ACMR | sed 's| |\\ |g')
-[ -z "$FILES" ] && exit 0
-echo "$FILES" | xargs pnpm format:fix --no-error-on-unmatched-pattern
-echo "$FILES" | xargs git add
+
+# 1. Auto-fix format rot on staged JS/TS/CJS/MJS files (no-op for other types).
+if [ -n "$FILES" ]; then
+  echo "$FILES" | xargs pnpm format:fix --no-error-on-unmatched-pattern
+  echo "$FILES" | xargs git add
+fi
+
+# 2. Architectural invariants — fast, runs on every commit, blocks drift.
+# Skip if the script doesn't exist (older worktrees / partial checkouts).
+if [ -f scripts/check-invariants.mjs ]; then
+  if ! node scripts/check-invariants.mjs; then
+    cat >&2 <<'MSG'
+
+[pre-commit] Architectural invariant check FAILED.
+
+This commit introduces a regression in a class the repo has had to fix
+repeatedly. Read the violation hints above, then either:
+
+  - Fix the violation (strongly preferred).
+  - If the violation is intentional and reviewed, add an explicit allowlist
+    entry in scripts/check-invariants.mjs and document why in the PR body.
+
+Emergency override: `git commit --no-verify` skips this hook. CI runs the
+same check, so the override only buys you minutes.
+
+MSG
+    exit 1
+  fi
+fi
 
 exit 0
