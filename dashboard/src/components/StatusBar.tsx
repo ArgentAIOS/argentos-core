@@ -88,7 +88,14 @@ export function StatusBar({
     verified: number;
     failed: number;
   } | null>(null);
-  const [releaseVersion, setReleaseVersion] = useState<string | null>(null);
+  // Seed from build-time injected version so the badge renders even when
+  // /api/build-info is unreachable (e.g., api-server auth failures). The fetch
+  // below will refine this with the live runtime value when it succeeds.
+  const [releaseVersion, setReleaseVersion] = useState<string | null>(
+    typeof __APP_VERSION__ === "string" && __APP_VERSION__.trim() && __APP_VERSION__ !== "unknown"
+      ? __APP_VERSION__
+      : null,
+  );
   const scoreInFlightRef = useRef(false);
   const scoreAbortRef = useRef<AbortController | null>(null);
   const heartbeatStaleKeyRef = useRef<string | null>(null);
