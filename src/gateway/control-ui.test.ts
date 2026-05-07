@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import fs from "node:fs/promises";
 import fsSync from "node:fs";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,11 +111,9 @@ describe("handleControlUiHttpRequest — gateway token HTML injection", () => {
       // the new HOME.
       const { handleControlUiHttpRequest: handler } = await import("./control-ui.js");
       const { res, end } = makeResponse();
-      const handled = handler(
-        { url: "/", method: "GET", headers: {} } as IncomingMessage,
-        res,
-        { root: { kind: "resolved", path: tmp } },
-      );
+      const handled = handler({ url: "/", method: "GET", headers: {} } as IncomingMessage, res, {
+        root: { kind: "resolved", path: tmp },
+      });
       expect(handled).toBe(true);
       const body = (end.mock.calls[0]?.[0] ?? "") as string;
       expect(body).toContain("window.__ARGENT_GATEWAY_TOKEN__");
@@ -141,11 +139,9 @@ describe("handleControlUiHttpRequest — gateway token HTML injection", () => {
       );
       const { handleControlUiHttpRequest: handler } = await import("./control-ui.js");
       const { res, end } = makeResponse();
-      handler(
-        { url: "/", method: "GET", headers: {} } as IncomingMessage,
-        res,
-        { root: { kind: "resolved", path: tmp } },
-      );
+      handler({ url: "/", method: "GET", headers: {} } as IncomingMessage, res, {
+        root: { kind: "resolved", path: tmp },
+      });
       const body = (end.mock.calls[0]?.[0] ?? "") as string;
       expect(body).not.toContain("__ARGENT_GATEWAY_TOKEN__");
       expect(body).not.toContain("lan-token-secret");

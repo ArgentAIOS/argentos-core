@@ -18,6 +18,7 @@ import {
   handleControlUiHttpRequest,
   type ControlUiRootState,
 } from "./control-ui.js";
+import { proxyApiRequest } from "./gateway-proxy-token.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
   extractHookToken,
@@ -34,7 +35,6 @@ import {
 import { handleMcpHttpRequest, type McpHttpOptions } from "./mcp-http.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
-import { proxyApiRequest } from "./gateway-proxy-token.js";
 import { handleSisFeedbackRequest } from "./sis-feedback-http.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 

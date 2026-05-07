@@ -70,8 +70,7 @@ export function readGatewayConfigFromDisk(pathOverride?: string): GatewayConfigO
     const tokenRaw = cfg?.gateway?.auth?.token;
     const bindRaw = cfg?.gateway?.bind;
     return {
-      token:
-        typeof tokenRaw === "string" && tokenRaw.trim() ? tokenRaw.trim() : null,
+      token: typeof tokenRaw === "string" && tokenRaw.trim() ? tokenRaw.trim() : null,
       bind: typeof bindRaw === "string" && bindRaw.trim() ? bindRaw.trim() : "loopback",
     };
   } catch {

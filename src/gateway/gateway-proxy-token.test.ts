@@ -308,7 +308,9 @@ describe("proxyApiRequest", () => {
 
   it("auto-injects gateway token from disk when no Authorization, on loopback", async () => {
     writeArgentConfig({ gateway: { auth: { token: GATEWAY_TOKEN }, bind: "loopback" } });
-    const fetchImpl = vi.fn(async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(
+      async () => new Response("ok", { status: 200 }),
+    ) as unknown as typeof fetch;
     const req = makeRequest({ url: "/api/build-info" });
     const { res } = makeResponse();
     await proxyApiRequest(req, res, {
@@ -322,7 +324,9 @@ describe("proxyApiRequest", () => {
 
   it("does NOT auto-inject gateway token when bind=lan (security)", async () => {
     writeArgentConfig({ gateway: { auth: { token: GATEWAY_TOKEN }, bind: "lan" } });
-    const fetchImpl = vi.fn(async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(
+      async () => new Response("ok", { status: 200 }),
+    ) as unknown as typeof fetch;
     const req = makeRequest({ url: "/api/build-info" });
     const { res } = makeResponse();
     await proxyApiRequest(req, res, {
@@ -336,11 +340,12 @@ describe("proxyApiRequest", () => {
   });
 
   it("returns the upstream 401 status faithfully (no fall-through to SPA)", async () => {
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
     ) as unknown as typeof fetch;
     const req = makeRequest({ url: "/api/build-info" });
     const { res, statusCode, header, body } = makeResponse();
@@ -392,7 +397,9 @@ describe("proxyApiRequest", () => {
   });
 
   it("strips hop-by-hop headers (host, connection) from forwarded request", async () => {
-    const fetchImpl = vi.fn(async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(
+      async () => new Response("ok", { status: 200 }),
+    ) as unknown as typeof fetch;
     const req = makeRequest({
       url: "/api/build-info",
       headers: {
@@ -415,7 +422,9 @@ describe("proxyApiRequest", () => {
 
   it("URL-derived token wins over disk token when client did not send Authorization", async () => {
     writeArgentConfig({ gateway: { auth: { token: GATEWAY_TOKEN }, bind: "loopback" } });
-    const fetchImpl = vi.fn(async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(
+      async () => new Response("ok", { status: 200 }),
+    ) as unknown as typeof fetch;
     const req = makeRequest({ url: "/api/build-info?token=url-token" });
     const { res } = makeResponse();
     await proxyApiRequest(req, res, {
