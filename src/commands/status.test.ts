@@ -280,8 +280,8 @@ vi.mock("../daemon/node-service.js", () => ({
 vi.mock("../security/audit.js", () => ({
   runSecurityAudit: mocks.runSecurityAudit,
 }));
-vi.mock("./status.rust-gateway-shadow.js", () => ({
-  getRustGatewayShadowSummary: vi.fn().mockResolvedValue({
+const rustGatewayShadowMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
     reachable: true,
     status: "ok",
     version: "0.1.0",
@@ -297,6 +297,9 @@ vi.mock("./status.rust-gateway-shadow.js", () => ({
     baseUrl: "http://127.0.0.1:18799",
     error: null,
   }),
+);
+vi.mock("./status.rust-gateway-shadow.js", () => ({
+  getRustGatewayShadowSummary: rustGatewayShadowMock,
 }));
 vi.mock("./status.rust-gateway-parity-report.js", () => ({
   getRustGatewayParityReportStatus: vi.fn().mockResolvedValue({
@@ -566,6 +569,59 @@ describe("statusCommand", () => {
         process.env.ARGENT_GATEWAY_TOKEN = prevToken;
       }
     }
+  });
+
+  it("does not crash when rust gateway shadow is unreachable (regression #170)", async () => {
+    // Regression: when the rust gateway shadow daemon is unreachable, the CLI
+    // previously read `status.productionDaemon.status` on a type that has no
+    // `productionDaemon` field, throwing
+    // `TypeError: Cannot read properties of undefined (reading 'status')`.
+    rustGatewayShadowMock.mockResolvedValueOnce({
+      reachable: false,
+      status: null,
+      version: null,
+      uptimeSeconds: null,
+      component: null,
+      mode: null,
+      protocolVersion: null,
+      liveAuthority: null,
+      gatewayAuthority: null,
+      promotionReady: null,
+      readinessReason: null,
+      statePersistence: null,
+      baseUrl: "http://127.0.0.1:18799",
+      error: "ECONNREFUSED",
+    });
+    (runtime.log as vi.Mock).mockClear();
+    await expect(statusCommand({}, runtime as never)).resolves.toBeUndefined();
+    const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
+    expect(logs.some((l) => l.includes("Rust gateway shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("unavailable"))).toBe(true);
+    expect(logs.some((l) => l.includes("ECONNREFUSED"))).toBe(true);
+  });
+
+  it("does not crash when rust gateway shadow is unreachable without an error message (regression #170)", async () => {
+    rustGatewayShadowMock.mockResolvedValueOnce({
+      reachable: false,
+      status: null,
+      version: null,
+      uptimeSeconds: null,
+      component: null,
+      mode: null,
+      protocolVersion: null,
+      liveAuthority: null,
+      gatewayAuthority: null,
+      promotionReady: null,
+      readinessReason: null,
+      statePersistence: null,
+      baseUrl: "http://127.0.0.1:18799",
+      error: null,
+    });
+    (runtime.log as vi.Mock).mockClear();
+    await expect(statusCommand({}, runtime as never)).resolves.toBeUndefined();
+    const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
+    expect(logs.some((l) => l.includes("Rust gateway shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("unavailable"))).toBe(true);
   });
 
   it("surfaces channel runtime errors from the gateway", async () => {
