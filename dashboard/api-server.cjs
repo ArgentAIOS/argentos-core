@@ -14858,13 +14858,19 @@ app.get("/api/settings/provider-models", async (req, res) => {
       if (!model) return;
       const verified = options?.verified === true;
       const source = typeof options?.source === "string" ? options.source : "configured";
+      const reasoning = typeof options?.reasoning === "boolean" ? options.reasoning : undefined;
       if (seen.has(model)) {
         // Upgrade existing rows when a live verification arrives after static/config seeding.
-        if (verified) {
-          const idx = rowIndexByModel.get(model);
-          if (typeof idx === "number" && rows[idx]) {
+        const idx = rowIndexByModel.get(model);
+        if (typeof idx === "number" && rows[idx]) {
+          if (verified) {
             rows[idx].verified = true;
             rows[idx].source = source;
+          }
+          // Late-arriving catalog data (e.g. pi catalog) carries the
+          // `reasoning` flag; promote it onto rows seeded earlier without it.
+          if (reasoning !== undefined && rows[idx].reasoning === undefined) {
+            rows[idx].reasoning = reasoning;
           }
         }
         return;
@@ -14879,6 +14885,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
         alias,
         verified,
         source,
+        ...(reasoning !== undefined ? { reasoning } : {}),
       });
     };
 
@@ -14985,6 +14992,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
         continue;
       pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
         source: "pi",
+        // GH #186: surface the catalog `reasoning` flag so the dashboard can
+        // gate the per-tier reasoningEffort selector on reasoning-capable models.
+        ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
       });
     }
 

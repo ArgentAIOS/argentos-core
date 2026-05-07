@@ -2811,7 +2811,17 @@ export function ConfigPanel({
   const [newMProfileName, setNewMProfileName] = useState("");
   const [newMProfileLabel, setNewMProfileLabel] = useState("");
   const [newMProfileTiers, setNewMProfileTiers] = useState<
-    Record<string, { provider: string; model: string }>
+    Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        // GH #186: optional per-slot reasoning effort. UI only renders the
+        // selector when the chosen model is reasoning-capable; absent → no
+        // override (model-level extraParams.reasoningEffort still applies).
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    >
   >({
     local: { provider: "", model: "" },
     fast: { provider: "", model: "" },
@@ -2847,14 +2857,30 @@ export function ConfigPanel({
   const [providerModelsCache, setProviderModelsCache] = useState<
     Record<
       string,
-      Array<{ model: string; label: string; verified?: boolean; source?: string | null }>
+      Array<{
+        model: string;
+        label: string;
+        verified?: boolean;
+        source?: string | null;
+        // GH #186: pi-catalog `reasoning: true` gates the per-tier reasoningEffort
+        // selector. Undefined → unknown (treat as non-reasoning for gating).
+        reasoning?: boolean;
+      }>
     >
   >({});
   const providerModelsLoadingRef = useRef<Set<string>>(new Set());
   const [editingProfileName, setEditingProfileName] = useState<string | null>(null);
   const [editingMProfileLabel, setEditingMProfileLabel] = useState("");
   const [editingMProfileTiers, setEditingMProfileTiers] = useState<
-    Record<string, { provider: string; model: string }>
+    Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        // GH #186: see `newMProfileTiers` comment.
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    >
   >({
     local: { provider: "", model: "" },
     fast: { provider: "", model: "" },
@@ -6419,7 +6445,11 @@ export function ConfigPanel({
                 typeof (entry as { source?: unknown }).source === "string"
                   ? (entry as { source: string }).source
                   : null;
-              return { model, label, verified, source };
+              // GH #186: pull through `reasoning` so the per-tier
+              // reasoningEffort selector can gate on reasoning-capable models.
+              const reasoningRaw = (entry as { reasoning?: unknown }).reasoning;
+              const reasoning = typeof reasoningRaw === "boolean" ? reasoningRaw : undefined;
+              return { model, label, verified, source, reasoning };
             })
             .filter(
               (
@@ -6428,6 +6458,7 @@ export function ConfigPanel({
                   label: string;
                   verified?: boolean;
                   source?: string | null;
+                  reasoning?: boolean;
                 } | null,
               ) => entry !== null,
             )
@@ -6445,7 +6476,13 @@ export function ConfigPanel({
 
   const modelsForProvider = (
     provider: string,
-  ): Array<{ model: string; label: string; verified?: boolean; source?: string | null }> => {
+  ): Array<{
+    model: string;
+    label: string;
+    verified?: boolean;
+    source?: string | null;
+    reasoning?: boolean;
+  }> => {
     const normalizedProvider = String(provider || "").trim();
     if (!normalizedProvider) return [];
     if (Object.prototype.hasOwnProperty.call(providerModelsCache, normalizedProvider)) {
@@ -6455,13 +6492,46 @@ export function ConfigPanel({
     void ensureProviderModelsLoaded(normalizedProvider);
     return availableModelRefs
       .filter((entry) => entry.provider === provider)
-      .map((entry) => ({ model: entry.model, label: entry.label, verified: false, source: null }));
+      .map((entry) => ({
+        model: entry.model,
+        label: entry.label,
+        verified: false,
+        source: null,
+      }));
+  };
+
+  // GH #186: returns true only when the catalog has a definitive
+  // `reasoning: true` flag for the slot's chosen model. Unknown/missing → false
+  // so the per-tier reasoningEffort selector stays hidden by default.
+  const isReasoningCapableModel = (provider: string, model: string): boolean => {
+    const normalizedProvider = String(provider || "").trim();
+    const normalizedModel = String(model || "").trim();
+    if (!normalizedProvider || !normalizedModel) return false;
+    // Prefer the cached provider-models response (carries the pi-catalog flag).
+    const cachedRows = providerModelsCache[normalizedProvider];
+    if (Array.isArray(cachedRows)) {
+      const hit = cachedRows.find((entry) => entry.model === normalizedModel);
+      if (hit && typeof hit.reasoning === "boolean") {
+        return hit.reasoning;
+      }
+    }
+    // Fall back to availableModels (the catalog endpoint surfaces `params.reasoning`
+    // for pi-backed entries — same source of truth, different fetch path).
+    const id = `${normalizedProvider}/${normalizedModel}`;
+    const fallback = availableModels.find((entry) => entry.id === id);
+    const params = fallback?.params as { reasoning?: unknown } | undefined;
+    return params?.reasoning === true;
   };
 
   const chatModelsForProvider = (
     provider: string,
-  ): Array<{ model: string; label: string; verified?: boolean; source?: string | null }> =>
-    modelsForProvider(provider).filter((entry) => !looksLikeEmbeddingOnlyModel(entry.model));
+  ): Array<{
+    model: string;
+    label: string;
+    verified?: boolean;
+    source?: string | null;
+    reasoning?: boolean;
+  }> => modelsForProvider(provider).filter((entry) => !looksLikeEmbeddingOnlyModel(entry.model));
 
   const embeddingModelsForProvider = (
     provider: string,
@@ -7410,12 +7480,57 @@ export function ConfigPanel({
     return Object.keys(routingPolicy).length > 0 ? routingPolicy : undefined;
   };
 
+  // GH #186: dashboard-side allow-list mirroring `normalizeReasoningLevel()` /
+  // `TierReasoningEffort`. We intentionally surface only the four
+  // post-spec values (no `xhigh`) — power-users editing argent.json directly
+  // can still set `xhigh` and the runtime will accept it.
+  const tierReasoningEffortOptions = ["minimal", "low", "medium", "high"] as const;
+  const normalizeUiReasoningEffort = (
+    raw: unknown,
+  ): "minimal" | "low" | "medium" | "high" | undefined => {
+    if (typeof raw !== "string") return undefined;
+    const normalized = raw.trim().toLowerCase();
+    return (tierReasoningEffortOptions as readonly string[]).includes(normalized)
+      ? (normalized as "minimal" | "low" | "medium" | "high")
+      : undefined;
+  };
+  // Strip empty/undefined `reasoningEffort` keys before PATCHing model-profiles
+  // so argent.json stays clean for users who never opt in.
+  const sanitizeTiersForPatch = (
+    tiers: Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    >,
+  ) => {
+    const out: Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    > = {};
+    for (const [tier, slot] of Object.entries(tiers)) {
+      const effort = normalizeUiReasoningEffort(slot.reasoningEffort);
+      out[tier] = {
+        provider: slot.provider,
+        model: slot.model,
+        ...(effort ? { reasoningEffort: effort } : {}),
+      };
+    }
+    return out;
+  };
+
   const beginEditModelProfile = (
     name: string,
     profile:
       | {
           label?: string;
-          tiers?: Record<string, { provider?: string; model?: string }>;
+          tiers?: Record<string, { provider?: string; model?: string; reasoningEffort?: string }>;
           routingPolicy?: {
             likelyToolUseMinTier?: "local" | "fast" | "balanced" | "powerful";
             likelyMemoryUseMinTier?: "local" | "fast" | "balanced" | "powerful";
@@ -7429,23 +7544,20 @@ export function ConfigPanel({
     setShowNewProfileForm(false);
     setEditingProfileName(name);
     setEditingMProfileLabel(String(profile?.label || name));
+    const tierFromProfile = (tier: "local" | "fast" | "balanced" | "powerful") => {
+      const slot = profile?.tiers?.[tier];
+      const reasoningEffort = normalizeUiReasoningEffort(slot?.reasoningEffort);
+      return {
+        provider: String(slot?.provider || ""),
+        model: String(slot?.model || ""),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+      };
+    };
     setEditingMProfileTiers({
-      local: {
-        provider: String(profile?.tiers?.local?.provider || ""),
-        model: String(profile?.tiers?.local?.model || ""),
-      },
-      fast: {
-        provider: String(profile?.tiers?.fast?.provider || ""),
-        model: String(profile?.tiers?.fast?.model || ""),
-      },
-      balanced: {
-        provider: String(profile?.tiers?.balanced?.provider || ""),
-        model: String(profile?.tiers?.balanced?.model || ""),
-      },
-      powerful: {
-        provider: String(profile?.tiers?.powerful?.provider || ""),
-        model: String(profile?.tiers?.powerful?.model || ""),
-      },
+      local: tierFromProfile("local"),
+      fast: tierFromProfile("fast"),
+      balanced: tierFromProfile("balanced"),
+      powerful: tierFromProfile("powerful"),
     });
     setEditingMProfileContemplation({
       provider: String(profile?.sessionOverrides?.contemplation?.provider || ""),
@@ -9654,7 +9766,18 @@ export function ConfigPanel({
                                       <div className="space-y-1">
                                         {routerTiers.map((tier) => {
                                           const tc = tierColors[tier];
-                                          const tierData = profile.tiers?.[tier];
+                                          const tierData = profile.tiers?.[tier] as
+                                            | {
+                                                provider?: string;
+                                                model?: string;
+                                                reasoningEffort?: string;
+                                              }
+                                            | undefined;
+                                          // GH #186: surface a configured per-slot
+                                          // reasoningEffort override in the read-only preview.
+                                          const tierEffort = normalizeUiReasoningEffort(
+                                            tierData?.reasoningEffort,
+                                          );
                                           return (
                                             <div
                                               key={tier}
@@ -9669,6 +9792,11 @@ export function ConfigPanel({
                                                 {tierData
                                                   ? `${tierData.provider}/${tierData.model}`
                                                   : "default"}
+                                                {tierEffort && (
+                                                  <span className="ml-1 text-amber-300/80">
+                                                    · effort={tierEffort}
+                                                  </span>
+                                                )}
                                               </span>
                                             </div>
                                           );
@@ -9734,6 +9862,8 @@ export function ConfigPanel({
                                                 editingMProfileTiers[tier]?.provider || "";
                                               const modelValue =
                                                 editingMProfileTiers[tier]?.model || "";
+                                              const reasoningEffortValue =
+                                                editingMProfileTiers[tier]?.reasoningEffort || "";
                                               const tierProviders = new Set(availableProviders);
                                               if (providerValue) {
                                                 tierProviders.add(providerValue);
@@ -9750,63 +9880,126 @@ export function ConfigPanel({
                                                   label: `${providerValue}/${modelValue} (custom)`,
                                                 });
                                               }
+                                              // GH #186: hard gate — only render the
+                                              // reasoningEffort selector when the catalog
+                                              // confirms this slot's model is reasoning-capable.
+                                              const showReasoningEffort = isReasoningCapableModel(
+                                                providerValue,
+                                                modelValue,
+                                              );
                                               return (
-                                                <div key={tier} className="flex items-center gap-2">
-                                                  <span className="font-mono text-[11px] font-semibold text-white/70 uppercase w-20 shrink-0">
-                                                    {tier}
-                                                  </span>
-                                                  <select
-                                                    value={providerValue}
-                                                    onChange={(e) => {
-                                                      const nextProvider = e.target.value;
-                                                      const nextModels =
-                                                        modelsForProvider(nextProvider);
-                                                      setEditingMProfileTiers((prev) => ({
-                                                        ...prev,
-                                                        [tier]: {
-                                                          provider: nextProvider,
-                                                          model:
-                                                            nextModels.length > 0
-                                                              ? nextModels[0].model
-                                                              : "",
-                                                        },
-                                                      }));
-                                                    }}
-                                                    className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                                  >
-                                                    <option value="">provider</option>
-                                                    {Array.from(tierProviders)
-                                                      .sort((a, b) => a.localeCompare(b))
-                                                      .map((provider) => (
-                                                        <option key={provider} value={provider}>
-                                                          {provider}
+                                                <div key={tier} className="space-y-1">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-[11px] font-semibold text-white/70 uppercase w-20 shrink-0">
+                                                      {tier}
+                                                    </span>
+                                                    <select
+                                                      value={providerValue}
+                                                      onChange={(e) => {
+                                                        const nextProvider = e.target.value;
+                                                        const nextModels =
+                                                          modelsForProvider(nextProvider);
+                                                        setEditingMProfileTiers((prev) => ({
+                                                          ...prev,
+                                                          [tier]: {
+                                                            provider: nextProvider,
+                                                            model:
+                                                              nextModels.length > 0
+                                                                ? nextModels[0].model
+                                                                : "",
+                                                          },
+                                                        }));
+                                                      }}
+                                                      className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                                    >
+                                                      <option value="">provider</option>
+                                                      {Array.from(tierProviders)
+                                                        .sort((a, b) => a.localeCompare(b))
+                                                        .map((provider) => (
+                                                          <option key={provider} value={provider}>
+                                                            {provider}
+                                                          </option>
+                                                        ))}
+                                                    </select>
+                                                    <select
+                                                      value={modelValue}
+                                                      onChange={(e) => {
+                                                        const nextModel = e.target.value;
+                                                        const nextReasoning =
+                                                          isReasoningCapableModel(
+                                                            providerValue,
+                                                            nextModel,
+                                                          );
+                                                        setEditingMProfileTiers((prev) => ({
+                                                          ...prev,
+                                                          [tier]: {
+                                                            ...prev[tier],
+                                                            model: nextModel,
+                                                            // Drop a stale override when the
+                                                            // newly chosen model isn't reasoning-capable.
+                                                            ...(nextReasoning
+                                                              ? {}
+                                                              : { reasoningEffort: undefined }),
+                                                          },
+                                                        }));
+                                                      }}
+                                                      disabled={!providerValue}
+                                                      className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
+                                                    >
+                                                      <option value="">model-id</option>
+                                                      {tierModels.map((entry) => (
+                                                        <option
+                                                          key={`${providerValue}/${entry.model}`}
+                                                          value={entry.model}
+                                                        >
+                                                          {entry.label}
                                                         </option>
                                                       ))}
-                                                  </select>
-                                                  <select
-                                                    value={modelValue}
-                                                    onChange={(e) =>
-                                                      setEditingMProfileTiers((prev) => ({
-                                                        ...prev,
-                                                        [tier]: {
-                                                          ...prev[tier],
-                                                          model: e.target.value,
-                                                        },
-                                                      }))
-                                                    }
-                                                    disabled={!providerValue}
-                                                    className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
-                                                  >
-                                                    <option value="">model-id</option>
-                                                    {tierModels.map((entry) => (
-                                                      <option
-                                                        key={`${providerValue}/${entry.model}`}
-                                                        value={entry.model}
+                                                    </select>
+                                                  </div>
+                                                  {showReasoningEffort && (
+                                                    <div
+                                                      data-testid={`reasoning-effort-${tier}`}
+                                                      className="flex items-center gap-2 pl-[5.5rem]"
+                                                    >
+                                                      <span className="font-mono text-[10px] font-medium text-amber-300/80 uppercase tracking-wider w-[5.5rem] shrink-0 -ml-[5.5rem]">
+                                                        ↳ effort
+                                                      </span>
+                                                      <select
+                                                        value={reasoningEffortValue}
+                                                        onChange={(e) => {
+                                                          const value = e.target.value;
+                                                          setEditingMProfileTiers((prev) => ({
+                                                            ...prev,
+                                                            [tier]: {
+                                                              ...prev[tier],
+                                                              reasoningEffort:
+                                                                value === ""
+                                                                  ? undefined
+                                                                  : (value as
+                                                                      | "minimal"
+                                                                      | "low"
+                                                                      | "medium"
+                                                                      | "high"),
+                                                            },
+                                                          }));
+                                                        }}
+                                                        className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-[11px] border border-amber-400/20 focus:border-amber-400/50 outline-none font-mono"
+                                                        title="Reasoning effort override (only takes effect on reasoning-capable models)"
                                                       >
-                                                        {entry.label}
-                                                      </option>
-                                                    ))}
-                                                  </select>
+                                                        <option value="">
+                                                          (use model default)
+                                                        </option>
+                                                        {tierReasoningEffortOptions.map(
+                                                          (effort) => (
+                                                            <option key={effort} value={effort}>
+                                                              {effort}
+                                                            </option>
+                                                          ),
+                                                        )}
+                                                      </select>
+                                                    </div>
+                                                  )}
                                                 </div>
                                               );
                                             })}
@@ -9969,7 +10162,8 @@ export function ConfigPanel({
                                                   body: JSON.stringify({
                                                     name,
                                                     label: editingMProfileLabel || name,
-                                                    tiers: editingMProfileTiers,
+                                                    tiers:
+                                                      sanitizeTiersForPatch(editingMProfileTiers),
                                                     ...(routingPolicy ? { routingPolicy } : {}),
                                                     ...(hasContemplationOverride
                                                       ? {
@@ -10077,59 +10271,121 @@ export function ConfigPanel({
                                         label: `${providerValue}/${modelValue} (custom)`,
                                       });
                                     }
+                                    const reasoningEffortValue =
+                                      newMProfileTiers[tier]?.reasoningEffort || "";
+                                    // GH #186: hard gate the per-tier reasoningEffort selector
+                                    // to reasoning-capable models (catalog `reasoning: true`).
+                                    const showReasoningEffort = isReasoningCapableModel(
+                                      providerValue,
+                                      modelValue,
+                                    );
                                     return (
-                                      <div key={tier} className="flex items-center gap-2">
-                                        <span
-                                          className={`font-mono text-[11px] font-semibold ${tc[tier].color} uppercase w-20 shrink-0`}
-                                        >
-                                          {tier}
-                                        </span>
-                                        <select
-                                          value={providerValue}
-                                          onChange={(e) => {
-                                            const nextProvider = e.target.value;
-                                            const nextModels = modelsForProvider(nextProvider);
-                                            setNewMProfileTiers((prev) => ({
-                                              ...prev,
-                                              [tier]: {
-                                                provider: nextProvider,
-                                                model:
-                                                  nextModels.length > 0 ? nextModels[0].model : "",
-                                              },
-                                            }));
-                                          }}
-                                          className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                        >
-                                          <option value="">provider</option>
-                                          {Array.from(tierProviders)
-                                            .sort((a, b) => a.localeCompare(b))
-                                            .map((provider) => (
-                                              <option key={provider} value={provider}>
-                                                {provider}
+                                      <div key={tier} className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <span
+                                            className={`font-mono text-[11px] font-semibold ${tc[tier].color} uppercase w-20 shrink-0`}
+                                          >
+                                            {tier}
+                                          </span>
+                                          <select
+                                            value={providerValue}
+                                            onChange={(e) => {
+                                              const nextProvider = e.target.value;
+                                              const nextModels = modelsForProvider(nextProvider);
+                                              setNewMProfileTiers((prev) => ({
+                                                ...prev,
+                                                [tier]: {
+                                                  provider: nextProvider,
+                                                  model:
+                                                    nextModels.length > 0
+                                                      ? nextModels[0].model
+                                                      : "",
+                                                },
+                                              }));
+                                            }}
+                                            className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                          >
+                                            <option value="">provider</option>
+                                            {Array.from(tierProviders)
+                                              .sort((a, b) => a.localeCompare(b))
+                                              .map((provider) => (
+                                                <option key={provider} value={provider}>
+                                                  {provider}
+                                                </option>
+                                              ))}
+                                          </select>
+                                          <select
+                                            value={modelValue}
+                                            onChange={(e) => {
+                                              const nextModel = e.target.value;
+                                              const nextReasoning = isReasoningCapableModel(
+                                                providerValue,
+                                                nextModel,
+                                              );
+                                              setNewMProfileTiers((prev) => ({
+                                                ...prev,
+                                                [tier]: {
+                                                  ...prev[tier],
+                                                  model: nextModel,
+                                                  ...(nextReasoning
+                                                    ? {}
+                                                    : { reasoningEffort: undefined }),
+                                                },
+                                              }));
+                                            }}
+                                            disabled={!providerValue}
+                                            className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
+                                          >
+                                            <option value="">model-id</option>
+                                            {tierModels.map((entry) => (
+                                              <option
+                                                key={`${providerValue}/${entry.model}`}
+                                                value={entry.model}
+                                              >
+                                                {entry.label}
                                               </option>
                                             ))}
-                                        </select>
-                                        <select
-                                          value={modelValue}
-                                          onChange={(e) =>
-                                            setNewMProfileTiers((prev) => ({
-                                              ...prev,
-                                              [tier]: { ...prev[tier], model: e.target.value },
-                                            }))
-                                          }
-                                          disabled={!providerValue}
-                                          className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
-                                        >
-                                          <option value="">model-id</option>
-                                          {tierModels.map((entry) => (
-                                            <option
-                                              key={`${providerValue}/${entry.model}`}
-                                              value={entry.model}
+                                          </select>
+                                        </div>
+                                        {showReasoningEffort && (
+                                          <div
+                                            data-testid={`new-reasoning-effort-${tier}`}
+                                            className="flex items-center gap-2"
+                                          >
+                                            <span className="font-mono text-[10px] font-medium text-amber-300/80 uppercase tracking-wider w-20 shrink-0">
+                                              ↳ effort
+                                            </span>
+                                            <select
+                                              value={reasoningEffortValue}
+                                              onChange={(e) => {
+                                                const value = e.target.value;
+                                                setNewMProfileTiers((prev) => ({
+                                                  ...prev,
+                                                  [tier]: {
+                                                    ...prev[tier],
+                                                    reasoningEffort:
+                                                      value === ""
+                                                        ? undefined
+                                                        : (value as
+                                                            | "minimal"
+                                                            | "low"
+                                                            | "medium"
+                                                            | "high"),
+                                                  },
+                                                }));
+                                              }}
+                                              className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-[11px] border border-amber-400/20 focus:border-amber-400/50 outline-none font-mono"
+                                              title="Reasoning effort override (only takes effect on reasoning-capable models)"
                                             >
-                                              {entry.label}
-                                            </option>
-                                          ))}
-                                        </select>
+                                              <option value="">(use model default)</option>
+                                              {tierReasoningEffortOptions.map((effort) => (
+                                                <option key={effort} value={effort}>
+                                                  {effort}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })}
@@ -10282,7 +10538,7 @@ export function ConfigPanel({
                                         body: JSON.stringify({
                                           name: newMProfileName,
                                           label: newMProfileLabel || newMProfileName,
-                                          tiers: newMProfileTiers,
+                                          tiers: sanitizeTiersForPatch(newMProfileTiers),
                                           ...(routingPolicy ? { routingPolicy } : {}),
                                           ...(hasContemplationOverride
                                             ? {

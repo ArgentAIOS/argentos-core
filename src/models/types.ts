@@ -7,9 +7,30 @@
 
 export type ModelTier = "local" | "fast" | "balanced" | "powerful";
 
+/**
+ * Per-tier reasoning effort override.
+ *
+ * Applied at request time when the routed slot resolves to a reasoning-capable
+ * model. Wins over the model entry's own `extraParams.reasoningEffort`.
+ *
+ * Mirrors the value range accepted by `normalizeReasoningLevel()` in
+ * `src/agents/pi-embedded-runner/extra-params.ts`. The dashboard surfaces a
+ * subset (`minimal | low | medium | high`); the runtime accepts `xhigh` as
+ * well so power-user `argent.json` edits keep working.
+ */
+export type TierReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
 export type TierModelMapping = {
   provider: string;
   model: string;
+  /**
+   * Optional per-slot reasoning effort. Surfaces in the dashboard only when the
+   * chosen model has `reasoning: true` in pi-ai's catalog. Backend ignores the
+   * field on non-reasoning models (graceful no-op) — propagation downstream
+   * lets the runner's `applyExtraParamsToAgent` pick the override over any
+   * model-level `extraParams.reasoningEffort` value.
+   */
+  reasoningEffort?: TierReasoningEffort;
 };
 
 export type SessionModelOverride = TierModelMapping & {
@@ -116,4 +137,10 @@ export type RoutingDecision = {
   routed: boolean;
   /** Active profile name, if one was resolved. */
   profile?: string;
+  /**
+   * Per-tier `reasoningEffort` override resolved from the active profile.
+   * When present, wins over the model entry's `extraParams.reasoningEffort`
+   * at request time (see `applyExtraParamsToAgent`).
+   */
+  reasoningEffort?: TierReasoningEffort;
 };
