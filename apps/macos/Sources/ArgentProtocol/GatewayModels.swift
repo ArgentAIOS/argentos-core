@@ -1467,6 +1467,111 @@ public struct TalkModeParams: Codable, Sendable {
     }
 }
 
+public struct TalkRealtimeSessionParams: Codable, Sendable {
+    public let provider: String?
+    public let transport: AnyCodable?
+    public let model: String?
+    public let voice: String?
+    public let instructions: String?
+    public let tools: [AnyCodable]?
+
+    public init(
+        provider: String?,
+        transport: AnyCodable?,
+        model: String?,
+        voice: String?,
+        instructions: String?,
+        tools: [AnyCodable]?
+    ) {
+        self.provider = provider
+        self.transport = transport
+        self.model = model
+        self.voice = voice
+        self.instructions = instructions
+        self.tools = tools
+    }
+    private enum CodingKeys: String, CodingKey {
+        case provider
+        case transport
+        case model
+        case voice
+        case instructions
+        case tools
+    }
+}
+
+public struct TalkRealtimeAudioParams: Codable, Sendable {
+    public let relaysessionid: String
+    public let audiobase64: String
+    public let timestamp: Double?
+
+    public init(
+        relaysessionid: String,
+        audiobase64: String,
+        timestamp: Double?
+    ) {
+        self.relaysessionid = relaysessionid
+        self.audiobase64 = audiobase64
+        self.timestamp = timestamp
+    }
+    private enum CodingKeys: String, CodingKey {
+        case relaysessionid = "relaySessionId"
+        case audiobase64 = "audioBase64"
+        case timestamp
+    }
+}
+
+public struct TalkRealtimeMarkParams: Codable, Sendable {
+    public let relaysessionid: String
+
+    public init(
+        relaysessionid: String
+    ) {
+        self.relaysessionid = relaysessionid
+    }
+    private enum CodingKeys: String, CodingKey {
+        case relaysessionid = "relaySessionId"
+    }
+}
+
+public struct TalkRealtimeToolResultParams: Codable, Sendable {
+    public let relaysessionid: String
+    public let callid: String
+    public let result: AnyCodable
+    public let willcontinue: Bool?
+
+    public init(
+        relaysessionid: String,
+        callid: String,
+        result: AnyCodable,
+        willcontinue: Bool?
+    ) {
+        self.relaysessionid = relaysessionid
+        self.callid = callid
+        self.result = result
+        self.willcontinue = willcontinue
+    }
+    private enum CodingKeys: String, CodingKey {
+        case relaysessionid = "relaySessionId"
+        case callid = "callId"
+        case result
+        case willcontinue = "willContinue"
+    }
+}
+
+public struct TalkRealtimeStopParams: Codable, Sendable {
+    public let relaysessionid: String
+
+    public init(
+        relaysessionid: String
+    ) {
+        self.relaysessionid = relaysessionid
+    }
+    private enum CodingKeys: String, CodingKey {
+        case relaysessionid = "relaySessionId"
+    }
+}
+
 public struct ChannelsStatusParams: Codable, Sendable {
     public let probe: Bool?
     public let timeoutms: Int?
@@ -1847,6 +1952,16 @@ public struct SkillsStatusParams: Codable, Sendable {
 }
 
 public struct ConnectorsCatalogParams: Codable, Sendable {
+    public let executeadapters: Bool?
+
+    public init(
+        executeadapters: Bool?
+    ) {
+        self.executeadapters = executeadapters
+    }
+    private enum CodingKeys: String, CodingKey {
+        case executeadapters = "executeAdapters"
+    }
 }
 
 public struct ConnectorsCatalogResult: Codable, Sendable {
