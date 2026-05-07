@@ -869,6 +869,25 @@ function persistGatewayToken(token: string) {
   }
 }
 
+/**
+ * Read the gateway token injected into HTML by the static-server (or any other
+ * server-side render path that respects the `__ARGENT_GATEWAY_TOKEN__`
+ * convention). This closes the bare-URL bootstrap gap: when the dashboard
+ * loads at `http://127.0.0.1:8080/` (no `?token=` in URL, fresh localStorage),
+ * the server-injected global gives us a valid token to seed into both this
+ * App's WS connection AND `localApiFetch.ts`'s REST resolution chain (via
+ * `localStorage["argent.control.settings.v1"].token`).
+ */
+function readInjectedGatewayToken(): string {
+  try {
+    const value = (window as unknown as { __ARGENT_GATEWAY_TOKEN__?: unknown })
+      .__ARGENT_GATEWAY_TOKEN__;
+    return typeof value === "string" ? value.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 function resolveGatewayToken(): string {
   const tokenFromUrl = new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
   if (tokenFromUrl) {
@@ -877,6 +896,17 @@ function resolveGatewayToken(): string {
   }
   const tokenFromStorage = readStoredGatewayToken();
   if (tokenFromStorage) return tokenFromStorage;
+  // Server-injected global (static-server `injectGatewayTokenIntoIndexHtml`)
+  // — fixes bare-URL loads where the URL carries no `?token=` and a fresh
+  // localStorage has no prior token. We persist it to localStorage so the
+  // existing same-source resolution chain in `localApiFetch.ts` (which
+  // reads `argent.control.settings.v1.token` first) can find it without
+  // needing its own coupling to `window.__ARGENT_GATEWAY_TOKEN__`.
+  const tokenFromInjection = readInjectedGatewayToken();
+  if (tokenFromInjection) {
+    persistGatewayToken(tokenFromInjection);
+    return tokenFromInjection;
+  }
   const tokenFromEnv = String(import.meta.env.VITE_GATEWAY_TOKEN ?? "").trim();
   return tokenFromEnv;
 }
