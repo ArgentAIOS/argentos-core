@@ -34,6 +34,7 @@ import {
 import { handleMcpHttpRequest, type McpHttpOptions } from "./mcp-http.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
+import { proxyApiRequest } from "./gateway-proxy-token.js";
 import { handleSisFeedbackRequest } from "./sis-feedback-http.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 
@@ -250,26 +251,29 @@ export function createGatewayHttpServer(opts: {
     }
 
     try {
-      // Proxy /api/* to dashboard API server FIRST (before any other handler)
+      // Proxy /api/* to dashboard API server FIRST (before any other handler).
+      //
+      // Two bugs here pre-fix (GH #162, B-5 cure follow-up to PR #161):
+      //
+      //   1. The proxy stripped the browser's Authorization header by
+      //      hardcoding `headers: { "Content-Type": "application/json" }`.
+      //      Every authenticated `/api/*` call from the bundle 401'd because
+      //      the api-server never saw the token.
+      //   2. The `if (proxyRes.ok)` branch meant any non-2xx upstream
+      //      response (including 401 from api-server) fell through to the
+      //      control-ui SPA handler, which served `index.html` as 200 HTML
+      //      for `/api/...` paths. The browser then tried to JSON.parse HTML
+      //      and the dashboard hung, while the underlying auth failure was
+      //      invisible to the user.
+      //
+      // `proxyApiRequest` (in `./gateway-proxy-token.js`) forwards the
+      // client's headers (including Authorization), falls back to the
+      // gateway auth token from `~/.argentos/argent.json` on loopback when
+      // none is provided, forwards request bodies, and always returns the
+      // upstream status faithfully. `/api/*` never falls through to SPA.
       if (req.url && req.url.startsWith("/api/")) {
-        try {
-          const apiPort = process.env.API_PORT || "9242";
-          const proxyUrl = `http://127.0.0.1:${apiPort}${req.url}`;
-          const proxyRes = await fetch(proxyUrl, {
-            method: req.method || "GET",
-            headers: { "Content-Type": "application/json" },
-          });
-          if (proxyRes.ok) {
-            res.statusCode = proxyRes.status;
-            const ct = proxyRes.headers.get("content-type");
-            if (ct) res.setHeader("Content-Type", ct);
-            const body = await proxyRes.text();
-            res.end(body);
-            return;
-          }
-        } catch {
-          // API server not available — fall through to other handlers
-        }
+        await proxyApiRequest(req, res);
+        return;
       }
 
       const configSnapshot = loadConfig();
