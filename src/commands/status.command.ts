@@ -416,11 +416,7 @@ export async function statusCommand(
       return muted("unknown");
     }
     if (!status.reachable) {
-      return muted(
-        status.error
-          ? `production-daemon ${status.productionDaemon.status} (${status.error})`
-          : `production-daemon ${status.productionDaemon.status}`,
-      );
+      return muted(status.error ? `unavailable (${status.error})` : "unavailable");
     }
     const parts = [
       ok("reachable"),
