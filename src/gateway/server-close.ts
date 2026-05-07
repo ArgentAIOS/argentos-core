@@ -59,6 +59,24 @@ export function createGatewayCloseHandler(params: {
       typeof opts?.restartExpectedMs === "number" && Number.isFinite(opts.restartExpectedMs)
         ? Math.max(0, Math.floor(opts.restartExpectedMs))
         : null;
+    // Stop channels FIRST. Channels (especially Telegram) hold external
+    // long-poll locks against third-party APIs; if we leave the abort
+    // until after bonjour/tailscale/canvas teardown, the run-loop's 5s
+    // graceful-shutdown deadline can fire while the legacy poller is
+    // still asleep on Telegram.getUpdates — which directly causes the
+    // 409 Conflict cascade against the next gateway instance.
+    //
+    // Aborting the channel runtimes here releases those external locks
+    // as quickly as possible. Promise.all also fires the abort on every
+    // channel synchronously instead of serially, so multi-channel
+    // tenants don't pay an extra long-poll's worth of latency per
+    // additional channel.
+    const channelStops = listChannelPlugins().map((plugin) =>
+      params.stopChannel(plugin.id).catch(() => {
+        /* per-channel stop errors must not block sibling channels or the rest of shutdown */
+      }),
+    );
+    await Promise.all(channelStops);
     if (params.bonjourStop) {
       try {
         await params.bonjourStop();
@@ -82,9 +100,6 @@ export function createGatewayCloseHandler(params: {
       } catch {
         /* ignore */
       }
-    }
-    for (const plugin of listChannelPlugins()) {
-      await params.stopChannel(plugin.id);
     }
     if (params.pluginServices) {
       await params.pluginServices.stop().catch(() => {});
