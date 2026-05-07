@@ -12709,13 +12709,13 @@ export function ConfigPanel({
                                       ).toLocaleTimeString()}
                                     </div>
                                   )}
-                                  {workerRuntime && workerRuntime.agents.length > 0 && (
+                                  {workerRuntime && (workerRuntime.agents?.length ?? 0) > 0 && (
                                     <div className="rounded-lg border border-white/10 overflow-hidden">
                                       <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
                                         Per-agent queue metrics
                                       </div>
                                       <div className="max-h-32 overflow-y-auto divide-y divide-white/5">
-                                        {workerRuntime.agents.map((agent) => (
+                                        {(workerRuntime.agents ?? []).map((agent) => (
                                           <div
                                             key={agent.agentId}
                                             className="px-2 py-1 text-[11px] text-white/60 flex items-center justify-between gap-2"
@@ -13150,13 +13150,13 @@ export function ConfigPanel({
                                             : "No job overview loaded yet."}
                                         </div>
                                       )}
-                                      {jobsOverview && jobsOverview.agents.length > 0 && (
+                                      {jobsOverview && (jobsOverview.agents?.length ?? 0) > 0 && (
                                         <div className="rounded-lg border border-white/10 overflow-hidden">
                                           <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
                                             Agent roster status
                                           </div>
                                           <div className="max-h-28 overflow-y-auto divide-y divide-white/5">
-                                            {jobsOverview.agents.map((agent) => (
+                                            {(jobsOverview.agents ?? []).map((agent) => (
                                               <div
                                                 key={agent.agentId}
                                                 className="px-2 py-1 text-[11px] text-white/70 flex items-center justify-between gap-2"
