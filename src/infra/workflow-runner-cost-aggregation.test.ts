@@ -141,11 +141,7 @@ describe("workflow runner cost aggregation", () => {
     const output = makeOutput();
     const workflow = makeWorkflow(
       [trigger, agentA, agentB, output],
-      [
-        edge(trigger.id, agentA.id),
-        edge(agentA.id, agentB.id),
-        edge(agentB.id, output.id),
-      ],
+      [edge(trigger.id, agentA.id), edge(agentA.id, agentB.id), edge(agentB.id, output.id)],
     );
 
     let onCompleteSteps: StepRecord[] | undefined;

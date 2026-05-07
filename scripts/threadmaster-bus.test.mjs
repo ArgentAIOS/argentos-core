@@ -102,13 +102,7 @@ test("ack --lane <unknown> is still rejected by the allowlist", () => {
 // at ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION_REPLY.md.
 
 test("ack --lane aos-connectors passes lane allowlist", () => {
-  const result = run([
-    "ack",
-    "--lane",
-    "aos-connectors",
-    "--id",
-    "tm-regression-test-bogus-id",
-  ]);
+  const result = run(["ack", "--lane", "aos-connectors", "--id", "tm-regression-test-bogus-id"]);
   assert.match(
     result.stderr,
     /No message with id tm-regression-test-bogus-id/,
