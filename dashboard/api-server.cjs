@@ -326,12 +326,35 @@ app.use("/api", (req, res, next) => {
 // widen the public-core surface — blocked routes still 403 regardless of
 // which accepted token authenticates.
 const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
-// NOTE: We can't call readArgentConfig() here — it's a function declaration
-// (so it's hoisted and callable), but its body references the
-// ARGENT_CONFIG_PATH `const` defined later in this file, which is in the
-// TDZ at module-load time. Inline the same path resolution it uses
-// (HOME/.argentos/argent.json) and read the gateway token directly.
-const GATEWAY_CONFIG_TOKEN = (() => {
+
+// Per-request gateway-token resolver — kills the 401-after-rotation drift class.
+//
+// Background: the gateway's WS path re-reads `gateway.auth.token` from
+// `~/.argentos/argent.json` on each connect (PR #130 / `f2ae17a0`).
+// The dashboard sidecar (this file) used to read it ONCE at module load
+// inside an IIFE and cache it forever. When something writes a new token
+// to argent.json (`argent update`, the wizard, the browser auto-gen path
+// in `src/browser/control-auth.ts`, etc.), the gateway picks it up but
+// this api-server didn't — drift → every `/api/*` returns 401 until the
+// daemon restarts (`launchctl kickstart -k gui/$UID/ai.argent.dashboard-api`).
+//
+// This was originally flagged in PR #130's worker report as follow-up #4:
+//   "dashboard sidecar reads `gateway.auth.token` once at module load —
+//    Fix-1 doesn't cover this for the api-server process."
+// PR #160 / #161 / #163 fixed CLIENT-side resolution (localStorage, URL
+// fallback, server-side injection) but never the api-server SERVER-side
+// caching bug. Each subsequent `argent update` re-triggered the cascade.
+//
+// Mirrors the per-request pattern shipped in `dashboard/static-server.cjs`
+// (PR #161) and `src/gateway/gateway-proxy-token.ts` (PR #163).
+//
+// Cost is one `fs.existsSync` + one tiny JSON.parse per request — negligible
+// on loopback and well worth the correctness. No TTL cache: the brief
+// (and Jason) explicitly chose correctness over micro-optimization, and
+// gating mid-rotation correctness behind a 1s window would only restore a
+// thinner version of the same drift class. If a future benchmark surfaces
+// real impact, a tiny TTL can be added here without touching callers.
+function resolveGatewayConfigToken() {
   try {
     const argentConfigPath = path.join(
       process.env.HOME || os.homedir(),
@@ -340,54 +363,87 @@ const GATEWAY_CONFIG_TOKEN = (() => {
     );
     if (!fs.existsSync(argentConfigPath)) return null;
     const cfg = JSON.parse(fs.readFileSync(argentConfigPath, "utf-8"));
-    return cfg?.gateway?.auth?.token || null;
+    const token = cfg?.gateway?.auth?.token;
+    return typeof token === "string" && token.trim() ? token.trim() : null;
   } catch {
     return null;
   }
-})();
-const ACCEPTED_TOKENS = [DASHBOARD_API_TOKEN, GATEWAY_CONFIG_TOKEN].filter(Boolean);
-if (ACCEPTED_TOKENS.length > 0) {
-  app.use("/api/", (req, res, next) => {
-    // Allow preflight and health check (no auth needed)
-    if (req.method === "OPTIONS") return next();
-    if (req.path === "/api/health" || req.path === "/health") return next();
-    if (req.originalUrl?.includes("/api/settings/auth-profiles/openai-codex/oauth/callback")) {
-      return next();
-    }
-    if (req.path.endsWith("/events")) return next(); // SSE — EventSource can't send headers
-    if (req.path === "/media" || req.path === "/api/media") return next(); // Media served via <img>/<video>/<audio> tags — has own path-based security
-    if (req.path === "/proxy/tts/elevenlabs" || req.path === "/api/proxy/tts/elevenlabs")
-      return next(); // Browser TTS calls may not have access to dashboard API token
-    if (req.path === "/proxy/tts/openai" || req.path === "/api/proxy/tts/openai") return next();
-    if (req.path === "/proxy/tts/fish" || req.path === "/api/proxy/tts/fish") return next();
-    if (req.path.startsWith("/license")) return next(); // License endpoints need to work before auth is established
-    const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
-    if (!token) {
-      return res.status(401).json({ error: "Authorization required" });
-    }
-    try {
-      const a = Buffer.from(token);
-      const matched = ACCEPTED_TOKENS.some((accepted) => {
-        const b = Buffer.from(accepted);
-        return a.length === b.length && crypto.timingSafeEqual(a, b);
-      });
-      if (!matched) {
-        return res.status(401).json({ error: "Invalid token" });
-      }
-    } catch {
+}
+
+function resolveAcceptedTokens() {
+  return [DASHBOARD_API_TOKEN, resolveGatewayConfigToken()].filter(Boolean);
+}
+
+// Install the auth middleware unconditionally. The set of accepted tokens is
+// resolved per-request via resolveAcceptedTokens() so that:
+//   1. A token written to argent.json AFTER boot (post-install wizard, first
+//      run, gateway auto-gen) is recognized without restarting api-server.
+//   2. A token rotated in argent.json (any future regenerator) is recognized
+//      without restarting api-server — extinguishes the 401 drift class.
+//   3. If both sources are empty at request time, the gate is open (matches
+//      the prior "auth DISABLED" behavior). This preserves behavior for
+//      tests / fresh installs while still protecting any normal install.
+app.use("/api/", (req, res, next) => {
+  // Allow preflight and health check (no auth needed)
+  if (req.method === "OPTIONS") return next();
+  if (req.path === "/api/health" || req.path === "/health") return next();
+  if (req.originalUrl?.includes("/api/settings/auth-profiles/openai-codex/oauth/callback")) {
+    return next();
+  }
+  if (req.path.endsWith("/events")) return next(); // SSE — EventSource can't send headers
+  if (req.path === "/media" || req.path === "/api/media") return next(); // Media served via <img>/<video>/<audio> tags — has own path-based security
+  if (req.path === "/proxy/tts/elevenlabs" || req.path === "/api/proxy/tts/elevenlabs")
+    return next(); // Browser TTS calls may not have access to dashboard API token
+  if (req.path === "/proxy/tts/openai" || req.path === "/api/proxy/tts/openai") return next();
+  if (req.path === "/proxy/tts/fish" || req.path === "/api/proxy/tts/fish") return next();
+  if (req.path.startsWith("/license")) return next(); // License endpoints need to work before auth is established
+
+  const acceptedTokens = resolveAcceptedTokens();
+  if (acceptedTokens.length === 0) {
+    // No tokens configured at all — auth effectively disabled (matches
+    // legacy fresh-install behavior). The startup log emits a one-time
+    // warning so an operator running without auth notices it.
+    return next();
+  }
+
+  const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
+  if (!token) {
+    return res.status(401).json({ error: "Authorization required" });
+  }
+  try {
+    const a = Buffer.from(token);
+    const matched = acceptedTokens.some((accepted) => {
+      const b = Buffer.from(accepted);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    });
+    if (!matched) {
       return res.status(401).json({ error: "Invalid token" });
     }
-    next();
-  });
-  const sources = [
-    DASHBOARD_API_TOKEN ? "DASHBOARD_API_TOKEN" : null,
-    GATEWAY_CONFIG_TOKEN ? "gateway.auth.token" : null,
-  ].filter(Boolean);
-  console.log(`[Security] Dashboard API token auth ENABLED (sources: ${sources.join(", ")})`);
-} else {
-  console.log(
-    "[Security] Dashboard API token auth DISABLED (set DASHBOARD_API_TOKEN or gateway.auth.token to enable)",
-  );
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+  next();
+});
+
+// One-time startup log reflects the AT-BOOT auth state. Per-request
+// resolution may differ if argent.json changes, but that's invisible to
+// the operator other than via "401 → 200 without restart" — exactly the
+// behavior we want.
+{
+  const bootTokens = resolveAcceptedTokens();
+  if (bootTokens.length > 0) {
+    const sources = [
+      DASHBOARD_API_TOKEN ? "DASHBOARD_API_TOKEN" : null,
+      resolveGatewayConfigToken() ? "gateway.auth.token" : null,
+    ].filter(Boolean);
+    console.log(
+      `[Security] Dashboard API token auth ENABLED (per-request; sources at boot: ${sources.join(", ")})`,
+    );
+  } else {
+    console.log(
+      "[Security] Dashboard API token auth DISABLED (set DASHBOARD_API_TOKEN or gateway.auth.token to enable; resolved per-request)",
+    );
+  }
 }
 
 app.use(express.json({ limit: "50mb" }));
