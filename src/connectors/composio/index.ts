@@ -28,3 +28,12 @@ export {
 } from "./client.js";
 
 export { checkComposioConnectivity, type ComposioConnectivityCheckParams } from "./connectivity.js";
+
+export {
+  defaultComposioFlags,
+  getComposioFlagsPath,
+  readAllComposioFlags,
+  readComposioFlagsForAgent,
+  writeComposioFlagsForAgent,
+  type ComposioFlagsFile,
+} from "./flags.js";
