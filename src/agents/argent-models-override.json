@@ -1,0 +1,25 @@
+{
+  "$schema": "../../docs/schemas/argent-models-override.schema.json",
+  "_comment": "Argent local model catalog override. TEMPORARY: drops when pi-ai (currently @mariozechner/pi-ai 0.70.2) ships gpt-5.5-chat-latest natively. Tracking via earendil-works/pi#4275 + the matching upstream PR. See argent-models-override.ts for the loader bridge that merges these entries into the per-agent models.json that pi-coding-agent's ModelRegistry consumes. Pricing here mirrors gpt-5.3-chat-latest from pi-ai's catalog because OpenAI hasn't published per-token rates for the gpt-5.5-instant alias as of 2026-05-07 — see PR body for the verification follow-up.",
+  "providers": {
+    "openai": {
+      "models": [
+        {
+          "id": "gpt-5.5-chat-latest",
+          "name": "GPT-5.5 Chat (latest)",
+          "api": "openai-responses",
+          "reasoning": false,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 1.75,
+            "output": 14,
+            "cacheRead": 0.175,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}

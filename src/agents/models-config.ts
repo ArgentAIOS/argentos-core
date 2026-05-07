@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { type ArgentConfig, loadConfig } from "../config/config.js";
 import { resolveArgentAgentDir } from "./agent-paths.js";
+import { loadArgentModelsOverride } from "./argent-models-override.js";
 import {
   normalizeProviders,
   type ProviderConfig,
@@ -108,6 +109,12 @@ export async function ensureArgentModelsJson(
 
   if (Object.keys(providers).length === 0) {
     return { agentDir, wrote: false };
+  }
+  // Argent local catalog override (e.g. gpt-5.5-chat-latest until pi-ai catches up — issue #4275).
+  // Applied AFTER the emptiness check so it never forces a models.json on users who haven't
+  // configured any provider auth.
+  for (const [name, override] of Object.entries(loadArgentModelsOverride())) {
+    providers[name] = providers[name] ? mergeProviderModels(providers[name], override) : override;
   }
 
   const mode = cfg.models?.mode ?? DEFAULT_MODE;
