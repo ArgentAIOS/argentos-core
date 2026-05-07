@@ -10,6 +10,10 @@ import {
   normalizeControlUiBasePath,
   resolveAssistantAvatarUrl,
 } from "./control-ui-shared.js";
+import {
+  injectGatewayTokenIntoIndexHtml,
+  readGatewayConfigFromDisk,
+} from "./gateway-proxy-token.js";
 
 const ROOT_PREFIX = "/";
 
@@ -213,11 +217,21 @@ function serveIndexHtml(res: ServerResponse, indexPath: string, opts: ServeIndex
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
   const raw = fs.readFileSync(indexPath, "utf8");
+  // First inject the control-ui base path + assistant identity, then layer in
+  // the gateway auth token (loopback only) so the dashboard bundle can seed
+  // localStorage on bare-URL boots — Swift app, browser bookmark, etc. This
+  // mirrors the static-server.cjs token-inject from R-1c's PR #161 but on
+  // the gateway-served HTML at port 18789. See GH #162.
+  const withControlUi = injectControlUiConfig(raw, {
+    basePath,
+    assistantName: identity.name,
+    assistantAvatar: avatarValue,
+  });
+  const cfg = readGatewayConfigFromDisk();
   res.end(
-    injectControlUiConfig(raw, {
-      basePath,
-      assistantName: identity.name,
-      assistantAvatar: avatarValue,
+    injectGatewayTokenIntoIndexHtml(withControlUi, {
+      token: cfg.token,
+      bind: cfg.bind,
     }),
   );
 }

@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleControlUiHttpRequest } from "./control-ui.js";
 
 const makeResponse = (): {
@@ -58,6 +59,96 @@ describe("handleControlUiHttpRequest", () => {
       expect(handled).toBe(false);
       expect(setHeader).not.toHaveBeenCalled();
       expect(end).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Coverage for the gateway-port-token-fix (GH #162): the gateway's HTML
+ * serving path at port 18789 must inject `window.__ARGENT_GATEWAY_TOKEN__`
+ * on loopback so the dashboard bundle can seed localStorage on bare-URL
+ * boots — Swift app, browser bookmark, etc.
+ *
+ * `readGatewayConfigFromDisk` reads `~/.argentos/argent.json` by default;
+ * tests redirect HOME to a sandboxed temp dir to keep the real config
+ * untouched. The `process.env.HOME` swap is captured at module load time in
+ * `gateway-proxy-token.ts`, but since the constant resolves on each call
+ * via `pathOverride || DEFAULT`, the simplest path is to set HOME before
+ * the test. We re-import the module fresh per suite to pick up the new HOME.
+ */
+describe("handleControlUiHttpRequest — gateway token HTML injection", () => {
+  let savedHome: string | undefined;
+  let tmpHome: string;
+
+  beforeEach(async () => {
+    savedHome = process.env.HOME;
+    tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "argent-ui-home-"));
+    fsSync.mkdirSync(path.join(tmpHome, ".argentos"), { recursive: true });
+    process.env.HOME = tmpHome;
+    // Force re-import so DEFAULT_ARGENT_CONFIG_PATH picks up the new HOME.
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    process.env.HOME = savedHome;
+    await fs.rm(tmpHome, { recursive: true, force: true });
+  });
+
+  it("injects window.__ARGENT_GATEWAY_TOKEN__ into HTML on loopback bind", async () => {
+    fsSync.writeFileSync(
+      path.join(tmpHome, ".argentos", "argent.json"),
+      JSON.stringify({ gateway: { auth: { token: "html-inject-token" }, bind: "loopback" } }),
+    );
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "argent-ui-"));
+    try {
+      await fs.writeFile(
+        path.join(tmp, "index.html"),
+        "<!doctype html><html><head><title>x</title></head><body></body></html>",
+      );
+      // Re-import so the module re-resolves DEFAULT_ARGENT_CONFIG_PATH against
+      // the new HOME.
+      const { handleControlUiHttpRequest: handler } = await import("./control-ui.js");
+      const { res, end } = makeResponse();
+      const handled = handler(
+        { url: "/", method: "GET", headers: {} } as IncomingMessage,
+        res,
+        { root: { kind: "resolved", path: tmp } },
+      );
+      expect(handled).toBe(true);
+      const body = (end.mock.calls[0]?.[0] ?? "") as string;
+      expect(body).toContain("window.__ARGENT_GATEWAY_TOKEN__");
+      expect(body).toContain("html-inject-token");
+      // Token script must land before </head> so it executes before
+      // module-script imports.
+      expect(body.indexOf("__ARGENT_GATEWAY_TOKEN__")).toBeLessThan(body.indexOf("</head>"));
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("does NOT inject window.__ARGENT_GATEWAY_TOKEN__ when bind=lan (security)", async () => {
+    fsSync.writeFileSync(
+      path.join(tmpHome, ".argentos", "argent.json"),
+      JSON.stringify({ gateway: { auth: { token: "lan-token-secret" }, bind: "lan" } }),
+    );
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "argent-ui-"));
+    try {
+      await fs.writeFile(
+        path.join(tmp, "index.html"),
+        "<!doctype html><html><head><title>x</title></head><body></body></html>",
+      );
+      const { handleControlUiHttpRequest: handler } = await import("./control-ui.js");
+      const { res, end } = makeResponse();
+      handler(
+        { url: "/", method: "GET", headers: {} } as IncomingMessage,
+        res,
+        { root: { kind: "resolved", path: tmp } },
+      );
+      const body = (end.mock.calls[0]?.[0] ?? "") as string;
+      expect(body).not.toContain("__ARGENT_GATEWAY_TOKEN__");
+      expect(body).not.toContain("lan-token-secret");
     } finally {
       await fs.rm(tmp, { recursive: true, force: true });
     }
