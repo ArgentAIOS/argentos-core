@@ -2,6 +2,7 @@
 
 const http = require("node:http");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const HOST = process.env.HOST || "127.0.0.1";
@@ -9,6 +10,51 @@ const PORT = Number(process.env.PORT || process.env.VITE_PORT || 8080);
 const API_PORT = Number(process.env.API_PORT || 9242);
 const DIST_DIR = path.join(__dirname, "dist");
 const INDEX_PATH = path.join(DIST_DIR, "index.html");
+
+// Path to the user's argent.json. Read fresh on each call so that
+// `argent update` rotations of `gateway.auth.token` propagate immediately
+// without requiring a static-server restart.
+const ARGENT_CONFIG_PATH = path.join(process.env.HOME || os.homedir(), ".argentos", "argent.json");
+
+/**
+ * Read the gateway auth token + bind mode from argent.json. Returns
+ * `{ token: null, bind: null }` if the file is missing or malformed.
+ *
+ * Read fresh per call (not cached) so token rotations during `argent update`
+ * take effect immediately. The cost is ~1 stat + tiny JSON parse per request,
+ * which is negligible on loopback. Tests can override `pathOverride` to point
+ * at a sandboxed argent.json.
+ */
+function readGatewayConfigFromDisk(pathOverride) {
+  const target = pathOverride || ARGENT_CONFIG_PATH;
+  try {
+    if (!fs.existsSync(target)) return { token: null, bind: null };
+    const cfg = JSON.parse(fs.readFileSync(target, "utf-8"));
+    const token = cfg?.gateway?.auth?.token;
+    const bind = cfg?.gateway?.bind;
+    return {
+      token: typeof token === "string" && token.trim() ? token.trim() : null,
+      // Default to "loopback" when unset (matches gateway-daemon.ts default
+      // at src/macos/gateway-daemon.ts:95). The bind controls whether we are
+      // safe to inject the gateway token into served HTML — only when the
+      // server is reachable solely from localhost.
+      bind: typeof bind === "string" && bind.trim() ? bind.trim() : "loopback",
+    };
+  } catch {
+    return { token: null, bind: null };
+  }
+}
+
+/**
+ * The static-server is the trusted local sidecar. Injecting the gateway auth
+ * token into served HTML is only safe when the gateway+dashboard are bound to
+ * loopback (no external network reachability). For lan/tailnet/auto/custom
+ * binds we must not inject — a remote browser could read the token from the
+ * page source.
+ */
+function bindIsLoopback(bind) {
+  return bind === "loopback";
+}
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -61,7 +107,29 @@ function dashboardApiTokenFromRequest(req) {
   return null;
 }
 
-function proxyRequest(req, res) {
+/**
+ * Resolve the dashboard API auth token using the precedence chain that lets
+ * BOTH localApiFetch.ts-aware code AND raw `fetch("/api/...")` callers work:
+ *
+ *   1. Browser-supplied `Authorization` header (preserved as-is) — handled by
+ *      caller before invoking this resolver.
+ *   2. `?token=` / `?api_token=` query param on the proxied request URL.
+ *   3. `?token=` / `?api_token=` query param on the page Referer.
+ *   4. `gateway.auth.token` from `~/.argentos/argent.json` — fixes the bare-URL
+ *      bootstrap case where neither the browser, the URL, nor the Referer
+ *      carries a token. This also fixes the ~95 raw `fetch("/api/...")` call
+ *      sites in `dashboard/src/**` that bypass `localApiFetch.ts` entirely
+ *      and never set `Authorization` themselves. Reading per-request makes
+ *      `argent update` rotations of the gateway token take effect immediately.
+ */
+function resolveProxyAuthToken(req, configPathOverride) {
+  const fromRequest = dashboardApiTokenFromRequest(req);
+  if (fromRequest) return fromRequest;
+  const cfg = readGatewayConfigFromDisk(configPathOverride);
+  return cfg.token;
+}
+
+function proxyRequest(req, res, configPathOverride) {
   const headers = {
     ...req.headers,
     host: `127.0.0.1:${API_PORT}`,
@@ -71,7 +139,7 @@ function proxyRequest(req, res) {
   };
 
   if (!headers.authorization) {
-    const token = dashboardApiTokenFromRequest(req);
+    const token = resolveProxyAuthToken(req, configPathOverride);
     if (token) {
       headers.authorization = `Bearer ${token}`;
     }
@@ -109,12 +177,73 @@ function resolveStaticPath(urlPathname) {
   return path.join(DIST_DIR, safePath);
 }
 
-function serveFile(req, res, filePath, fallbackToIndex = false) {
+/**
+ * Inject `window.__ARGENT_GATEWAY_TOKEN__` into the served HTML so that the
+ * boot-time client (App.tsx → resolveGatewayToken) can seed
+ * `localStorage["argent.control.settings.v1"].token` even when the URL has no
+ * `?token=`. This unblocks `localApiFetch.ts` (which reads localStorage first)
+ * and the WS path on bare-URL loads — including Swift-launched dashboards.
+ *
+ * Returns the original HTML untouched when:
+ *   - No fresh gateway token available on disk (e.g. fresh install).
+ *   - Gateway is not bound to loopback — for lan/tailnet/auto/custom binds
+ *     a remote browser would receive the token in the page source. Only
+ *     loopback is safe (only the local user can hit the static-server).
+ *   - The injection marker is already present (idempotent guard against
+ *     double-injection if upstream HTML ever pre-injects).
+ */
+function injectGatewayTokenIntoIndexHtml(html, opts) {
+  const { token, bind } = opts;
+  if (!token) return html;
+  if (!bindIsLoopback(bind)) return html;
+  if (html.includes("__ARGENT_GATEWAY_TOKEN__")) return html;
+  const script = `<script>window.__ARGENT_GATEWAY_TOKEN__=${JSON.stringify(token)};</script>`;
+  const headClose = html.indexOf("</head>");
+  if (headClose !== -1) {
+    return `${html.slice(0, headClose)}${script}${html.slice(headClose)}`;
+  }
+  return `${script}${html}`;
+}
+
+function serveIndexHtml(req, res, indexPath, configPathOverride) {
+  const cfg = readGatewayConfigFromDisk(configPathOverride);
+  let raw;
+  try {
+    raw = fs.readFileSync(indexPath, "utf-8");
+  } catch (err) {
+    sendError(res, 500, `Failed to read index.html: ${err.message}`);
+    return;
+  }
+  const body = injectGatewayTokenIntoIndexHtml(raw, cfg);
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
+  res.end(body);
+}
+
+function serveFile(req, res, filePath, fallbackToIndex = false, configPathOverride) {
   fs.stat(filePath, (error, stats) => {
     if (!error && stats.isDirectory()) {
-      return serveFile(req, res, path.join(filePath, "index.html"), fallbackToIndex);
+      return serveFile(
+        req,
+        res,
+        path.join(filePath, "index.html"),
+        fallbackToIndex,
+        configPathOverride,
+      );
     }
     if (!error && stats.isFile()) {
+      // Always inject the gateway token into HTML responses so the SPA can
+      // seed localStorage on bare-URL boot. Other static assets stream
+      // through unchanged so cache headers + mime types stay correct.
+      if (path.basename(filePath) === "index.html") {
+        serveIndexHtml(req, res, filePath, configPathOverride);
+        return;
+      }
       res.statusCode = 200;
       res.setHeader("Content-Type", contentTypeFor(filePath));
       res.setHeader(
@@ -134,14 +263,7 @@ function serveFile(req, res, filePath, fallbackToIndex = false) {
           sendError(res, 500, "Dashboard build output is missing.");
           return;
         }
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache");
-        if (req.method === "HEAD") {
-          res.end();
-          return;
-        }
-        fs.createReadStream(INDEX_PATH).pipe(res);
+        serveIndexHtml(req, res, INDEX_PATH, configPathOverride);
       });
       return;
     }
@@ -185,8 +307,23 @@ const server = http.createServer((req, res) => {
   serveFile(req, res, candidatePath, fallbackToIndex);
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(
-    `[dashboard-ui] serving ${DIST_DIR} on http://${HOST}:${PORT} (api -> 127.0.0.1:${API_PORT})`,
-  );
-});
+// Export internals for unit tests so they can exercise the token-injection
+// + auth-fallback paths without spinning up the full server. The IIFE guard
+// keeps `node static-server.cjs` (production) bound to the listen() side.
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    console.log(
+      `[dashboard-ui] serving ${DIST_DIR} on http://${HOST}:${PORT} (api -> 127.0.0.1:${API_PORT})`,
+    );
+  });
+}
+
+module.exports = {
+  __test__: {
+    readGatewayConfigFromDisk,
+    bindIsLoopback,
+    dashboardApiTokenFromRequest,
+    resolveProxyAuthToken,
+    injectGatewayTokenIntoIndexHtml,
+  },
+};
