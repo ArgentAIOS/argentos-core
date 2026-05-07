@@ -242,9 +242,7 @@ describe("app-forge cell editing — relation picker filter", () => {
   });
 
   it("excludes already-selected IDs from the result", () => {
-    expect(
-      filterRelationPickerCandidates(candidates, "", ["rec-acme", "rec-soylent"]),
-    ).toEqual([
+    expect(filterRelationPickerCandidates(candidates, "", ["rec-acme", "rec-soylent"])).toEqual([
       { id: "rec-globex", label: "Globex" },
       { id: "rec-initech", label: "Initech" },
     ]);

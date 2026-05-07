@@ -209,7 +209,9 @@ export function filterRelationPickerCandidates(
  * `multi_select`) into a deduped list of record IDs. Empty/whitespace input
  * yields an empty list so a cleared cell is round-trippable.
  */
-export function parseLinkedRecordValue(value: string | ReadonlyArray<string> | null | undefined): string[] {
+export function parseLinkedRecordValue(
+  value: string | ReadonlyArray<string> | null | undefined,
+): string[] {
   if (value === null || value === undefined) {
     return [];
   }

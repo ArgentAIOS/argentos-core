@@ -511,16 +511,11 @@ export function LinkedRecordCellEditor({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const suppressBlurCommitRef = useRef(false);
 
-  const selectedIds = useMemo(
-    () => parseLinkedRecordIds(draft.value),
-    [draft.value],
-  );
+  const selectedIds = useMemo(() => parseLinkedRecordIds(draft.value), [draft.value]);
 
   const candidates = useMemo<RelationPickerCandidate[]>(
     () =>
-      targetTable
-        ? buildRelationPickerCandidates(targetTable.fields, targetTable.records)
-        : [],
+      targetTable ? buildRelationPickerCandidates(targetTable.fields, targetTable.records) : [],
     [targetTable],
   );
 
@@ -640,11 +635,7 @@ export function LinkedRecordCellEditor({
               onCommit();
             }}
             onKeyDown={handleKeyDown}
-            placeholder={
-              selectedIds.length === 0
-                ? `Search ${fallbackTableName}…`
-                : "Add another…"
-            }
+            placeholder={selectedIds.length === 0 ? `Search ${fallbackTableName}…` : "Add another…"}
             aria-label={`Search ${fallbackTableName}`}
             data-testid="appforge-linked-record-search-input"
             className="min-w-[80px] flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"

@@ -3455,9 +3455,8 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       // is what bubbles up into per-step `tokensUsed`/`costUsd` and ultimately
       // into `workflow_runs.total_tokens_used` / `total_cost_usd`.
       const { normalizeUsage } = await import("../agents/usage.js");
-      const { estimateUsageCost, resolveModelCostConfig } = await import(
-        "../utils/usage-format.js"
-      );
+      const { estimateUsageCost, resolveModelCostConfig } =
+        await import("../utils/usage-format.js");
       const { loadConfig } = await import("../config/config.js");
 
       let tokensUsed = 0;
