@@ -199,3 +199,142 @@ describe("Dashboard API auth gate — cross-endpoint regression sweep", () => {
     });
   }
 });
+
+// ============================================================================
+// Mid-rotation correctness — the core regression this PR fixes.
+// ============================================================================
+//
+// Before this PR: api-server read `gateway.auth.token` ONCE at module load via
+// an IIFE and held the value in `ACCEPTED_TOKENS` forever. When any code path
+// rewrote `gateway.auth.token` in `~/.argentos/argent.json` (e.g. `argent
+// update`, the wizard, or `src/browser/control-auth.ts`'s auto-gen), the
+// gateway WS path picked up the new token (per-connect re-read shipped in
+// PR #130 / `f2ae17a0`) but this api-server kept rejecting requests carrying
+// the new token until the daemon was restarted. Today's confirmed cure was:
+//
+//     launchctl kickstart -k gui/$UID/ai.argent.dashboard-api
+//
+// The drift class is now extinct because `resolveAcceptedTokens()` reads
+// argent.json fresh on every request. These tests pin that behavior.
+//
+// Use synthetic test tokens — never any real secret. The fixture writes
+// directly to the sandbox argent.json (created in the `before` block above),
+// not the developer's real config.
+const ROTATED_TOKEN = "rotated-gateway-token-ddddddddddddddddd";
+
+describe("Dashboard API auth gate — mid-rotation correctness", () => {
+  // Each test in this block mutates the sandbox argent.json. We restore the
+  // ORIGINAL gateway token (GATEWAY_TOKEN) after each one so the regression
+  // sweep above keeps passing if these run interleaved or after a re-order.
+  // (node:test runs `before`/`after` per `describe`, but the shared `server`
+  // is started once in the file-level `before`, so we manage the file state
+  // by hand here.)
+  function writeArgentJson(tokenValue) {
+    fs.writeFileSync(
+      path.join(tempHome, ".argentos", "argent.json"),
+      JSON.stringify(
+        {
+          distribution: { surfaceProfile: "full" },
+          gateway: { auth: { token: tokenValue } },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+  }
+
+  it("accepts a freshly-rotated token without restarting api-server", async () => {
+    // Sanity: the original token authenticates before rotation.
+    const beforeRotation = await get(GATEWAY_TOKEN);
+    assert.notStrictEqual(beforeRotation, 401, "GATEWAY_TOKEN should authenticate pre-rotation");
+
+    // Simulate `argent update` (or any rewrite) writing a new gateway token.
+    writeArgentJson(ROTATED_TOKEN);
+
+    // The rotated token must be accepted on the very next request — no
+    // process restart, no kickstart, no reload signal.
+    const afterRotation = await get(ROTATED_TOKEN);
+    assert.notStrictEqual(
+      afterRotation,
+      401,
+      "Rotated gateway.auth.token must authenticate without restarting api-server",
+    );
+
+    // Restore for downstream tests.
+    writeArgentJson(GATEWAY_TOKEN);
+  });
+
+  it("rejects the stale pre-rotation token after rotation", async () => {
+    writeArgentJson(ROTATED_TOKEN);
+    try {
+      // The OLD gateway token (GATEWAY_TOKEN) must NOT authenticate after
+      // rotation — the per-request resolver picks up the new value, and a
+      // request still carrying the old value should 401.
+      const status = await get(GATEWAY_TOKEN);
+      assert.strictEqual(
+        status,
+        401,
+        "Stale pre-rotation gateway token must be rejected after argent.json is rewritten",
+      );
+
+      // DASHBOARD_API_TOKEN remains valid — only the gateway slot rotated.
+      const dashStatus = await get(DASHBOARD_TOKEN);
+      assert.notStrictEqual(
+        dashStatus,
+        401,
+        "DASHBOARD_API_TOKEN must keep authenticating across gateway-token rotations",
+      );
+    } finally {
+      writeArgentJson(GATEWAY_TOKEN);
+    }
+  });
+
+  it("recovers gracefully if argent.json is briefly unparseable", async () => {
+    // Mid-rewrite, a config file may briefly contain partial/corrupt JSON.
+    // The resolver returns null for the gateway slot rather than throwing,
+    // so DASHBOARD_API_TOKEN should still authenticate (and a request with
+    // the gateway-only token should 401, not crash the process).
+    fs.writeFileSync(
+      path.join(tempHome, ".argentos", "argent.json"),
+      "{ this is not valid json",
+      "utf-8",
+    );
+    try {
+      const dashStatus = await get(DASHBOARD_TOKEN);
+      assert.notStrictEqual(
+        dashStatus,
+        401,
+        "DASHBOARD_API_TOKEN must keep authenticating even when argent.json is mid-rewrite",
+      );
+      const gwStatus = await get(GATEWAY_TOKEN);
+      assert.strictEqual(
+        gwStatus,
+        401,
+        "Old gateway token must be rejected when argent.json is unparseable (resolver returns null safely)",
+      );
+    } finally {
+      writeArgentJson(GATEWAY_TOKEN);
+    }
+  });
+
+  it("survives 100 sequential authed requests in reasonable time (smoke)", async () => {
+    // Per-request disk reads are cheap on loopback (one stat + one tiny
+    // JSON.parse). This is a smoke check that we haven't introduced a
+    // pathological cost — not a strict performance bound.
+    const start = Date.now();
+    for (let i = 0; i < 100; i++) {
+      const status = await get(GATEWAY_TOKEN, "/api/health");
+      // /api/health is in the no-auth allowlist; we hit it for the per-
+      // request middleware overhead measurement. Status will be 200.
+      assert.strictEqual(status, 200);
+    }
+    const elapsed = Date.now() - start;
+    // A very generous bound — 5s for 100 in-process requests would already
+    // indicate a serious regression. Real numbers are typically <500ms.
+    assert.ok(
+      elapsed < 5000,
+      `100 requests took ${elapsed}ms — per-request resolver may have a perf regression`,
+    );
+  });
+});
