@@ -4,6 +4,7 @@ import type { ReasoningLevel, ThinkLevel, VerboseLevel } from "../../../auto-rep
 import type { AgentStreamParams } from "../../../commands/agent/types.js";
 import type { ArgentConfig } from "../../../config/config.js";
 import type { SessionSystemPromptReport } from "../../../config/sessions/types.js";
+import type { TierReasoningEffort } from "../../../models/types.js";
 import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.js";
 import type { MessagingToolSend } from "../../pi-embedded-messaging.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
@@ -87,6 +88,14 @@ export type EmbeddedRunAttemptParams = {
   disableMessageTool?: boolean;
   extraSystemPrompt?: string;
   streamParams?: AgentStreamParams;
+  /**
+   * Per-tier `reasoningEffort` override resolved by the model router (GH #186).
+   * When set, takes precedence over the model entry's
+   * `extraParams.reasoningEffort` at request time. The runner ignores this on
+   * non-reasoning models because pi-ai's `streamParams.reasoningEffort` is a
+   * no-op there — see `applyExtraParamsToAgent` / `normalizeReasoningLevel`.
+   */
+  routingReasoningEffort?: TierReasoningEffort;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
   /** Whether this is a heartbeat run (for subsystem tool set detection). */

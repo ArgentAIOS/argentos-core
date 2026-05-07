@@ -1252,12 +1252,27 @@ export async function runEmbeddedAttempt(
         );
       }
 
+      // GH #186: merge per-tier reasoningEffort override (from the router)
+      // into the streamParams override map so it wins over the model entry's
+      // extraParams.reasoningEffort. Per-call streamParams still win over the
+      // tier override (callers like the dashboard "deep think" toggle should
+      // be able to force a value for the current request).
+      const streamParamOverrides: Record<string, unknown> | undefined =
+        params.routingReasoningEffort || params.streamParams
+          ? {
+              ...(params.routingReasoningEffort
+                ? { reasoningEffort: params.routingReasoningEffort }
+                : {}),
+              ...(params.streamParams ?? {}),
+            }
+          : undefined;
+
       applyExtraParamsToAgent(
         activeSession.agent,
         params.config,
         params.provider,
         params.modelId,
-        params.streamParams,
+        streamParamOverrides,
       );
 
       if (cacheTrace) {

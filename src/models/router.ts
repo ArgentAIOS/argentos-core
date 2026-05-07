@@ -19,6 +19,7 @@ import type {
   RoutingDecision,
   SessionModelOverride,
   TierModelMapping,
+  TierReasoningEffort,
 } from "./types.js";
 import { DEFAULT_TIER_MODELS, BUILTIN_PROFILES } from "./builtin-profiles.js";
 
@@ -83,6 +84,31 @@ function inferProviderFromModel(model: string): string | null {
   return null;
 }
 
+/**
+ * Normalize a per-tier `reasoningEffort` override.
+ *
+ * Mirrors `normalizeReasoningLevel()` in
+ * `src/agents/pi-embedded-runner/extra-params.ts` — kept inline here so the
+ * router has zero new imports outside `./types`. Returns `undefined` for
+ * absent or unrecognized values (graceful no-op on misconfig).
+ */
+function normalizeTierReasoningEffort(raw: unknown): TierReasoningEffort | undefined {
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  const normalized = raw.trim().toLowerCase();
+  switch (normalized) {
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+      return normalized;
+    default:
+      return undefined;
+  }
+}
+
 function normalizeTierMapping(
   mapping: TierModelMapping,
   fallback: TierModelMapping,
@@ -129,7 +155,11 @@ function normalizeTierMapping(
   if (!provider) provider = fallback.provider;
   if (!model) model = fallback.model;
 
-  return { provider, model };
+  // Preserve a per-slot reasoningEffort override when present. We deliberately
+  // do NOT inherit from `fallback` here — the tier-level override is opt-in
+  // per slot, and falling back to a sibling slot's value would surprise users.
+  const reasoningEffort = normalizeTierReasoningEffort(mapping.reasoningEffort);
+  return reasoningEffort ? { provider, model, reasoningEffort } : { provider, model };
 }
 
 function resolveTierModels(params: {
@@ -538,6 +568,7 @@ export function routeModel(params: {
       reason: "forceMaxTier (deep think)",
       routed: true,
       profile: profileName,
+      ...(mapping.reasoningEffort ? { reasoningEffort: mapping.reasoningEffort } : {}),
     };
   }
 
@@ -578,6 +609,7 @@ export function routeModel(params: {
       reason: `tool override: ${signals.toolName}`,
       routed: true,
       profile: profileName,
+      ...(mapping.reasoningEffort ? { reasoningEffort: mapping.reasoningEffort } : {}),
     };
   }
 
@@ -648,5 +680,6 @@ export function routeModel(params: {
     reason: reasons.join(", "),
     routed: true,
     profile: profileName,
+    ...(mapping.reasoningEffort ? { reasoningEffort: mapping.reasoningEffort } : {}),
   };
 }
