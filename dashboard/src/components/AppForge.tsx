@@ -41,7 +41,7 @@ import {
   type ForgeStructuredView,
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
-import { fetchLocalApi } from "../utils/localApiFetch";
+import { fetchLocalApi, resolveDashboardApiToken } from "../utils/localApiFetch";
 import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
 import {
   EmailCellEditor,
@@ -1131,8 +1131,11 @@ async function fetchAppForgeApi(
     return fetchLocalApi(path, init, timeoutMs);
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const token = (params.get("api_token") ?? params.get("token"))?.trim();
+  // Mirror localApiFetch's precedence (localStorage first, URL fallback) so
+  // AppForge's direct dev-port path survives a `gateway.auth.token` rotation
+  // exactly like the WS gateway connect path. See
+  // dashboard/src/utils/localApiFetch.ts:resolveDashboardApiToken.
+  const token = resolveDashboardApiToken();
   const headers = new Headers(init.headers ?? undefined);
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
