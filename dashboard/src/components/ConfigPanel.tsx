@@ -84,6 +84,7 @@ import { processTextForSpeech, defaultPatternHandlers } from "../utils/textToSpe
 import { AlignmentDocs } from "./AlignmentDocs";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AvatarPreviewPane } from "./AvatarPreviewPane";
+import { ComposioSettingsPanel } from "./connectors/ComposioSettingsPanel";
 import { LicensePanel } from "./LicensePanel";
 import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
@@ -8393,6 +8394,27 @@ export function ConfigPanel({
                       per-agent auth profile. Changing keys here affects every lane that resolves
                       the same secret variable.
                     </OperatorGuide>
+
+                    {/*
+                      Composio slice 2.2 panel — per-agent BYO key + per-agent
+                      feature toggle. Mounted here (rather than as a new
+                      ConfigPanel tab) because App.tsx's nav surface is frozen
+                      since PR #135. Keeps the Composio surface alongside the
+                      other service-key UIs without adding a route.
+                    */}
+                    <ComposioSettingsPanel
+                      agentId={defaultAgentId || "main"}
+                      onKeyChanged={async () => {
+                        try {
+                          const r = await fetch("/api/settings/service-keys");
+                          const d = await r.json();
+                          setServiceKeys(d.keys || []);
+                        } catch {
+                          // Best-effort refresh; the panel still surfaces its
+                          // own status independently.
+                        }
+                      }}
+                    />
 
                     {apiKeyMessage && (
                       <div

@@ -9345,6 +9345,12 @@ const KNOWN_API_VARIABLES = [
     category: "Media",
     description: "HeyGen video generation",
   },
+  {
+    variable: "COMPOSIO_API_KEY",
+    service: "Composio",
+    category: "Connectors",
+    description: "Composio agent-infrastructure platform (1,000+ toolkits, BYO key)",
+  },
 ];
 
 // ---- Secret Encryption (AES-256-GCM, master key from Keychain / file) ----
@@ -9930,6 +9936,167 @@ app.get("/api/settings/service-keys/audit", async (req, res) => {
   } catch (err) {
     console.error("[ServiceKeys] Audit query error:", err);
     res.status(500).json({ error: "Failed to query service key audit" });
+  }
+});
+
+// ============================================
+// COMPOSIO CONNECTOR API (slice 2.2)
+// ============================================
+//
+// Decision map (locked per ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION_REPLY.md):
+//   - Q1 user_id source       : agentId from query/body, normalized server-side
+//   - Q2 secret store         : COMPOSIO_API_KEY in service-keys.json (existing)
+//   - Q3 AOS overlap policy   : flags.preferComposio per-agent override
+//   - Q4 default-off gate     : flags.enabled false until explicit opt-in
+//   - Q4 Tool Router beta     : flags.toolRouter.enabled false until explicit opt-in
+//
+// The endpoints surface the same shape the slice 2.2 settings panel
+// renders. The dist module provides the canonical persistence + probe;
+// when it is unavailable (e.g. fresh checkout, dist not yet built) the
+// endpoints degrade to a stable shape so the UI stays usable.
+
+let _composioConnectorModulePromise = null;
+function loadComposioConnectorModule() {
+  if (_composioConnectorModulePromise) return _composioConnectorModulePromise;
+  _composioConnectorModulePromise = import("../dist/connectors/composio/index.js").catch((err) => {
+    // Cache the failure briefly but allow a future rebuild to retry by
+    // clearing the cache after a short delay. The dashboard runs long-
+    // lived so a one-shot failure should not stick forever.
+    setTimeout(() => {
+      _composioConnectorModulePromise = null;
+    }, 30_000);
+    throw err;
+  });
+  return _composioConnectorModulePromise;
+}
+
+function findComposioServiceKeyEntry() {
+  try {
+    const data = readServiceKeys();
+    return (data.keys || []).find((k) => k.variable === "COMPOSIO_API_KEY");
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/connectors/composio/status?agentId=<id>
+// Returns whether COMPOSIO_API_KEY is configured (masked tail only) plus
+// the per-agent flags. Never reveals the raw key.
+app.get("/api/connectors/composio/status", async (req, res) => {
+  try {
+    const agentId =
+      typeof req.query?.agentId === "string" && req.query.agentId.trim().length > 0
+        ? req.query.agentId.trim()
+        : undefined;
+    const entry = findComposioServiceKeyEntry();
+    const configured = Boolean(entry && entry.value);
+    let apiKeyTail = null;
+    if (configured) {
+      const decrypted = tryDecryptSecret(entry.value);
+      if (!decrypted.error && typeof decrypted.value === "string" && decrypted.value.length > 0) {
+        const trimmed = decrypted.value.trim();
+        apiKeyTail =
+          trimmed.length <= 4 ? "*".repeat(Math.max(trimmed.length, 1)) : `…${trimmed.slice(-4)}`;
+      }
+    }
+
+    let flags = {
+      enabled: false,
+      preferComposio: [],
+      toolRouter: { enabled: false },
+    };
+    let flagsAvailable = false;
+    if (agentId) {
+      try {
+        const mod = await loadComposioConnectorModule();
+        if (typeof mod.readComposioFlagsForAgent === "function") {
+          flags = mod.readComposioFlagsForAgent(agentId);
+          flagsAvailable = true;
+        }
+      } catch (err) {
+        console.warn("[Composio] flags read unavailable (dist missing?):", err?.message || err);
+      }
+    }
+
+    res.json({
+      agentId: agentId || null,
+      configured,
+      apiKeyTail,
+      enabled: entry?.enabled !== false,
+      allowedAgents: Array.isArray(entry?.allowedAgents) ? entry.allowedAgents : [],
+      flags,
+      flagsAvailable,
+      keyId: entry?.id || null,
+      apiKeyVariable: "COMPOSIO_API_KEY",
+      learnMoreUrl: "https://app.composio.dev",
+    });
+  } catch (err) {
+    console.error("[Composio] status error:", err);
+    res.status(500).json({ error: "Failed to read Composio status" });
+  }
+});
+
+// PUT /api/connectors/composio/flags
+// Body: { agentId, enabled?, toolRouterEnabled?, preferComposio? }
+app.put("/api/connectors/composio/flags", async (req, res) => {
+  try {
+    const { agentId, enabled, toolRouterEnabled, preferComposio } = req.body || {};
+    if (!agentId || typeof agentId !== "string" || !agentId.trim()) {
+      return res.status(400).json({ error: "agentId is required" });
+    }
+    const mod = await loadComposioConnectorModule();
+    if (typeof mod.writeComposioFlagsForAgent !== "function") {
+      return res
+        .status(503)
+        .json({ error: "Composio flags persistence unavailable in runtime build" });
+    }
+    const next = mod.writeComposioFlagsForAgent(agentId.trim(), {
+      enabled: enabled === true,
+      toolRouter: { enabled: toolRouterEnabled === true },
+      preferComposio: Array.isArray(preferComposio)
+        ? preferComposio.filter((s) => typeof s === "string")
+        : [],
+    });
+    res.json({ agentId: agentId.trim(), flags: next });
+  } catch (err) {
+    console.error("[Composio] flags write error:", err);
+    res.status(500).json({ error: "Failed to write Composio flags" });
+  }
+});
+
+// POST /api/connectors/composio/test
+// Body: { agentId } — runs the slice 2.1 connectivity probe end-to-end.
+app.post("/api/connectors/composio/test", async (req, res) => {
+  try {
+    const agentId =
+      typeof req.body?.agentId === "string" && req.body.agentId.trim().length > 0
+        ? req.body.agentId.trim()
+        : undefined;
+    if (!agentId) {
+      return res.status(400).json({ error: "agentId is required" });
+    }
+    const mod = await loadComposioConnectorModule();
+    if (typeof mod.checkComposioConnectivity !== "function") {
+      return res
+        .status(503)
+        .json({ error: "Composio connectivity probe unavailable in runtime build" });
+    }
+    const flags =
+      typeof mod.readComposioFlagsForAgent === "function"
+        ? mod.readComposioFlagsForAgent(agentId)
+        : { enabled: true };
+    // For an explicit operator-driven test we treat the request as opt-in
+    // even if the persisted gate is off — otherwise the user can never
+    // verify their key works before flipping the master switch.
+    const probeFlags = { ...flags, enabled: true };
+    const result = await mod.checkComposioConnectivity({
+      actor: { actorId: agentId },
+      flags: probeFlags,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("[Composio] connectivity test error:", err);
+    res.status(500).json({ error: "Failed to run Composio connectivity probe" });
   }
 });
 
