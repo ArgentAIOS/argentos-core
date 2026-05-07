@@ -21,10 +21,33 @@ function loadDotenv(): Record<string, string> {
   }
 }
 
+// Read version from root package.json (canonical source) at build time so the
+// dashboard's version badge can render even when /api/build-info is unavailable
+// (e.g., api-server auth failures). Falls back to dashboard's own package.json,
+// then to "unknown" so the build never fails on this lookup.
+function loadAppVersion(): string {
+  const candidates = [resolve(__dirname, "..", "package.json"), resolve(__dirname, "package.json")];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(readFileSync(candidate, "utf-8")) as { version?: unknown };
+      if (typeof parsed.version === "string" && parsed.version.trim()) {
+        return parsed.version.trim();
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  return "unknown";
+}
+
 const dotenv = loadDotenv();
 const dashboardApiToken = process.env.DASHBOARD_API_TOKEN || dotenv.DASHBOARD_API_TOKEN;
+const appVersion = loadAppVersion();
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     react(),
     tailwindcss(),
