@@ -38,7 +38,18 @@ before(async () => {
   fs.mkdirSync(path.join(tempHome, ".argentos"), { recursive: true });
   fs.writeFileSync(
     path.join(tempHome, ".argentos", "argent.json"),
-    JSON.stringify({ gateway: { auth: { token: GATEWAY_TOKEN } } }, null, 2),
+    // surfaceProfile: "full" mirrors a real Full install. Without it, the
+    // public-core route-blocking gate runs BEFORE the auth gate and 403s
+    // a handful of routes (e.g. /api/settings/intent), which would mask
+    // auth-gate behaviour in the regression sweep below.
+    JSON.stringify(
+      {
+        distribution: { surfaceProfile: "full" },
+        gateway: { auth: { token: GATEWAY_TOKEN } },
+      },
+      null,
+      2,
+    ),
     "utf-8",
   );
 
@@ -88,13 +99,12 @@ after(() => {
   }
 });
 
-async function get(token) {
+async function get(token, path = "/api/tasks") {
   const headers = {};
   if (token !== null) {
     headers.Authorization = `Bearer ${token}`;
   }
-  // /api/tasks is a normal protected route (not on the skip list).
-  const res = await fetch(`${baseUrl}/api/tasks`, { headers });
+  const res = await fetch(`${baseUrl}${path}`, { headers });
   return res.status;
 }
 
@@ -127,4 +137,65 @@ describe("Dashboard API auth gate (unified token)", () => {
     const res = await fetch(`${baseUrl}/api/health`);
     assert.strictEqual(res.status, 200);
   });
+});
+
+// Cross-endpoint regression coverage — the bug surfaced after PR #148 was that
+// "every /api/* REST call returns 401". This sweep proves the auth gate
+// passes the gateway-auth-token chain across a wide swath of the affected
+// endpoint list (build-info, score, stats, widgets, upcoming, tasks, apps,
+// jobs, raw-config, documents, load-profile, nudges, USER.md, projects,
+// settings/agent, settings/auth-profiles, settings/service-keys,
+// settings/available-models, settings/intent, settings/knowledge/collections,
+// settings/alignment, settings/gateway, calendar/accounts) AND the new
+// PR #148 Composio endpoints. If the gateway-token chain ever regresses
+// across any of these, this test will catch it.
+const REGRESSION_ENDPOINTS = [
+  "/api/build-info",
+  "/api/score",
+  "/api/stats",
+  "/api/widgets",
+  "/api/upcoming",
+  "/api/tasks",
+  "/api/apps",
+  "/api/jobs",
+  "/api/raw-config",
+  "/api/documents",
+  "/api/load-profile",
+  "/api/nudges",
+  "/api/USER.md",
+  "/api/projects",
+  "/api/settings/agent",
+  "/api/settings/auth-profiles",
+  "/api/settings/service-keys",
+  "/api/settings/available-models",
+  "/api/settings/intent",
+  "/api/settings/knowledge/collections",
+  "/api/settings/alignment",
+  "/api/settings/gateway",
+  "/api/calendar/accounts",
+  // PR #148 Composio surface — must remain auth-gated, not bypass.
+  "/api/connectors/composio/status",
+];
+
+describe("Dashboard API auth gate — cross-endpoint regression sweep", () => {
+  for (const endpoint of REGRESSION_ENDPOINTS) {
+    it(`${endpoint}: rejects request with no token`, async () => {
+      const status = await get(null, endpoint);
+      assert.strictEqual(status, 401, `${endpoint} must reject no-token requests`);
+    });
+
+    it(`${endpoint}: accepts gateway.auth.token`, async () => {
+      const status = await get(GATEWAY_TOKEN, endpoint);
+      assert.notStrictEqual(
+        status,
+        401,
+        `${endpoint} must accept the gateway-auth-token chain (PR #148 regression sentinel)`,
+      );
+    });
+
+    it(`${endpoint}: accepts DASHBOARD_API_TOKEN`, async () => {
+      const status = await get(DASHBOARD_TOKEN, endpoint);
+      assert.notStrictEqual(status, 401, `${endpoint} must accept DASHBOARD_API_TOKEN`);
+    });
+  }
 });
