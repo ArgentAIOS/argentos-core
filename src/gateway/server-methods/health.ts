@@ -25,8 +25,35 @@ export const healthHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
     }
   },
-  status: async ({ respond }) => {
+  status: async ({ respond, context }) => {
     const status = await getStatusSummary();
-    respond(true, status, undefined);
+    // Augment with channel runtime state so `argent gateway status`
+    // (which calls this method) can surface, for example, that
+    // Telegram polling is in exponential backoff after a 409 collision
+    // — without operators having to also run `argent channels status`.
+    const runtime = context.getRuntimeSnapshot();
+    const channelRuntime: Record<
+      string,
+      {
+        accountId: string;
+        running: boolean;
+        state?: string;
+        lastError?: string | null;
+        nextRetryAt?: number | null;
+      }
+    > = {};
+    for (const [channelId, snapshot] of Object.entries(runtime.channels)) {
+      if (!snapshot) {
+        continue;
+      }
+      channelRuntime[channelId] = {
+        accountId: snapshot.accountId,
+        running: snapshot.running ?? false,
+        state: snapshot.state,
+        lastError: snapshot.lastError ?? null,
+        nextRetryAt: snapshot.nextRetryAt ?? null,
+      };
+    }
+    respond(true, { ...status, channelRuntime }, undefined);
   },
 };

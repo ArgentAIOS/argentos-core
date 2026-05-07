@@ -3,6 +3,7 @@ import type { ArgentConfig } from "../../config/config.js";
 import type { GatewayBindMode, GatewayControlUiConfig } from "../../config/types.js";
 import type { FindExtraGatewayServicesOptions } from "../../daemon/inspect.js";
 import type { ServiceConfigAudit } from "../../daemon/service-audit.js";
+import type { GatewayStatusChannelRuntime } from "./probe.js";
 import type { GatewayRpcOpts } from "./types.js";
 import {
   createConfigIO,
@@ -103,6 +104,13 @@ export type DaemonStatus = {
       | "rpc-unreachable";
     diagnosisMessage?: string;
   };
+  /**
+   * Per-channel runtime state pulled out of the status RPC response.
+   * Allows the daemon-cli to surface, e.g., "telegram backing-off
+   * (next attempt in 60s)" without a second RPC call. Empty / absent
+   * when the gateway is unreachable or older than this build.
+   */
+  channelRuntime?: Record<string, GatewayStatusChannelRuntime>;
   extraServices: Array<{ label: string; detail: string; scope: string }>;
 };
 
@@ -442,7 +450,8 @@ export async function gatherDaemonStatus(
     ...(rpc && !rpc.ok
       ? {
           rpc: {
-            ...rpc,
+            ok: rpc.ok,
+            error: rpc.error,
             url: probeUrl,
             ...resolveRpcDiagnosis({
               rpcError: rpc.error,
@@ -454,8 +463,11 @@ export async function gatherDaemonStatus(
           },
         }
       : rpc
-        ? { rpc: { ...rpc, url: probeUrl } }
+        ? { rpc: { ok: rpc.ok, url: probeUrl } }
         : {}),
+    ...(rpc && rpc.ok && rpc.channelRuntime && Object.keys(rpc.channelRuntime).length > 0
+      ? { channelRuntime: rpc.channelRuntime }
+      : {}),
     extraServices,
   };
 }

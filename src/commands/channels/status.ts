@@ -39,6 +39,13 @@ export function formatGatewayChannelsStatusLines(payload: Record<string, unknown
       if (typeof account.connected === "boolean") {
         bits.push(account.connected ? "connected" : "disconnected");
       }
+      // Channel-supplied lifecycle state (e.g. polling, backing-off,
+      // exited). Non-trivial when a channel has entered backoff or
+      // given up — the operator needs this to decide whether to wait
+      // or run `argent gateway restart`.
+      if (typeof account.state === "string" && account.state.length > 0) {
+        bits.push(`state:${account.state}`);
+      }
       const inboundAt =
         typeof account.lastInboundAt === "number" && Number.isFinite(account.lastInboundAt)
           ? account.lastInboundAt

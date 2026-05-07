@@ -16,6 +16,19 @@ import { makeProxyFetch } from "./proxy.js";
 import { readTelegramUpdateOffset, writeTelegramUpdateOffset } from "./update-offset-store.js";
 import { startTelegramWebhook } from "./webhook.js";
 
+/**
+ * State patch reported by the polling loop so the channel-runtime layer
+ * (server-channels.ts → channels.status RPC → `argent channels status` /
+ * `argent gateway status`) can surface what the Telegram poller is doing
+ * without operator log diving. Mirrors the optional fields on
+ * ChannelAccountSnapshot.
+ */
+export type TelegramMonitorStatusPatch = {
+  state?: string;
+  lastError?: string | null;
+  nextRetryAt?: number | null;
+};
+
 export type MonitorTelegramOpts = {
   token?: string;
   accountId?: string;
@@ -28,6 +41,12 @@ export type MonitorTelegramOpts = {
   webhookSecret?: string;
   proxyFetch?: typeof fetch;
   webhookUrl?: string;
+  /**
+   * Invoked on poller lifecycle transitions. Optional; the monitor still
+   * works without it. Wire this to ctx.setStatus from
+   * ChannelGatewayContext to expose state on `argent channels status`.
+   */
+  onStatusChange?: (patch: TelegramMonitorStatusPatch) => void;
 };
 
 const TELEGRAM_LONG_POLL_TIMEOUT_SECONDS = 30;
@@ -59,9 +78,24 @@ const TELEGRAM_POLL_RESTART_POLICY = {
   factor: 1.8,
   jitter: 0.25,
 };
-const TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS =
-  (TELEGRAM_LONG_POLL_TIMEOUT_SECONDS * 2 + 5) * 1000;
-const TELEGRAM_GET_UPDATES_CONFLICT_MAX_CONSECUTIVE = 3;
+
+/**
+ * Conflict re-arm policy. After a 409 getUpdates collision, sleep before
+ * trying again to allow the colliding instance time to release the lock.
+ *
+ * 60s → 120s → 240s → 480s → 960s → 1800s (cap) → ...
+ *
+ * No permanent exit: we keep polling indefinitely so a transient overlap
+ * (e.g. a config-reload-driven gateway restart that briefly leaves a
+ * legacy poller alive) self-recovers without manual `argent gateway
+ * restart` intervention. The counter resets the moment a poll succeeds.
+ */
+const TELEGRAM_GET_UPDATES_CONFLICT_BACKOFF = {
+  initialMs: 60_000,
+  maxMs: 30 * 60 * 1000, // 30 min
+  factor: 2,
+  jitter: 0,
+};
 
 const waitForAbort = async (abortSignal?: AbortSignal) => {
   if (!abortSignal || abortSignal.aborted) {
@@ -104,6 +138,17 @@ const isGrammyHttpError = (err: unknown): boolean => {
 
 export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
   const log = opts.runtime?.error ?? console.error;
+  const reportStatus = (patch: TelegramMonitorStatusPatch) => {
+    if (!opts.onStatusChange) {
+      return;
+    }
+    try {
+      opts.onStatusChange(patch);
+    } catch (err) {
+      // Status reporting must never crash the polling loop.
+      log(`[telegram] onStatusChange threw: ${formatErrorMessage(err)}`);
+    }
+  };
 
   // Register handler for Grammy HttpError unhandled rejections.
   // This catches network errors that escape the polling loop's try-catch
@@ -179,6 +224,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
         abortSignal: opts.abortSignal,
         publicUrl: opts.webhookUrl,
       });
+      reportStatus({ state: "webhook", lastError: null, nextRetryAt: null });
       return;
     }
 
@@ -190,6 +236,9 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       log(
         `Telegram polling already active for token ${pollingSlot.tokenHash} (account "${pollingSlot.existing.accountId}"); skipping duplicate poller for account "${account.accountId}".`,
       );
+      reportStatus({
+        state: `duplicate (token already held by account "${pollingSlot.existing.accountId}")`,
+      });
       await waitForAbort(opts.abortSignal);
       return;
     }
@@ -208,9 +257,18 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
           }
         };
         opts.abortSignal?.addEventListener("abort", stopOnAbort, { once: true });
+        reportStatus({ state: "polling", lastError: null, nextRetryAt: null });
         try {
           // runner.task() returns a promise that resolves when the runner stops
           await runner.task();
+          // A clean task() resolution without an abort means polling
+          // ended of its own accord (rare; usually means runner.stop()
+          // was called from elsewhere). Treat as success — clear any
+          // pending backoff state before returning.
+          if (!opts.abortSignal?.aborted) {
+            consecutiveGetUpdatesConflicts = 0;
+            restartAttempts = 0;
+          }
           return;
         } catch (err) {
           if (opts.abortSignal?.aborted) {
@@ -226,28 +284,40 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
           const isConflict = isGetUpdatesConflict(err);
           const isRecoverable = isRecoverableTelegramNetworkError(err, { context: "polling" });
           if (!isConflict && !isRecoverable) {
+            reportStatus({
+              state: "exited (manual restart needed)",
+              lastError: formatErrorMessage(err),
+              nextRetryAt: null,
+            });
             throw err;
           }
           restartAttempts += 1;
           const errMsg = formatErrorMessage(err);
+          let delayMs: number;
           if (isConflict) {
             consecutiveGetUpdatesConflicts += 1;
-            if (consecutiveGetUpdatesConflicts >= TELEGRAM_GET_UPDATES_CONFLICT_MAX_CONSECUTIVE) {
-              const message = `Telegram getUpdates conflict persisted for ${consecutiveGetUpdatesConflicts} consecutive attempts on account "${account.accountId}"; stopping polling until channel restart to avoid fighting another poller.`;
-              (opts.runtime?.error ?? console.error)(`${message} Last error: ${errMsg}.`);
-              throw new Error(message, { cause: err });
-            }
+            delayMs = computeBackoff(
+              TELEGRAM_GET_UPDATES_CONFLICT_BACKOFF,
+              consecutiveGetUpdatesConflicts,
+            );
           } else {
             consecutiveGetUpdatesConflicts = 0;
+            delayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
           }
-          const retryDelayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
-          const delayMs = isConflict
-            ? Math.max(retryDelayMs, TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS)
-            : retryDelayMs;
           const reason = isConflict ? "getUpdates conflict" : "network error";
           (opts.runtime?.error ?? console.error)(
-            `Telegram ${reason}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}.`,
+            `Telegram ${reason}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}` +
+              (isConflict
+                ? ` (consecutive conflicts: ${consecutiveGetUpdatesConflicts}; will keep retrying with exponential backoff capped at ${formatDurationMs(TELEGRAM_GET_UPDATES_CONFLICT_BACKOFF.maxMs)}).`
+                : "."),
           );
+          reportStatus({
+            state: isConflict
+              ? `backing-off (next attempt in ${formatDurationMs(delayMs)}; consecutive 409 conflicts: ${consecutiveGetUpdatesConflicts})`
+              : `recovering (next attempt in ${formatDurationMs(delayMs)})`,
+            lastError: errMsg,
+            nextRetryAt: Date.now() + delayMs,
+          });
           try {
             await sleepWithAbort(delayMs, opts.abortSignal);
           } catch (sleepErr) {
@@ -262,6 +332,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       }
     } finally {
       pollingSlot.release();
+      reportStatus({ state: "stopped", nextRetryAt: null });
     }
   } finally {
     unregisterHandler();

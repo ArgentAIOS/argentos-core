@@ -376,6 +376,36 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean })
     spacer();
   }
 
+  if (status.channelRuntime && Object.keys(status.channelRuntime).length > 0) {
+    spacer();
+    defaultRuntime.log(label("Channels:"));
+    const channelIds = Object.keys(status.channelRuntime).sort();
+    for (const channelId of channelIds) {
+      const entry = status.channelRuntime[channelId];
+      if (!entry) {
+        continue;
+      }
+      const stateText = entry.state ?? (entry.running ? "running" : "stopped");
+      const stateColor =
+        typeof entry.state === "string" && entry.state.startsWith("backing-off")
+          ? theme.warn
+          : typeof entry.state === "string" && entry.state.startsWith("exited")
+            ? theme.error
+            : entry.running
+              ? theme.success
+              : theme.muted;
+      let line = `  ${channelId} (${entry.accountId}): ${colorize(rich, stateColor, stateText)}`;
+      if (entry.lastError) {
+        line += ` ${colorize(rich, theme.error, `[err: ${entry.lastError}]`)}`;
+      }
+      if (typeof entry.nextRetryAt === "number" && entry.nextRetryAt > Date.now()) {
+        const seconds = Math.max(0, Math.round((entry.nextRetryAt - Date.now()) / 1000));
+        line += ` ${colorize(rich, theme.muted, `(retry in ${seconds}s)`)}`;
+      }
+      defaultRuntime.log(line);
+    }
+  }
+
   defaultRuntime.log(`${label("Troubles:")} run ${formatCliCommand("argent status")}`);
   defaultRuntime.log(`${label("Troubleshooting:")} https://docs.argent.ai/troubleshooting`);
 }

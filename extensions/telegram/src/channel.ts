@@ -380,6 +380,20 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         Object.entries(groups ?? {}).some(
           ([key, value]) => key !== "*" && value?.requireMention === false,
         );
+      // state is reported by the Telegram polling loop (monitor.ts → ctx.setStatus)
+      // when the channel is in a non-default lifecycle (backing off, exited,
+      // duplicate, etc). Falling back to a derived value keeps `state` populated
+      // for steady-state observability too.
+      const reportedState = runtime?.state;
+      const derivedState = !configured
+        ? "disabled (no token)"
+        : runtime?.running
+          ? account.config.webhookUrl
+            ? "webhook"
+            : "polling"
+          : runtime?.lastStopAt
+            ? "stopped"
+            : "idle";
       return {
         accountId: account.accountId,
         name: account.name,
@@ -396,6 +410,8 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         allowUnmentionedGroups,
         lastInboundAt: runtime?.lastInboundAt ?? null,
         lastOutboundAt: runtime?.lastOutboundAt ?? null,
+        state: reportedState ?? derivedState,
+        nextRetryAt: runtime?.nextRetryAt ?? null,
       };
     },
   },
@@ -420,6 +436,23 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         }
       }
       ctx.log?.info(`[${account.accountId}] starting provider${telegramBotLabel}`);
+      // Wire the polling-loop status callback into the channel runtime
+      // store so `argent channels status` / dashboard see lifecycle
+      // transitions (polling → backing-off → polling) without log diving.
+      const onStatusChange = (patch: {
+        state?: string;
+        lastError?: string | null;
+        nextRetryAt?: number | null;
+      }) => {
+        const current = ctx.getStatus();
+        ctx.setStatus({
+          ...current,
+          accountId: account.accountId,
+          ...(patch.state !== undefined ? { state: patch.state } : {}),
+          ...(patch.lastError !== undefined ? { lastError: patch.lastError } : {}),
+          ...(patch.nextRetryAt !== undefined ? { nextRetryAt: patch.nextRetryAt } : {}),
+        });
+      };
       return getTelegramRuntime().channel.telegram.monitorTelegramProvider({
         token,
         accountId: account.accountId,
@@ -430,6 +463,7 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         webhookUrl: account.config.webhookUrl,
         webhookSecret: account.config.webhookSecret,
         webhookPath: account.config.webhookPath,
+        onStatusChange,
       });
     },
     logoutAccount: async ({ accountId, cfg }) => {
