@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-subctl"
+version = "0.1.0"
+description = "Agent-native subctl connector harness — multi-account AI subscription control plane"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1"]
+
+[project.scripts]
+aos-subctl = "cli_aos.subctl.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]
