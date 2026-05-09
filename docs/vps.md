@@ -1,5 +1,5 @@
 ---
-summary: "VPS hosting hub for ArgentOS (Oracle/Fly/Hetzner/GCP/exe.dev)"
+summary: "VPS hosting hub for ArgentOS (Railway/Northflank/Oracle/Hetzner/GCP/exe.dev)"
 read_when:
   - You want to run the Gateway in the cloud
   - You need a quick map of VPS/hosting guides
@@ -16,7 +16,6 @@ deployments work at a high level.
 - **Railway** (one‑click + browser setup): [Railway](/railway)
 - **Northflank** (one‑click + browser setup): [Northflank](/northflank)
 - **Oracle Cloud (Always Free)**: [Oracle](/platforms/oracle) — $0/month (Always Free, ARM; capacity/signup can be finicky)
-- **Fly.io**: [Fly.io](/platforms/fly)
 - **Hetzner (Docker)**: [Hetzner](/platforms/hetzner)
 - **GCP (Compute Engine)**: [GCP](/platforms/gcp)
 - **exe.dev** (VM + HTTPS proxy): [exe.dev](/platforms/exe-dev)
