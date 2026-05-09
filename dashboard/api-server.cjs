@@ -10012,17 +10012,42 @@ app.get("/api/settings/service-keys/audit", async (req, res) => {
 // endpoints degrade to a stable shape so the UI stays usable.
 
 let _composioConnectorModulePromise = null;
+let _composioMissingLoggedOnce = false;
+// Resolves to the composio connector module, or `null` when the compiled dist
+// is unavailable (fresh checkout, dist not yet built, or installed bundle
+// shipped without this chunk). Callers MUST treat a `null` return as
+// "feature disabled" and respond with 503; this loader never throws for the
+// expected `ERR_MODULE_NOT_FOUND` case, so the gateway log stays clean.
 function loadComposioConnectorModule() {
   if (_composioConnectorModulePromise) return _composioConnectorModulePromise;
-  _composioConnectorModulePromise = import("../dist/connectors/composio/index.js").catch((err) => {
-    // Cache the failure briefly but allow a future rebuild to retry by
-    // clearing the cache after a short delay. The dashboard runs long-
-    // lived so a one-shot failure should not stick forever.
-    setTimeout(() => {
-      _composioConnectorModulePromise = null;
-    }, 30_000);
-    throw err;
-  });
+  _composioConnectorModulePromise = import("../dist/connectors/composio/index.js").then(
+    (mod) => mod,
+    (err) => {
+      const isMissing = err?.code === "ERR_MODULE_NOT_FOUND";
+      if (isMissing) {
+        // Expected when the connector chunk wasn't emitted by tsdown.
+        // Log a single info-level breadcrumb the first time we hit it so
+        // operators can see the feature is intentionally degraded without
+        // the log turning into a per-request stack-trace stream.
+        if (!_composioMissingLoggedOnce) {
+          console.log(
+            "[Composio] dist/connectors/composio/index.js not present; flag persistence + connectivity probe disabled. (Run `pnpm build` to enable.)",
+          );
+          _composioMissingLoggedOnce = true;
+        }
+      } else {
+        // Unexpected import error — keep this loud so it isn't lost.
+        console.error("[Composio] connector module import failed:", err);
+      }
+      // Allow a future rebuild to retry by clearing the cache after 30s.
+      // The dashboard runs long-lived so a one-shot failure should not
+      // stick forever.
+      setTimeout(() => {
+        _composioConnectorModulePromise = null;
+      }, 30_000);
+      return null;
+    },
+  );
   return _composioConnectorModulePromise;
 }
 
@@ -10063,14 +10088,17 @@ app.get("/api/connectors/composio/status", async (req, res) => {
     };
     let flagsAvailable = false;
     if (agentId) {
-      try {
-        const mod = await loadComposioConnectorModule();
-        if (typeof mod.readComposioFlagsForAgent === "function") {
+      // loadComposioConnectorModule resolves to null when the dist chunk is
+      // missing; treat that as "feature disabled" and degrade the response
+      // to the default flag shape instead of throwing.
+      const mod = await loadComposioConnectorModule();
+      if (mod && typeof mod.readComposioFlagsForAgent === "function") {
+        try {
           flags = mod.readComposioFlagsForAgent(agentId);
           flagsAvailable = true;
+        } catch (err) {
+          console.warn("[Composio] flags read failed for agent:", err?.message || err);
         }
-      } catch (err) {
-        console.warn("[Composio] flags read unavailable (dist missing?):", err?.message || err);
       }
     }
 
@@ -10101,7 +10129,7 @@ app.put("/api/connectors/composio/flags", async (req, res) => {
       return res.status(400).json({ error: "agentId is required" });
     }
     const mod = await loadComposioConnectorModule();
-    if (typeof mod.writeComposioFlagsForAgent !== "function") {
+    if (!mod || typeof mod.writeComposioFlagsForAgent !== "function") {
       return res
         .status(503)
         .json({ error: "Composio flags persistence unavailable in runtime build" });
@@ -10132,7 +10160,7 @@ app.post("/api/connectors/composio/test", async (req, res) => {
       return res.status(400).json({ error: "agentId is required" });
     }
     const mod = await loadComposioConnectorModule();
-    if (typeof mod.checkComposioConnectivity !== "function") {
+    if (!mod || typeof mod.checkComposioConnectivity !== "function") {
       return res
         .status(503)
         .json({ error: "Composio connectivity probe unavailable in runtime build" });
@@ -14597,19 +14625,35 @@ app.patch("/api/settings/models", (req, res) => {
 // MODEL PROFILES API
 // ============================================
 
+// Memoize the "missing dist" log so the gateway log doesn't spam every time
+// the settings panel reloads.
+let _builtinProfilesMissingLoggedOnce = false;
+
 // GET /api/settings/model-profiles — Returns all profiles + activeProfile
 app.get("/api/settings/model-profiles", async (req, res) => {
   try {
     const config = readArgentConfig();
     const router = config.agents?.defaults?.modelRouter || {};
 
-    // Load built-in profiles from single source of truth (compiled dist)
+    // Load built-in profiles from single source of truth (compiled dist).
+    // When the dist chunk is missing (fresh checkout / partial bundle) we
+    // degrade to an empty built-in set rather than failing the request, and
+    // log only once at info level so the gateway log stays clean.
     let builtinProfiles = {};
     try {
       const { BUILTIN_PROFILES } = await import("../dist/models/builtin-profiles.js");
       builtinProfiles = BUILTIN_PROFILES || {};
-    } catch {
-      console.warn("[ModelProfiles] Could not load built-in profiles from dist, using empty set");
+    } catch (err) {
+      if (err?.code === "ERR_MODULE_NOT_FOUND") {
+        if (!_builtinProfilesMissingLoggedOnce) {
+          console.log(
+            "[ModelProfiles] dist/models/builtin-profiles.js not present; using empty built-in set. (Run `pnpm build` to enable.)",
+          );
+          _builtinProfilesMissingLoggedOnce = true;
+        }
+      } else {
+        console.warn("[ModelProfiles] Failed to load built-in profiles:", err?.message || err);
+      }
     }
 
     const profiles = { ...builtinProfiles, ...(router.profiles || {}) };
