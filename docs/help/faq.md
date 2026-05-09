@@ -590,7 +590,7 @@ Short answer: follow the Linux guide, then run the onboarding wizard.
 
 Any Linux VPS works. Install on the server, then use SSH/Tailscale to reach the Gateway.
 
-Guides: [exe.dev](/platforms/exe-dev), [Hetzner](/platforms/hetzner), [Fly.io](/platforms/fly).
+Guides: [exe.dev](/platforms/exe-dev), [Hetzner](/platforms/hetzner), [Railway](/railway).
 Remote access: [Gateway remote](/gateway/remote).
 
 ### Where are the cloudVPS install guides
@@ -598,7 +598,7 @@ Remote access: [Gateway remote](/gateway/remote).
 We keep a **hosting hub** with the common providers. Pick one and follow the guide:
 
 - [VPS hosting](/vps) (all providers in one place)
-- [Fly.io](/platforms/fly)
+- [Railway](/railway)
 - [Hetzner](/platforms/hetzner)
 - [exe.dev](/platforms/exe-dev)
 
