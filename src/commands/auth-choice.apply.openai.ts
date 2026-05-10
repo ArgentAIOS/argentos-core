@@ -7,6 +7,7 @@ import {
   normalizeApiKeyInput,
   validateApiKeyInput,
 } from "./auth-choice.api-key.js";
+import { isHeadlessSession } from "./oauth-env.js";
 import { applyAuthProfileConfig, writeOAuthCredentials } from "./onboard-auth.js";
 import { openUrl } from "./onboard-helpers.js";
 import {
@@ -81,12 +82,23 @@ export async function applyAuthChoiceOpenAI(
       );
     };
 
+    const headless = isHeadlessSession();
     await params.prompter.note(
-      [
-        "OpenAI will show a short device code.",
-        "Open the URL in your browser, enter the code, and return here.",
-        "No localhost callback is required.",
-      ].join("\n"),
+      headless
+        ? [
+            "Detected headless / SSH session — using device-code flow.",
+            "Codex will print a URL and a short code. Open the URL in any browser,",
+            "paste the code, and approve.",
+            "",
+            "NOTE: device-code requires that you've enabled it once in",
+            'ChatGPT web → Settings → Security → "Enable device code authorization',
+            "for Codex\" for the account you're authenticating.",
+          ].join("\n")
+        : [
+            "OpenAI will show a short device code.",
+            "Open the URL in your browser, enter the code, and return here.",
+            "No localhost callback is required.",
+          ].join("\n"),
       "OpenAI Codex OAuth",
     );
     const spin = params.prompter.progress("Starting Codex device login...");
@@ -95,7 +107,9 @@ export async function applyAuthChoiceOpenAI(
         onStart: async (info) => {
           params.runtime.log(`Open: ${info.verificationUri}`);
           params.runtime.log(`Code: ${info.userCode}`);
-          await openUrl(info.verificationUri);
+          if (!headless) {
+            await openUrl(info.verificationUri);
+          }
           await params.prompter.note(
             [`Open: ${info.verificationUri}`, `Code: ${info.userCode}`].join("\n"),
             "OpenAI Codex device login",
@@ -103,6 +117,12 @@ export async function applyAuthChoiceOpenAI(
         },
         onProgress: (msg) => spin.update(msg),
       });
+      // Post-auth sanity check: a partial result with no access/refresh
+      // tokens looks like success but persists a useless credential. Fail
+      // loud rather than half-authed.
+      if (creds && (!creds.access || !creds.refresh)) {
+        throw new Error("OpenAI Codex OAuth completed but tokens are missing — re-run the flow.");
+      }
       spin.stop("OpenAI OAuth complete");
       if (creds) {
         await writeOAuthCredentials("openai-codex", creds, params.agentDir);
