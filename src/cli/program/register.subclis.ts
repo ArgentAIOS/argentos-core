@@ -283,6 +283,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "personal-skills",
+    description: "DB-backed Personal Skills maintenance",
+    register: async (program) => {
+      const mod = await import("../personal-skills-cli.js");
+      mod.registerPersonalSkillsCli(program);
+    },
+  },
+  {
     name: "update",
     description: "CLI update helpers",
     register: async (program) => {
