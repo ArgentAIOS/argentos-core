@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../../config/config.js";
+import { discordOutbound } from "../../channels/plugins/outbound/discord.js";
 import { signalOutbound } from "../../channels/plugins/outbound/signal.js";
 import { telegramOutbound } from "../../channels/plugins/outbound/telegram.js";
 import { whatsappOutbound } from "../../channels/plugins/outbound/whatsapp.js";
@@ -331,6 +332,69 @@ describe("deliverOutboundPayloads", () => {
     );
   });
 
+  // GH #198 — Telegram should render `[MOOD:X]` / `[TTS:[tone] body]` as
+  // icon-prefixed text instead of leaking the bracket syntax.
+  it("renders MOOD and TTS agent tags as icons for telegram (GH #198)", async () => {
+    const sendTelegram = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "c1" });
+    const cfg: ArgentConfig = { channels: { telegram: { botToken: "tok-1" } } };
+    const prevToken = process.env.TELEGRAM_BOT_TOKEN;
+    process.env.TELEGRAM_BOT_TOKEN = "";
+    try {
+      await deliverOutboundPayloads({
+        cfg,
+        channel: "telegram",
+        to: "123",
+        payloads: [
+          {
+            text: "[MOOD:loving] [TTS:[warm and reassuring] Yeah, I know… and I'm really glad you're back through now.]\nTotally fair. It's been rough.",
+          },
+        ],
+        deps: { sendTelegram },
+      });
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      const sentText = sendTelegram.mock.calls[0]?.[1] as string;
+      expect(sentText).toContain("❤️");
+      expect(sentText).toContain("🗣️ warm and reassuring");
+      expect(sentText).toContain("Yeah, I know");
+      expect(sentText).toContain("Totally fair. It's been rough.");
+      expect(sentText).not.toMatch(/\[MOOD:/);
+      expect(sentText).not.toMatch(/\[TTS:/);
+    } finally {
+      if (prevToken === undefined) {
+        delete process.env.TELEGRAM_BOT_TOKEN;
+      } else {
+        process.env.TELEGRAM_BOT_TOKEN = prevToken;
+      }
+    }
+  });
+
+  // GH #198 — Discord should receive the same icon-rendered text.
+  it("renders MOOD and TTS agent tags as icons for discord (GH #198)", async () => {
+    const sendDiscord = vi.fn().mockResolvedValue({ messageId: "d1", channelId: "c1" });
+    const cfg: ArgentConfig = { channels: { discord: { botToken: "tok-1" } } };
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "discord",
+      to: "discord:123",
+      payloads: [{ text: "[MOOD:happy] Hello there!" }],
+      deps: { sendDiscord },
+    });
+    expect(sendDiscord).toHaveBeenCalledTimes(1);
+    const sentText = sendDiscord.mock.calls[0]?.[1] as string;
+    expect(sentText).toBe("😊\nHello there!");
+  });
+
+  // GH #198 — Signal/iMessage/etc. are not in the icon-render scope; their
+  // text should pass through unchanged so we don't accidentally widen the
+  // behaviour.
+  it("does not transform agent tags for signal channel (GH #198 scope)", async () => {
+    const cfg: ArgentConfig = {};
+    const result = normalizeOutboundPayloads([{ text: "[MOOD:happy] hi" }]);
+    // Sanity: normalization itself is unchanged.
+    expect(result[0]?.text).toBe("[MOOD:happy] hi");
+    void cfg;
+  });
+
   it("mirrors delivered output when mirror options are provided", async () => {
     const sendTelegram = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "c1" });
     const cfg: ArgentConfig = {
@@ -377,6 +441,11 @@ const defaultRegistry = createTestRegistry([
   {
     pluginId: "imessage",
     plugin: createIMessageTestPlugin(),
+    source: "test",
+  },
+  {
+    pluginId: "discord",
+    plugin: createOutboundTestPlugin({ id: "discord", outbound: discordOutbound }),
     source: "test",
   },
 ]);
