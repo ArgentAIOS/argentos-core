@@ -10,6 +10,7 @@ import {
   reviewPersonalSkillCandidates,
   selectExecutablePersonalSkill,
 } from "./skills.js";
+import { purgeAudioTranscriptPersonalSkills } from "./skills/personal.js";
 
 function makeCandidate(
   overrides: Partial<PersonalSkillCandidate> &
@@ -534,5 +535,350 @@ describe("personal skills", () => {
     expect(
       updates.find((entry) => entry.id === "ps-recover" && entry.fields.state === "incubating"),
     ).toBeDefined();
+  });
+});
+
+describe("audio-transcript pollution defences", () => {
+  it("excludes [AUDIO_ENABLED] polluted skills from the matcher", () => {
+    const polluted = makeCandidate({
+      id: "ps-polluted",
+      title: "operator correction: [AUDIO_ENABLED] so you didn't actually use the marketplace tool",
+      summary: "[AUDIO_ENABLED] so you didn't actually use the marketplace tool",
+      triggerPatterns: ["correction"],
+      confidence: 0.78,
+      strength: 0.6,
+      state: "incubating",
+      // Crank usage so we'd notice if it leaked into the match list.
+      usageCount: 8662,
+      successCount: 8500,
+    });
+    const clean = makeCandidate({
+      id: "ps-clean",
+      title: "Use the marketplace tool before guessing",
+      summary: "Before answering about installed skills, query the marketplace tool first.",
+      triggerPatterns: ["marketplace"],
+      confidence: 0.8,
+      strength: 0.6,
+      state: "incubating",
+    });
+
+    const matches = matchPersonalSkillCandidatesForPrompt({
+      prompt: "Could you use the marketplace tool to check the install state?",
+      candidates: [polluted, clean],
+      limit: 5,
+    });
+
+    expect(matches.map((m) => m.id)).toEqual(["ps-clean"]);
+  });
+
+  it("does NOT increment usage on a polluted skill, even if it leaks into the match list", async () => {
+    const polluted = makeCandidate({
+      id: "ps-polluted",
+      title: "operator correction: [AUDIO_ENABLED] so you didn't actually use the marketplace tool",
+      summary: "[AUDIO_ENABLED] so you didn't actually use the marketplace tool",
+      confidence: 0.7,
+      strength: 0.5,
+      state: "incubating",
+      usageCount: 4319,
+      successCount: 4200,
+    });
+    const updates: Array<{ id: string; fields: Record<string, unknown> }> = [];
+    const memory = {
+      listPersonalSkillCandidates: async () => [polluted],
+      updatePersonalSkillCandidate: async (id: string, fields: Record<string, unknown>) => {
+        updates.push({ id, fields });
+        return polluted;
+      },
+      createPersonalSkillReviewEvent: async () => ({
+        id: "review-skip",
+        candidateId: "ps-polluted",
+        agentId: "main",
+        actorType: "system" as const,
+        action: "usage_decayed" as const,
+        reason: null,
+        details: {},
+        createdAt: "2026-05-10T16:30:00.000Z",
+      }),
+    } as unknown as MemoryAdapter;
+
+    await recordPersonalSkillUsage({
+      memory,
+      // Simulate an upstream caller that has the polluted match anyway —
+      // record should refuse to bump usage.
+      matches: [
+        {
+          id: "ps-polluted",
+          name: polluted.title,
+          source: "personal",
+          kind: "personal",
+          score: 9,
+          reasons: ["name:operator,correction"],
+        },
+      ],
+      executedTools: ["marketplace_search"],
+      runSucceeded: true,
+      now: "2026-05-10T16:30:00.000Z",
+    });
+
+    expect(updates).toEqual([]);
+  });
+
+  it("does NOT bump success on a clean skill when match was only on context keywords (no relatedTools)", async () => {
+    // This is the matcher-fuzz-fire scenario that was previously
+    // auto-counting success and decaying confidence.
+    const candidate = makeCandidate({
+      id: "ps-fuzz",
+      title: "Verify the deployment before reporting",
+      summary: "Before replying, verify the deployment status and capture evidence.",
+      triggerPatterns: ["deploy"],
+      relatedTools: [], // empty — no way to self-attest tool execution
+      confidence: 0.7,
+      strength: 0.55,
+      state: "incubating",
+    });
+    const updates: Array<{ id: string; fields: Record<string, unknown> }> = [];
+    const memory = {
+      listPersonalSkillCandidates: async () => [candidate],
+      updatePersonalSkillCandidate: async (id: string, fields: Record<string, unknown>) => {
+        updates.push({ id, fields });
+        return candidate;
+      },
+      createPersonalSkillReviewEvent: async () => ({
+        id: "review-fuzz",
+        candidateId: "ps-fuzz",
+        agentId: "main",
+        actorType: "system" as const,
+        action: "usage_decayed" as const,
+        reason: null,
+        details: {},
+        createdAt: "2026-05-10T16:30:00.000Z",
+      }),
+    } as unknown as MemoryAdapter;
+
+    await recordPersonalSkillUsage({
+      memory,
+      matches: [
+        {
+          id: "ps-fuzz",
+          name: candidate.title,
+          source: "personal",
+          kind: "personal",
+          score: 3,
+          // Only context-keyword match, no name/trigger lock-in.
+          reasons: ["context:evidence,status"],
+        },
+      ],
+      executedTools: ["doc_panel"],
+      runSucceeded: true,
+      now: "2026-05-10T16:30:00.000Z",
+    });
+
+    // Usage still increments (it WAS matched), but used=false → no success/failure.
+    expect(updates[0]?.fields.successCount).toBe(0);
+    expect(updates[0]?.fields.failureCount).toBe(0);
+    expect(updates[0]?.fields.usageCount).toBe(1);
+  });
+
+  it("DOES bump success when match has a name lock-in and run succeeded (no relatedTools)", async () => {
+    const candidate = makeCandidate({
+      id: "ps-name-lock",
+      title: "Verify the deployment before reporting",
+      summary: "Before replying, verify the deployment status and capture evidence.",
+      triggerPatterns: ["deploy", "report"],
+      relatedTools: [],
+      confidence: 0.7,
+      strength: 0.55,
+      state: "incubating",
+    });
+    const updates: Array<{ id: string; fields: Record<string, unknown> }> = [];
+    const memory = {
+      listPersonalSkillCandidates: async () => [candidate],
+      updatePersonalSkillCandidate: async (id: string, fields: Record<string, unknown>) => {
+        updates.push({ id, fields });
+        return candidate;
+      },
+      createPersonalSkillReviewEvent: async () => ({
+        id: "review-name-lock",
+        candidateId: "ps-name-lock",
+        agentId: "main",
+        actorType: "system" as const,
+        action: "usage_reinforced" as const,
+        reason: null,
+        details: {},
+        createdAt: "2026-05-10T16:30:00.000Z",
+      }),
+    } as unknown as MemoryAdapter;
+
+    await recordPersonalSkillUsage({
+      memory,
+      matches: [
+        {
+          id: "ps-name-lock",
+          name: candidate.title,
+          source: "personal",
+          kind: "personal",
+          score: 7,
+          reasons: ["name:verify,deployment"],
+        },
+      ],
+      executedTools: ["doc_panel"],
+      runSucceeded: true,
+      now: "2026-05-10T16:30:00.000Z",
+    });
+
+    expect(updates[0]?.fields.usageCount).toBe(1);
+    expect(updates[0]?.fields.successCount).toBe(1);
+  });
+});
+
+describe("purgeAudioTranscriptPersonalSkills", () => {
+  function makeMemoryWith(rows: PersonalSkillCandidate[]) {
+    const updates: Array<{ id: string; fields: Record<string, unknown> }> = [];
+    const events: Array<{ candidateId: string; action: string; details: unknown }> = [];
+    const memory = {
+      listPersonalSkillCandidates: async () => rows,
+      updatePersonalSkillCandidate: async (id: string, fields: Record<string, unknown>) => {
+        updates.push({ id, fields });
+        return rows.find((r) => r.id === id) ?? null;
+      },
+      createPersonalSkillReviewEvent: async (input: {
+        candidateId: string;
+        action: string;
+        details: unknown;
+      }) => {
+        events.push(input);
+        return {
+          id: "ev-1",
+          candidateId: input.candidateId,
+          agentId: "main",
+          actorType: "system" as const,
+          action: input.action as PersonalSkillCandidate["state"] extends never ? never : "deleted",
+          reason: null,
+          details: {},
+          createdAt: "2026-05-10T16:30:00.000Z",
+        };
+      },
+    } as unknown as MemoryAdapter;
+    return { memory, updates, events };
+  }
+
+  it("identifies the 5 polluted rows from Jason's review panel sample", async () => {
+    const polluted = [
+      makeCandidate({
+        id: "p1",
+        title:
+          "operator correction: [AUDIO_ENABLED] so you didn't actually use the marketplace tool or use your tool search to find it.",
+        summary: "[AUDIO_ENABLED] so you didn't actually use the marketplace tool...",
+        state: "incubating",
+        usageCount: 8662,
+        successCount: 8500,
+      }),
+      makeCandidate({
+        id: "p2",
+        title:
+          "operator correction: [DEEP_THINK] [AUDIO_ENABLED] I don't know if you meant to type out the tool call here in chat...",
+        summary: "[DEEP_THINK] [AUDIO_ENABLED] I don't know if you meant to type...",
+        state: "incubating",
+        usageCount: 4319,
+      }),
+      makeCandidate({
+        id: "p3",
+        title:
+          "operator rule: Learn this as a Personal Skill: When I ask whether something is working, verify process state",
+        summary:
+          "[AUDIO_ENABLED] Learn this as a Personal Skill: When I ask whether something is working, verify process state",
+        state: "incubating",
+        usageCount: 4241,
+      }),
+      makeCandidate({
+        id: "p4",
+        title: "operator correction: did you actually verify?",
+        summary: "did you actually verify?",
+        state: "candidate",
+        usageCount: 4140,
+      }),
+      makeCandidate({
+        id: "p5",
+        title:
+          "operator correction: [AUDIO_ENABLED] all my Obsidian vaults are stored under ~/Obsidian/",
+        summary: "[AUDIO_ENABLED] all my Obsidian vaults are stored under ~/Obsidian/",
+        state: "candidate",
+        usageCount: 3932,
+      }),
+    ];
+    const clean = [
+      makeCandidate({
+        id: "c1",
+        title: "Keep the Task Board Clean",
+        summary: "Archive completed tasks before starting a new session.",
+        confidence: 0.88,
+        strength: 0.76,
+        state: "incubating",
+        usageCount: 11,
+      }),
+      makeCandidate({
+        id: "c2",
+        title: "Use Family Agents",
+        summary: "Delegate parallel work to family agents instead of doing it solo.",
+        confidence: 0.81,
+        strength: 0.65,
+        state: "incubating",
+        usageCount: 8,
+      }),
+    ];
+
+    const { memory, updates, events } = makeMemoryWith([...polluted, ...clean]);
+    const result = await purgeAudioTranscriptPersonalSkills({
+      memory,
+      now: "2026-05-10T16:30:00.000Z",
+    });
+
+    expect(result.scanned).toBe(7);
+    expect(result.matched.map((r) => r.id).sort()).toEqual(["p1", "p2", "p3", "p4", "p5"]);
+    expect(result.archived).toBe(5);
+    expect(result.dryRun).toBe(false);
+    // All updates set state=deprecated, none touch the clean rows.
+    expect(updates.every((u) => u.fields.state === "deprecated")).toBe(true);
+    expect(updates.map((u) => u.id).sort()).toEqual(["p1", "p2", "p3", "p4", "p5"]);
+    // A review event is recorded per archived row, with previousState preserved.
+    expect(events).toHaveLength(5);
+    expect(events.every((e) => e.action === "deleted")).toBe(true);
+  });
+
+  it("--dry-run does not mutate anything", async () => {
+    const rows = [
+      makeCandidate({
+        id: "p1",
+        title: "operator correction: [AUDIO_ENABLED] noise here",
+        summary: "[AUDIO_ENABLED] noise here",
+        state: "incubating",
+      }),
+    ];
+    const { memory, updates, events } = makeMemoryWith(rows);
+    const result = await purgeAudioTranscriptPersonalSkills({
+      memory,
+      dryRun: true,
+    });
+    expect(result.matched).toHaveLength(1);
+    expect(result.archived).toBe(0);
+    expect(result.dryRun).toBe(true);
+    expect(updates).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  it("skips rows already in deprecated state (idempotent)", async () => {
+    const rows = [
+      makeCandidate({
+        id: "p-already",
+        title: "operator correction: [AUDIO_ENABLED] already cleaned up",
+        summary: "[AUDIO_ENABLED] already cleaned up",
+        state: "deprecated",
+      }),
+    ];
+    const { memory, updates } = makeMemoryWith(rows);
+    const result = await purgeAudioTranscriptPersonalSkills({ memory });
+    expect(result.matched).toHaveLength(0);
+    expect(result.archived).toBe(0);
+    expect(updates).toEqual([]);
   });
 });

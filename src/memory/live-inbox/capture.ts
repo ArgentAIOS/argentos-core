@@ -129,6 +129,100 @@ const ALL_PATTERNS: readonly CapturePattern[] = [...HARD_TRIGGER_PATTERNS, ...DE
 const PROCEDURAL_CORRECTION_RE =
   /\b(?:use|run|check|verify|update|create|write|build|deploy|search|look up|remember|avoid|never|always|do not|don't)\b/i;
 
+/**
+ * Audio-transcript / voice-input markers that show up at the head of a live
+ * dictation. When these appear inside a candidate factText we treat the text
+ * as a one-shot operator transcript rather than a durable procedural rule.
+ * These are NOT rules — they're raw voice corrections directed at the agent
+ * in the moment.
+ */
+const AUDIO_TRANSCRIPT_MARKER_RE = /\[(?:AUDIO_ENABLED|DEEP_THINK|VOICE|TTS|MOOD)\]/i;
+
+/**
+ * Heuristic that detects when an operator factText is really a one-shot voice
+ * transcript that should NOT be distilled into a durable Personal Skill.
+ *
+ * Returns true for any of:
+ *   - Contains an audio/voice/dictation marker like [AUDIO_ENABLED]
+ *   - Reads like a question (ends in '?' or starts with question word) — questions
+ *     are not procedural rules
+ *   - Reads like a meta-correction about an *immediate* mistake the agent made
+ *     in *this* turn (e.g. "you didn't actually use…", "I don't know if you meant
+ *     to type out the tool call…"). These are one-shot operator feedback, not
+ *     re-applicable procedures.
+ *
+ * The explicit `Learn this as a Personal Skill:` directive bypasses this filter
+ * because the operator has explicitly opted in.
+ */
+export function isAudioTranscriptPollution(factText: string): boolean {
+  const trimmed = factText.trim();
+  if (!trimmed) return false;
+
+  // Explicit opt-in always wins.
+  if (
+    /\blearn\s+this\s+as\s+(?:a\s+)?(?:personal\s+skill|repeatable\s+procedure|operator\s+rule)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
+
+  // Voice/dictation marker present anywhere → it's a transcript, not a rule.
+  if (AUDIO_TRANSCRIPT_MARKER_RE.test(trimmed)) {
+    return true;
+  }
+
+  // Questions are not durable procedures.
+  if (trimmed.endsWith("?")) {
+    return true;
+  }
+  if (
+    /^\s*(?:do\s+you|did\s+you|are\s+you|can\s+you|could\s+you|why|how\s+(?:did|do|are)|what\s+(?:did|do|are)|when\s+(?:did|do)|where)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+
+  // Single-turn meta-corrections about THIS exact response — "you didn't…",
+  // "I don't know if you meant to…", "you actually didn't…". These are
+  // conversational repairs, not reusable procedures.
+  if (/^\s*(?:so\s+)?you\s+(?:didn'?t|did\s+not|actually|just|literally)\b/i.test(trimmed)) {
+    return true;
+  }
+  if (/^\s*I\s+don'?t\s+know\s+if\s+you\s+(?:meant|tried|wanted)\b/i.test(trimmed)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Detect whether an existing PersonalSkillCandidate row (post-storage) looks
+ * like audio-transcript pollution. Used by the matcher to suppress these from
+ * firing on future turns, and by the `argent personal-skills purge` cleanup
+ * command. Operates on the stored title + summary fields rather than a raw
+ * factText, since pre-storage filtering has already been applied to new rows.
+ */
+export function isAudioTranscriptPollutedSkill(candidate: {
+  title: string;
+  summary: string;
+}): boolean {
+  const haystack = `${candidate.title}\n${candidate.summary}`;
+  if (AUDIO_TRANSCRIPT_MARKER_RE.test(haystack)) {
+    return true;
+  }
+  // Short voice-quote titles prefixed with "operator correction:" or
+  // "operator rule:" whose body is a question are also pollution.
+  if (
+    /^operator\s+(?:correction|rule)\s*:/i.test(candidate.title) &&
+    /\?$/.test(candidate.summary.trim())
+  ) {
+    return true;
+  }
+  return false;
+}
+
 const WORK_OBJECT_RE =
   /\b(?:project|spec|prd|prp|brief|build|client|customer|domain|website|site|app|platform|landing\s+page|portfolio|resume|cv|lead(?:\s+capture|\s+collection|\s+generation)?|brand|marketing|osint|intelligence)\b/i;
 const WORK_ACTION_RE =
@@ -162,6 +256,13 @@ export function buildPersonalSkillCandidateInputFromLiveInboxCandidate(params: {
     return null;
   }
   if (!PROCEDURAL_CORRECTION_RE.test(candidate.factText)) return null;
+
+  // Filter audio-transcript pollution: raw voice corrections and one-shot
+  // questions should never become durable Personal Skills. Without this
+  // filter, `[AUDIO_ENABLED]` dictation snippets were being saved verbatim as
+  // skill bodies and then fuzz-matching on common operator phrases for the
+  // rest of the session — leading to runaway usage counts.
+  if (isAudioTranscriptPollution(candidate.factText)) return null;
 
   const label = candidate.candidateType === "correction" ? "operator correction" : "operator rule";
   return {

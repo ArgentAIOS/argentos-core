@@ -1,6 +1,7 @@
 import type { MemoryAdapter } from "../../data/adapter.js";
 import type { PersonalSkillCandidate } from "../../memory/memu-types.js";
 import type { SkillMatchCandidate } from "./types.js";
+import { isAudioTranscriptPollutedSkill } from "../../memory/live-inbox/capture.js";
 
 const PERSONAL_SKILL_STOPWORDS = new Set([
   "a",
@@ -337,9 +338,25 @@ function buildUsageOutcomes(params: {
       const relatedTools = new Set(
         (candidate?.relatedTools ?? []).map((tool) => tool.toLowerCase()),
       );
+      // Previously: when relatedTools was empty (which is the common case for
+      // operator-correction skills distilled from live inbox), `used` would
+      // be true whenever ANY tool ran or the run succeeded — which meant
+      // every match incremented success/usage in lockstep with normal turns.
+      // That's how the polluted audio-transcript "skills" climbed to 4-8K
+      // usage counts in a few days.
+      //
+      // New behaviour: with no relatedTools the skill cannot self-attest that
+      // it was actually applied. We only count "used" when the match score
+      // shows a real name/trigger lock-in (not a generic context-keyword
+      // sprinkle) AND the run succeeded. This preserves reinforcement for
+      // genuinely-fired operator rules while killing runaway lockstep
+      // increments.
+      const hasNameOrTriggerMatch = (match.reasons ?? []).some(
+        (reason) => reason.startsWith("name:") || reason.startsWith("trigger:"),
+      );
       const used =
         relatedTools.size === 0
-          ? params.executedTools.length > 0 || params.runSucceeded
+          ? hasNameOrTriggerMatch && params.runSucceeded
           : [...relatedTools].some((tool) => normalizedTools.has(tool));
       return {
         matchedSkillId: match.id!,
@@ -348,6 +365,94 @@ function buildUsageOutcomes(params: {
         executedTools: params.executedTools,
       } satisfies PersonalSkillUsageOutcome;
     });
+}
+
+/**
+ * One-shot cleanup: soft-delete (state="deprecated") all PersonalSkillCandidate
+ * rows that look like audio-transcript pollution. Reversible — review events
+ * record the previous state so an operator can flip them back via
+ * `personal_skill` tool.patch.
+ *
+ * `dryRun: true` does not mutate anything; useful for the CLI to show the
+ * operator exactly which rows would be purged before they commit.
+ */
+export type PersonalSkillPurgeResult = {
+  scanned: number;
+  matched: Array<{
+    id: string;
+    title: string;
+    previousState: PersonalSkillCandidate["state"];
+    usageCount: number;
+    successCount: number;
+    failureCount: number;
+  }>;
+  archived: number;
+  dryRun: boolean;
+};
+
+export async function purgeAudioTranscriptPersonalSkills(params: {
+  memory: MemoryAdapter;
+  dryRun?: boolean;
+  now?: string;
+  limit?: number;
+}): Promise<PersonalSkillPurgeResult> {
+  const dryRun = params.dryRun ?? false;
+  const now = params.now ?? new Date().toISOString();
+  const candidates = await params.memory.listPersonalSkillCandidates({
+    limit: params.limit ?? 500,
+  });
+  const matched = candidates
+    .filter((candidate) => isAudioTranscriptPollutedSkill(candidate))
+    // Already-deprecated rows are skipped — nothing to do.
+    .filter((candidate) => candidate.state !== "deprecated")
+    .map((candidate) => ({
+      id: candidate.id,
+      title: candidate.title,
+      previousState: candidate.state,
+      usageCount: candidate.usageCount,
+      successCount: candidate.successCount,
+      failureCount: candidate.failureCount,
+    }));
+
+  if (dryRun) {
+    return {
+      scanned: candidates.length,
+      matched,
+      archived: 0,
+      dryRun: true,
+    };
+  }
+
+  let archived = 0;
+  for (const entry of matched) {
+    await params.memory.updatePersonalSkillCandidate(entry.id, {
+      state: "deprecated",
+      lastReviewedAt: now,
+    });
+    await params.memory.createPersonalSkillReviewEvent({
+      candidateId: entry.id,
+      actorType: "system",
+      action: "deleted",
+      reason:
+        "Soft-deleted by `argent personal-skills purge --kind audio-transcript` — content was a raw operator voice transcript rather than a durable procedural skill.",
+      details: {
+        kind: "audio-transcript",
+        previousState: entry.previousState,
+        usageCountAtPurge: entry.usageCount,
+        successCountAtPurge: entry.successCount,
+        failureCountAtPurge: entry.failureCount,
+        reversible: true,
+      },
+    });
+    archived += 1;
+  }
+
+  return {
+    scanned: candidates.length,
+    matched,
+    archived,
+    dryRun: false,
+  };
 }
 
 export async function recordPersonalSkillUsage(params: {
@@ -370,6 +475,9 @@ export async function recordPersonalSkillUsage(params: {
   for (const outcome of outcomes) {
     const candidate = candidates.find((entry) => entry.id === outcome.matchedSkillId);
     if (!candidate) continue;
+    // Defence in depth: even if a polluted candidate sneaks past the matcher
+    // (e.g. from a stale in-memory list), refuse to increment its usage.
+    if (isAudioTranscriptPollutedSkill(candidate)) continue;
 
     const usageCount = candidate.usageCount + 1;
     const successCount = candidate.successCount + (outcome.succeeded ? 1 : 0);
@@ -723,7 +831,12 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
     .filter(
       (candidate) =>
         (candidate.state === "promoted" || candidate.state === "incubating") &&
-        !candidate.supersededByCandidateId,
+        !candidate.supersededByCandidateId &&
+        // Audio-transcript pollution must never fire — even existing rows in
+        // the DB that pre-date the distillation-time filter. Otherwise the
+        // matcher keeps fuzz-firing on common operator words ("operator",
+        // "use", "tool", "marketplace") and runs up the usage counter.
+        !isAudioTranscriptPollutedSkill(candidate),
     )
     .map((candidate) => {
       const titleTerms = tokenize(candidate.title);
