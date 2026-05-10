@@ -14,6 +14,7 @@ import {
   resolveChunkMode,
   resolveTextChunkLimit,
 } from "../../auto-reply/chunk.js";
+import { transformAgentTagsForTextChannel } from "../../channels/_shared/agent-tag-transform.js";
 import { resolveChannelMediaMaxBytes } from "../../channels/plugins/media-limits.js";
 import { loadChannelOutboundAdapter } from "../../channels/plugins/outbound/load.js";
 import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
@@ -317,7 +318,16 @@ export async function deliverOutboundPayloads(params: {
       })),
     };
   };
-  const normalizedPayloads = normalizeReplyPayloadsForDelivery(payloads);
+  // GH #198: text-only chat channels should render agent tags
+  // (`[MOOD:X]`, `[TTS:[tone] body]`) as compact icon prefixes instead of
+  // letting the bracket syntax leak as raw text. Apply the transform once,
+  // before chunking, so every downstream chunk inherits the rendered prefix.
+  const renderAgentTagsAsIcons = channel === "telegram" || channel === "discord";
+  const normalizedPayloads = normalizeReplyPayloadsForDelivery(payloads).map((payload) =>
+    renderAgentTagsAsIcons && payload.text
+      ? { ...payload, text: transformAgentTagsForTextChannel(payload.text) }
+      : payload,
+  );
   for (const payload of normalizedPayloads) {
     const payloadSummary: NormalizedOutboundPayload = {
       text: payload.text ?? "",
