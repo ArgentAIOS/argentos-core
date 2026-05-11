@@ -42,6 +42,7 @@ const qwenPortalPlugin = {
       label: PROVIDER_LABEL,
       docsPath: "/providers/qwen",
       aliases: ["qwen"],
+      recommendedModel: { id: DEFAULT_MODEL, tier: "balanced" },
       auth: [
         {
           id: "device",

@@ -23,6 +23,7 @@ const geminiCliPlugin = {
       docsPath: "/providers/models",
       aliases: ["gemini-cli"],
       envVars: ENV_VARS,
+      recommendedModel: { id: DEFAULT_MODEL, tier: "powerful" },
       auth: [
         {
           id: "oauth",

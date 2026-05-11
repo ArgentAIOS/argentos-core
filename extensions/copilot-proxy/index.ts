@@ -75,6 +75,9 @@ const copilotProxyPlugin = {
       id: "copilot-proxy",
       label: "Copilot Proxy",
       docsPath: "/providers/models",
+      // Flagship default for `--set-default`; users with a different configured
+      // model list still get `result.defaultModel` as the runtime fallback.
+      recommendedModel: { id: "copilot-proxy/gpt-5.2", tier: "powerful" },
       auth: [
         {
           id: "local",

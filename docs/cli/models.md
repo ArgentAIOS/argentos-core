@@ -177,7 +177,7 @@ Options:
 
 - `--provider <id>` — provider id (built-in or registered by an enabled plugin)
 - `--method <id>` — pick a specific auth method when the plugin offers more than one (default: prompt)
-- `--set-default` — apply the provider's default model recommendation (currently honored by the `openai-codex` built-in)
+- `--set-default` — apply the provider's recommended model. The `openai-codex` built-in uses its hard-coded default; plugin-backed providers honor the recommendation declared on the plugin manifest (`ProviderPlugin.recommendedModel`). When a tier is declared (`fast | balanced | powerful`), the model is written into the active model-router profile for that tier (or top-level `modelRouter.tiers.<tier>` when no active profile is set). Plugins without a `recommendedModel` log a clear "ignored" warning rather than silently no-opping.
 
 Notes:
 

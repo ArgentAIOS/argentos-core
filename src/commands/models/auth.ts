@@ -1,9 +1,11 @@
 import { confirm as clackConfirm, select as clackSelect, text as clackText } from "@clack/prompts";
 import type { AuthProfileCredential } from "../../agents/auth-profiles/types.js";
+import type { ModelTier } from "../../models/types.js";
 import type {
   ProviderAuthMethod,
   ProviderAuthResult,
   ProviderPlugin,
+  ProviderRecommendedModel,
 } from "../../plugins/types.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import {
@@ -399,7 +401,7 @@ function mergeConfigPatch<T>(base: T, patch: unknown): T {
   return next as T;
 }
 
-function applyDefaultModel(cfg: ArgentConfig, model: string): ArgentConfig {
+export function applyDefaultModel(cfg: ArgentConfig, model: string): ArgentConfig {
   const models = { ...cfg.agents?.defaults?.models };
   models[model] = models[model] ?? {};
 
@@ -420,6 +422,107 @@ function applyDefaultModel(cfg: ArgentConfig, model: string): ArgentConfig {
       },
     },
   };
+}
+
+/**
+ * Split a provider-qualified model id (e.g. "qwen-portal/coder-model") into
+ * provider + model parts for the routing-profile tier mapping schema. Falls
+ * back to passing the bare model id through with the caller-supplied provider.
+ */
+function splitQualifiedModel(
+  fallbackProvider: string,
+  qualified: string,
+): { provider: string; model: string } {
+  const slash = qualified.indexOf("/");
+  if (slash <= 0) {
+    return { provider: fallbackProvider, model: qualified };
+  }
+  return {
+    provider: qualified.slice(0, slash),
+    model: qualified.slice(slash + 1),
+  };
+}
+
+/**
+ * Apply a plugin-declared recommended model to the routing profile for a
+ * specific tier. If no `activeProfile` is set on modelRouter, writes to the
+ * top-level `modelRouter.tiers.<tier>` legacy slot. Otherwise updates the
+ * active profile's tier mapping.
+ *
+ * Also keeps the bare `agents.defaults.model.primary` in sync as a useful
+ * non-router fallback (matches openai-codex behavior).
+ */
+export function applyTieredRecommendedModel(
+  cfg: ArgentConfig,
+  providerId: string,
+  modelId: string,
+  tier: ModelTier,
+): ArgentConfig {
+  const { provider: resolvedProvider, model: resolvedModel } = splitQualifiedModel(
+    providerId,
+    modelId,
+  );
+  const mapping = { provider: resolvedProvider, model: resolvedModel };
+
+  const existingRouter = cfg.agents?.defaults?.modelRouter ?? {};
+  const activeProfile = existingRouter.activeProfile;
+
+  let nextRouter = existingRouter;
+  if (activeProfile) {
+    const profiles = { ...(existingRouter.profiles ?? {}) };
+    const existingProfile = profiles[activeProfile] ?? { tiers: {} };
+    profiles[activeProfile] = {
+      ...existingProfile,
+      tiers: {
+        ...(existingProfile.tiers ?? {}),
+        [tier]: mapping,
+      },
+    };
+    nextRouter = { ...existingRouter, profiles };
+  } else {
+    nextRouter = {
+      ...existingRouter,
+      tiers: {
+        ...(existingRouter.tiers ?? {}),
+        [tier]: mapping,
+      },
+    };
+  }
+
+  const withPrimary = applyDefaultModel(cfg, modelId);
+  return {
+    ...withPrimary,
+    agents: {
+      ...withPrimary.agents,
+      defaults: {
+        ...withPrimary.agents?.defaults,
+        modelRouter: nextRouter,
+      },
+    },
+  };
+}
+
+/**
+ * Resolve the model recommendation to apply when `--set-default` is true.
+ *
+ * Precedence (highest first):
+ *   1. Plugin manifest `recommendedModel` (the GH #190 design).
+ *   2. Per-auth-method `result.defaultModel` (legacy; auth.run-returned hint).
+ *
+ * Returns null when the plugin declares no recommendation in either place,
+ * which lets the dispatch emit a clear "ignored" warning.
+ */
+export function resolveRecommendedModel(
+  provider: ProviderPlugin,
+  result: ProviderAuthResult,
+): ProviderRecommendedModel | null {
+  if (provider.recommendedModel) {
+    return provider.recommendedModel;
+  }
+  if (result.defaultModel) {
+    return { id: result.defaultModel };
+  }
+  return null;
 }
 
 function credentialMode(credential: AuthProfileCredential): "api_key" | "oauth" | "token" {
@@ -537,6 +640,8 @@ export async function modelsAuthLoginCommand(opts: LoginOptions, runtime: Runtim
     });
   }
 
+  const recommendation = resolveRecommendedModel(selectedProvider, result);
+
   await updateConfig((cfg) => {
     let next = cfg;
     if (result.configPatch) {
@@ -549,8 +654,17 @@ export async function modelsAuthLoginCommand(opts: LoginOptions, runtime: Runtim
         mode: credentialMode(profile.credential),
       });
     }
-    if (opts.setDefault && result.defaultModel) {
-      next = applyDefaultModel(next, result.defaultModel);
+    if (opts.setDefault && recommendation) {
+      if (recommendation.tier) {
+        next = applyTieredRecommendedModel(
+          next,
+          selectedProvider.id,
+          recommendation.id,
+          recommendation.tier,
+        );
+      } else {
+        next = applyDefaultModel(next, recommendation.id);
+      }
     }
     return next;
   });
@@ -561,11 +675,21 @@ export async function modelsAuthLoginCommand(opts: LoginOptions, runtime: Runtim
       `Auth profile: ${profile.profileId} (${profile.credential.provider}/${credentialMode(profile.credential)})`,
     );
   }
-  if (result.defaultModel) {
+  if (recommendation) {
+    if (opts.setDefault) {
+      runtime.log(
+        recommendation.tier
+          ? `Default model set to ${recommendation.id} (tier: ${recommendation.tier})`
+          : `Default model set to ${recommendation.id}`,
+      );
+    } else {
+      runtime.log(`Default model available: ${recommendation.id} (use --set-default to apply)`);
+    }
+  } else if (opts.setDefault) {
+    // GH #190: surface a clear warning rather than silently no-opping when
+    // `--set-default` is passed for a plugin that declares no recommendedModel.
     runtime.log(
-      opts.setDefault
-        ? `Default model set to ${result.defaultModel}`
-        : `Default model available: ${result.defaultModel} (use --set-default to apply)`,
+      `--set-default ignored: provider "${selectedProvider.id}" does not declare a recommended model.`,
     );
   }
   if (result.notes && result.notes.length > 0) {

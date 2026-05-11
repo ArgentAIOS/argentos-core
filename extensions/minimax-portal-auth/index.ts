@@ -142,6 +142,7 @@ const minimaxPortalPlugin = {
       label: PROVIDER_LABEL,
       docsPath: "/providers/minimax",
       aliases: ["minimax"],
+      recommendedModel: { id: modelRef(DEFAULT_MODEL), tier: "balanced" },
       auth: [
         {
           id: "oauth",

@@ -129,6 +129,26 @@ export type ProviderAuthMethod = {
   run: (ctx: ProviderAuthContext) => Promise<ProviderAuthResult>;
 };
 
+/**
+ * Provider's recommended default model, declared statically on the plugin manifest.
+ *
+ * When the user runs `argent models auth login --provider <id> --set-default`,
+ * the CLI consults this field. If declared:
+ *   - With `tier` set → writes the mapping into the active model-router profile
+ *     (or top-level `modelRouter.tiers.<tier>` when no active profile is set).
+ *   - Without `tier` → writes the model into `agents.defaults.model.primary`
+ *     (the non-routing default).
+ *
+ * If absent and `--set-default` is passed, the CLI emits a clear warning rather
+ * than silently no-opping. See GH #190.
+ */
+export type ProviderRecommendedModel = {
+  /** Provider-qualified model id, e.g. "qwen-portal/coder-model". */
+  id: string;
+  /** Optional routing tier the recommendation belongs to. */
+  tier?: "fast" | "balanced" | "powerful";
+};
+
 export type ProviderPlugin = {
   id: string;
   label: string;
@@ -137,6 +157,11 @@ export type ProviderPlugin = {
   envVars?: string[];
   models?: ModelProviderConfig;
   auth: ProviderAuthMethod[];
+  /**
+   * Optional default model recommendation, applied when the user passes
+   * `--set-default` to `argent models auth login`. See {@link ProviderRecommendedModel}.
+   */
+  recommendedModel?: ProviderRecommendedModel;
   formatApiKey?: (cred: AuthProfileCredential) => string;
   refreshOAuth?: (cred: OAuthCredential) => Promise<OAuthCredential>;
 };
