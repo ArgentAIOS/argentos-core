@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { monitorTelegramProvider, type TelegramMonitorStatusPatch } from "./monitor.js";
+import {
+  monitorTelegramProvider,
+  TELEGRAM_PERSISTENT_CONFLICT_THRESHOLD_MS,
+  type TelegramMonitorStatusPatch,
+} from "./monitor.js";
 import { resetTelegramPollingSlotsForTest } from "./polling-singleton.js";
 
 type MockCtx = {
@@ -261,6 +265,11 @@ describe("monitorTelegramProvider (grammY)", () => {
     expect(sleepWithAbort).toHaveBeenNthCalledWith(5, 960_000, undefined);
     // Operator-readable retry log on every conflict.
     expect(runtimeError).toHaveBeenCalledWith(expect.stringContaining("getUpdates conflict"));
+    // GH #194: every conflict line MUST carry the bot identity block so
+    // future cascades are triageable without grepping argent.json. The
+    // block is `(bot=<id-or-?>, token=...XXXX)` — assert the wrapper so
+    // the test stays decoupled from the specific token shape.
+    expect(runtimeError).toHaveBeenCalledWith(expect.stringContaining("(bot="));
     // Critically: no permanent-exit log this time.
     expect(runtimeError).not.toHaveBeenCalledWith(
       expect.stringContaining("stopping polling until channel restart"),
@@ -396,5 +405,191 @@ describe("monitorTelegramProvider (grammY)", () => {
     }));
 
     await expect(monitorTelegramProvider({ token: "tok" })).rejects.toThrow("bad token");
+  });
+
+  it("includes bot-id and token suffix in 409 conflict log messages (GH #194)", async () => {
+    // Telegram tokens have the shape `<botId>:<secret>`. Use a realistic
+    // shape so the bot-id extractor returns the leading numeric segment.
+    const token = "8619589114:AAHabcdefghijklmnopqrstuvwxyzWXYZ";
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    const runtimeError = vi.fn();
+    runSpy
+      .mockImplementationOnce(() => ({
+        task: () => Promise.reject(conflictError),
+        stop: vi.fn(),
+      }))
+      .mockImplementationOnce(() => ({
+        task: () => Promise.resolve(),
+        stop: vi.fn(),
+      }));
+
+    await monitorTelegramProvider({
+      token,
+      runtime: { error: runtimeError } as never,
+    });
+
+    // The conflict line should include `bot=8619589114` and the last 4
+    // chars of the token (`...WXYZ`) so the operator can correlate.
+    const conflictLogs = runtimeError.mock.calls
+      .map((args) => String(args[0]))
+      .filter((msg) => msg.includes("getUpdates conflict"));
+    expect(conflictLogs.length).toBeGreaterThanOrEqual(1);
+    for (const msg of conflictLogs) {
+      expect(msg).toContain("bot=8619589114");
+      expect(msg).toContain("token=...WXYZ");
+    }
+    // CRITICAL: the secret half of the token must never appear in logs.
+    for (const call of runtimeError.mock.calls) {
+      expect(String(call[0])).not.toContain("AAHabcdefghijklmnopqrstuvwxyz");
+    }
+  });
+
+  it("redacts gracefully when the token does not match the <botId>:<secret> shape", async () => {
+    // Truncated / placeholder tokens (e.g. test fixtures) shouldn't crash
+    // the logger — the identity helper must fall back to `bot=?` so the
+    // overall message structure is preserved.
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    const runtimeError = vi.fn();
+    runSpy
+      .mockImplementationOnce(() => ({
+        task: () => Promise.reject(conflictError),
+        stop: vi.fn(),
+      }))
+      .mockImplementationOnce(() => ({
+        task: () => Promise.resolve(),
+        stop: vi.fn(),
+      }));
+
+    await monitorTelegramProvider({
+      token: "tok",
+      runtime: { error: runtimeError } as never,
+    });
+
+    const conflictLog = runtimeError.mock.calls
+      .map((args) => String(args[0]))
+      .find((msg) => msg.includes("getUpdates conflict"));
+    expect(conflictLog).toBeDefined();
+    expect(conflictLog).toContain("bot=?");
+  });
+
+  it("emits persistentConflict:true once the 409 cycle crosses the threshold (GH #194)", async () => {
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    // Fail repeatedly so several backoff iterations run.
+    for (let i = 0; i < 6; i += 1) {
+      runSpy.mockImplementationOnce(() => ({
+        task: () => Promise.reject(conflictError),
+        stop: vi.fn(),
+      }));
+    }
+    // 7th attempt succeeds — should clear the warning flag.
+    runSpy.mockImplementationOnce(() => ({
+      task: () => Promise.resolve(),
+      stop: vi.fn(),
+    }));
+
+    // Pin Date.now so we deterministically cross the threshold by the
+    // 3rd conflict (cycle starts at T=0; nthConflict at T=n*1ms in fake
+    // time → we advance by the threshold between calls).
+    const dateNowSpy = vi.spyOn(Date, "now");
+    let nowValue = 1_000_000;
+    dateNowSpy.mockImplementation(() => nowValue);
+
+    // After the first conflict is logged, advance time past the
+    // persistent-conflict threshold so the second conflict observation
+    // flips the flag.
+    let conflictsSeen = 0;
+    sleepWithAbort.mockImplementation(async () => {
+      conflictsSeen += 1;
+      if (conflictsSeen === 1) {
+        // Advance past threshold so the next iteration's status patch
+        // carries persistentConflict: true.
+        nowValue += TELEGRAM_PERSISTENT_CONFLICT_THRESHOLD_MS + 1_000;
+      } else {
+        nowValue += 1_000;
+      }
+    });
+
+    const statusPatches: TelegramMonitorStatusPatch[] = [];
+    const runtimeError = vi.fn();
+    await monitorTelegramProvider({
+      token: "8619589114:secretAAAABBBBCCCCDDDDeeffgg",
+      runtime: { error: runtimeError } as never,
+      onStatusChange: (patch) => statusPatches.push(patch),
+    });
+
+    dateNowSpy.mockRestore();
+
+    // At least one mid-cycle patch must declare the conflict persistent.
+    const persistent = statusPatches.find((p) => p.persistentConflict === true);
+    expect(persistent).toBeDefined();
+    expect(persistent?.state).toMatch(/backing-off/);
+
+    // The "persisted for X" one-time WARN line must have fired exactly
+    // once, name the bot, and point at the doc anchor.
+    const persistentLogs = runtimeError.mock.calls
+      .map((args) => String(args[0]))
+      .filter((msg) => msg.includes("getUpdates conflict has persisted"));
+    expect(persistentLogs.length).toBe(1);
+    expect(persistentLogs[0]).toContain("bot=8619589114");
+    expect(persistentLogs[0]).toContain(
+      "argentos.dev/channels/telegram#another-instance-is-polling-this-bot",
+    );
+
+    // After the eventual successful poll, persistentConflict must be
+    // cleared so the dashboard chip disappears.
+    const finalRelevantPatch = statusPatches
+      .toReversed()
+      .find((p) => p.persistentConflict !== undefined || p.state === "polling");
+    expect(finalRelevantPatch?.persistentConflict === false || !finalRelevantPatch).toBe(true);
+  });
+
+  it("does not flag persistentConflict for short overlaps (sub-threshold)", async () => {
+    // Reproduces the GH #194 self-recovery scenario: a config-reload-driven
+    // gateway restart that briefly leaves a legacy poller alive. The
+    // overlap clears within seconds and the warning must never fire.
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    runSpy
+      .mockImplementationOnce(() => ({
+        task: () => Promise.reject(conflictError),
+        stop: vi.fn(),
+      }))
+      .mockImplementationOnce(() => ({
+        task: () => Promise.resolve(),
+        stop: vi.fn(),
+      }));
+
+    // Keep Date.now stationary — even after sleep, we haven't crossed
+    // the threshold.
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+
+    const statusPatches: TelegramMonitorStatusPatch[] = [];
+    const runtimeError = vi.fn();
+    await monitorTelegramProvider({
+      token: "8619589114:secret",
+      runtime: { error: runtimeError } as never,
+      onStatusChange: (patch) => statusPatches.push(patch),
+    });
+
+    dateNowSpy.mockRestore();
+
+    // No patch should carry persistentConflict: true.
+    expect(statusPatches.some((p) => p.persistentConflict === true)).toBe(false);
+    // And the WARN line specifically must not have fired.
+    const persistentLogs = runtimeError.mock.calls
+      .map((args) => String(args[0]))
+      .filter((msg) => msg.includes("getUpdates conflict has persisted"));
+    expect(persistentLogs.length).toBe(0);
   });
 });

@@ -7,6 +7,8 @@ type TelegramAccountStatus = {
   configured?: unknown;
   allowUnmentionedGroups?: unknown;
   audit?: unknown;
+  persistentConflict?: unknown;
+  lastError?: unknown;
 };
 
 type TelegramGroupMembershipAuditSummary = {
@@ -32,8 +34,18 @@ function readTelegramAccountStatus(value: ChannelAccountSnapshot): TelegramAccou
     configured: value.configured,
     allowUnmentionedGroups: value.allowUnmentionedGroups,
     audit: value.audit,
+    persistentConflict: value.persistentConflict,
+    lastError: value.lastError,
   };
 }
+
+/**
+ * Doc anchor surfaced in the persistent-conflict warning. Kept in sync
+ * with the troubleshooting section added to docs/channels/telegram.md
+ * by GH #194.
+ */
+const TELEGRAM_409_DOC_URL =
+  "https://argentos.dev/channels/telegram#another-instance-is-polling-this-bot";
 
 function readTelegramGroupMembershipAuditSummary(
   value: unknown,
@@ -86,6 +98,22 @@ export function collectTelegramStatusIssues(
     const configured = account.configured === true;
     if (!enabled || !configured) {
       continue;
+    }
+
+    // GH #194: surface a dashboard chip when the poller has been stuck
+    // in a getUpdates 409 cycle past the persistent-conflict threshold.
+    // The wording matches the runbook so users searching for either
+    // phrase land on the same fix path.
+    if (account.persistentConflict === true) {
+      const lastError = asString(account.lastError);
+      const errorSuffix = lastError ? ` (last error: ${lastError})` : "";
+      issues.push({
+        channel: "telegram",
+        accountId,
+        kind: "runtime",
+        message: `Another instance is polling this bot — see ${TELEGRAM_409_DOC_URL} to resolve.${errorSuffix}`,
+        fix: "Stop the other argent-gateway polling this bot (or rotate the token via BotFather /token), then restart this gateway. Alternatively switch this account to webhook mode (channels.telegram.webhookUrl).",
+      });
     }
 
     if (account.allowUnmentionedGroups === true) {
