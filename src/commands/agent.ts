@@ -12,6 +12,7 @@ import {
   resolveAlignmentIntegrityMode,
   runAlignmentIntegrityStartupCheck,
 } from "../agents/alignment-integrity.js";
+import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
 import { clearSessionAuthProfileOverride } from "../agents/auth-profiles/session-override.js";
 import { runCliAgent } from "../agents/cli-runner.js";
 import { getCliSessionId } from "../agents/cli-session.js";
