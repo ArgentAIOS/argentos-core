@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_FORGE_DEFAULT_RATING_MAX,
+  APP_FORGE_MAX_RATING_MAX,
+  APP_FORGE_MIN_RATING_MAX,
   checkAppForgeRevision,
+  coerceAppForgeRatingValue,
   projectLegacyAppForgeBase,
+  resolveAppForgeRatingMax,
   validateAppForgeFieldDefinitions,
   validateAppForgeRecordValues,
   type AppForgeField,
@@ -142,6 +147,123 @@ describe("AppForge core model", () => {
     expect(
       validateAppForgeRecordValues(fieldsWithRichOptions, { status: "Blocked" }).errors,
     ).toEqual([expect.objectContaining({ code: "invalid_option" })]);
+  });
+
+  it("validates rating field values and rejects out-of-range or non-integer ratings", () => {
+    const ratingFields: AppForgeField[] = [
+      { id: "score", name: "Score", type: "rating" },
+      { id: "hot", name: "Hotness", type: "rating", ratingMax: 10, ratingIcon: "flame" },
+    ];
+
+    const ok = validateAppForgeRecordValues(ratingFields, {
+      score: 4,
+      hot: "9",
+    });
+    expect(ok.ok).toBe(true);
+    expect(ok.values).toEqual({ score: 4, hot: 9 });
+
+    const empty = validateAppForgeRecordValues(ratingFields, {
+      score: "",
+      hot: null,
+    });
+    expect(empty.ok).toBe(true);
+    expect(empty.values).toEqual({ score: 0, hot: 0 });
+
+    const tooHigh = validateAppForgeRecordValues(ratingFields, {
+      score: 6,
+      hot: 11,
+    });
+    expect(tooHigh.ok).toBe(false);
+    expect(tooHigh.errors.map((error) => error.code)).toEqual(["invalid_rating", "invalid_rating"]);
+
+    const negative = validateAppForgeRecordValues(ratingFields, { score: -1, hot: -2 });
+    expect(negative.ok).toBe(false);
+    expect(negative.errors.every((error) => error.code === "invalid_rating")).toBe(true);
+
+    const nonNumeric = validateAppForgeRecordValues(ratingFields, {
+      score: "five",
+      hot: { stars: 3 },
+    });
+    expect(nonNumeric.ok).toBe(false);
+    expect(nonNumeric.errors.every((error) => error.code === "invalid_rating")).toBe(true);
+  });
+
+  it("rejects rating fields whose ratingMax falls outside the supported range", () => {
+    const result = validateAppForgeFieldDefinitions([
+      { id: "tiny", name: "Tiny", type: "rating", ratingMax: 2 },
+      { id: "huge", name: "Huge", type: "rating", ratingMax: 99 },
+      { id: "frac", name: "Frac", type: "rating", ratingMax: 4.5 },
+      { id: "ok", name: "OK", type: "rating", ratingMax: 5 },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((error) => error.code)).toEqual([
+      "invalid_rating_max",
+      "invalid_rating_max",
+      "invalid_rating_max",
+    ]);
+  });
+
+  it("resolveAppForgeRatingMax clamps + falls back to the default for garbage input", () => {
+    expect(resolveAppForgeRatingMax({})).toBe(APP_FORGE_DEFAULT_RATING_MAX);
+    expect(resolveAppForgeRatingMax({ ratingMax: 5 })).toBe(5);
+    expect(resolveAppForgeRatingMax({ ratingMax: 0 })).toBe(APP_FORGE_MIN_RATING_MAX);
+    expect(resolveAppForgeRatingMax({ ratingMax: 999 })).toBe(APP_FORGE_MAX_RATING_MAX);
+    expect(resolveAppForgeRatingMax({ ratingMax: Number.NaN })).toBe(APP_FORGE_DEFAULT_RATING_MAX);
+    expect(resolveAppForgeRatingMax({ ratingMax: 7.6 })).toBe(7);
+  });
+
+  it("coerceAppForgeRatingValue rounds, clamps null on invalid, and returns 0 on empty", () => {
+    const field = { ratingMax: 5 };
+    expect(coerceAppForgeRatingValue(field, 3.49)).toBe(3);
+    expect(coerceAppForgeRatingValue(field, "4")).toBe(4);
+    expect(coerceAppForgeRatingValue(field, "")).toBe(0);
+    expect(coerceAppForgeRatingValue(field, null)).toBe(0);
+    expect(coerceAppForgeRatingValue(field, 6)).toBeNull();
+    expect(coerceAppForgeRatingValue(field, -1)).toBeNull();
+    expect(coerceAppForgeRatingValue(field, "not-a-rating")).toBeNull();
+  });
+
+  it("preserves rating metadata when projecting legacy bases", () => {
+    const base = projectLegacyAppForgeBase({
+      id: "app-rating",
+      name: "Inbound",
+      metadata: {
+        appForge: {
+          structured: {
+            baseId: "base-rating",
+            activeTableId: "table-rating",
+            tables: [
+              {
+                id: "table-rating",
+                name: "Leads",
+                fields: [
+                  { id: "name", name: "Name", type: "text", required: true },
+                  {
+                    id: "score",
+                    name: "Score",
+                    type: "rating",
+                    ratingMax: 7,
+                    ratingIcon: "heart",
+                  },
+                ],
+                records: [
+                  { id: "row-1", values: { name: "Lead A", score: "4.6" } },
+                  { id: "row-2", values: { name: "Lead B", score: 9 } },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(base.tables[0]?.fields[1]).toMatchObject({
+      type: "rating",
+      ratingMax: 7,
+      ratingIcon: "heart",
+    });
+    expect(base.tables[0]?.records[0]?.values.score).toBe(5);
+    // Out-of-range value falls back to null per coerceAppForgeRatingValue.
+    expect(base.tables[0]?.records[1]?.values.score).toBeNull();
   });
 
   it("returns a conflict when expected revision is stale", () => {

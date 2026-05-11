@@ -1,12 +1,14 @@
-import { ExternalLink, Search, X } from "lucide-react";
+import { ExternalLink, Flame, Heart, Search, Star, ThumbsUp, X } from "lucide-react";
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type {
+  ForgeRatingIcon,
   ForgeStructuredField,
   ForgeStructuredRecord,
   ForgeStructuredRecordValue,
@@ -738,6 +740,208 @@ export function MultiSelectCellDisplay({ value }: MultiSelectCellDisplayProps) {
           {label}
         </span>
       ))}
+    </div>
+  );
+}
+
+// Rating helpers — mirror of `src/infra/app-forge-cell-editing.ts` so the
+// substrate and the dashboard agree on draft tokenization. The substrate
+// tests are the source of truth; this duplication matches the pattern used
+// for multi-select.
+const RATING_ICON_GLYPHS: Record<ForgeRatingIcon, ComponentType<{ className?: string }>> = {
+  star: Star,
+  heart: Heart,
+  thumb: ThumbsUp,
+  flame: Flame,
+};
+
+const RATING_ICON_PALETTE: Record<ForgeRatingIcon, { active: string; idle: string }> = {
+  star: { active: "text-amber-300", idle: "text-white/22" },
+  heart: { active: "text-rose-300", idle: "text-white/22" },
+  thumb: { active: "text-sky-300", idle: "text-white/22" },
+  flame: { active: "text-orange-300", idle: "text-white/22" },
+};
+
+function ratingIconFor(field: Pick<ForgeStructuredField, "ratingIcon">): ForgeRatingIcon {
+  return field.ratingIcon && RATING_ICON_GLYPHS[field.ratingIcon] ? field.ratingIcon : "star";
+}
+
+function ratingMaxFor(field: Pick<ForgeStructuredField, "ratingMax">): number {
+  const candidate = field.ratingMax;
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return 5;
+  }
+  const rounded = Math.trunc(candidate);
+  if (rounded < 3) return 3;
+  if (rounded > 10) return 10;
+  return rounded;
+}
+
+function parseRatingDraft(value: string, max: number): number {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  const rounded = Math.round(parsed);
+  if (rounded <= 0) return 0;
+  if (rounded > max) return max;
+  return rounded;
+}
+
+function serializeRatingDraft(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "";
+  }
+  return String(Math.round(value));
+}
+
+type RatingCellDisplayProps = {
+  field: Pick<ForgeStructuredField, "ratingMax" | "ratingIcon" | "name">;
+  value: ForgeStructuredRecordValue | undefined;
+};
+
+export function RatingCellDisplay({ field, value }: RatingCellDisplayProps) {
+  const max = ratingMaxFor(field);
+  const iconKey = ratingIconFor(field);
+  const Icon = RATING_ICON_GLYPHS[iconKey];
+  const palette = RATING_ICON_PALETTE[iconKey];
+  const numeric =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.max(0, Math.min(max, Math.round(value)))
+      : typeof value === "string" && value.trim()
+        ? Math.max(0, Math.min(max, Math.round(Number(value)) || 0))
+        : 0;
+  const label = numeric === 0 ? `${field.name ?? "Rating"} unrated` : `${numeric} of ${max}`;
+  return (
+    <div
+      className="flex items-center gap-0.5"
+      data-testid="appforge-rating-cell"
+      data-rating-value={numeric}
+      data-rating-max={max}
+      aria-label={label}
+      title={label}
+    >
+      {Array.from({ length: max }).map((_, index) => {
+        const filled = index < numeric;
+        return (
+          <Icon
+            key={index}
+            className={`h-3.5 w-3.5 ${filled ? `${palette.active} fill-current` : palette.idle}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+type RatingCellEditorProps = GridCellEditorProps;
+
+export function RatingCellEditor({
+  field,
+  draft,
+  onChange,
+  onCommit,
+  onCancel,
+}: RatingCellEditorProps) {
+  const max = ratingMaxFor(field);
+  const iconKey = ratingIconFor(field);
+  const Icon = RATING_ICON_GLYPHS[iconKey];
+  const palette = RATING_ICON_PALETTE[iconKey];
+  const current = parseRatingDraft(draft.value, max);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, []);
+
+  const setValue = (next: number) => {
+    onChange({ ...draft, value: serializeRatingDraft(next) });
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onCommit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "+") {
+      event.preventDefault();
+      setValue(Math.min(max, current + 1));
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "-") {
+      event.preventDefault();
+      setValue(Math.max(0, current - 1));
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete" || event.key === "0") {
+      event.preventDefault();
+      setValue(0);
+      return;
+    }
+    if (/^[1-9]$/.test(event.key)) {
+      const numeric = Number(event.key);
+      if (numeric <= max) {
+        event.preventDefault();
+        setValue(numeric);
+      }
+    }
+  };
+
+  const label = `${field.name ?? "Rating"} — ${current} of ${max}. Click a glyph, or use arrow keys / number keys.`;
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid="appforge-rating-editor"
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={current}
+      onKeyDown={handleKeyDown}
+      onBlur={() => onCommit()}
+      className="flex items-center gap-1 rounded-md border border-sky-400/40 bg-black/55 px-2 py-1 outline-none"
+    >
+      {Array.from({ length: max }).map((_, index) => {
+        const slot = index + 1;
+        const filled = slot <= current;
+        return (
+          <button
+            key={slot}
+            type="button"
+            data-testid="appforge-rating-editor-step"
+            data-rating-step={slot}
+            aria-label={`Set rating to ${slot}`}
+            onMouseDown={(event) => {
+              // Stop blur from firing onCommit before our click handler.
+              event.preventDefault();
+            }}
+            onClick={() => {
+              // Clicking the active glyph clears the rating (Airtable parity).
+              setValue(slot === current ? 0 : slot);
+            }}
+            className={`rounded p-0.5 transition-colors hover:bg-white/[0.08] ${
+              filled ? palette.active : palette.idle
+            }`}
+          >
+            <Icon className={`h-4 w-4 ${filled ? "fill-current" : ""}`} />
+          </button>
+        );
+      })}
+      <span className="ml-1 text-[11px] tabular-nums text-white/45">
+        {current}/{max}
+      </span>
     </div>
   );
 }

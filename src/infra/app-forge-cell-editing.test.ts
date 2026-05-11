@@ -7,10 +7,12 @@ import {
   isValidUrlInput,
   parseLinkedRecordValue,
   parseMultiSelectValue,
+  parseRatingDraftValue,
   pickRelationTitleField,
   resolveRelationLabel,
   serializeLinkedRecordValue,
   serializeMultiSelectValue,
+  serializeRatingDraftValue,
   type RelationPickerCandidate,
   type RelationPickerSourceField,
   type RelationPickerSourceRecord,
@@ -277,5 +279,31 @@ describe("app-forge cell editing — relation label resolution", () => {
 
   it("returns empty string for empty IDs", () => {
     expect(resolveRelationLabel("", candidates)).toBe("");
+  });
+});
+
+describe("app-forge cell editing — rating draft helpers", () => {
+  it("treats empty/whitespace input as a cleared cell (0)", () => {
+    expect(parseRatingDraftValue("", 5)).toBe(0);
+    expect(parseRatingDraftValue("   ", 5)).toBe(0);
+  });
+
+  it("rounds half-stars and parses valid string ratings", () => {
+    expect(parseRatingDraftValue("3", 5)).toBe(3);
+    expect(parseRatingDraftValue("3.4", 5)).toBe(3);
+    expect(parseRatingDraftValue("3.6", 5)).toBe(4);
+  });
+
+  it("returns null for out-of-range or non-numeric drafts", () => {
+    expect(parseRatingDraftValue("6", 5)).toBeNull();
+    expect(parseRatingDraftValue("-1", 5)).toBeNull();
+    expect(parseRatingDraftValue("garbage", 5)).toBeNull();
+  });
+
+  it("serializes a rating value, omitting zero so cleared cells render as empty drafts", () => {
+    expect(serializeRatingDraftValue(0)).toBe("");
+    expect(serializeRatingDraftValue(-1)).toBe("");
+    expect(serializeRatingDraftValue(3)).toBe("3");
+    expect(serializeRatingDraftValue(3.6)).toBe("4");
   });
 });
