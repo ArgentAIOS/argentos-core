@@ -3,6 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { GatewayServiceRuntime } from "./service-runtime.js";
+import {
+  extractPortFromProgramArguments,
+  waitForPortRelease,
+} from "../infra/wait-for-port-release.js";
 import { colorize, isRich, theme } from "../terminal/theme.js";
 import {
   formatGatewayServiceDescription,
@@ -18,6 +22,15 @@ import { resolveGatewayStateDir, resolveHomeDir } from "./paths.js";
 import { parseKeyValueOutput } from "./runtime-parse.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Maximum time we'll wait, between `bootout` and `bootstrap`, for the old
+ * gateway process to release its TCP port. Empirically launchd reaps the
+ * previous gateway within a few hundred milliseconds, but we leave a wide
+ * margin for slow disks / sandboxed sandboxes. The cap matches the gateway
+ * health-check timeout (~10s) used downstream.
+ */
+const PORT_RELEASE_TIMEOUT_MS = 10_000;
 const toPosixPath = (value: string) => value.replace(/\\/g, "/");
 
 const formatLine = (label: string, value: string) => {
@@ -434,6 +447,28 @@ export async function installLaunchAgent({
   await execLaunchctl(["unload", plistPath]);
   // launchd can persist "disabled" state even after bootout + plist removal; clear it before bootstrap.
   await execLaunchctl(["enable", `${domain}/${label}`]);
+
+  // After bootout, launchd has signalled the old gateway but hasn't
+  // necessarily reaped it yet — the listening socket can linger for a few
+  // hundred milliseconds (or longer under load). Bootstrapping immediately
+  // races the dying process and the fresh gateway exits with EADDRINUSE,
+  // which is exactly the cycle reported in #155. Poll for the port to
+  // become bindable before continuing; if it doesn't, surface a warning so
+  // the cause is obvious in update logs rather than masked as a generic
+  // health timeout.
+  const port = extractPortFromProgramArguments(programArguments);
+  if (port !== null) {
+    const release = await waitForPortRelease({ port, timeoutMs: PORT_RELEASE_TIMEOUT_MS });
+    if (!release.released) {
+      stdout.write(
+        `${formatLine(
+          "Gateway port still in use after bootout",
+          `port ${port} after ${release.durationMs}ms; continuing with bootstrap`,
+        )}\n`,
+      );
+    }
+  }
+
   const boot = await execLaunchctl(["bootstrap", domain, plistPath]);
   if (boot.code !== 0) {
     throw new Error(`launchctl bootstrap failed: ${boot.stderr || boot.stdout}`.trim());
