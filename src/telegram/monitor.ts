@@ -11,7 +11,7 @@ import { resolveTelegramAccount } from "./accounts.js";
 import { resolveTelegramAllowedUpdates } from "./allowed-updates.js";
 import { createTelegramBot } from "./bot.js";
 import { isRecoverableTelegramNetworkError } from "./network-errors.js";
-import { acquireTelegramPollingSlot } from "./polling-singleton.js";
+import { acquireTelegramPollingSlot, describeTelegramBotForLog } from "./polling-singleton.js";
 import { makeProxyFetch } from "./proxy.js";
 import { readTelegramUpdateOffset, writeTelegramUpdateOffset } from "./update-offset-store.js";
 import { startTelegramWebhook } from "./webhook.js";
@@ -27,6 +27,16 @@ export type TelegramMonitorStatusPatch = {
   state?: string;
   lastError?: string | null;
   nextRetryAt?: number | null;
+  /**
+   * Set to `true` when the poller has been stuck in a getUpdates 409
+   * conflict cycle for longer than {@link TELEGRAM_PERSISTENT_CONFLICT_THRESHOLD_MS}
+   * — i.e. another argent-gateway (or other client) has been holding the
+   * polling lock for this bot for an extended period. The dashboard /
+   * `argent channels status` surface uses this flag to render the
+   * persistent-conflict UX warning (GH #194). Cleared (false) the moment
+   * a poll succeeds.
+   */
+  persistentConflict?: boolean;
 };
 
 export type MonitorTelegramOpts = {
@@ -96,6 +106,16 @@ const TELEGRAM_GET_UPDATES_CONFLICT_BACKOFF = {
   factor: 2,
   jitter: 0,
 };
+
+/**
+ * After this many ms of unbroken getUpdates 409 conflicts, escalate the
+ * status patch with `persistentConflict: true` so the dashboard / status
+ * command can render a UX warning. Sized so brief overlaps during a
+ * config-reload-driven gateway restart (typically <1 min) do not flip
+ * the warning, while a real cross-instance polling race surfaces quickly
+ * enough to save the operator the manual log dive (GH #194).
+ */
+export const TELEGRAM_PERSISTENT_CONFLICT_THRESHOLD_MS = 10 * 60 * 1000;
 
 const waitForAbort = async (abortSignal?: AbortSignal) => {
   if (!abortSignal || abortSignal.aborted) {
@@ -246,6 +266,16 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
     // Use grammyjs/runner for concurrent update processing
     let restartAttempts = 0;
     let consecutiveGetUpdatesConflicts = 0;
+    // Wall-clock timestamp of the first 409 in the current cycle. Reset
+    // to null whenever a poll succeeds. Used to flag the cycle as
+    // "persistent" once it crosses TELEGRAM_PERSISTENT_CONFLICT_THRESHOLD_MS
+    // so the dashboard surfaces a UX warning (GH #194).
+    let firstConflictAt: number | null = null;
+    let persistentConflictReported = false;
+    // Bot identity (id + last 4 token chars) baked into every 409 log
+    // line so future cascades can be triaged without grepping argent.json
+    // for the matching bot id (GH #194 root cause).
+    const botIdentity = describeTelegramBotForLog(token);
 
     try {
       while (!opts.abortSignal?.aborted) {
@@ -257,7 +287,15 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
           }
         };
         opts.abortSignal?.addEventListener("abort", stopOnAbort, { once: true });
-        reportStatus({ state: "polling", lastError: null, nextRetryAt: null });
+        reportStatus({
+          state: "polling",
+          lastError: null,
+          nextRetryAt: null,
+          // Clear any prior persistent-conflict warning the moment we
+          // attempt a fresh poll cycle; we'll re-raise it below if the
+          // cycle is still failing past the threshold.
+          ...(persistentConflictReported ? { persistentConflict: false } : {}),
+        });
         try {
           // runner.task() returns a promise that resolves when the runner stops
           await runner.task();
@@ -268,6 +306,8 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
           if (!opts.abortSignal?.aborted) {
             consecutiveGetUpdatesConflicts = 0;
             restartAttempts = 0;
+            firstConflictAt = null;
+            persistentConflictReported = false;
           }
           return;
         } catch (err) {
@@ -296,28 +336,61 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
           let delayMs: number;
           if (isConflict) {
             consecutiveGetUpdatesConflicts += 1;
+            if (firstConflictAt === null) {
+              firstConflictAt = Date.now();
+            }
             delayMs = computeBackoff(
               TELEGRAM_GET_UPDATES_CONFLICT_BACKOFF,
               consecutiveGetUpdatesConflicts,
             );
           } else {
             consecutiveGetUpdatesConflicts = 0;
+            firstConflictAt = null;
             delayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
           }
           const reason = isConflict ? "getUpdates conflict" : "network error";
+          // Bot identity is included on conflict lines specifically (the
+          // GH #194 manual-investigation pain point) so an operator
+          // grepping `getUpdates conflict` across hosts immediately
+          // knows which bot is racing without cross-referencing config.
+          const identitySuffix = isConflict ? ` (${botIdentity})` : "";
+          const conflictDurationMs =
+            isConflict && firstConflictAt !== null ? Date.now() - firstConflictAt : 0;
+          const isPersistent =
+            isConflict && conflictDurationMs >= TELEGRAM_PERSISTENT_CONFLICT_THRESHOLD_MS;
           (opts.runtime?.error ?? console.error)(
-            `Telegram ${reason}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}` +
+            `Telegram ${reason}${identitySuffix}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}` +
               (isConflict
                 ? ` (consecutive conflicts: ${consecutiveGetUpdatesConflicts}; will keep retrying with exponential backoff capped at ${formatDurationMs(TELEGRAM_GET_UPDATES_CONFLICT_BACKOFF.maxMs)}).`
                 : "."),
           );
+          if (isPersistent && !persistentConflictReported) {
+            // One-time WARN line that explicitly names the failure mode
+            // ("another instance is polling this bot") so an operator
+            // tailing logs sees it without having to interpret the 409
+            // backoff math.
+            (opts.runtime?.error ?? console.error)(
+              `Telegram getUpdates conflict has persisted for ${formatDurationMs(conflictDurationMs)} (${botIdentity}); another argent-gateway (or other client) appears to be polling this bot. See https://argentos.dev/channels/telegram#another-instance-is-polling-this-bot to resolve.`,
+            );
+            persistentConflictReported = true;
+          }
           reportStatus({
             state: isConflict
               ? `backing-off (next attempt in ${formatDurationMs(delayMs)}; consecutive 409 conflicts: ${consecutiveGetUpdatesConflicts})`
               : `recovering (next attempt in ${formatDurationMs(delayMs)})`,
             lastError: errMsg,
             nextRetryAt: Date.now() + delayMs,
+            ...(isConflict
+              ? { persistentConflict: isPersistent || persistentConflictReported }
+              : persistentConflictReported
+                ? { persistentConflict: false }
+                : {}),
           });
+          if (!isConflict) {
+            // Recoverable network error broke the conflict streak — make
+            // sure the warning flag is cleared for the next status patch.
+            persistentConflictReported = false;
+          }
           try {
             await sleepWithAbort(delayMs, opts.abortSignal);
           } catch (sleepErr) {
