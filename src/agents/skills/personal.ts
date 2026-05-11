@@ -253,19 +253,13 @@ function classifyReviewState(
     (candidate.sourceLessonIds.length > 0 && candidate.sourceTaskIds.length > 0);
   const strongCorrection = candidate.confidence >= 0.9 && provenanceCount >= 1;
 
-  // If a skill is already intentionally incubating and is clearly procedural,
-  // don't immediately demote it just because it lacks passive provenance yet.
-  // This protects explicit agent-authored/operator-authored procedures while
-  // they accumulate real usage history.
-  if (
-    candidate.state === "incubating" &&
-    procedural &&
-    hasOutline &&
-    candidate.confidence >= 0.55
-  ) {
-    return "incubating";
-  }
-
+  // Promotion gate takes precedence. Before #210, the incubating-protection
+  // branch below short-circuited before this check, so even candidates whose
+  // recurrenceCount / evidence / confidence cleared the gate stayed stuck in
+  // `incubating` forever. With the recurrenceCount fix in
+  // `reinforceOrCreatePersonalSkillCandidateFromLiveInbox`, passive
+  // distillation now has a real path through this gate after N repetitions —
+  // so we must actually let it through.
   if (
     procedural &&
     hasOutline &&
@@ -274,6 +268,21 @@ function classifyReviewState(
     (repeated || strongCorrection)
   ) {
     return "promoted";
+  }
+
+  // If a skill is already intentionally incubating and is clearly procedural,
+  // don't immediately demote it just because it lacks passive provenance yet.
+  // This protects explicit agent-authored/operator-authored procedures while
+  // they accumulate real usage history. (Strictly weaker than the promotion
+  // gate above, so this is a pure no-demotion guard, not a no-promotion
+  // guard.)
+  if (
+    candidate.state === "incubating" &&
+    procedural &&
+    hasOutline &&
+    candidate.confidence >= 0.55
+  ) {
+    return "incubating";
   }
   if (procedural && provenanceCount >= 1 && candidate.confidence >= 0.55) {
     return "incubating";
