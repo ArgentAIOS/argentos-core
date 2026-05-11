@@ -51,6 +51,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`directory`](/cli/directory)
 - [`security`](/cli/security)
 - [`skills`](/cli/skills)
+- [`personal-skills`](/cli/personal-skills)
 - [`marketplace`](/cli/marketplace)
 - [`voicecall`](/cli/voicecall) (plugin; if installed)
 
