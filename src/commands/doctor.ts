@@ -35,6 +35,7 @@ import {
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
+import { noteLaunchAgentInstallPathDrift } from "./doctor-launchagent-paths.js";
 import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
@@ -193,6 +194,7 @@ export async function doctorCommand(
   });
   await noteMacLaunchAgentOverrides();
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
+  await noteLaunchAgentInstallPathDrift();
 
   await noteSecurityWarnings(cfg);
 
