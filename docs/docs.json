@@ -1088,6 +1088,7 @@
                   "cli/nodes",
                   "cli/onboard",
                   "cli/pairing",
+                  "cli/personal-skills",
                   "cli/plugins",
                   "cli/reset",
                   "cli/sandbox",
