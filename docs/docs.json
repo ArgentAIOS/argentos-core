@@ -1081,6 +1081,7 @@
                   "cli/health",
                   "cli/hooks",
                   "cli/logs",
+                  "cli/marketplace",
                   "cli/memory",
                   "cli/message",
                   "cli/models",
