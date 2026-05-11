@@ -1,5 +1,5 @@
 {
-  "snapshotAt": "2026-05-11T22:54:42.277Z",
+  "snapshotAt": "2026-05-11T22:59:41.819Z",
   "totalErrors": 267,
   "errors": [
     {
@@ -48,7 +48,7 @@
       "file": "src/agents/pi-embedded-runner/compact.ts",
       "line": 440,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-coding-agent@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession'."
+      "message": "Argument of type 'import(\"<REPO>/src/argent-agent/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' is not assignable to parameter of type 'import(\"<NM>/@mariozechner/pi-coding-agent/dist/core/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession'."
     },
     {
       "file": "src/agents/pi-embedded-runner/compact.ts",
@@ -150,7 +150,7 @@
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1130,
       "code": "TS2352",
-      "message": "Conversion of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' to type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-coding-agent@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+      "message": "Conversion of type 'import(\"<REPO>/src/argent-agent/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' to type 'import(\"<NM>/@mariozechner/pi-coding-agent/dist/core/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
@@ -168,25 +168,25 @@
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1280,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1284,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn' is not assignable to type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn'."
+      "message": "Type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn' is not assignable to type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1287,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn' is not assignable to type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn'."
+      "message": "Type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn' is not assignable to type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1294,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
@@ -198,7 +198,7 @@
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1526,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
@@ -210,7 +210,7 @@
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1547,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Argument of type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
@@ -222,7 +222,7 @@
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1579,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Argument of type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
@@ -234,13 +234,13 @@
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1589,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/attempt.ts",
       "line": 1668,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/message-sanitizer.ts",
@@ -258,7 +258,7 @@
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 166,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Argument of type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
@@ -270,43 +270,43 @@
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 215,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Argument of type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 215,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Argument of type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 222,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 273,
       "code": "TS2345",
-      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Argument of type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 282,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 296,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-extensions/context-pruning/extension.ts",
       "line": 24,
       "code": "TS2322",
-      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/fix-178-tsdown-precheck-2026-05-11/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+      "message": "Type 'import(\"<NM>/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"<REPO>/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
     },
     {
       "file": "src/agents/pi-model-discovery.ts",
@@ -1320,7 +1320,7 @@
       "file": "src/gateway/test-helpers.mocks.ts",
       "line": 237,
       "code": "TS2675",
-      "message": "Cannot extend a class '\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-coding-agent@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-coding-agent/dist/core/model-registry\".ModelRegistry'. Class constructor is marked as private."
+      "message": "Cannot extend a class '\"<NM>/@mariozechner/pi-coding-agent/dist/core/model-registry\".ModelRegistry'. Class constructor is marked as private."
     },
     {
       "file": "src/infra/contemplation-runner.ts",

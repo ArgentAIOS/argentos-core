@@ -31,6 +31,32 @@ const snapshotPath = path.join(repoRoot, "ops", "known-failing.json");
 
 const ERROR_RE = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
 
+// Normalize absolute paths embedded inside TS error messages (typically inside
+// `import("...")` references) so a baseline snapshot is portable across
+// machines and CI runners. Without this, an error message like
+//   import("/Users/sem/.../node_modules/.pnpm/foo/dist/types", ...)
+// fails to match the same logical error in CI where the message reads
+//   import("/home/runner/_work/.../node_modules/.pnpm/foo/dist/types", ...)
+// even though the error is identical. We strip absolute prefixes up to the
+// nearest recognizable repo-relative or node_modules-relative anchor.
+function normalizePaths(s) {
+  return s.replace(/"\/[^"]+"/g, (match) => {
+    const nmIdx = match.lastIndexOf("/node_modules/");
+    if (nmIdx >= 0) {
+      return `"<NM>${match.slice(nmIdx + "/node_modules".length)}`;
+    }
+    // Prefer the LAST occurrence of common repo-source anchors so a path
+    // like /a/b/src/c/d.ts collapses to <REPO>/src/c/d.ts.
+    for (const anchor of ["/src/", "/dist/", "/apps/", "/packages/", "/scripts/"]) {
+      const idx = match.lastIndexOf(anchor);
+      if (idx >= 0) {
+        return `"<REPO>${match.slice(idx)}`;
+      }
+    }
+    return match;
+  });
+}
+
 function parseErrors(text) {
   const errors = [];
   for (const raw of text.split("\n")) {
@@ -41,7 +67,7 @@ function parseErrors(text) {
       file: m[1],
       line: Number.parseInt(m[2], 10),
       code: m[4],
-      message: m[5],
+      message: normalizePaths(m[5]),
     });
   }
   return errors;
@@ -68,6 +94,12 @@ function loadBaseline() {
   if (!Array.isArray(data.errors)) {
     console.error(`tsc-since: baseline at ${snapshotPath} missing "errors" array`);
     process.exit(2);
+  }
+  // Normalize baseline messages too — handles legacy snapshots generated
+  // before normalizePaths existed, so the script keeps working across an
+  // upgrade without forcing a snapshot regeneration.
+  for (const err of data.errors) {
+    err.message = normalizePaths(err.message);
   }
   return data;
 }
