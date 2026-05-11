@@ -19,11 +19,19 @@
 
 set -e
 
+REPO_ROOT=$(git rev-parse --show-toplevel)
 FILES=$(git diff --cached --name-only --diff-filter=ACMR | sed 's| |\\ |g')
 
 # 1. Auto-fix format rot on staged JS/TS/CJS/MJS files (no-op for other types).
+#
+# Use scripts/pre-commit/run-node-tool.sh so the binary resolution is shared
+# with the prek hooks. Critically, that script falls back to the main
+# worktree's node_modules when run from a linked worktree (e.g. bump-version
+# worktrees created by merge-custody workers) — without the fallback, every
+# bump commit fails with "oxfmt not found" because linked worktrees don't
+# have their own node_modules. See GH #176.
 if [ -n "$FILES" ]; then
-  echo "$FILES" | xargs pnpm format:fix --no-error-on-unmatched-pattern
+  echo "$FILES" | xargs "$REPO_ROOT/scripts/pre-commit/run-node-tool.sh" oxfmt --write --no-error-on-unmatched-pattern
   echo "$FILES" | xargs git add
 fi
 
