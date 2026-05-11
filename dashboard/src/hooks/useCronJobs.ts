@@ -52,14 +52,53 @@ type CronRunResult = {
   reason?: "not-due";
 };
 
-const STORAGE_KEY = "argent-cron-jobs";
-const MAX_CACHED_JOBS = 500;
-const MAX_PAYLOAD_PREVIEW = 240;
-const MIN_CACHED_JOBS = 25;
+export const STORAGE_KEY = "argent-cron-jobs";
+export const MAX_CACHED_JOBS = 500;
+export const MAX_PAYLOAD_PREVIEW = 240;
+export const MIN_PAYLOAD_PREVIEW = 60;
+
+// Hard ceiling for a single cache entry. We deliberately stay well under the
+// ~5 MB per-origin localStorage quota so the cron cache cannot, on its own,
+// starve other dashboard features (control settings, layout prefs, etc.).
+// See GH #157 — once the cache disabled flag flipped, it stayed flipped for
+// the rest of the session, even though the bulk of the payload was avoidable.
+export const MAX_CACHE_BYTES = 1_000_000;
+
+/**
+ * Progressive cache-degradation cascade. Each step is attempted in order until
+ * one of them fits both the byte ceiling and the browser quota. Tighter steps
+ * keep fewer entries AND optionally drop the heavy `state` field (which carries
+ * `lastSimulationEvidence` and prose `lastGateReason`) and shorten string
+ * previews.
+ */
+export interface CronCacheStep {
+  /** Maximum number of jobs to retain (most recent are kept). */
+  readonly cap: number;
+  /** Drop `state` from each cached job (last-run timestamps, gate evidence). */
+  readonly dropState: boolean;
+  /** Maximum length for cached string previews (text, message, reason). */
+  readonly previewLen: number;
+}
+
+export const CRON_CACHE_CASCADE: readonly CronCacheStep[] = [
+  { cap: MAX_CACHED_JOBS, dropState: false, previewLen: MAX_PAYLOAD_PREVIEW },
+  { cap: 200, dropState: false, previewLen: MAX_PAYLOAD_PREVIEW },
+  { cap: 100, dropState: false, previewLen: MAX_PAYLOAD_PREVIEW },
+  { cap: 50, dropState: false, previewLen: MIN_PAYLOAD_PREVIEW },
+  { cap: 25, dropState: true, previewLen: MIN_PAYLOAD_PREVIEW },
+  { cap: 10, dropState: true, previewLen: MIN_PAYLOAD_PREVIEW },
+];
 
 let cronCacheStorageDisabled = false;
 let cronCacheWarned = false;
 let lastPersistedSnapshot: string | null = null;
+
+/** Test-only: reset module-level cache state between tests. */
+export function _resetCronCacheStateForTests(): void {
+  cronCacheStorageDisabled = false;
+  cronCacheWarned = false;
+  lastPersistedSnapshot = null;
+}
 
 interface UseCronJobsOptions {
   /** Gateway request function for fetching live cron data via WebSocket. */
@@ -72,8 +111,19 @@ interface UseCronJobsOptions {
   enabled?: boolean;
 }
 
-function toCachedJobs(jobs: CronJob[]): CronJob[] {
-  return jobs.slice(0, MAX_CACHED_JOBS).map((job) => ({
+/**
+ * Build a slim, cache-safe projection of a cron-jobs list under the supplied
+ * cascade step. Keeps the MOST RECENT `step.cap` entries (eviction is FIFO —
+ * oldest entries are dropped first) and optionally strips the heavy `state`
+ * field and shortens prose previews.
+ *
+ * Exported for unit testing.
+ */
+export function toCachedJobs(jobs: CronJob[], step: CronCacheStep): CronJob[] {
+  // slice(-cap) keeps the LAST N entries (most recent) so older entries are
+  // the ones evicted under storage pressure.
+  const recent = step.cap >= jobs.length ? jobs.slice() : jobs.slice(-step.cap);
+  return recent.map((job) => ({
     id: job.id,
     name: job.name,
     enabled: job.enabled,
@@ -88,84 +138,99 @@ function toCachedJobs(jobs: CronJob[]): CronJob[] {
     },
     payload: {
       kind: job.payload?.kind ?? "",
-      ...(job.payload?.text ? { text: job.payload.text.slice(0, MAX_PAYLOAD_PREVIEW) } : {}),
-      ...(job.payload?.message
-        ? { message: job.payload.message.slice(0, MAX_PAYLOAD_PREVIEW) }
-        : {}),
+      ...(job.payload?.text ? { text: job.payload.text.slice(0, step.previewLen) } : {}),
+      ...(job.payload?.message ? { message: job.payload.message.slice(0, step.previewLen) } : {}),
     },
-    state: job.state
-      ? {
-          ...(typeof job.state.nextRunAtMs === "number"
-            ? { nextRunAtMs: job.state.nextRunAtMs }
-            : {}),
-          ...(typeof job.state.lastRunAtMs === "number"
-            ? { lastRunAtMs: job.state.lastRunAtMs }
-            : {}),
-          ...(typeof job.state.lastExecutionMode === "string"
-            ? { lastExecutionMode: job.state.lastExecutionMode }
-            : {}),
-          ...(typeof job.state.lastGateDecision === "string"
-            ? { lastGateDecision: job.state.lastGateDecision }
-            : {}),
-          ...(typeof job.state.lastGateReason === "string"
-            ? { lastGateReason: job.state.lastGateReason.slice(0, MAX_PAYLOAD_PREVIEW) }
-            : {}),
-          ...(job.state.lastSimulationEvidence &&
-          typeof job.state.lastSimulationEvidence === "object"
-            ? {
-                lastSimulationEvidence: {
-                  ...job.state.lastSimulationEvidence,
-                  reason: String(job.state.lastSimulationEvidence.reason ?? "").slice(
-                    0,
-                    MAX_PAYLOAD_PREVIEW,
-                  ),
-                },
-              }
-            : {}),
-        }
-      : undefined,
+    state:
+      step.dropState || !job.state
+        ? undefined
+        : {
+            ...(typeof job.state.nextRunAtMs === "number"
+              ? { nextRunAtMs: job.state.nextRunAtMs }
+              : {}),
+            ...(typeof job.state.lastRunAtMs === "number"
+              ? { lastRunAtMs: job.state.lastRunAtMs }
+              : {}),
+            ...(typeof job.state.lastExecutionMode === "string"
+              ? { lastExecutionMode: job.state.lastExecutionMode }
+              : {}),
+            ...(typeof job.state.lastGateDecision === "string"
+              ? { lastGateDecision: job.state.lastGateDecision }
+              : {}),
+            ...(typeof job.state.lastGateReason === "string"
+              ? { lastGateReason: job.state.lastGateReason.slice(0, step.previewLen) }
+              : {}),
+            ...(job.state.lastSimulationEvidence &&
+            typeof job.state.lastSimulationEvidence === "object"
+              ? {
+                  lastSimulationEvidence: {
+                    ...job.state.lastSimulationEvidence,
+                    reason: String(job.state.lastSimulationEvidence.reason ?? "").slice(
+                      0,
+                      step.previewLen,
+                    ),
+                  },
+                }
+              : {}),
+          },
   }));
 }
 
-function tryPersistSnapshot(jobs: CronJob[], cap: number): boolean {
-  const snapshot = JSON.stringify(toCachedJobs(jobs).slice(0, cap));
+/**
+ * Attempt to persist a snapshot built from `step`. Returns true if the write
+ * succeeded (or was a no-op because the snapshot matches the last write).
+ * Returns false WITHOUT throwing if the snapshot exceeds `MAX_CACHE_BYTES` —
+ * the caller is expected to retry with a tighter step. Re-throws underlying
+ * storage errors (e.g. QuotaExceededError) so the caller's catch block can
+ * cascade.
+ */
+export function tryPersistSnapshot(jobs: CronJob[], step: CronCacheStep): boolean {
+  const snapshot = JSON.stringify(toCachedJobs(jobs, step));
+  // Proactive size check: refuse to write anything past our self-imposed cap
+  // even when the browser hasn't yet complained. This bounds our footprint
+  // when the underlying quota is still nominally available.
+  if (snapshot.length > MAX_CACHE_BYTES) return false;
   if (snapshot === lastPersistedSnapshot) return true;
   localStorage.setItem(STORAGE_KEY, snapshot);
   lastPersistedSnapshot = snapshot;
   return true;
 }
 
-function safePersistCronJobs(jobs: CronJob[]): void {
+export function safePersistCronJobs(jobs: CronJob[]): void {
   if (cronCacheStorageDisabled) return;
-  try {
-    // Write a full cache first, then progressively degrade if storage is tight.
-    if (tryPersistSnapshot(jobs, MAX_CACHED_JOBS)) return;
-  } catch (err) {
+  let lastError: unknown = null;
+  // Walk the cascade in order: full cache first, then progressively smaller +
+  // lighter projections. We cascade on BOTH a thrown storage error AND a false
+  // return (proactive size cap), so we degrade gracefully whether the browser
+  // is full or we're staying under self-imposed limits.
+  for (const step of CRON_CACHE_CASCADE) {
     try {
-      if (tryPersistSnapshot(jobs, 200)) return;
-    } catch {}
-    try {
-      if (tryPersistSnapshot(jobs, 100)) return;
-    } catch {}
-    try {
-      if (tryPersistSnapshot(jobs, 50)) return;
-    } catch {}
-    try {
-      if (tryPersistSnapshot(jobs, MIN_CACHED_JOBS)) return;
-    } catch {}
+      if (tryPersistSnapshot(jobs, step)) return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
 
-    const message = err instanceof Error ? err.message : String(err);
-    if (!cronCacheWarned) {
-      console.warn("[CronJobs] localStorage cache disabled (quota/storage error):", message);
-      cronCacheWarned = true;
-    }
-    cronCacheStorageDisabled = true;
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-      lastPersistedSnapshot = null;
-    } catch {
-      // Ignore secondary storage errors.
-    }
+  // Every cascade level either threw or exceeded the proactive byte cap. Emit
+  // a one-shot warning and stop trying for this session.
+  const message =
+    lastError instanceof Error
+      ? lastError.message
+      : lastError !== null
+        ? typeof lastError === "string"
+          ? lastError
+          : JSON.stringify(lastError)
+        : "all cache levels exceeded size cap";
+  if (!cronCacheWarned) {
+    console.warn("[CronJobs] localStorage cache disabled (quota/storage error):", message);
+    cronCacheWarned = true;
+  }
+  cronCacheStorageDisabled = true;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    lastPersistedSnapshot = null;
+  } catch {
+    // Ignore secondary storage errors.
   }
 }
 
