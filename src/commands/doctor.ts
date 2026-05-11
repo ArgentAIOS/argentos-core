@@ -267,7 +267,7 @@ export async function doctorCommand(
     nonInteractive: options.nonInteractive,
   });
 
-  const { healthOk } = await checkGatewayHealth({
+  const { healthOk, transitionState } = await checkGatewayHealth({
     runtime,
     cfg,
     timeoutMs: options.nonInteractive === true ? 3000 : 10_000,
@@ -279,6 +279,7 @@ export async function doctorCommand(
     options,
     gatewayDetailsMessage: gatewayDetails.message,
     healthOk,
+    transitionState,
     configPath: configResult.path ?? CONFIG_PATH,
   });
 
