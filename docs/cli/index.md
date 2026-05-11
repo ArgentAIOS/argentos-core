@@ -48,9 +48,25 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`pairing`](/cli/pairing)
 - [`plugins`](/cli/plugins) (plugin commands)
 - [`channels`](/cli/channels)
+- [`directory`](/cli/directory)
 - [`security`](/cli/security)
 - [`skills`](/cli/skills)
+- [`marketplace`](/cli/marketplace)
 - [`voicecall`](/cli/voicecall) (plugin; if installed)
+
+### Less-frequently-used commands
+
+These exist in `argent --help` but are infrequently used directly. Documented in this
+index so they're discoverable; run `argent <cmd> --help` for current option details.
+
+- `argent cs` — Command Center (visual dashboard interface; see also [`argent dashboard`](/cli/dashboard)).
+- `argent daemon` — Legacy alias for [`argent gateway`](/cli/gateway).
+- `argent doc-panel` — Push files to the dashboard doc panel.
+- `argent intent` — Intent system tools.
+- `argent secrets` — Encrypted secret management (list/grant/revoke/audit/backup-key).
+- `argent extension` — Extension packaging and publishing.
+- `argent migrate` — Export or import an Argent install bundle.
+- `argent completion` — Generate shell completion script (zsh/bash/powershell/fish).
 
 ## Global flags
 
