@@ -111,6 +111,8 @@ export default defineConfig([
         ["infra/execution-worker-runner", "src/infra/execution-worker-runner.ts"],
         ["infra/exec-approval-forwarder", "src/infra/exec-approval-forwarder.ts"],
         ["infra/service-keys", "src/infra/service-keys.ts"],
+        ["connectors/composio/index", "src/connectors/composio/index.ts"],
+        ["models/builtin-profiles", "src/models/builtin-profiles.ts"],
       ].filter(([, file]) => fs.existsSync(file)),
     ),
     env,
