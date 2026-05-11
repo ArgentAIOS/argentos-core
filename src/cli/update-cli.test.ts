@@ -987,4 +987,148 @@ describe("update-cli", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  // GH #167: argent update must NOT rotate gateway.auth.token unless the user
+  // explicitly passes --rotate-gateway-token. These tests pin the behavior so
+  // future refactors of the post-update flow don't silently regress it.
+  describe("gateway.auth.token preservation (GH #167)", () => {
+    const PRE_UPDATE_TOKEN = "pre-update-token-original-1234567890";
+    const POST_UPDATE_DRIFT_TOKEN = "post-update-token-clobbered-abcdef";
+
+    const baseGatewayConfig = {
+      gateway: {
+        auth: {
+          mode: "token" as const,
+          token: PRE_UPDATE_TOKEN,
+        },
+      },
+    };
+
+    it("preserves existing gateway.auth.token across update by default", async () => {
+      const { readConfigFileSnapshot, writeConfigFile } = await import("../config/config.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      // 1st read: pre-update snapshot has the original token.
+      // 2nd read: simulates the post-update state where some sub-step (doctor
+      //   --repair, plugin sync, etc.) rotated the token.
+      vi.mocked(readConfigFileSnapshot)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: baseGatewayConfig,
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {
+            gateway: {
+              auth: { mode: "token", token: POST_UPDATE_DRIFT_TOKEN },
+            },
+          },
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>);
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ json: true });
+
+      // The final writeConfigFile must restore the original token.
+      const writeCalls = vi.mocked(writeConfigFile).mock.calls;
+      expect(writeCalls.length).toBeGreaterThan(0);
+      const lastWritten = writeCalls.at(-1)?.[0] as {
+        gateway?: { auth?: { token?: string; mode?: string } };
+      };
+      expect(lastWritten?.gateway?.auth?.token).toBe(PRE_UPDATE_TOKEN);
+      expect(lastWritten?.gateway?.auth?.mode).toBe("token");
+    });
+
+    it("does not write a token when none existed before the update (fresh install)", async () => {
+      const { readConfigFileSnapshot, writeConfigFile } = await import("../config/config.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      // Pre-update: no token configured. Post-update: update flow generated one.
+      vi.mocked(readConfigFileSnapshot)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {},
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {
+            gateway: {
+              auth: { mode: "token", token: POST_UPDATE_DRIFT_TOKEN },
+            },
+          },
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>);
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ json: true });
+
+      // Fresh-install path: we must NOT overwrite the freshly generated token.
+      // Any writeConfigFile call (from plugin sync, etc.) must not have the
+      // sentinel "PRE_UPDATE_TOKEN" since none existed.
+      const writeCalls = vi.mocked(writeConfigFile).mock.calls;
+      for (const [cfg] of writeCalls) {
+        const writtenToken = (cfg as { gateway?: { auth?: { token?: string } } })?.gateway?.auth
+          ?.token;
+        // Allowed: undefined, empty, or POST_UPDATE_DRIFT_TOKEN. NEVER the
+        // pre-update sentinel (because there wasn't one).
+        expect(writtenToken === undefined || writtenToken === POST_UPDATE_DRIFT_TOKEN).toBe(true);
+      }
+    });
+
+    it("regenerates the token when --rotate-gateway-token is passed", async () => {
+      const { readConfigFileSnapshot, writeConfigFile } = await import("../config/config.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(readConfigFileSnapshot)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: baseGatewayConfig,
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {
+            gateway: {
+              auth: { mode: "token", token: POST_UPDATE_DRIFT_TOKEN },
+            },
+          },
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>);
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ json: true, rotateGatewayToken: true });
+
+      // No write should restore the original token when rotate is opt-in true.
+      const writeCalls = vi.mocked(writeConfigFile).mock.calls;
+      for (const [cfg] of writeCalls) {
+        const writtenToken = (cfg as { gateway?: { auth?: { token?: string } } })?.gateway?.auth
+          ?.token;
+        // Must NOT equal the original — the operator opted in to rotation.
+        expect(writtenToken).not.toBe(PRE_UPDATE_TOKEN);
+      }
+    });
+  });
 });

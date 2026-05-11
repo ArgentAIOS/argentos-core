@@ -64,6 +64,15 @@ export type UpdateCommandOptions = {
   tag?: string;
   timeout?: string;
   yes?: boolean;
+  /**
+   * Opt-in: allow `argent update` to regenerate `gateway.auth.token`.
+   *
+   * Default (false) preserves the existing token across updates so dashboard
+   * sessions, saved tokenized URLs, and long-running connections survive.
+   * Fresh installs (no token configured) still generate one regardless of
+   * this flag. See GH #167.
+   */
+  rotateGatewayToken?: boolean;
 };
 export type UpdateStatusOptions = {
   json?: boolean;
@@ -260,6 +269,85 @@ async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
   }
   if (failed.length > 0) {
     defaultRuntime.log(theme.warn(`Dashboard service restart failed: ${failed.join(", ")}.`));
+  }
+}
+
+type GatewayTokenSnapshot = {
+  /** Token captured before update ran; null if no token was configured. */
+  token: string | null;
+  /** Whether `gateway.auth.mode` was already "token" before the update. */
+  modeWasToken: boolean;
+};
+
+/** Capture the existing gateway.auth.token (and mode) before update runs. */
+function captureGatewayTokenSnapshot(
+  config: { gateway?: { auth?: { mode?: string; token?: string } } } | null | undefined,
+): GatewayTokenSnapshot {
+  const rawToken = config?.gateway?.auth?.token;
+  const token = typeof rawToken === "string" && rawToken.trim().length > 0 ? rawToken : null;
+  const modeWasToken =
+    typeof config?.gateway?.auth?.mode === "string" &&
+    config.gateway.auth.mode.trim().toLowerCase() === "token";
+  return { token, modeWasToken };
+}
+
+/**
+ * After the update flow finishes, restore the pre-update gateway.auth.token if
+ * it was clobbered by any post-update step (e.g. doctor --repair re-generating
+ * a token when the mode was reset). When `rotate=true` the caller has opted in
+ * to rotation and we leave whatever the update wrote in place. When no token
+ * existed before (fresh-install path) we also leave the new value alone.
+ *
+ * See GH #167.
+ */
+async function preserveGatewayAuthToken(params: {
+  snapshot: GatewayTokenSnapshot;
+  rotate: boolean;
+  jsonMode: boolean;
+}): Promise<void> {
+  if (params.rotate) {
+    return;
+  }
+  if (!params.snapshot.token) {
+    // Fresh install: no token to preserve. Whatever the update generated stays.
+    return;
+  }
+
+  const after = await readConfigFileSnapshot();
+  if (!after.valid) {
+    return;
+  }
+  const currentToken = after.config.gateway?.auth?.token;
+  const currentTrimmed =
+    typeof currentToken === "string" && currentToken.trim().length > 0 ? currentToken : null;
+  if (currentTrimmed === params.snapshot.token) {
+    // Token unchanged — nothing to restore.
+    return;
+  }
+
+  const restored = {
+    ...after.config,
+    gateway: {
+      ...after.config.gateway,
+      auth: {
+        ...after.config.gateway?.auth,
+        // If the operator's pre-update config had mode=token, preserve that;
+        // otherwise leave whatever mode the update wrote.
+        mode: params.snapshot.modeWasToken
+          ? "token"
+          : (after.config.gateway?.auth?.mode ?? "token"),
+        token: params.snapshot.token,
+      },
+    },
+  };
+  await writeConfigFile(restored);
+
+  if (!params.jsonMode) {
+    defaultRuntime.log(
+      theme.muted(
+        "Preserved existing gateway.auth.token (run `argent update --rotate-gateway-token` to regenerate).",
+      ),
+    );
   }
 }
 
@@ -857,6 +945,11 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
 
   const configSnapshot = await readConfigFileSnapshot();
   let activeConfig = configSnapshot.valid ? configSnapshot.config : null;
+  // GH #167: snapshot gateway.auth.token BEFORE any update step runs so we can
+  // restore it afterwards. Default behavior is to preserve the operator's
+  // existing token; `--rotate-gateway-token` opts in to rotation.
+  const gatewayTokenSnapshot = captureGatewayTokenSnapshot(activeConfig);
+  const rotateGatewayToken = Boolean(opts.rotateGatewayToken);
   const storedChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
     : null;
@@ -1274,6 +1367,23 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     }
   }
 
+  // GH #167: restore the pre-update gateway.auth.token if any post-update step
+  // (e.g. doctor --repair, plugin sync, daemon install) clobbered it. Opt-in
+  // rotation via `--rotate-gateway-token` skips this restore.
+  try {
+    await preserveGatewayAuthToken({
+      snapshot: gatewayTokenSnapshot,
+      rotate: rotateGatewayToken,
+      jsonMode: Boolean(opts.json),
+    });
+  } catch (err) {
+    if (!opts.json) {
+      defaultRuntime.log(
+        theme.warn(`Could not preserve gateway.auth.token across update: ${String(err)}`),
+      );
+    }
+  }
+
   if (!opts.json) {
     defaultRuntime.log(theme.muted(pickUpdateQuip()));
   }
@@ -1428,6 +1538,11 @@ export function registerUpdateCli(program: Command) {
     .option("--tag <dist-tag|version>", "Legacy package-install override for this update")
     .option("--timeout <seconds>", "Timeout for each update step in seconds (default: 1200)")
     .option("--yes", "Skip confirmation prompts (non-interactive)", false)
+    .option(
+      "--rotate-gateway-token",
+      "Allow update to regenerate gateway.auth.token (default: preserve existing token)",
+      false,
+    )
     .addHelpText("after", () => {
       const examples = [
         ["argent update", "Update a source checkout (git)"],
@@ -1437,6 +1552,10 @@ export function registerUpdateCli(program: Command) {
         ["argent update --no-restart", "Update without restarting the service"],
         ["argent update --json", "Output result as JSON"],
         ["argent update --yes", "Non-interactive (accept downgrade prompts)"],
+        [
+          "argent update --rotate-gateway-token",
+          "Regenerate gateway.auth.token during update (opt-in)",
+        ],
         ["argent update wizard", "Interactive update wizard"],
         ["argent --update", "Shorthand for argent update"],
       ] as const;
@@ -1477,6 +1596,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/update", "docs.argent.ai/cli/upda
           tag: opts.tag as string | undefined,
           timeout: opts.timeout as string | undefined,
           yes: Boolean(opts.yes),
+          rotateGatewayToken: Boolean(opts.rotateGatewayToken),
         });
       } catch (err) {
         defaultRuntime.error(String(err));
