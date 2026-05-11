@@ -416,4 +416,48 @@ describe("agentCommand", () => {
       expect(runtime.log).toHaveBeenCalledWith("ok");
     });
   });
+
+  // Regression: agent_chat MCP handler crashed with
+  // "ensureAuthProfileStore is not defined" when a session had an
+  // authProfileOverride set. The import was missing in src/commands/agent.ts
+  // so the bundled handler referenced a free variable at runtime.
+  it("loads the auth profile store when a session has an authProfileOverride", async () => {
+    await withTempHome(async (home) => {
+      const store = path.join(home, "sessions.json");
+      fs.mkdirSync(path.dirname(store), { recursive: true });
+      fs.writeFileSync(
+        store,
+        JSON.stringify(
+          {
+            "agent:argent:main": {
+              sessionId: "sess-auth",
+              updatedAt: Date.now(),
+              authProfileOverride: "anthropic-primary",
+              authProfileOverrideSource: "manual",
+              providerOverride: "anthropic",
+              modelOverride: "claude-opus-4-5",
+            },
+          },
+          null,
+          2,
+        ),
+      );
+      mockConfig(home, store, undefined, undefined, [{ id: "argent", default: true }]);
+
+      await expect(
+        agentCommand(
+          {
+            message: "hi",
+            agentId: "argent",
+            sessionKey: "agent:argent:main",
+            runId: "mcp-regression-test",
+          },
+          runtime,
+        ),
+      ).resolves.not.toThrow();
+
+      // Confirm the embedded run path was reached past the auth-profile guard.
+      expect(vi.mocked(runEmbeddedPiAgent)).toHaveBeenCalled();
+    });
+  });
 });
