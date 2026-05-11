@@ -276,17 +276,22 @@ describe("buildServiceEnvironment", () => {
     expect(parts).not.toContain(path.dirname(process.execPath));
   });
 
-  it("passes hosted git and runtime snapshot paths to service environments", () => {
+  it("does not propagate ARGENT_GIT_DIR/ARGENTOS_GIT_DIR into the gateway env (GH #169)", () => {
     const env = buildServiceEnvironment({
       env: {
         HOME: "/home/user",
         ARGENT_GIT_DIR: "/home/user/argentos",
+        ARGENTOS_GIT_DIR: "/home/user/argentos",
         ARGENT_INSTALL_PACKAGE_DIR: "/home/user/.argentos/lib/node_modules/argentos",
       },
       port: 18789,
     });
-    expect(env.ARGENT_GIT_DIR).toBe("/home/user/argentos");
-    expect(env.ARGENTOS_GIT_DIR).toBe("/home/user/argentos");
+    // The gateway runtime does not need these — they only steer `argent
+    // update` toward the hosted source checkout from the operator's shell.
+    // Including them in the plist bakes in a path that grows stale.
+    expect(env).not.toHaveProperty("ARGENT_GIT_DIR");
+    expect(env).not.toHaveProperty("ARGENTOS_GIT_DIR");
+    // Runtime install path is still propagated.
     expect(env.ARGENT_INSTALL_PACKAGE_DIR).toBe("/home/user/.argentos/lib/node_modules/argentos");
   });
 
