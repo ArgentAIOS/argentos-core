@@ -15,6 +15,7 @@ import {
 } from "../commands/status.update.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
 import { ensureDashboardLaunchAgents } from "../daemon/dashboard-launchagent-install.js";
+import { cleanLegacyGitDirEnvFromPlistFile } from "../daemon/plist-legacy-cleanup.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
 import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { trimLogTail } from "../infra/restart-sentinel.js";
@@ -320,6 +321,63 @@ async function ensureAndRestartMacDashboardServices(jsonMode: boolean): Promise<
   }
   if (failed.length > 0) {
     defaultRuntime.log(theme.warn(`Dashboard service restart failed: ${failed.join(", ")}.`));
+  }
+}
+
+/**
+ * Walk `~/Library/LaunchAgents` and strip legacy ARGENT_GIT_DIR /
+ * ARGENTOS_GIT_DIR env-var entries from any `ai.argent.*.plist` that still
+ * references `$HOME/argentos`. Idempotent: the common path is a no-op.
+ *
+ * Covers every gateway plist label (canonical + legacy + profile-suffixed) so
+ * a single update sweep handles operators running with `ARGENT_PROFILE` set.
+ * See GH #169.
+ */
+async function cleanLegacyGitDirEnvFromGatewayPlist(jsonMode: boolean): Promise<void> {
+  if (process.platform !== "darwin") {
+    return;
+  }
+  const home = os.homedir();
+  if (!home) {
+    return;
+  }
+
+  const launchAgentsDir = path.join(home, "Library", "LaunchAgents");
+  let entries: string[];
+  try {
+    entries = await fs.readdir(launchAgentsDir);
+  } catch {
+    // No LaunchAgents directory yet (fresh install on a clean machine).
+    return;
+  }
+
+  const cleaned: { label: string; removedKeys: string[] }[] = [];
+  for (const entry of entries) {
+    if (!entry.startsWith("ai.argent.") || !entry.endsWith(".plist")) {
+      continue;
+    }
+    const label = entry.slice(0, -".plist".length);
+    const plistPath = path.join(launchAgentsDir, entry);
+    try {
+      const result = await cleanLegacyGitDirEnvFromPlistFile(plistPath, { home });
+      if (result.changed) {
+        cleaned.push({ label, removedKeys: result.removedKeys });
+      }
+    } catch (err) {
+      if (!jsonMode) {
+        defaultRuntime.log(
+          theme.warn(`Could not clean legacy env vars from ${plistPath}: ${String(err)}`),
+        );
+      }
+    }
+  }
+
+  if (!jsonMode && cleaned.length > 0) {
+    for (const { label, removedKeys } of cleaned) {
+      defaultRuntime.log(
+        theme.muted(`Removed legacy env vars (${removedKeys.join(", ")}) from ${label}.plist.`),
+      );
+    }
   }
 }
 
@@ -1267,6 +1325,15 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     defaultRuntime.exit(0);
     return;
   }
+
+  // GH #169: strip stale ARGENT_GIT_DIR / ARGENTOS_GIT_DIR env vars from any
+  // gateway LaunchAgent plist that still references the legacy
+  // `$HOME/argentos` path. The new canonical plist template no longer emits
+  // these (service-env.ts), but pre-existing user plists carry them forward
+  // until update rewrites them. Cleanup runs before the daemon restart so
+  // launchd picks up the cleaned plist on the next bootstrap; safe + idempotent
+  // when there's nothing to clean.
+  await cleanLegacyGitDirEnvFromGatewayPlist(Boolean(opts.json));
 
   if (activeConfig) {
     const pluginLogger = opts.json

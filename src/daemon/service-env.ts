@@ -174,14 +174,20 @@ export function buildServiceEnvironment(params: {
   const systemdUnit = `${resolveGatewaySystemdServiceName(profile)}.service`;
   const stateDir = env.ARGENT_STATE_DIR;
   const configPath = env.ARGENT_CONFIG_PATH;
+  // NOTE (GH #169): we intentionally do NOT propagate ARGENT_GIT_DIR or
+  // ARGENTOS_GIT_DIR into the gateway plist. Those vars steer `argent update`
+  // toward the hosted source checkout and are only meaningful in the operator's
+  // interactive shell. Baking them into the LaunchAgent means a stale install
+  // path (e.g. `$HOME/argentos`) survives long after the source checkout has
+  // moved — future code that reads these from the gateway runtime will see a
+  // path that no longer exists. The plist-cleanup helper in
+  // `plist-legacy-cleanup.ts` strips them from existing user plists on update.
   return {
     HOME: env.HOME,
     PATH: buildMinimalServicePath({ env, runtimeExecutablePath: params.runtimeExecutablePath }),
     ARGENT_PROFILE: profile,
     ARGENT_STATE_DIR: stateDir,
     ARGENT_CONFIG_PATH: configPath,
-    ARGENT_GIT_DIR: env.ARGENT_GIT_DIR || env.ARGENTOS_GIT_DIR,
-    ARGENTOS_GIT_DIR: env.ARGENTOS_GIT_DIR || env.ARGENT_GIT_DIR,
     ARGENT_INSTALL_PACKAGE_DIR: installPackageDir,
     ARGENT_GATEWAY_PORT: String(port),
     ARGENT_GATEWAY_TOKEN: token,
