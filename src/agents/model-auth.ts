@@ -386,12 +386,53 @@ export async function resolveApiKeyForProvider(params: {
 
   const authStorePath = resolveAuthStorePathForDisplay(params.agentDir);
   const resolvedAgentDir = path.dirname(authStorePath);
+  // GH #193: if the on-disk `order` for this provider referenced a profile
+  // that no longer exists in `profiles`, surface the actionable hint up front
+  // — otherwise the user sees a generic "no API key" error even when they
+  // just completed an OAuth login that wrote a profile under a different ID.
+  const danglingHint = detectDanglingOrderHint({
+    store,
+    provider,
+    normalizedProvider: normalized,
+  });
   throw new Error(
     [
       `No API key found for provider "${provider}".`,
+      ...(danglingHint ? [danglingHint] : []),
       `Auth store: ${authStorePath} (agentDir: ${resolvedAgentDir}).`,
       `Configure auth for this agent (${formatCliCommand("argent agents add <id>")}) or copy auth-profiles.json from the main agentDir.`,
     ].join(" "),
+  );
+}
+
+function detectDanglingOrderHint(params: {
+  store: AuthProfileStore;
+  provider: string;
+  normalizedProvider: string;
+}): string | undefined {
+  const orderMap = params.store.order;
+  if (!orderMap) {
+    return undefined;
+  }
+  const matchEntry = Object.entries(orderMap).find(
+    ([key]) => normalizeProviderId(key) === params.normalizedProvider,
+  );
+  if (!matchEntry) {
+    return undefined;
+  }
+  const [, ids] = matchEntry;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return undefined;
+  }
+  const profileIds = new Set(Object.keys(params.store.profiles));
+  const missing = ids.filter((id) => typeof id === "string" && !profileIds.has(id));
+  if (missing.length === 0) {
+    return undefined;
+  }
+  const missingLabel = missing.map((id) => `"${id}"`).join(", ");
+  return (
+    `Auth profile ${missingLabel} is referenced in order but missing from profiles. ` +
+    `Run ${formatCliCommand(`argent models auth login --provider ${params.provider}`)} to restore it.`
   );
 }
 
