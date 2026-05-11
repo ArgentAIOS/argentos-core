@@ -4,6 +4,8 @@ import {
   ArrowRight,
   Boxes,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   Copy,
   Ellipsis,
   ExternalLink,
@@ -244,6 +246,36 @@ const DEFAULT_VIEW_SETTINGS: ForgeViewSettings = {
   sortDirection: "asc",
   groupFieldId: "",
 };
+
+// Pure helpers live in the substrate (`src/infra/app-forge-grid-sort.ts`) so
+// the dashboard click-to-sort UI and any future server-side replay path agree
+// on the cycle/indicator rules. Cycle: none -> asc -> desc -> none.
+function cycleGridSortLocal(
+  current: Pick<ForgeViewSettings, "sortFieldId" | "sortDirection">,
+  clickedFieldId: string,
+): { sortFieldId: string; sortDirection: ForgeSortDirection } {
+  const normalized = clickedFieldId.trim();
+  if (!normalized) {
+    return { sortFieldId: current.sortFieldId, sortDirection: current.sortDirection };
+  }
+  if (current.sortFieldId !== normalized) {
+    return { sortFieldId: normalized, sortDirection: "asc" };
+  }
+  if (current.sortDirection === "asc") {
+    return { sortFieldId: normalized, sortDirection: "desc" };
+  }
+  return { sortFieldId: "", sortDirection: "asc" };
+}
+
+function gridSortIndicatorLocal(
+  current: Pick<ForgeViewSettings, "sortFieldId" | "sortDirection">,
+  fieldId: string,
+): "asc" | "desc" | "none" {
+  if (!fieldId || current.sortFieldId !== fieldId) {
+    return "none";
+  }
+  return current.sortDirection === "desc" ? "desc" : "asc";
+}
 
 const TEMPLATE_SELECT_COLORS = ["emerald", "sky", "violet", "amber", "rose", "cyan"] as const;
 
@@ -3540,43 +3572,95 @@ export function AppForge({
                                       <th className="w-14 border-b border-r border-white/10 px-3 py-3">
                                         #
                                       </th>
-                                      {visibleFields.map((field) => (
-                                        <th
-                                          key={field.id}
-                                          className="group min-w-36 border-b border-r border-white/10 px-3 py-3 hover:text-white/62"
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <button
-                                              onClick={() => {
-                                                setInspectorMode("field");
-                                                structured.selectField(field.id);
-                                              }}
-                                              className="min-w-0 flex-1 truncate text-left"
-                                              title={field.name}
-                                            >
-                                              {field.name}
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                void handleMoveViewField(field.id, "left")
-                                              }
-                                              className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
-                                              title="Move field left in this view"
-                                            >
-                                              <ArrowLeft className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                void handleMoveViewField(field.id, "right")
-                                              }
-                                              className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
-                                              title="Move field right in this view"
-                                            >
-                                              <ArrowRight className="h-3 w-3" />
-                                            </button>
-                                          </div>
-                                        </th>
-                                      ))}
+                                      {visibleFields.map((field) => {
+                                        const sortState = gridSortIndicatorLocal(
+                                          viewSettings,
+                                          field.id,
+                                        );
+                                        const sortLabel =
+                                          sortState === "asc"
+                                            ? "Sorted ascending — click to sort descending"
+                                            : sortState === "desc"
+                                              ? "Sorted descending — click to clear sort"
+                                              : "Click to sort by this column";
+                                        return (
+                                          <th
+                                            key={field.id}
+                                            data-testid="appforge-grid-header"
+                                            data-field-id={field.id}
+                                            data-sort-state={sortState}
+                                            className="group min-w-36 border-b border-r border-white/10 px-3 py-3 hover:text-white/62"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <button
+                                                data-testid="appforge-grid-header-sort"
+                                                data-field-id={field.id}
+                                                data-sort-state={sortState}
+                                                onClick={() => {
+                                                  const next = cycleGridSortLocal(
+                                                    viewSettings,
+                                                    field.id,
+                                                  );
+                                                  if (
+                                                    next.sortFieldId === viewSettings.sortFieldId &&
+                                                    next.sortDirection ===
+                                                      viewSettings.sortDirection
+                                                  ) {
+                                                    return;
+                                                  }
+                                                  void structured.updateActiveViewSettings({
+                                                    sortFieldId: next.sortFieldId,
+                                                    sortDirection: next.sortDirection,
+                                                  });
+                                                }}
+                                                aria-label={`${field.name}: ${sortLabel}`}
+                                                title={sortLabel}
+                                                className={`rounded p-0.5 transition-colors hover:bg-white/10 ${
+                                                  sortState === "none"
+                                                    ? "text-white/22 opacity-0 group-hover:opacity-100 hover:text-white/70"
+                                                    : "text-sky-200 hover:text-sky-100"
+                                                }`}
+                                              >
+                                                {sortState === "asc" ? (
+                                                  <ChevronUp className="h-3.5 w-3.5" />
+                                                ) : sortState === "desc" ? (
+                                                  <ChevronDown className="h-3.5 w-3.5" />
+                                                ) : (
+                                                  <ChevronsUpDown className="h-3.5 w-3.5" />
+                                                )}
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setInspectorMode("field");
+                                                  structured.selectField(field.id);
+                                                }}
+                                                className="min-w-0 flex-1 truncate text-left"
+                                                title={field.name}
+                                              >
+                                                {field.name}
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  void handleMoveViewField(field.id, "left")
+                                                }
+                                                className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
+                                                title="Move field left in this view"
+                                              >
+                                                <ArrowLeft className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  void handleMoveViewField(field.id, "right")
+                                                }
+                                                className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
+                                                title="Move field right in this view"
+                                              >
+                                                <ArrowRight className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          </th>
+                                        );
+                                      })}
                                       <th className="w-12 border-b border-white/10 px-3 py-3">
                                         <button
                                           onClick={() => void handleCreateField()}
