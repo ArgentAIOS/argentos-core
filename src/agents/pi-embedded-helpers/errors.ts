@@ -3,6 +3,39 @@ import type { ArgentConfig } from "../../config/config.js";
 import type { FailoverReason } from "./types.js";
 import { formatSandboxToolPolicyBlockedMessage } from "../sandbox.js";
 
+/**
+ * GH #224 — preserve actionable re-auth commands in chat-facing error
+ * messages. The runtime already emits a `Re-authenticate with `<command>``
+ * hint inside refresh-token failures (see `parseCodexRefreshError` in
+ * src/agents/openai-codex-auth.ts and qwen-portal-oauth.ts), but the chat
+ * formatters used to strip it. Detect the hint in the raw error and
+ * append it to the user-facing output when missing.
+ */
+const REAUTH_HINT_RE = /Re-authenticate with `([^`]+)`/i;
+
+export function extractReauthCommand(raw?: string): string | null {
+  if (!raw) {
+    return null;
+  }
+  const match = raw.match(REAUTH_HINT_RE);
+  return match?.[1] ?? null;
+}
+
+export function appendReauthHintIfNeeded(formatted: string, raw?: string): string {
+  if (!formatted) {
+    return formatted;
+  }
+  // Already present in the formatted output — don't duplicate.
+  if (REAUTH_HINT_RE.test(formatted)) {
+    return formatted;
+  }
+  const cmd = extractReauthCommand(raw);
+  if (!cmd) {
+    return formatted;
+  }
+  return `${formatted}\n\nRe-authenticate with \`${cmd}\` to fix.`;
+}
+
 export function isContextOverflowError(errorMessage?: string): boolean {
   if (!errorMessage) {
     return false;
@@ -291,7 +324,10 @@ export function formatRawAssistantErrorForUi(raw?: string): string {
   if (!trimmed) {
     return "LLM request failed with an unknown error.";
   }
+  return appendReauthHintIfNeeded(formatRawAssistantErrorForUiCore(trimmed), trimmed);
+}
 
+function formatRawAssistantErrorForUiCore(trimmed: string): string {
   const httpMatch = trimmed.match(HTTP_STATUS_PREFIX_RE);
   if (httpMatch) {
     const rest = httpMatch[2].trim();
@@ -312,6 +348,17 @@ export function formatRawAssistantErrorForUi(raw?: string): string {
 }
 
 export function formatAssistantErrorText(
+  msg: AssistantMessage,
+  opts?: { cfg?: ArgentConfig; sessionKey?: string },
+): string | undefined {
+  const formatted = formatAssistantErrorTextCore(msg, opts);
+  if (formatted === undefined) {
+    return undefined;
+  }
+  return appendReauthHintIfNeeded(formatted, msg.errorMessage ?? "");
+}
+
+function formatAssistantErrorTextCore(
   msg: AssistantMessage,
   opts?: { cfg?: ArgentConfig; sessionKey?: string },
 ): string | undefined {
@@ -411,7 +458,10 @@ export function sanitizeUserFacingText(text: string): string {
   if (!trimmed) {
     return stripped;
   }
+  return appendReauthHintIfNeeded(sanitizeUserFacingTextCore(stripped, trimmed), trimmed);
+}
 
+function sanitizeUserFacingTextCore(stripped: string, trimmed: string): string {
   if (/incorrect role information|roles must alternate/i.test(trimmed)) {
     return (
       "Message ordering conflict - please try again. " +
