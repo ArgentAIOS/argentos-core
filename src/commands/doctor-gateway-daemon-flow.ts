@@ -2,6 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
+import type { GatewayTransitionState } from "./doctor-gateway-transition.js";
 import type { DoctorOptions, DoctorPrompter } from "./doctor-prompter.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveGatewayPort } from "../config/config.js";
@@ -165,9 +166,25 @@ export async function maybeRepairGatewayDaemon(params: {
   options: DoctorOptions;
   gatewayDetailsMessage: string;
   healthOk: boolean;
+  /**
+   * Reconciled gateway state from the preceding health check (see
+   * doctor-gateway-transition.ts). When the gateway is mid-restart we skip
+   * the repair flow rather than print a contradictory runtime summary +
+   * trigger another restart — that cascade is exactly what #155 reported.
+   */
+  transitionState?: GatewayTransitionState;
   configPath?: string;
 }) {
   if (params.healthOk) {
+    return;
+  }
+
+  // Gateway is mid-transition (e.g. just after `argent update` kicked the
+  // LaunchAgent). The health probe will pass on its own once startup
+  // completes; running the destructive repair path here only races the new
+  // gateway against itself. checkGatewayHealth already emitted a
+  // user-facing "transitioning" note.
+  if (params.transitionState === "starting" || params.transitionState === "stale-port") {
     return;
   }
 
