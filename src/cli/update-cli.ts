@@ -14,6 +14,7 @@ import {
   resolveUpdateAvailability,
 } from "../commands/status.update.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
+import { ensureDashboardLaunchAgents } from "../daemon/dashboard-launchagent-install.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
 import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { trimLogTail } from "../infra/restart-sentinel.js";
@@ -230,17 +231,67 @@ async function tryWriteCompletionCache(root: string, jsonMode: boolean): Promise
   }
 }
 
-async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
+async function ensureAndRestartMacDashboardServices(jsonMode: boolean): Promise<void> {
   if (process.platform !== "darwin") return;
   const uid = typeof process.getuid === "function" ? process.getuid() : null;
   if (uid == null) return;
 
+  // First: install missing / stale dashboard LaunchAgent plists so launchd has
+  // them to manage. This is the fix for ArgentAIOS/argentos-core#175 — after an
+  // install path migration, the dashboard plists could go missing and `argent
+  // update` had no way to restore them. Idempotent: matching plists are a
+  // no-op, so the common path is cheap.
+  let ensureResult: Awaited<ReturnType<typeof ensureDashboardLaunchAgents>>;
+  try {
+    ensureResult = await ensureDashboardLaunchAgents({
+      env: process.env as Record<string, string | undefined>,
+      stdout: process.stdout,
+    });
+  } catch (err) {
+    if (!jsonMode) {
+      defaultRuntime.log(theme.warn(`Dashboard LaunchAgent install failed: ${String(err)}`));
+    }
+    ensureResult = {
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: MACOS_DASHBOARD_SERVICE_LABELS.slice(),
+      reason: "install-failed",
+    };
+  }
+
+  if (!jsonMode) {
+    if (ensureResult.installed.length > 0) {
+      defaultRuntime.log(
+        theme.success(`Dashboard LaunchAgents installed: ${ensureResult.installed.join(", ")}.`),
+      );
+    }
+    if (ensureResult.updated.length > 0) {
+      defaultRuntime.log(
+        theme.success(`Dashboard LaunchAgents updated: ${ensureResult.updated.join(", ")}.`),
+      );
+    }
+    if (ensureResult.skipped.length > 0 && ensureResult.reason === "dashboard-dir-not-found") {
+      defaultRuntime.log(
+        theme.warn(
+          "Dashboard directory not found; skipped dashboard LaunchAgent install. Run `argent cs install` once the dashboard is available.",
+        ),
+      );
+    }
+  }
+
+  // Restart only the labels that were already canonical — install/update flows
+  // already bootstrap + kickstart the plist, so an extra kickstart would just
+  // be churn. The team-lead spec asked us to "track the diff to avoid
+  // restarting unnecessarily"; this is what enforces it.
+  const installedOrUpdated = new Set([...ensureResult.installed, ...ensureResult.updated]);
   const domain = `gui/${uid}`;
   const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
   const restarted: string[] = [];
   const failed: string[] = [];
 
   for (const label of MACOS_DASHBOARD_SERVICE_LABELS) {
+    if (installedOrUpdated.has(label)) continue;
     const plistPath = path.join(launchAgentsDir, `${label}.plist`);
     if (!(await pathExists(plistPath))) continue;
     const result = spawnSync("/bin/launchctl", ["kickstart", "-k", `${domain}/${label}`], {
@@ -254,7 +305,7 @@ async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
     }
   }
 
-  if (jsonMode || (restarted.length === 0 && failed.length === 0)) return;
+  if (jsonMode) return;
   if (restarted.length > 0) {
     defaultRuntime.log(theme.success(`Dashboard services restarted: ${restarted.join(", ")}.`));
   }
@@ -1236,7 +1287,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
         if (!opts.json) {
           defaultRuntime.log(theme.success("Daemon restarted successfully."));
         }
-        await restartMacDashboardServices(Boolean(opts.json));
+        await ensureAndRestartMacDashboardServices(Boolean(opts.json));
       }
       if (!opts.json && restarted) {
         defaultRuntime.log("");
