@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
+import type { MemoryAdapter } from "../../data/adapter.js";
+import type {
+  CreatePersonalSkillCandidateInput,
+  CreatePersonalSkillReviewEventInput,
+  PersonalSkillCandidate,
+  PersonalSkillCandidateState,
+  PersonalSkillReviewEvent,
+} from "../memu-types.js";
+import { reviewPersonalSkillCandidates } from "../../agents/skills/personal.js";
 import {
   buildPersonalSkillCandidateInputFromLiveInboxCandidate,
   captureFromMessage,
   isAudioTranscriptPollutedSkill,
   isAudioTranscriptPollution,
-  type CaptureResult,
+  reinforceOrCreatePersonalSkillCandidateFromLiveInbox,
+  type CandidateInput,
 } from "./capture.js";
 
 describe("captureFromMessage", () => {
@@ -456,5 +466,287 @@ describe("audio-transcript pollution filter", () => {
       expect(result).not.toBeNull();
       expect(result?.title.toLowerCase()).toContain("operator correction");
     });
+  });
+});
+
+// ── Regression: GH #210 — dedup-skip must bump recurrenceCount ──
+//
+// Before #210 the dedup-skip path in `promoteCandidate` silently dropped
+// repeat observations on the floor. Because the SQL store always seeds new
+// candidates with `recurrenceCount = 1` and there was no path that touched
+// it again, passive distillation could never satisfy `classifyReviewState`'s
+// graduation gate
+//   `recurrenceCount >= 2 || evidenceCount >= 2 ||
+//    (sourceLessonIds && sourceTaskIds) ||
+//    (confidence >= 0.9 && provenanceCount >= 1)`
+// — leaving 23 candidates frozen in `incubating` even when several had
+// 0.88+ confidence. These tests pin the fix in place.
+describe("reinforceOrCreatePersonalSkillCandidateFromLiveInbox (regression: GH #210)", () => {
+  function makeInMemoryAdapter(initialRows: PersonalSkillCandidate[] = []) {
+    const rows: PersonalSkillCandidate[] = [...initialRows];
+    const reviewEvents: PersonalSkillReviewEvent[] = [];
+    const updates: Array<{ id: string; fields: Record<string, unknown> }> = [];
+    const created: PersonalSkillCandidate[] = [];
+
+    const adapter = {
+      listPersonalSkillCandidates: async (filter?: {
+        state?: PersonalSkillCandidateState;
+        limit?: number;
+      }) => {
+        let result = rows.slice();
+        if (filter?.state) {
+          result = result.filter((row) => row.state === filter.state);
+        }
+        if (typeof filter?.limit === "number") {
+          result = result.slice(0, filter.limit);
+        }
+        return result;
+      },
+      createPersonalSkillCandidate: async (input: CreatePersonalSkillCandidateInput) => {
+        const row: PersonalSkillCandidate = {
+          id: `psc-${rows.length + 1}`,
+          agentId: input.agentId ?? "main",
+          operatorId: input.operatorId ?? null,
+          profileId: input.profileId ?? null,
+          scope: input.scope ?? "operator",
+          title: input.title,
+          summary: input.summary,
+          triggerPatterns: input.triggerPatterns ?? [],
+          procedureOutline: input.procedureOutline ?? null,
+          preconditions: input.preconditions ?? [],
+          executionSteps: input.executionSteps ?? [],
+          expectedOutcomes: input.expectedOutcomes ?? [],
+          relatedTools: input.relatedTools ?? [],
+          sourceMemoryIds: input.sourceMemoryIds ?? [],
+          sourceEpisodeIds: input.sourceEpisodeIds ?? [],
+          sourceTaskIds: input.sourceTaskIds ?? [],
+          sourceLessonIds: input.sourceLessonIds ?? [],
+          supersedesCandidateIds: input.supersedesCandidateIds ?? [],
+          supersededByCandidateId: input.supersededByCandidateId ?? null,
+          conflictsWithCandidateIds: input.conflictsWithCandidateIds ?? [],
+          contradictionCount: input.contradictionCount ?? 0,
+          evidenceCount: input.evidenceCount ?? 0,
+          recurrenceCount: input.recurrenceCount ?? 1,
+          confidence: input.confidence ?? 0.5,
+          strength: input.strength ?? 0.5,
+          usageCount: input.usageCount ?? 0,
+          successCount: input.successCount ?? 0,
+          failureCount: input.failureCount ?? 0,
+          state: input.state ?? "candidate",
+          operatorNotes: input.operatorNotes ?? null,
+          lastReviewedAt: null,
+          lastUsedAt: null,
+          lastReinforcedAt: null,
+          lastContradictedAt: null,
+          createdAt: "2026-05-11T00:00:00.000Z",
+          updatedAt: "2026-05-11T00:00:00.000Z",
+        };
+        rows.push(row);
+        created.push(row);
+        return row;
+      },
+      updatePersonalSkillCandidate: async (id: string, fields: Record<string, unknown>) => {
+        updates.push({ id, fields });
+        const idx = rows.findIndex((row) => row.id === id);
+        if (idx < 0) {
+          return null;
+        }
+        const merged: PersonalSkillCandidate = {
+          ...rows[idx],
+          ...fields,
+          updatedAt: "2026-05-11T00:00:01.000Z",
+        };
+        rows[idx] = merged;
+        return merged;
+      },
+      listPersonalSkillReviewEvents: async () => reviewEvents.slice(),
+      createPersonalSkillReviewEvent: async (input: CreatePersonalSkillReviewEventInput) => {
+        const ev: PersonalSkillReviewEvent = {
+          id: `ev-${reviewEvents.length + 1}`,
+          candidateId: input.candidateId,
+          agentId: input.agentId ?? "main",
+          actorType: input.actorType,
+          action: input.action,
+          reason: input.reason ?? null,
+          details: input.details ?? {},
+          createdAt: "2026-05-11T00:00:02.000Z",
+        };
+        reviewEvents.push(ev);
+        return ev;
+      },
+    } as unknown as MemoryAdapter;
+
+    return { adapter, rows, created, updates, reviewEvents };
+  }
+
+  function makeOperatorCorrectionInput(overrides: Partial<CandidateInput> = {}): CandidateInput {
+    return {
+      sessionKey: "s",
+      messageId: "m",
+      role: "user",
+      candidateType: "correction",
+      factText:
+        "No, that's wrong — always check memory_recall before you answer that kind of question.",
+      confidence: 0.9,
+      triggerFlags: ["correction"],
+      entities: [],
+      isHard: true,
+      matchedPattern: "correction",
+      ...overrides,
+    };
+  }
+
+  it("creates a new Personal Skill candidate on first observation (recurrenceCount=1)", async () => {
+    const { adapter, rows, created, updates } = makeInMemoryAdapter();
+    const candidate = makeOperatorCorrectionInput();
+
+    const result = await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-A",
+    });
+
+    expect(result.action).toBe("created");
+    expect(created).toHaveLength(1);
+    expect(updates).toHaveLength(0);
+    expect(rows[0]?.recurrenceCount).toBe(1);
+    expect(rows[0]?.sourceMemoryIds).toEqual(["mem-A"]);
+  });
+
+  it("bumps recurrenceCount and merges provenance on dedup-skip (the GH #210 fix)", async () => {
+    const { adapter, rows, created, updates } = makeInMemoryAdapter();
+    const candidate = makeOperatorCorrectionInput();
+
+    // First observation → create
+    await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-A",
+    });
+
+    // Second observation, different memory item id (operator restated the
+    // fact in a slightly different turn so it didn't hash-dedupe upstream).
+    const result = await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-B",
+    });
+
+    expect(result).toMatchObject({ action: "reinforced", recurrenceCount: 2 });
+    // Still only one underlying row — dedup held.
+    expect(created).toHaveLength(1);
+    expect(rows).toHaveLength(1);
+    // The increment landed on the live row.
+    expect(rows[0]?.recurrenceCount).toBe(2);
+    expect(rows[0]?.sourceMemoryIds).toEqual(["mem-A", "mem-B"]);
+    // And we did flow through updatePersonalSkillCandidate (the actual
+    // behaviour broken before #210).
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.fields.recurrenceCount).toBe(2);
+    expect(updates[0]?.fields.lastReinforcedAt).toBeTypeOf("string");
+  });
+
+  it("re-observation with the same memory id still increments (idempotent provenance, not idempotent counter)", async () => {
+    const { adapter, rows } = makeInMemoryAdapter();
+    const candidate = makeOperatorCorrectionInput();
+
+    await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-same",
+    });
+    const second = await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-same",
+    });
+
+    expect(second).toMatchObject({ action: "reinforced", recurrenceCount: 2 });
+    // Memory id already in the array — do not duplicate it, but still count
+    // the re-observation toward recurrence.
+    expect(rows[0]?.sourceMemoryIds).toEqual(["mem-same"]);
+    expect(rows[0]?.recurrenceCount).toBe(2);
+  });
+
+  it("a never-before-seen fact still creates a fresh candidate at recurrence=1", async () => {
+    const { adapter, rows, updates } = makeInMemoryAdapter();
+
+    // Seed an unrelated candidate so listPersonalSkillCandidates returns
+    // something — the dedup must NOT false-positive across distinct facts.
+    await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate: makeOperatorCorrectionInput({
+        factText: "No, that's wrong — always run the test suite before pushing to dev.",
+      }),
+      promotedMemoryItemId: "mem-existing",
+    });
+
+    const result = await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate: makeOperatorCorrectionInput({
+        factText:
+          "No, that's wrong — always check memory_recall before you answer that kind of question.",
+      }),
+      promotedMemoryItemId: "mem-new",
+    });
+
+    expect(result.action).toBe("created");
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.recurrenceCount).toBe(1);
+    expect(rows[1]?.sourceMemoryIds).toEqual(["mem-new"]);
+    // No update path on first observation of a brand-new fact.
+    expect(updates).toHaveLength(0);
+  });
+
+  it("returns 'skipped' for audio-transcript pollution (never touches storage)", async () => {
+    const { adapter, rows, created, updates } = makeInMemoryAdapter();
+    const result = await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate: makeOperatorCorrectionInput({
+        factText:
+          "[AUDIO_ENABLED] so you didn't actually use the marketplace tool or use your tool search to find it.",
+      }),
+      promotedMemoryItemId: "mem-audio",
+    });
+    expect(result).toEqual({ action: "skipped" });
+    expect(rows).toHaveLength(0);
+    expect(created).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("threshold-eligible candidates graduate via reviewPersonalSkillCandidates after the dedup-skip bump", async () => {
+    const { adapter, rows } = makeInMemoryAdapter();
+    const candidate = makeOperatorCorrectionInput();
+
+    // Two distinct observations of the same procedural operator correction.
+    // After the second, recurrenceCount=2 — which is exactly the
+    // classifyReviewState gate that #210 unblocks.
+    await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-A",
+    });
+    await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store: adapter,
+      candidate,
+      promotedMemoryItemId: "mem-B",
+    });
+
+    const row = rows[0];
+    expect(row).toBeDefined();
+    expect(row?.recurrenceCount).toBe(2);
+    expect(row?.confidence).toBeGreaterThanOrEqual(0.72);
+
+    const result = await reviewPersonalSkillCandidates({
+      memory: adapter,
+      now: "2026-05-11T01:00:00.000Z",
+    });
+
+    // The whole point of the issue: this row graduates to "promoted"
+    // because recurrenceCount finally satisfies the `repeated` branch of
+    // `classifyReviewState`. Pre-fix, recurrenceCount stayed pinned at 1
+    // and the row stalled in `incubating` forever.
+    expect(rows[0]?.state).toBe("promoted");
+    expect(result.promoted).toBeGreaterThanOrEqual(1);
   });
 });
