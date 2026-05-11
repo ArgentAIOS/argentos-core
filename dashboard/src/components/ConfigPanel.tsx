@@ -54,7 +54,7 @@ import {
   Mic,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import type {
   AgentVisualIdentity,
   AccessibilityConfig,
@@ -2850,7 +2850,19 @@ export function ConfigPanel({
       label: string;
       running: boolean;
       baseUrl?: string;
-      models: Array<{ id: string; ref: string; label: string }>;
+      // GH #220: LM Studio's `/api/v0/models` exposes per-model load state.
+      // `source` is "v0" when the API supports it, "v1" for legacy catalog-only,
+      // and null/undefined when the runtime isn't reachable.
+      source?: "v0" | "v1" | null;
+      models: Array<{
+        id: string;
+        ref: string;
+        label: string;
+        // true → currently loaded in memory; false → registered but not loaded
+        // (will trigger an on-demand load if picked, see GH #220); null/undefined
+        // → unknown (legacy `/v1/models` fallback, treat as catalog-only).
+        loaded?: boolean | null;
+      }>;
     }>
   >([]);
   const [kernelLocalModelsRefreshing, setKernelLocalModelsRefreshing] = useState(false);
@@ -6389,15 +6401,27 @@ export function ConfigPanel({
     runtime.models.map((model) => ({
       provider: runtime.provider,
       providerLabel: runtime.label,
+      // GH #220: only LM Studio's v0 endpoint exposes load state — for Ollama
+      // and v1-only LM Studio, treat the model as "loaded" since the legacy
+      // probe can't distinguish.
+      runtimeSource: runtime.source ?? null,
       model: model.id,
       ref: model.ref,
       label: model.label,
+      loaded: typeof model.loaded === "boolean" ? model.loaded : null,
     })),
   );
   const kernelLocalModelValue = String(agentSettings?.kernel.localModel || "").trim();
   const kernelLocalModelIsDiscovered =
     kernelLocalModelValue.length > 0 &&
     kernelLocalModelOptions.some((option) => option.ref === kernelLocalModelValue);
+  // GH #220 helper: warning shown when the user has picked a model that the
+  // runtime currently reports as not-loaded (LM Studio will load it on demand,
+  // 15–25 GB allocation + several-second latency + OOM risk under load).
+  const kernelLocalModelSelectedOption = kernelLocalModelOptions.find(
+    (option) => option.ref === kernelLocalModelValue,
+  );
+  const kernelLocalModelSelectedIsUnloaded = kernelLocalModelSelectedOption?.loaded === false;
   const kernelLocalModelSelectValue = kernelLocalModelValue || "";
 
   const ensureProviderModelsLoaded = useCallback(async (provider: string) => {
@@ -10621,30 +10645,80 @@ export function ConfigPanel({
                         </div>
 
                         {/* LM Studio Status — parallel to Ollama. LM Studio's
-                            OpenAI-compatible /v1/models returns id + owned_by;
-                            size is sometimes absent, so render it conditionally. */}
+                            newer `/api/v0/models` exposes `state` (loaded vs
+                            not-loaded) so we can visually distinguish what is
+                            currently resident in memory vs what is registered
+                            but would have to be loaded on demand (GH #220).
+                            Legacy `/v1/models` (lmStudioSource === "v1") can't
+                            tell, so we suppress the badge in that case. */}
                         <div className="bg-white/5 rounded-xl p-4 space-y-3 xl:max-w-md">
                           <div className="flex items-center gap-2">
                             <Cpu className="w-5 h-5 text-blue-400" />
                             <h3 className="text-white/90 font-medium">LM Studio Models</h3>
+                            {modelConfig?.lmStudioSource === "v1" &&
+                            modelConfig?.lmStudioRunning ? (
+                              <span
+                                className="ml-auto text-[10px] text-amber-300/70 uppercase tracking-wide"
+                                title="LM Studio is responding on /v1/models only. Upgrade LM Studio to expose per-model load state via /api/v0/models."
+                              >
+                                catalog only
+                              </span>
+                            ) : null}
                           </div>
                           {modelConfig?.lmStudioModels?.length > 0 ? (
                             <div className="space-y-1.5">
-                              {modelConfig.lmStudioModels.map((m: any) => (
-                                <div
-                                  key={m.name}
-                                  className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2"
-                                >
-                                  <span className="text-white/70 text-sm font-mono">{m.name}</span>
-                                  {typeof m.size === "number" && Number.isFinite(m.size) ? (
-                                    <span className="text-white/30 text-xs">
-                                      {(m.size / 1e9).toFixed(1)}GB
-                                    </span>
-                                  ) : m.ownedBy ? (
-                                    <span className="text-white/30 text-xs">{m.ownedBy}</span>
-                                  ) : null}
-                                </div>
-                              ))}
+                              {modelConfig.lmStudioModels.map((m: any) => {
+                                const knownLoadState =
+                                  modelConfig?.lmStudioSource === "v0" &&
+                                  (m.loaded === true || m.loaded === false);
+                                const isLoaded = m.loaded === true;
+                                return (
+                                  <div
+                                    key={m.name}
+                                    className={`flex items-center justify-between rounded-lg px-3 py-2 ${
+                                      knownLoadState && !isLoaded
+                                        ? "bg-gray-800/30 opacity-60"
+                                        : "bg-gray-800/50"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span
+                                        className={`text-sm font-mono truncate ${
+                                          knownLoadState && !isLoaded
+                                            ? "text-white/50"
+                                            : "text-white/70"
+                                        }`}
+                                      >
+                                        {m.name}
+                                      </span>
+                                      {knownLoadState ? (
+                                        isLoaded ? (
+                                          <span className="flex items-center gap-1 text-[10px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/30 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            loaded
+                                          </span>
+                                        ) : (
+                                          <span
+                                            className="text-[10px] text-white/40 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 uppercase tracking-wide"
+                                            title="Registered but not currently in memory. Picking this model would trigger an on-demand load (slow, ~15–25 GB)."
+                                          >
+                                            loads on demand
+                                          </span>
+                                        )
+                                      ) : null}
+                                    </div>
+                                    {typeof m.size === "number" && Number.isFinite(m.size) ? (
+                                      <span className="text-white/30 text-xs ml-2 flex-none">
+                                        {(m.size / 1e9).toFixed(1)}GB
+                                      </span>
+                                    ) : m.ownedBy ? (
+                                      <span className="text-white/30 text-xs ml-2 flex-none">
+                                        {m.ownedBy}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : (
                             <div className="text-white/30 text-sm">
@@ -15334,26 +15408,116 @@ export function ConfigPanel({
                                           : `Current custom: ${kernelLocalModelValue}`}
                                       </option>
                                     ) : null}
-                                    {runningKernelLocalRuntimes.map((runtime) => (
-                                      <optgroup
-                                        key={runtime.provider}
-                                        label={`${runtime.label} (${runtime.models.length})`}
-                                      >
-                                        {runtime.models.map((model) => (
-                                          <option key={model.ref} value={model.ref}>
-                                            {model.ref}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    ))}
+                                    {runningKernelLocalRuntimes.map((runtime) => {
+                                      // GH #220: when LM Studio's `/api/v0/models`
+                                      // exposes per-model state, split the optgroup
+                                      // into "Loaded (in memory)" vs "Registered
+                                      // (loads on demand)" so the user can pick the
+                                      // safe option without triggering a slow load.
+                                      const loadedModels = runtime.models.filter(
+                                        (m) => m.loaded === true,
+                                      );
+                                      const unloadedModels = runtime.models.filter(
+                                        (m) => m.loaded === false,
+                                      );
+                                      const unknownModels = runtime.models.filter(
+                                        (m) => m.loaded !== true && m.loaded !== false,
+                                      );
+                                      const hasLoadState =
+                                        runtime.source === "v0" &&
+                                        (loadedModels.length > 0 || unloadedModels.length > 0);
+
+                                      if (!hasLoadState) {
+                                        // Legacy /v1/models — can't distinguish,
+                                        // render as before.
+                                        return (
+                                          <optgroup
+                                            key={runtime.provider}
+                                            label={`${runtime.label} (${runtime.models.length})`}
+                                          >
+                                            {runtime.models.map((model) => (
+                                              <option key={model.ref} value={model.ref}>
+                                                {model.ref}
+                                              </option>
+                                            ))}
+                                          </optgroup>
+                                        );
+                                      }
+
+                                      // Note: <Fragment> needs a `key`, which
+                                      // the JSX shorthand `<>` doesn't accept,
+                                      // so wrap in a keyed div with display:contents
+                                      // to keep optgroup layout untouched.
+                                      return (
+                                        <Fragment key={runtime.provider}>
+                                          {loadedModels.length > 0 ? (
+                                            <optgroup
+                                              label={`${runtime.label} — Loaded in memory (${loadedModels.length})`}
+                                            >
+                                              {loadedModels.map((model) => (
+                                                <option key={model.ref} value={model.ref}>
+                                                  {model.ref}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          ) : null}
+                                          {unloadedModels.length > 0 ? (
+                                            <optgroup
+                                              label={`${runtime.label} — Registered, loads on demand (${unloadedModels.length})`}
+                                            >
+                                              {unloadedModels.map((model) => (
+                                                <option key={model.ref} value={model.ref}>
+                                                  {model.ref} (loads on demand)
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          ) : null}
+                                          {unknownModels.length > 0 ? (
+                                            <optgroup
+                                              label={`${runtime.label} — Other (${unknownModels.length})`}
+                                            >
+                                              {unknownModels.map((model) => (
+                                                <option key={model.ref} value={model.ref}>
+                                                  {model.ref}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          ) : null}
+                                        </Fragment>
+                                      );
+                                    })}
                                   </select>
+                                  {kernelLocalModelSelectedIsUnloaded ? (
+                                    <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-amber-200/90 text-[11px] leading-relaxed">
+                                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-none" />
+                                      <span>
+                                        <strong>{kernelLocalModelValue}</strong> is registered with
+                                        LM Studio but not currently loaded in memory. Picking it
+                                        will trigger an on-demand load on first use (15–25&nbsp;GB
+                                        allocation, several seconds, possible OOM under memory
+                                        pressure). Load it in LM Studio first to avoid the stall.
+                                      </span>
+                                    </div>
+                                  ) : null}
                                   <div className="text-white/35 text-[11px] leading-relaxed">
                                     {runningKernelLocalRuntimes.length > 0
                                       ? `Detected local runtimes: ${runningKernelLocalRuntimes
-                                          .map(
-                                            (runtime) =>
-                                              `${runtime.label} (${runtime.models.length})`,
-                                          )
+                                          .map((runtime) => {
+                                            const loadedCount = runtime.models.filter(
+                                              (m) => m.loaded === true,
+                                            ).length;
+                                            // Only annotate when we have v0 data
+                                            // (otherwise the count is catalog,
+                                            // not load-state).
+                                            if (
+                                              runtime.source === "v0" &&
+                                              (loadedCount > 0 ||
+                                                runtime.models.some((m) => m.loaded === false))
+                                            ) {
+                                              return `${runtime.label} (${loadedCount} loaded / ${runtime.models.length} registered)`;
+                                            }
+                                            return `${runtime.label} (${runtime.models.length})`;
+                                          })
                                           .join(", ")}.`
                                       : "No running Ollama or LM Studio runtime was detected."}{" "}
                                     Shadow reflection uses this local model when a compatible
