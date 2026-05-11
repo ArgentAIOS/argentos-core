@@ -70,6 +70,20 @@ vi.mock("./daemon-cli.js", () => ({
   runDaemonRestart: vi.fn(),
 }));
 
+// Mock the dashboard LaunchAgent installer so tests can verify it gets
+// invoked from `argent update` without touching real launchctl or the real
+// LaunchAgents directory. Default to "all unchanged" so existing tests
+// continue to validate the kickstart restart path (install/update would skip
+// the explicit kickstart, since installLaunchAgent kicks internally).
+vi.mock("../daemon/dashboard-launchagent-install.js", () => ({
+  ensureDashboardLaunchAgents: vi.fn().mockResolvedValue({
+    installed: [],
+    updated: [],
+    unchanged: ["ai.argent.dashboard-ui", "ai.argent.dashboard-api"],
+    skipped: [],
+  }),
+}));
+
 // Mock the runtime
 vi.mock("../runtime.js", () => ({
   defaultRuntime: {
@@ -680,6 +694,74 @@ describe("update-cli", () => {
       );
       expect(calls.some((call) => call.args.includes("ai.argent.dashboard-api"))).toBe(true);
       expect(calls.some((call) => call.args.includes("ai.argent.dashboard-ui"))).toBe(true);
+    } finally {
+      homedirSpy?.mockRestore();
+      Object.defineProperty(process, "platform", {
+        value: originalPlatform,
+        configurable: true,
+      });
+      await fs.rm(tempHome, { recursive: true, force: true });
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("updateCommand installs missing dashboard LaunchAgents after daemon restart (regression: GH #175)", async () => {
+    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-home-"));
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
+    const originalPlatform = process.platform;
+    let homedirSpy: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
+      // No plists pre-seeded — mirrors the regression scenario from #175 where
+      // legacy plists were archived and the new install path had nothing for
+      // launchd to manage.
+      await fs.mkdir(path.join(tempHome, "Library", "LaunchAgents"), { recursive: true });
+      homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+      Object.defineProperty(process, "platform", {
+        value: "darwin",
+        configurable: true,
+      });
+
+      const { ensureDashboardLaunchAgents } =
+        await import("../daemon/dashboard-launchagent-install.js");
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(ensureDashboardLaunchAgents).mockResolvedValueOnce({
+        installed: ["ai.argent.dashboard-ui", "ai.argent.dashboard-api"],
+        updated: [],
+        unchanged: [],
+        skipped: [],
+      });
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(spawnSync).mockClear();
+
+      await updateCommand({});
+
+      expect(ensureDashboardLaunchAgents).toHaveBeenCalled();
+
+      // When ensureDashboardLaunchAgents reports labels were installed/updated,
+      // the explicit kickstart loop must skip them — installLaunchAgent
+      // already bootstraps + kickstarts during install, so an extra kickstart
+      // is redundant churn ("track the diff to avoid restarting
+      // unnecessarily" per the team-lead spec).
+      const kickstartCalls = vi
+        .mocked(spawnSync)
+        .mock.calls.filter(
+          ([cmd, args]) =>
+            cmd === "/bin/launchctl" &&
+            Array.isArray(args) &&
+            args.includes("kickstart") &&
+            args.some((a) => typeof a === "string" && a.includes("dashboard")),
+        );
+      expect(kickstartCalls).toEqual([]);
     } finally {
       homedirSpy?.mockRestore();
       Object.defineProperty(process, "platform", {
