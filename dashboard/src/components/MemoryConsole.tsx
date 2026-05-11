@@ -336,6 +336,27 @@ async function downloadApi(path: string, filenameFallback: string) {
 
 // ── Component ──
 
+/**
+ * Detect errors that indicate the memory subsystem is not yet initialized
+ * — typically a 500/503 with a Postgres "relation … does not exist" body
+ * that surfaces on a fresh Core install before `argent doctor` has run the
+ * memory migrations. GH #105.
+ */
+function isMemoryUninitializedError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    /api 5\d\d/.test(m) ||
+    m.includes("relation") ||
+    m.includes("does not exist") ||
+    m.includes("no such table") ||
+    m.includes("undefined_table") ||
+    m.includes("ecconnrefused") ||
+    m.includes("econnrefused") ||
+    m.includes("memory.*not.*initialized")
+  );
+}
+
 export function MemoryConsole() {
   const [subTab, setSubTab] = useState<SubTab>("stats");
   const [error, setError] = useState<string | null>(null);
@@ -348,6 +369,8 @@ export function MemoryConsole() {
     { id: "reflections", label: "Reflections", icon: BookOpen },
     { id: "timeline", label: "Timeline", icon: Calendar },
   ];
+
+  const memoryUninitialized = isMemoryUninitializedError(error);
 
   return (
     <div className="space-y-3">
@@ -375,7 +398,22 @@ export function MemoryConsole() {
         })}
       </div>
 
-      {error && (
+      {error && memoryUninitialized && (
+        <div className="bg-zinc-800/40 border border-zinc-700/40 rounded-lg p-3 text-zinc-300 text-xs space-y-1">
+          <div className="font-medium text-zinc-200">Memory store not initialized yet</div>
+          <div className="text-zinc-400">
+            Memory tables don&apos;t exist or the database is unreachable. This is normal on a fresh
+            install — run <code className="font-mono text-zinc-200">argent doctor</code> (or start
+            Postgres) and reload this tab.
+          </div>
+          <details className="text-[11px] text-zinc-500 pt-1">
+            <summary className="cursor-pointer">Diagnostic detail</summary>
+            <div className="mt-1 font-mono break-all">{error}</div>
+          </details>
+        </div>
+      )}
+
+      {error && !memoryUninitialized && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-xs">
           {error}
         </div>
@@ -398,11 +436,13 @@ function StatsView({ onError }: { onError: (e: string | null) => void }) {
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [quality, setQuality] = useState<MemoryQualityReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
   const [repairing, setRepairing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
+      setHasError(false);
       const [statsData, qualityData] = await Promise.all([
         fetchApi<MemoryStats>("/api/memory/stats"),
         fetchApi<MemoryQualityReport>("/api/memory/quality"),
@@ -411,6 +451,7 @@ function StatsView({ onError }: { onError: (e: string | null) => void }) {
       setQuality(qualityData);
       onError(null);
     } catch (err: any) {
+      setHasError(true);
       onError(err.message);
     } finally {
       setLoading(false);
@@ -458,8 +499,14 @@ function StatsView({ onError }: { onError: (e: string | null) => void }) {
     }
   }, [onError]);
 
-  if (loading || !stats || !quality) {
+  if (loading) {
     return <div className="text-zinc-500 text-sm py-4 text-center">Loading stats...</div>;
+  }
+  if (hasError || !stats || !quality) {
+    // Parent panel renders the friendly "Memory not initialized" hint when the
+    // error is recognized; otherwise it shows the raw error. Returning null
+    // here avoids the infinite "Loading stats..." spinner. (GH #105)
+    return null;
   }
 
   const maxType = Math.max(...Object.values(stats.byType), 1);
