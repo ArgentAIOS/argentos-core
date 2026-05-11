@@ -18,7 +18,6 @@ Installer, update rail, migration, uninstall, and platform setup docs.
 - [Android App](<90 - Public Docs Mirror/docs/platforms/android.md>) - Android app (node): connection runbook + Canvas/Chat/Camera
 - [DigitalOcean](<90 - Public Docs Mirror/docs/platforms/digitalocean.md>) - ArgentOS on DigitalOcean (simple paid VPS option)
 - [exe.dev](<90 - Public Docs Mirror/docs/platforms/exe-dev.md>) - Run ArgentOS Gateway on exe.dev (VM + HTTPS proxy) for remote access
-- [Fly.io](<90 - Public Docs Mirror/docs/platforms/fly.md>)
 - [GCP](<90 - Public Docs Mirror/docs/platforms/gcp.md>) - Run ArgentOS Gateway 24/7 on a GCP Compute Engine VM (Docker) with durable state
 - [Hetzner](<90 - Public Docs Mirror/docs/platforms/hetzner.md>) - Run ArgentOS Gateway 24/7 on a cheap Hetzner VPS (Docker) with durable state and baked-in binaries
 - [Platforms](<90 - Public Docs Mirror/docs/platforms/index.md>) - Platform support overview (Gateway + companion apps)

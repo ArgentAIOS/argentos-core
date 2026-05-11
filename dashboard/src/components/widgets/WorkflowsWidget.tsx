@@ -225,15 +225,69 @@ interface WorkflowDryRunStep {
   message: string;
 }
 
+interface WorkflowDryRunEvidence {
+  mode?: string;
+  dryRunOnly?: boolean;
+  noLiveSideEffects?: boolean;
+  stepCount?: number;
+  ledgerNodeId?: string;
+  operatorSummary?: string;
+  artifacts?: Array<{ nodeId?: string; label?: string; type?: string }>;
+  steps?: Array<{
+    nodeId?: string;
+    label?: string;
+    kind?: string;
+    status?: string;
+    artifact?: { type?: string; label?: string };
+  }>;
+}
+
 interface WorkflowImportReport {
   packageName: string;
   packageSlug?: string;
   okForImport: boolean;
   okForPinnedTestRun: boolean;
   liveRequirements: string[];
+  dryRunEvidence?: WorkflowDryRunEvidence;
+  liveReadiness?: WorkflowTemplateLiveReadiness;
   blockers: WorkflowValidationIssue[];
   requirements: WorkflowBindingRequirement[];
   bindings?: Record<string, WorkflowBindingValue>;
+}
+
+interface WorkflowTemplateLiveReadinessReason {
+  code?: string;
+  kind?: string;
+  id?: string;
+  label?: string;
+  message?: string;
+}
+
+interface WorkflowTemplateLiveReadinessDeferral {
+  owner?: "appforge" | "aos" | "operator" | "workflows";
+  label?: string;
+  reasonCodes?: string[];
+  message?: string;
+}
+
+interface WorkflowTemplateLiveReadiness {
+  okForLive?: boolean;
+  status?: string;
+  label?: string;
+  reasons?: WorkflowTemplateLiveReadinessReason[];
+  deferrals?: WorkflowTemplateLiveReadinessDeferral[];
+  canary?: {
+    familyId?: string;
+    familyLabel?: string;
+    required?: boolean;
+    passed?: boolean;
+    checklist?: Array<{
+      id?: string;
+      label?: string;
+      status?: "passed" | "pending" | "blocked";
+      message?: string;
+    }>;
+  };
 }
 
 type WorkflowDeploymentStage = "simulate" | "shadow" | "limited_live" | "live";
@@ -289,6 +343,8 @@ interface WorkflowImportPreviewResponse {
     okForImport?: boolean;
     okForPinnedTestRun?: boolean;
     liveRequirements?: unknown[];
+    dryRunEvidence?: WorkflowDryRunEvidence;
+    liveReadiness?: WorkflowTemplateLiveReadiness;
     blockers?: unknown[];
   };
   validation?: { ok?: boolean; issues?: unknown[] };
@@ -312,6 +368,8 @@ interface WorkflowPackageTemplateSummary {
   okForImport?: boolean;
   okForPinnedTestRun?: boolean;
   liveRequirements?: string[];
+  dryRunEvidence?: WorkflowDryRunEvidence;
+  liveReadiness?: WorkflowTemplateLiveReadiness;
 }
 
 interface WorkflowCronJob {
@@ -602,6 +660,8 @@ function importReportFromPreview(response: WorkflowImportPreviewResponse): Workf
     liveRequirements: Array.isArray(readiness.liveRequirements)
       ? readiness.liveRequirements.map((entry) => String(entry))
       : [],
+    dryRunEvidence: readiness.dryRunEvidence,
+    liveReadiness: readiness.liveReadiness,
     blockers: normalizeValidationIssues(readiness.blockers),
     requirements,
   };
@@ -625,6 +685,7 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
         ? "simulate"
         : undefined;
   const definition = deploymentStage ? { ...workflow, deploymentStage } : workflow;
+  const importReport = importReportFromPreview(response);
   return {
     id,
     name: `${stringValue(workflow.name ?? pkg.name, "Imported workflow")} (imported)`,
@@ -633,11 +694,11 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     definition,
-    canvasLayout: { ...(response.canvasLayout ?? {}), nodes, edges },
     validation: response.validation
       ? { ok: response.validation.ok !== false, issues: response.validation.issues }
       : undefined,
-    importReport: importReportFromPreview(response),
+    importReport,
+    canvasLayout: { ...(response.canvasLayout ?? {}), nodes, edges, importReport },
   };
 }
 
@@ -647,6 +708,35 @@ function workflowDeploymentStage(workflow: WorkflowDefinition | null): WorkflowD
   return stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live"
     ? stage
     : "live";
+}
+
+function workflowStageRequiresLiveReadiness(stage: WorkflowDeploymentStage) {
+  return stage === "live" || stage === "limited_live";
+}
+
+function importReportBlockingLiveReason(report: WorkflowImportReport | undefined): string {
+  if (!report) {
+    return "";
+  }
+  const missingBindings = report.requirements.filter(
+    (requirement) => requirement.requiredForLive && !report.bindings?.[requirement.key]?.value,
+  );
+  if (missingBindings.length > 0) {
+    return `Complete ${missingBindings.length} required live binding${
+      missingBindings.length === 1 ? "" : "s"
+    } before running live.`;
+  }
+  if (report.liveReadiness?.okForLive === true) {
+    return "";
+  }
+  const firstReason = report.liveReadiness?.reasons?.[0];
+  if (firstReason?.code === "canary_required") {
+    return "Run and approve the template-family canary before live execution.";
+  }
+  if (firstReason) {
+    return firstReason.message ?? firstReason.label ?? "Resolve live readiness blockers first.";
+  }
+  return report.liveReadiness ? "Live readiness has not been proven yet." : "";
 }
 
 function withWorkflowDeploymentStage(
@@ -852,6 +942,11 @@ function normalizeWorkflowDefinition(raw: unknown): WorkflowDefinition | null {
       : Number.isFinite(Number(row.version))
         ? Number(row.version)
         : 1;
+  const importReport = isRecord(row.importReport)
+    ? (row.importReport as WorkflowImportReport)
+    : isRecord(canvasLayout?.importReport)
+      ? (canvasLayout.importReport as unknown as WorkflowImportReport)
+      : undefined;
   return {
     ...(row as Partial<WorkflowDefinition>),
     id,
@@ -875,6 +970,7 @@ function normalizeWorkflowDefinition(raw: unknown): WorkflowDefinition | null {
         ? row.trigger_config
         : undefined,
     canvasLayout: canvasLayout as WorkflowDefinition["canvasLayout"],
+    importReport,
   };
 }
 
@@ -2000,6 +2096,13 @@ function NewWorkflowModal({
                 </div>
                 {packageTemplates.map((template) => {
                   const running = selectedPackageSlug === template.slug;
+                  const liveReady = template.liveReadiness?.okForLive === true;
+                  const liveLabel =
+                    template.liveReadiness?.label ??
+                    (liveReady ? "Live ready" : "Import/dry-run only");
+                  const liveReasonCount = template.liveReadiness?.reasons?.length ?? 0;
+                  const liveDeferrals = template.liveReadiness?.deferrals ?? [];
+                  const dryRunArtifactCount = template.dryRunEvidence?.artifacts?.length ?? 0;
                   return (
                     <button
                       key={template.slug}
@@ -2050,6 +2153,52 @@ function NewWorkflowModal({
                             fixture-ready
                           </span>
                         )}
+                        {template.dryRunEvidence?.ledgerNodeId && (
+                          <span
+                            className="rounded bg-cyan-400/10 px-1.5 py-0.5 text-cyan-200"
+                            title={template.dryRunEvidence.operatorSummary}
+                          >
+                            run ledger
+                          </span>
+                        )}
+                        {dryRunArtifactCount > 0 && (
+                          <span
+                            className="rounded bg-cyan-400/10 px-1.5 py-0.5 text-cyan-200"
+                            title={
+                              template.dryRunEvidence?.artifacts
+                                ?.map((artifact) => artifact.label ?? artifact.nodeId ?? "")
+                                .filter(Boolean)
+                                .join("\n") || "Dry-run artifacts"
+                            }
+                          >
+                            {dryRunArtifactCount} artifact{dryRunArtifactCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                        <span
+                          className={
+                            liveReady
+                              ? "rounded bg-emerald-400/10 px-1.5 py-0.5 text-emerald-200"
+                              : "rounded bg-amber-400/10 px-1.5 py-0.5 text-amber-200"
+                          }
+                          title={
+                            template.liveReadiness?.reasons
+                              ?.map((reason) => reason.message ?? reason.code ?? reason.id ?? "")
+                              .filter(Boolean)
+                              .join("\n") || liveLabel
+                          }
+                        >
+                          {liveLabel}
+                          {!liveReady && liveReasonCount > 0 ? ` (${liveReasonCount})` : ""}
+                        </span>
+                        {liveDeferrals.slice(0, 2).map((deferral, index) => (
+                          <span
+                            key={`${deferral.owner ?? "deferral"}-${index}`}
+                            className="rounded bg-amber-400/10 px-1.5 py-0.5 text-amber-200"
+                            title={deferral.message ?? deferral.label ?? deferral.owner}
+                          >
+                            {deferral.label ?? deferral.owner ?? "Deferred"}
+                          </span>
+                        ))}
                       </div>
                     </button>
                   );
@@ -4026,6 +4175,15 @@ function ActionForm({
               value={cfgValue("template")}
               onChange={(e) => cfgUpdate("template", e.target.value)}
               placeholder="Hello {{ $json.name }}!"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Media Template</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfgValue("mediaTemplate")}
+              onChange={(e) => cfgUpdate("mediaTemplate", e.target.value)}
+              placeholder="{{previous.json.path}}"
             />
           </div>
         </>
@@ -6893,6 +7051,23 @@ function truncateInline(value: string, maxLength = 180): string {
   return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}...` : compact;
 }
 
+function runPayloadContractSummary(value: Record<string, unknown>): string | null {
+  const contract = isRecord(value.payloadContract) ? value.payloadContract : null;
+  if (!contract) {
+    return null;
+  }
+  const kind = stringValue(contract.kind);
+  const produces = stringValue(contract.produces);
+  const path = stringValue(contract.path);
+  if (kind === "structured_payload" && produces) {
+    return `Payload ${produces}${path ? ` via ${path}` : ""}`;
+  }
+  if (kind === "media_artifact" && produces) {
+    return `Artifact ${produces}${path ? ` via ${path}` : ""}`;
+  }
+  return null;
+}
+
 function runValueSummary(value: unknown): string {
   if (!hasRunValue(value)) {
     return "No data";
@@ -6911,6 +7086,10 @@ function runValueSummary(value: unknown): string {
       : `${value.length} ${suffix}: ${runValueSummary(first)}`;
   }
   if (isRecord(value)) {
+    const contractSummary = runPayloadContractSummary(value);
+    if (contractSummary) {
+      return contractSummary;
+    }
     const items = Array.isArray(value.items) ? value.items : undefined;
     if (items && items.length > 0) {
       return runValueSummary(items);
@@ -7300,6 +7479,103 @@ function Sidebar({
             <div className="truncate font-medium text-[hsl(var(--foreground))]">
               {activeWorkflow.importReport.packageName}
             </div>
+            {activeWorkflow.importReport.liveReadiness && (
+              <div className="mt-1 rounded border border-amber-400/20 bg-amber-400/5 p-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-amber-200">Live readiness</span>
+                  <span
+                    className={
+                      activeWorkflow.importReport.liveReadiness.okForLive
+                        ? "text-emerald-300"
+                        : "text-amber-300"
+                    }
+                  >
+                    {activeWorkflow.importReport.liveReadiness.label ??
+                      (activeWorkflow.importReport.liveReadiness.okForLive
+                        ? "Live ready"
+                        : "Import/dry-run only")}
+                  </span>
+                </div>
+                {activeWorkflow.importReport.liveReadiness.reasons?.length ? (
+                  <div className="mt-1 space-y-0.5">
+                    {activeWorkflow.importReport.liveReadiness.reasons
+                      .slice(0, 4)
+                      .map((reason, index) => (
+                        <div key={`${reason.code ?? "reason"}-${reason.id ?? index}`}>
+                          {reason.message ?? reason.label ?? reason.code}
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
+                {activeWorkflow.importReport.dryRunEvidence && (
+                  <div className="mt-2 border-t border-amber-400/10 pt-1">
+                    <div className="font-medium text-cyan-200">Dry-run evidence</div>
+                    <div className="mt-1">
+                      {activeWorkflow.importReport.dryRunEvidence.operatorSummary ??
+                        "Fixture mode shows the step trace without live side effects."}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      <div>
+                        {activeWorkflow.importReport.dryRunEvidence.stepCount ?? 0} pinned step
+                        {activeWorkflow.importReport.dryRunEvidence.stepCount === 1 ? "" : "s"}
+                        {activeWorkflow.importReport.dryRunEvidence.ledgerNodeId
+                          ? " with run ledger"
+                          : ""}
+                      </div>
+                      {activeWorkflow.importReport.dryRunEvidence.artifacts
+                        ?.slice(0, 3)
+                        .map((artifact, index) => (
+                          <div key={`${artifact.nodeId ?? "artifact"}-${index}`}>
+                            {artifact.type ?? "artifact"}: {artifact.label ?? artifact.nodeId}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+                {activeWorkflow.importReport.liveReadiness.deferrals?.length ? (
+                  <div className="mt-2 border-t border-amber-400/10 pt-1">
+                    <div className="font-medium text-amber-200">Deferred on</div>
+                    <div className="mt-1 space-y-0.5">
+                      {activeWorkflow.importReport.liveReadiness.deferrals
+                        .slice(0, 4)
+                        .map((deferral, index) => (
+                          <div key={`${deferral.owner ?? "deferral"}-${index}`}>
+                            {deferral.label ?? deferral.owner ?? "Readiness dependency"}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+                {activeWorkflow.importReport.liveReadiness.canary?.checklist?.length ? (
+                  <div className="mt-2 border-t border-amber-400/10 pt-1">
+                    <div className="font-medium text-amber-200">
+                      Canary:{" "}
+                      {activeWorkflow.importReport.liveReadiness.canary.familyLabel ??
+                        activeWorkflow.importReport.liveReadiness.canary.familyId ??
+                        "template family"}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {activeWorkflow.importReport.liveReadiness.canary.checklist
+                        .slice(0, 6)
+                        .map((item, index) => (
+                          <div
+                            key={`${item.id ?? "canary"}-${index}`}
+                            className={
+                              item.status === "passed"
+                                ? "text-emerald-300"
+                                : item.status === "pending"
+                                  ? "text-amber-300"
+                                  : "text-red-300"
+                            }
+                          >
+                            {item.label ?? item.id}: {item.status ?? "pending"}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
             {activeWorkflow.importReport.blockers.length > 0 && (
               <div className="mt-1 space-y-0.5">
                 {activeWorkflow.importReport.blockers.slice(0, 3).map((blocker, index) => (
@@ -9188,6 +9464,12 @@ function WorkflowCanvasInner({
       }
       const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
       const cleanNodes = cleanWorkflowNodes();
+      const canvasLayout = {
+        ...(workflow?.canvasLayout ?? {}),
+        nodes: cleanNodes,
+        edges,
+        ...(workflow?.importReport ? { importReport: workflow.importReport } : {}),
+      };
       const updatedAt = new Date().toISOString();
       setSaving(true);
       setLastSaveStatus(null);
@@ -9199,6 +9481,7 @@ function WorkflowCanvasInner({
                 name: workflow?.name ?? w.name,
                 nodes: cleanNodes,
                 edges,
+                canvasLayout,
                 updatedAt,
               }
             : w,
@@ -9213,6 +9496,7 @@ function WorkflowCanvasInner({
             workflowId: activeWorkflowId,
             name: workflow?.name,
             canvasData: { nodes: cleanNodes, edges },
+            canvasLayout,
             deploymentStage: workflowDeploymentStage(workflow ?? null),
             changeSummary,
           });
@@ -9323,13 +9607,14 @@ function WorkflowCanvasInner({
       report?.requirements.filter(
         (requirement) => requirement.requiredForLive && !report.bindings?.[requirement.key]?.value,
       ) ?? [];
-    if (stage === "live" && missingRequiredBindings.length > 0) {
-      setBindingWizardOpen(true);
-      setRunError(
-        `Complete ${missingRequiredBindings.length} required live binding${
-          missingRequiredBindings.length === 1 ? "" : "s"
-        } before running live.`,
-      );
+    const liveBlockReason = workflowStageRequiresLiveReadiness(stage)
+      ? importReportBlockingLiveReason(report)
+      : "";
+    if (liveBlockReason) {
+      if (missingRequiredBindings.length > 0) {
+        setBindingWizardOpen(true);
+      }
+      setRunError(liveBlockReason);
       return;
     }
     try {
@@ -9511,10 +9796,11 @@ function WorkflowCanvasInner({
     (requirement) => !activeWorkflow?.importReport?.bindings?.[requirement.key]?.value,
   );
   const importedFixtureReady = activeWorkflow?.importReport?.okForPinnedTestRun === true;
+  const activeLiveBlockReason = importReportBlockingLiveReason(activeWorkflow?.importReport);
   const livePromotionReady =
     Boolean(activeWorkflow?.importReport) &&
     activeWorkflow?.importReport?.okForImport !== false &&
-    missingLiveBindings.length === 0;
+    !activeLiveBlockReason;
 
   const loadVersionHistory = useCallback(async () => {
     if (!activeWorkflowId || !gateway.connected) {
@@ -9612,6 +9898,12 @@ function WorkflowCanvasInner({
         ? applyAll(activeWorkflow.definition)
         : undefined;
       const nextReport = { ...activeWorkflow.importReport, bindings };
+      const nextCanvasLayout = {
+        ...(activeWorkflow.canvasLayout ?? {}),
+        nodes: nextNodes,
+        edges,
+        importReport: nextReport,
+      };
       const updatedAt = new Date().toISOString();
       setNodes(nextNodes);
       setSelectedNode((prev) =>
@@ -9626,6 +9918,7 @@ function WorkflowCanvasInner({
                 edges,
                 definition: nextDefinition,
                 importReport: nextReport,
+                canvasLayout: nextCanvasLayout,
                 updatedAt,
               }
             : workflow,
@@ -9644,9 +9937,14 @@ function WorkflowCanvasInner({
       if (!activeWorkflow || !activeWorkflowId) {
         return;
       }
-      if (stage === "live" && missingLiveBindings.length > 0) {
-        setBindingWizardOpen(true);
-        setLastSaveStatus(`Bind ${missingLiveBindings.length} required item(s) before live`);
+      const liveBlockReason = workflowStageRequiresLiveReadiness(stage)
+        ? importReportBlockingLiveReason(activeWorkflow.importReport)
+        : "";
+      if (liveBlockReason) {
+        if (missingLiveBindings.length > 0) {
+          setBindingWizardOpen(true);
+        }
+        setLastSaveStatus(liveBlockReason);
         return;
       }
       const cleanNodes = cleanWorkflowNodes();
@@ -9964,10 +10262,8 @@ function WorkflowCanvasInner({
             ? "Wait for validation to finish before running."
             : !gateway.connected
               ? "Connect to the gateway before running workflows."
-              : activeDeploymentStage === "live" && missingLiveBindings.length > 0
-                ? `Bind ${missingLiveBindings.length} required item${
-                    missingLiveBindings.length === 1 ? "" : "s"
-                  } before running live.`
+              : workflowStageRequiresLiveReadiness(activeDeploymentStage) && activeLiveBlockReason
+                ? activeLiveBlockReason
                 : "";
   const scheduleDisabledReason = !activeWorkflowId
     ? "Create a workflow before scheduling."
@@ -10174,7 +10470,8 @@ function WorkflowCanvasInner({
               saving ||
               validationStatus === "checking" ||
               !gateway.connected ||
-              (activeDeploymentStage === "live" && missingLiveBindings.length > 0)
+              (workflowStageRequiresLiveReadiness(activeDeploymentStage) &&
+                Boolean(activeLiveBlockReason))
             }
             onClick={handleRun}
             className={`px-3 py-1 rounded text-[11px] font-medium transition-colors disabled:opacity-40 ${
@@ -10287,6 +10584,7 @@ function WorkflowCanvasInner({
                 {missingLiveBindings.length > 0
                   ? ` ${missingLiveBindings.length} required binding${missingLiveBindings.length === 1 ? "" : "s"} still needed for live.`
                   : " Required live bindings are complete."}
+                {activeLiveBlockReason ? ` ${activeLiveBlockReason}` : ""}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -10319,7 +10617,7 @@ function WorkflowCanvasInner({
                   title={
                     livePromotionReady
                       ? "Promote this workflow to live execution"
-                      : "Complete required bindings before live promotion"
+                      : activeLiveBlockReason || "Complete required bindings before live promotion"
                   }
                 >
                   Promote live

@@ -142,6 +142,9 @@ What the restart smoke proves:
 - a requested lane can be promoted to active
 - shutdown works through the control surface
 - a fresh daemon instance can recover active executive state from persisted snapshot + journal
+- `/v1/executive/readiness` exposes `kernelShadow` as reachable/fail-closed/shadow-only
+- `kernelShadow` reports wakefulness, focus, reflection queue, and restart recovery without
+  changing Node live gateway/scheduler/workflow/channel/session/run authority
 
 What the restart+poll soak proves:
 

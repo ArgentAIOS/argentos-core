@@ -100,6 +100,17 @@ export type ChannelAccountSnapshot = {
   linked?: boolean;
   running?: boolean;
   connected?: boolean;
+  /**
+   * Free-form, channel-supplied lifecycle state (e.g. "polling",
+   * "backing-off (next attempt in 60s)", "disabled (no token)",
+   * "exited (manual restart needed)"). Surfaced via channels.status RPC
+   * and `argent channels status` for operator visibility into channels
+   * that have entered backoff, given up, or otherwise are not in the
+   * default running/stopped binary state.
+   */
+  state?: string;
+  /** ms epoch of the next scheduled retry, when in a backoff state. */
+  nextRetryAt?: number | null;
   reconnectAttempts?: number;
   lastConnectedAt?: number | null;
   lastDisconnect?:

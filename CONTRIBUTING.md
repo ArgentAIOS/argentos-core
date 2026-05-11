@@ -17,7 +17,7 @@ Welcome! We're building the operating system for personal AI.
 ## Before You PR
 
 - Test locally with your ArgentOS instance
-- Run tests: `pnpm build && pnpm check && pnpm test`
+- Run `pnpm verified` (see [docs/conventions/verified.md](docs/conventions/verified.md) for what that covers)
 - Keep PRs focused (one thing per PR)
 - Describe what & why
 

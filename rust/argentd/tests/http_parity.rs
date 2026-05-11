@@ -6,7 +6,9 @@ use std::time::Instant;
 
 fn spawn_server(expected_token: &str) -> (SocketAddr, thread::JoinHandle<std::io::Result<()>>) {
     let listener = bind_listener("127.0.0.1:0").expect("listener should bind");
-    let addr = listener.local_addr().expect("listener should have local addr");
+    let addr = listener
+        .local_addr()
+        .expect("listener should have local addr");
     let token = expected_token.to_string();
     let handle = thread::spawn(move || serve(listener, Instant::now(), &token, Some(1)));
     (addr, handle)
@@ -44,6 +46,12 @@ fn health_returns_ok_json_over_real_tcp() {
     assert!(response.starts_with("HTTP/1.1 200 OK"));
     assert!(response.contains("\"status\":\"ok\""));
     assert!(response.contains("\"version\":\"0.1.0\""));
+    assert!(response.contains("\"mode\":\"shadow\""));
+    assert!(response.contains("\"protocolVersion\":3"));
+    assert!(response.contains("\"liveAuthority\":\"node\""));
+    assert!(response.contains("\"gatewayAuthority\":\"shadow-only\""));
+    assert!(response.contains("\"promotionReady\":false"));
+    assert!(response.contains("\"statePersistence\":\"memory-only\""));
 }
 
 #[test]

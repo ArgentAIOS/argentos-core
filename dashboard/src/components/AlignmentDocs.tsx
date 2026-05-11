@@ -20,24 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
-
-// ── Types ──
-
-interface AgentEntry {
-  id: string;
-  label: string;
-}
-
-interface AlignmentDoc {
-  file: string;
-  label: string;
-  description: string;
-}
-
-interface AlignmentState {
-  agents: AgentEntry[];
-  docs: AlignmentDoc[];
-}
+import { normalizeAlignmentState, type AlignmentState } from "./AlignmentDocs.helpers";
 
 // ── Confirmation Modal ──
 
@@ -117,10 +100,25 @@ export function AlignmentDocs() {
     (async () => {
       try {
         const res = await fetch("/api/settings/alignment");
-        const data = await res.json();
-        setState(data);
-        if (data.agents.length > 0 && !selectedAgent) {
-          setSelectedAgent(data.agents[0].id);
+        let data: unknown = null;
+        try {
+          data = await res.json();
+        } catch {
+          // Body wasn't JSON — fall through to the normalizer's null branch.
+          data = null;
+        }
+        const normalized = normalizeAlignmentState(data);
+        if (!res.ok || normalized === null) {
+          // Surface the failure but DO NOT poison `state` with a malformed
+          // payload — leave it null so the loading branch keeps rendering
+          // until the upstream auth/API issue resolves.
+          setError(res.ok ? "Failed to load agents" : `Failed to load agents (${res.status})`);
+          return;
+        }
+        setState(normalized);
+        setError(null);
+        if (normalized.agents.length > 0 && !selectedAgent) {
+          setSelectedAgent(normalized.agents[0].id);
         }
       } catch (err) {
         setError("Failed to load agents");
@@ -358,12 +356,19 @@ export function AlignmentDocs() {
   if (!state) {
     return (
       <div className="flex items-center justify-center h-40 text-white/40 text-sm">
-        Loading alignment documents...
+        {error ?? "Loading alignment documents..."}
       </div>
     );
   }
 
-  if (state.agents.length === 0) {
+  // Defensive: even if `state` was set, treat missing `agents`/`docs` as
+  // empty arrays. The normalizer guarantees these are arrays, but render
+  // code should never assume that — a future API drift shouldn't crash
+  // the whole panel.
+  const agents = state.agents ?? [];
+  const docs = state.docs ?? [];
+
+  if (agents.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-white/40 text-sm">
         No agents found. Start a conversation to create an agent.
@@ -371,9 +376,8 @@ export function AlignmentDocs() {
     );
   }
 
-  const activeDocMeta = state.docs.find((d) => d.file === activeDoc);
-  const selectedAgentLabel =
-    state.agents.find((a) => a.id === selectedAgent)?.label || selectedAgent;
+  const activeDocMeta = docs.find((d) => d.file === activeDoc);
+  const selectedAgentLabel = agents.find((a) => a.id === selectedAgent)?.label || selectedAgent;
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[400px]">
@@ -396,7 +400,7 @@ export function AlignmentDocs() {
               onChange={(e) => handleAgentChange(e.target.value)}
               className="appearance-none bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 pl-3 pr-8 py-2 focus:outline-none focus:border-purple-500/50 cursor-pointer font-medium"
             >
-              {state.agents.map((agent) => (
+              {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agent.label}
                 </option>
@@ -618,7 +622,7 @@ export function AlignmentDocs() {
 
         {/* Doc tabs */}
         <div className="flex gap-1 flex-wrap">
-          {state.docs.map((doc) => (
+          {docs.map((doc) => (
             <button
               key={doc.file}
               onClick={() => handleDocChange(doc.file)}

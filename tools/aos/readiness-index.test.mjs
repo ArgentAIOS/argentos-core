@@ -202,3 +202,38 @@ test("treats unflagged tested write harnesses as live-ready unless explicitly pr
   assert.equal(entry.commands[0].readiness, "live-ready");
   assert.equal(entry.production_smoke_tested, false);
 });
+
+test("keeps command-level preview aliases out of live-ready command readiness", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aos-readiness-"));
+  writeConnector(root, "aos-preview-command", {
+    tool: "aos-preview-command",
+    backend: "preview-command-api",
+    manifest_schema_version: "1.0.0",
+    scope: {
+      scaffold_only: false,
+      live_backend_available: true,
+      live_read_available: true,
+      write_bridge_available: true,
+    },
+    commands: [
+      { id: "email.send", action_class: "write", required_mode: "write", supports_json: true },
+      {
+        id: "email.create_draft",
+        action_class: "write",
+        required_mode: "write",
+        supports_json: true,
+        preview_only: true,
+        side_effect_level: "local_preview_only",
+      },
+    ],
+  });
+
+  const [entry] = buildReadinessIndex({ rootDir: root }).connectors;
+  const byId = Object.fromEntries(entry.commands.map((command) => [command.id, command]));
+
+  assert.equal(entry.readiness, "live-ready");
+  assert.equal(byId["email.send"].readiness, "live-ready");
+  assert.equal(byId["email.create_draft"].readiness, "preview-only");
+  assert.equal(byId["email.create_draft"].runtime_available, true);
+  assert.equal(byId["email.create_draft"].side_effect_level, "local_preview_only");
+});

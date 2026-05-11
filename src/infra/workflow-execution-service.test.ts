@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   publicWorkflowRow,
+  resumeWorkflowRunAfterEvent,
   workflowFromRow,
   type WorkflowRow,
 } from "./workflow-execution-service.js";
@@ -42,5 +43,71 @@ describe("workflow execution service row decoding", () => {
     expect(publicRow.validation.ok).toBe(true);
     expect(publicRow.nodes).toHaveLength(2);
     expect(publicRow.definition.nodes).toHaveLength(2);
+  });
+});
+
+describe("workflow event resume claims", () => {
+  it("fails before resume when another worker already claimed the waiting event run", async () => {
+    const calls: string[] = [];
+    const responses = [
+      [
+        {
+          id: "run-1",
+          workflow_id: "wf-1",
+          status: "waiting_event",
+          trigger_type: "manual",
+          trigger_payload: {},
+        },
+      ],
+      [
+        {
+          id: "wf-1",
+          name: "Event wait workflow",
+          nodes: [
+            { id: "trigger", kind: "trigger", triggerType: "manual", config: {} },
+            {
+              id: "wait",
+              kind: "gate",
+              label: "Wait",
+              config: {
+                gateType: "wait_event",
+                eventType: "forge.record.created",
+                timeoutAction: "fail",
+              },
+            },
+          ],
+          edges: [{ id: "e-trigger-wait", source: "trigger", target: "wait" }],
+          default_on_error: { strategy: "fail" },
+          deployment_stage: "simulate",
+        },
+      ],
+      [
+        {
+          input_context: {
+            eventType: "forge.record.created",
+            eventFilter: { appId: "app-1" },
+          },
+        },
+      ],
+      [],
+    ];
+    const sql = (async (strings: TemplateStringsArray) => {
+      calls.push(strings.join("?"));
+      return responses.shift() ?? [];
+    }) as unknown as ReturnType<typeof import("postgres").default>;
+
+    await expect(
+      resumeWorkflowRunAfterEvent({
+        sql,
+        runId: "run-1",
+        nodeId: "wait",
+        eventType: "forge.record.created",
+        eventPayload: { appId: "app-1" },
+      }),
+    ).rejects.toThrow(/already claimed/);
+
+    expect(calls).toHaveLength(4);
+    expect(calls[3]).toContain("UPDATE workflow_runs");
+    expect(calls.some((call) => call.includes("UPDATE workflow_step_runs"))).toBe(false);
   });
 });

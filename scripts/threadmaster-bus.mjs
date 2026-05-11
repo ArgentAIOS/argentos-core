@@ -17,11 +17,13 @@ const knownLanes = [
   "appforge",
   "aou",
   "aos",
+  "aos-connectors",
   "openclaw",
   "hermes",
   "roomreader",
   "business",
   "agent-persona",
+  "open-design-composio",
   "all",
 ];
 const taskStatuses = ["todo", "doing", "blocked", "done", "cancelled"];

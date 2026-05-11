@@ -45,6 +45,7 @@ import type {
 } from "./workflow-types.js";
 import { createPodcastGenerateTool } from "../agents/tools/podcast-generate-tool.js";
 import { createPodcastPlanTool } from "../agents/tools/podcast-plan-tool.js";
+import { dispatchToolSendPayload, isToolSendPayloadNode } from "../connectors/tool-send-payload.js";
 // Real system integrations — these are the actual delivery systems, not stubs
 import { refreshPresence } from "../data/redis-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -88,12 +89,15 @@ export interface ActionExecutors {
     channel: string,
     to: string,
     text: string,
+    opts?: { mediaUrl?: string; mediaUrls?: string[] },
   ) => Promise<{
     messageId?: string;
     ok: boolean;
     channel?: string;
     to?: string;
     via?: "direct" | "gateway";
+    mediaUrl?: string | null;
+    mediaUrls?: string[];
   }>;
   /** Send an email */
   sendEmail?: (
@@ -134,11 +138,17 @@ export interface ExecuteWorkflowParams {
   /** Manual/partial execution: stop after recording this node. */
   stopAfterNodeId?: string;
   onStepStart?: (nodeId: string, node: WorkflowNode) => void;
-  onStepComplete?: (nodeId: string, result: StepRecord) => void;
-  onRunComplete?: (status: string, steps: StepRecord[]) => void;
+  onStepComplete?: (nodeId: string, result: StepRecord) => void | Promise<void>;
+  onRunComplete?: (status: string, steps: StepRecord[]) => void | Promise<void>;
   onApprovalRequested?: (nodeId: string, request: ApprovalRequest) => void;
   /** PG sql instance for persisting approval state */
   pgSql?: PgSqlInstance | null;
+  /** Prefer durable pause/resume for waits and approvals instead of in-process blocking. */
+  durablePauses?: boolean;
+  /** Abort in-process execution before starting the next node/action or while waiting locally. */
+  abortSignal?: AbortSignal;
+  /** Authoritative cancellation hook, typically backed by workflow_runs.status. */
+  isRunCancelled?: (runId: string) => boolean | Promise<boolean>;
   redis?: Redis | null;
   resume?: WorkflowResumeOptions;
 }
@@ -178,6 +188,47 @@ interface ApprovalResolver {
 }
 
 const pendingApprovals = new Map<string, ApprovalResolver>();
+
+async function isWorkflowRunCancelled(params: ExecuteWorkflowParams): Promise<boolean> {
+  if (params.abortSignal?.aborted) {
+    return true;
+  }
+  return Boolean(await params.isRunCancelled?.(params.runId));
+}
+
+async function waitForCancellationOrDelay(
+  durationMs: number,
+  params: ExecuteWorkflowParams,
+): Promise<"elapsed" | "cancelled"> {
+  if (durationMs <= 0) {
+    return (await isWorkflowRunCancelled(params)) ? "cancelled" : "elapsed";
+  }
+  const deadline = Date.now() + durationMs;
+  while (Date.now() < deadline) {
+    if (await isWorkflowRunCancelled(params)) {
+      return "cancelled";
+    }
+    const remainingMs = deadline - Date.now();
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(remainingMs, 250)));
+  }
+  return (await isWorkflowRunCancelled(params)) ? "cancelled" : "elapsed";
+}
+
+async function waitForApprovalDecision(
+  approvalPromise: Promise<{ approved: boolean; reason?: string }>,
+  params: ExecuteWorkflowParams,
+): Promise<{ approved: boolean; reason?: string; cancelled?: boolean }> {
+  while (true) {
+    if (await isWorkflowRunCancelled(params)) {
+      return { approved: false, reason: "Workflow run cancelled", cancelled: true };
+    }
+    const tick = new Promise<"tick">((resolve) => setTimeout(() => resolve("tick"), 250));
+    const result = await Promise.race([approvalPromise, tick]);
+    if (result !== "tick") {
+      return result;
+    }
+  }
+}
 
 /** Create a pending approval entry. Returns a promise that resolves when approved/denied. */
 function createApprovalPromise(runId: string, nodeId: string): ApprovalResolver {
@@ -220,6 +271,7 @@ export function hasPendingApproval(runId: string, nodeId: string): boolean {
  */
 export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<WorkflowRunResult> {
   const { workflow, runId, dispatcher, redis } = params;
+  const durablePauses = params.durablePauses ?? Boolean(params.pgSql);
   const runStart = Date.now();
 
   // 1. Topological sort
@@ -277,6 +329,11 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
 
   for (let i = startIndex; i < executionOrder.length; i++) {
     const node = executionOrder[i];
+
+    if (await isWorkflowRunCancelled(params)) {
+      finalStatus = "cancelled";
+      break;
+    }
 
     // Skip nodes owned by a parallel segment — already executed by fan-out.
     if (parallelBranchNodeIds.has(node.id) || joinNodeIds.has(node.id)) {
@@ -342,7 +399,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
             break;
 
           case "gate":
-            stepResult = executeGate(node, context, workflow.edges);
+            stepResult = await executeGate(node, context, workflow.edges);
             break;
 
           case "output":
@@ -419,14 +476,17 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind,
+              id, run_id, node_id, node_kind, idempotency_key,
               status, approval_status, started_at
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              ${`${runId}:${node.id}:${i}`},
               'running', 'pending',
               ${new Date().toISOString()}::timestamptz
             )
-            ON CONFLICT (id) DO UPDATE SET approval_status = 'pending', status = 'running'
+            ON CONFLICT (idempotency_key) DO UPDATE SET
+              approval_status = 'pending',
+              status = 'running'
           `;
         } catch (err) {
           log.warn("failed to persist approval state", { error: String(err) });
@@ -436,34 +496,49 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       // Broadcast approval request to dashboard
       params.onApprovalRequested?.(node.id, approvalRequest);
 
-      // Create approval promise + optional timeout
-      const approvalEntry = createApprovalPromise(runId, node.id);
-      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-      if (approvalRequest.timeoutMs && approvalRequest.timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          if (hasPendingApproval(runId, node.id)) {
-            const autoApprove = approvalRequest.timeoutAction === "approve";
-            log.info(`approval timeout — auto-${autoApprove ? "approving" : "denying"}`, {
-              runId,
-              nodeId: node.id,
-            });
-            resolveApproval(runId, node.id, autoApprove, "Timed out");
-          }
-        }, approvalRequest.timeoutMs);
-      }
+      if (durablePauses) {
+        finalStatus = "waiting_approval";
+        waitingNodeId = node.id;
+        stepResult = {
+          items: [
+            {
+              json: { gateType: "approval", waiting: true, approved: false },
+              text: "Approval requested - workflow paused for durable resume",
+            },
+          ],
+        };
+      } else {
+        // Create approval promise + optional timeout
+        const approvalEntry = createApprovalPromise(runId, node.id);
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        if (approvalRequest.timeoutMs && approvalRequest.timeoutMs > 0) {
+          timeoutHandle = setTimeout(() => {
+            if (hasPendingApproval(runId, node.id)) {
+              const autoApprove = approvalRequest.timeoutAction === "approve";
+              log.info(`approval timeout — auto-${autoApprove ? "approving" : "denying"}`, {
+                runId,
+                nodeId: node.id,
+              });
+              resolveApproval(runId, node.id, autoApprove, "Timed out");
+            }
+          }, approvalRequest.timeoutMs);
+        }
 
-      log.info("pipeline paused — waiting for approval", { runId, nodeId: node.id });
+        log.info("pipeline paused — waiting for approval", { runId, nodeId: node.id });
 
-      // Block execution until resolved
-      const decision = await approvalEntry.promise;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+        // Block execution until resolved
+        const decision = await waitForApprovalDecision(approvalEntry.promise, params);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (decision.cancelled) {
+          pendingApprovals.delete(`${runId}:${node.id}`);
+        }
 
-      // Update PG with decision
-      if (params.pgSql) {
-        try {
-          const pgStatus = decision.approved ? "approved" : "denied";
-          const approvalRecordStatus = decision.reason === "Timed out" ? "timed_out" : pgStatus;
-          await params.pgSql`
+        // Update PG with decision
+        if (params.pgSql) {
+          try {
+            const pgStatus = decision.approved ? "approved" : "denied";
+            const approvalRecordStatus = decision.reason === "Timed out" ? "timed_out" : pgStatus;
+            await params.pgSql`
             UPDATE workflow_step_runs SET
               approval_status = ${pgStatus},
               approval_note = ${decision.reason ?? null},
@@ -471,7 +546,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
               status = 'completed'
               WHERE id = ${`step-${runId}-${node.id}`}
           `;
-          await params.pgSql`
+            await params.pgSql`
             UPDATE workflow_approvals SET
               status = ${approvalRecordStatus},
               resolved_at = NOW(),
@@ -481,50 +556,71 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
               AND node_id = ${node.id}
               AND status = 'pending'
           `;
-          if (decision.approved) {
-            await params.pgSql`
+            if (decision.cancelled) {
+              await params.pgSql`
+              UPDATE workflow_runs SET status = 'cancelled', current_node_id = NULL,
+                ended_at = NOW()
+              WHERE id = ${runId}
+            `;
+            } else if (decision.approved) {
+              await params.pgSql`
               UPDATE workflow_runs SET status = 'running', current_node_id = NULL
               WHERE id = ${runId}
             `;
-          } else {
-            await params.pgSql`
+            } else {
+              await params.pgSql`
               UPDATE workflow_runs SET status = 'failed', current_node_id = NULL,
                 error = ${decision.reason || "Approval denied by operator"},
                 ended_at = NOW()
               WHERE id = ${runId}
             `;
+            }
+          } catch (err) {
+            log.warn("failed to update approval decision in PG", { error: String(err) });
           }
-        } catch (err) {
-          log.warn("failed to update approval decision in PG", { error: String(err) });
         }
-      }
 
-      if (!decision.approved) {
-        log.info("approval denied — aborting pipeline", {
-          runId,
-          nodeId: node.id,
-          reason: decision.reason,
-        });
-        stepResult = {
-          items: [
-            {
-              json: { gateType: "approval", approved: false, reason: decision.reason },
-              text: `Approval denied: ${decision.reason || "operator denied"}`,
-            },
-          ],
-        };
-        stepStatus = "failed";
-        finalStatus = "failed";
-      } else {
-        log.info("approval granted — resuming pipeline", { runId, nodeId: node.id });
-        stepResult = {
-          items: [
-            {
-              json: { gateType: "approval", approved: true },
-              text: "Approval granted — pipeline resumed",
-            },
-          ],
-        };
+        if (decision.cancelled) {
+          log.info("approval wait cancelled — aborting pipeline", {
+            runId,
+            nodeId: node.id,
+          });
+          stepResult = {
+            items: [
+              {
+                json: { gateType: "approval", cancelled: true, approved: false },
+                text: "Workflow run cancelled during approval wait",
+              },
+            ],
+          };
+          finalStatus = "cancelled";
+        } else if (!decision.approved) {
+          log.info("approval denied — aborting pipeline", {
+            runId,
+            nodeId: node.id,
+            reason: decision.reason,
+          });
+          stepResult = {
+            items: [
+              {
+                json: { gateType: "approval", approved: false, reason: decision.reason },
+                text: `Approval denied: ${decision.reason || "operator denied"}`,
+              },
+            ],
+          };
+          stepStatus = "failed";
+          finalStatus = "failed";
+        } else {
+          log.info("approval granted — resuming pipeline", { runId, nodeId: node.id });
+          stepResult = {
+            items: [
+              {
+                json: { gateType: "approval", approved: true },
+                text: "Approval granted — pipeline resumed",
+              },
+            ],
+          };
+        }
       }
     }
 
@@ -547,15 +643,16 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind,
+              id, run_id, node_id, node_kind, idempotency_key,
               status, started_at, input_context
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              ${`${runId}:${node.id}:${i}`},
               'running',
               ${new Date().toISOString()}::timestamptz,
               ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
             )
-            ON CONFLICT (id) DO UPDATE SET status = 'running',
+            ON CONFLICT (idempotency_key) DO UPDATE SET status = 'running',
               input_context = ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
           `;
         } catch (err) {
@@ -563,42 +660,73 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
         }
       }
 
-      // Block execution with a real delay
+      // Block execution with a real delay only when durable pauses are disabled.
       const MAX_IN_PROCESS_WAIT = 5 * 60 * 1000; // 5 minutes
-      if (durationMs <= MAX_IN_PROCESS_WAIT) {
+      if (!durablePauses && durationMs <= MAX_IN_PROCESS_WAIT) {
         log.info("wait_duration: in-process wait", { runId, nodeId: node.id, durationMs });
-        await new Promise<void>((resolve) => setTimeout(resolve, durationMs));
+        const waitResult = await waitForCancellationOrDelay(durationMs, params);
 
-        // Update PG status back to running
-        if (params.pgSql) {
-          try {
-            await params.pgSql`
+        if (waitResult === "cancelled") {
+          finalStatus = "cancelled";
+          if (params.pgSql) {
+            try {
+              await params.pgSql`
+                UPDATE workflow_runs SET status = 'cancelled', current_node_id = NULL,
+                  ended_at = NOW()
+                WHERE id = ${runId}
+              `;
+              await params.pgSql`
+                UPDATE workflow_step_runs SET status = 'completed', ended_at = NOW()
+                WHERE id = ${`step-${runId}-${node.id}`}
+              `;
+            } catch (err) {
+              log.warn("failed to update cancelled wait in PG", { error: String(err) });
+            }
+          }
+          stepResult = {
+            items: [
+              {
+                json: {
+                  gateType: "wait_duration",
+                  durationMs,
+                  cancelled: true,
+                },
+                text: "Workflow run cancelled during wait",
+              },
+            ],
+          };
+        } else {
+          // Update PG status back to running
+          if (params.pgSql) {
+            try {
+              await params.pgSql`
               UPDATE workflow_runs SET status = 'running', current_node_id = NULL
               WHERE id = ${runId}
             `;
-            await params.pgSql`
+              await params.pgSql`
               UPDATE workflow_step_runs SET status = 'completed', ended_at = NOW()
               WHERE id = ${`step-${runId}-${node.id}`}
             `;
-          } catch (err) {
-            log.warn("failed to update wait completion in PG", { error: String(err) });
+            } catch (err) {
+              log.warn("failed to update wait completion in PG", { error: String(err) });
+            }
           }
-        }
 
-        log.info("wait_duration: resumed after wait", { runId, nodeId: node.id });
-        stepResult = {
-          items: [
-            {
-              json: {
-                gateType: "wait_duration",
-                durationMs,
-                waited: true,
-                resumedAt: new Date().toISOString(),
+          log.info("wait_duration: resumed after wait", { runId, nodeId: node.id });
+          stepResult = {
+            items: [
+              {
+                json: {
+                  gateType: "wait_duration",
+                  durationMs,
+                  waited: true,
+                  resumedAt: new Date().toISOString(),
+                },
+                text: `Wait complete — resumed after ${durationMs}ms`,
               },
-              text: `Wait complete — resumed after ${durationMs}ms`,
-            },
-          ],
-        };
+            ],
+          };
+        }
       } else {
         // Over 5 minutes — persist and return. A cron or manual trigger resumes later.
         log.info("wait_duration: long wait, persisted for cron resume", {
@@ -649,10 +777,11 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind,
+              id, run_id, node_id, node_kind, idempotency_key,
               status, started_at, input_context
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              ${`${runId}:${node.id}:${i}`},
               'running',
               ${new Date().toISOString()}::timestamptz,
               ${JSON.stringify({
@@ -663,7 +792,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
                 waitResumeAt,
               })}::jsonb
             )
-            ON CONFLICT (id) DO UPDATE SET status = 'running',
+            ON CONFLICT (idempotency_key) DO UPDATE SET status = 'running',
               input_context = ${JSON.stringify({
                 eventType,
                 eventFilter,
@@ -853,7 +982,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     };
 
     context.history.push(record);
-    params.onStepComplete?.(node.id, record);
+    await params.onStepComplete?.(node.id, record);
 
     // Budget circuit breaker
     if (workflow.maxRunCostUsd != null && context.totalCostUsd > workflow.maxRunCostUsd) {
@@ -875,7 +1004,12 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       break;
     }
 
-    if (finalStatus === "waiting_duration" || finalStatus === "waiting_event") {
+    if (
+      finalStatus === "waiting_duration" ||
+      finalStatus === "waiting_event" ||
+      finalStatus === "waiting_approval" ||
+      finalStatus === "cancelled"
+    ) {
       break;
     }
 
@@ -903,7 +1037,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     waitingNodeId,
   };
 
-  params.onRunComplete?.(result.status, result.steps);
+  await params.onRunComplete?.(result.status, result.steps);
   log.info("workflow run finished", {
     workflowId: workflow.id,
     runId,
@@ -1357,6 +1491,22 @@ function toolResultToItemSet(
   const record = asRecord(result);
   const details = asRecord(record.details);
   const text = extractToolResultText(result);
+  const payloadContract =
+    meta.actionType === "podcast_plan" && isRecordValue(details.podcast_generate)
+      ? {
+          kind: "structured_payload",
+          produces: "podcast_generate",
+          path: "json.podcast_generate",
+          requiredBy: "podcast_generate",
+        }
+      : meta.actionType === "podcast_generate" && typeof details.path === "string"
+        ? {
+            kind: "media_artifact",
+            produces: "audio",
+            path: "json.path",
+            artifactId: details.path,
+          }
+        : undefined;
   return {
     items: [
       {
@@ -1364,6 +1514,7 @@ function toolResultToItemSet(
           actionType: meta.actionType,
           label: meta.label,
           ...(Object.keys(details).length ? details : record),
+          ...(payloadContract ? { payloadContract } : {}),
         },
         text,
         artifacts:
@@ -1410,18 +1561,101 @@ function resolveWorkflowTemplateObject(
   }
 }
 
+function getPodcastPlanSource(
+  actionType: Extract<NonNullable<ActionNode["config"]["actionType"]>, { type: "podcast_plan" }>,
+  context: PipelineContext,
+): Record<string, unknown> | undefined {
+  const explicitPayload = actionType.payload;
+  if (isRecordValue(explicitPayload)) {
+    return explicitPayload;
+  }
+  const templatePayload = resolveWorkflowTemplateObject(actionType.payloadTemplate, context);
+  if (templatePayload) {
+    return templatePayload;
+  }
+  const previousJson = resolveFieldPath(getLastOutput(context), "json");
+  return isRecordValue(previousJson) ? previousJson : undefined;
+}
+
+function readPodcastPlanSourceRecord(
+  source: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!source) {
+    return undefined;
+  }
+  const nested = source.podcast_generate;
+  return isRecordValue(nested) ? nested : source;
+}
+
+function readPodcastPlanDialogue(
+  source: Record<string, unknown> | undefined,
+): Array<Record<string, unknown>> | undefined {
+  const record = readPodcastPlanSourceRecord(source);
+  const dialogue = record?.dialogue;
+  return Array.isArray(dialogue) ? dialogue.filter(isRecordValue) : undefined;
+}
+
+function readPodcastPlanPersonas(
+  source: Record<string, unknown> | undefined,
+): Array<Record<string, unknown>> | undefined {
+  const record = readPodcastPlanSourceRecord(source);
+  const personas = record?.personas;
+  return Array.isArray(personas) ? personas.filter(isRecordValue) : undefined;
+}
+
+function readPodcastPlanScript(source: Record<string, unknown> | undefined): string | undefined {
+  const record = readPodcastPlanSourceRecord(source);
+  if (!record) {
+    return undefined;
+  }
+  const candidates = [
+    record.script,
+    record.podcastScript,
+    record.podcast_script,
+    record.transcript,
+    record.body,
+    record.content,
+    record.markdown,
+    record.text,
+    record.brief,
+    record.summary,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function assertPodcastGenerateAudioResult(result: unknown): void {
+  const record = asRecord(result);
+  const details = asRecord(record.details);
+  if (typeof details.path === "string" && details.path.trim()) {
+    return;
+  }
+  const error =
+    typeof details.error === "string" && details.error.trim()
+      ? details.error
+      : extractToolResultText(result) || "podcast_generate did not return an audio artifact path.";
+  throw new Error(`podcast_generate failed to produce audio: ${error}`);
+}
+
 async function sendWorkflowMessage(
   channel: string,
   to: string,
   text: string,
   context: PipelineContext,
   nodeId: string,
+  opts?: { mediaUrl?: string; mediaUrls?: string[] },
 ): Promise<{
   ok: boolean;
   channel: string;
   to: string;
   via: "direct" | "gateway";
   messageId?: string;
+  mediaUrl?: string | null;
+  mediaUrls?: string[];
 }> {
   const [{ loadConfig }, { sendMessage }] = await Promise.all([
     import("../config/config.js"),
@@ -1432,6 +1666,8 @@ async function sendWorkflowMessage(
     to,
     content: text,
     channel,
+    mediaUrl: opts?.mediaUrl,
+    mediaUrls: opts?.mediaUrls,
     cfg,
     idempotencyKey: `wfrun:${context.runId}:step:${nodeId}:msg`,
   });
@@ -1442,6 +1678,10 @@ async function sendWorkflowMessage(
     to: result.to,
     via: result.via,
     messageId: typeof delivery.messageId === "string" ? delivery.messageId : undefined,
+    mediaUrl: typeof delivery.mediaUrl === "string" ? delivery.mediaUrl : (opts?.mediaUrl ?? null),
+    mediaUrls: Array.isArray(delivery.mediaUrls)
+      ? (delivery.mediaUrls as string[])
+      : opts?.mediaUrls,
   };
 }
 
@@ -1547,12 +1787,26 @@ async function executeAction(
 
   switch (actionName) {
     case "send_message": {
-      const { channelType, channelId, template } = actionType;
+      const { channelType, channelId, template, mediaTemplate, mediaTemplates } = actionType;
       const rendered = resolveTemplate(template, context);
+      const mediaUrls = [
+        ...(mediaTemplate ? [resolveTemplate(mediaTemplate, context)] : []),
+        ...(mediaTemplates ?? []).map((entry) => resolveTemplate(entry, context)),
+      ].filter((entry) => entry.trim().length > 0);
+      const mediaOpts = mediaUrls.length
+        ? { mediaUrl: mediaUrls[0], mediaUrls: mediaUrls.length > 1 ? mediaUrls : undefined }
+        : undefined;
       try {
         const result = actions?.sendMessage
-          ? await actions.sendMessage(channelType, channelId, rendered)
-          : await sendWorkflowMessage(channelType, channelId, rendered, context, node.id);
+          ? await actions.sendMessage(channelType, channelId, rendered, mediaOpts)
+          : await sendWorkflowMessage(
+              channelType,
+              channelId,
+              rendered,
+              context,
+              node.id,
+              mediaOpts,
+            );
         const resolvedChannel = result.channel ?? channelType;
         const resolvedTo = result.to ?? channelId;
         const resolvedVia = result.via ?? "direct";
@@ -1560,6 +1814,7 @@ async function executeAction(
           channel: resolvedChannel,
           to: resolvedTo,
           via: resolvedVia,
+          mediaCount: mediaUrls.length,
         });
         return {
           items: [
@@ -1570,8 +1825,15 @@ async function executeAction(
                 to: resolvedTo,
                 via: resolvedVia,
                 messageId: result.messageId,
+                mediaUrl: result.mediaUrl ?? mediaOpts?.mediaUrl,
+                mediaUrls: result.mediaUrls ?? mediaOpts?.mediaUrls,
               },
               text: rendered,
+              artifacts: mediaUrls.map((url) => ({
+                type: "audio" as const,
+                id: url,
+                title: "Workflow message media",
+              })),
             },
           ],
         };
@@ -1932,20 +2194,27 @@ async function executeAction(
         music,
         publish,
       } = actionType;
+      const planSource = getPodcastPlanSource(actionType, context);
       const resolvedScript = script ? resolveTemplate(script, context) : undefined;
+      const defaultPreviousTextScript = !script || script.trim() === "{{previous.text}}";
+      const sourceDialogue = readPodcastPlanDialogue(planSource);
+      const sourceScript = readPodcastPlanScript(planSource);
+      const sourcePersonas = readPodcastPlanPersonas(planSource);
       const args: Record<string, unknown> = {
         title: resolveTemplate(title, context),
         personas:
           personas && personas.length > 0
             ? personas
-            : [
-                {
-                  id: "argent",
-                  aliases: ["ARGENT", "HOST"],
-                  voice_id:
-                    defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
-                },
-              ],
+            : sourcePersonas && sourcePersonas.length > 0
+              ? sourcePersonas
+              : [
+                  {
+                    id: "argent",
+                    aliases: ["ARGENT", "HOST"],
+                    voice_id:
+                      defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+                  },
+                ],
         default_voice_id:
           defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
         timezone: timezone || "America/Chicago",
@@ -1954,8 +2223,14 @@ async function executeAction(
       };
       if (dialogue && dialogue.length > 0) {
         args.dialogue = dialogue;
+      } else if (defaultPreviousTextScript && sourceDialogue && sourceDialogue.length > 0) {
+        args.dialogue = sourceDialogue;
+      } else if (!defaultPreviousTextScript && resolvedScript) {
+        args.script = resolvedScript;
+      } else if (sourceScript) {
+        args.script = sourceScript;
       } else {
-        args.script = resolvedScript || "{{previous.text}}";
+        args.script = resolvedScript || resolveTemplate("{{previous.text}}", context);
       }
       if (music) {
         args.music = music;
@@ -1987,6 +2262,7 @@ async function executeAction(
       }
       const tool = createPodcastGenerateTool();
       const result = await tool.execute(`workflow-${context.runId}-${node.id}`, args);
+      assertPodcastGenerateAudioResult(result);
       return toolResultToItemSet(result, {
         nodeId: node.id,
         label: node.label,
@@ -2314,7 +2590,11 @@ async function executeConnectorAction(
  * Sprint 2 implements: condition (simple field comparison), and pass-through
  * for all other gate types (parallel, join, approval, etc.)
  */
-function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowEdge[]): ItemSet {
+async function executeGate(
+  node: GateNode,
+  context: PipelineContext,
+  _edges: WorkflowEdge[],
+): Promise<ItemSet> {
   const config = node.config;
   const gateType = config.gateType;
 
@@ -2426,6 +2706,18 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
       };
 
     case "error_handler":
+      // Special-case the `tool-send-payload` workflow node: it's
+      // currently normalized into an error_handler gate (see
+      // workflow-normalize.ts:normalizeSubPortNode), but it represents
+      // the Telegram delivery step in the AI Morning Brief recipe and
+      // must actually dispatch via the Telegram bot API. Without this
+      // hook, every run records the placeholder
+      // `{"gateType":"error_handler","status":"standby"}` instead of a
+      // real delivery receipt (see ops/artifacts/playwright/morning-brief
+      // /2026-05-06T1523/SUMMARY.md capture (d)).
+      if (isToolSendPayloadNode(node)) {
+        return dispatchToolSendPayload(node, context);
+      }
       // Pass through — error_handler only activates on failure
       return {
         items: [
@@ -3155,22 +3447,68 @@ export class CoreAgentDispatcher implements AgentDispatcher {
             )
           : String(result ?? "");
 
-      // Extract token usage from result metadata when available
+      // Extract token usage + provider/model from result metadata when available.
+      // The embedded pi runner emits `meta.agentMeta.usage` (preferred); older
+      // call sites may emit `meta.usage` directly. Normalize both shapes so we
+      // capture token counts from any provider naming convention, then estimate
+      // cost from the configured per-million-token pricing for that model. This
+      // is what bubbles up into per-step `tokensUsed`/`costUsd` and ultimately
+      // into `workflow_runs.total_tokens_used` / `total_cost_usd`.
+      const { normalizeUsage } = await import("../agents/usage.js");
+      const { estimateUsageCost, resolveModelCostConfig } =
+        await import("../utils/usage-format.js");
+      const { loadConfig } = await import("../config/config.js");
+
       let tokensUsed = 0;
       let costUsd = 0;
+      let resolvedProvider: string | undefined = modelBinding?.provider;
+      let resolvedModel: string | undefined = modelBinding?.model;
       if (typeof result === "object" && result !== null) {
         const meta = (result as Record<string, unknown>).meta as
           | Record<string, unknown>
           | undefined;
-        if (meta) {
-          const usage = meta.usage as Record<string, number> | undefined;
-          if (usage) {
-            tokensUsed = (usage.input ?? 0) + (usage.output ?? 0);
+        const agentMeta = meta?.agentMeta as Record<string, unknown> | undefined;
+        const rawUsage =
+          (agentMeta?.usage as Record<string, unknown> | undefined) ??
+          (meta?.usage as Record<string, unknown> | undefined);
+        const normalized = normalizeUsage(rawUsage as Parameters<typeof normalizeUsage>[0]);
+        if (normalized) {
+          const input = normalized.input ?? 0;
+          const output = normalized.output ?? 0;
+          const total = normalized.total ?? input + output;
+          tokensUsed = total > 0 ? total : input + output;
+        }
+        if (typeof agentMeta?.provider === "string" && agentMeta.provider) {
+          resolvedProvider = agentMeta.provider;
+        }
+        if (typeof agentMeta?.model === "string" && agentMeta.model) {
+          resolvedModel = agentMeta.model;
+        }
+        if (normalized && resolvedProvider && resolvedModel) {
+          try {
+            const costConfig = resolveModelCostConfig({
+              provider: resolvedProvider,
+              model: resolvedModel,
+              config: loadConfig(),
+            });
+            const estimated = estimateUsageCost({ usage: normalized, cost: costConfig });
+            if (typeof estimated === "number" && Number.isFinite(estimated)) {
+              costUsd = estimated;
+            }
+          } catch (err) {
+            log.warn(
+              `CoreAgentDispatcher: cost estimation failed for ${resolvedProvider}/${resolvedModel}: ${String(err)}`,
+            );
           }
         }
       }
 
-      const modelRef = resolved ? `${resolved.provider}/${resolved.model}` : "default";
+      const modelRef =
+        resolvedProvider && resolvedModel
+          ? `${resolvedProvider}/${resolvedModel}`
+          : resolved
+            ? `${resolved.provider}/${resolved.model}`
+            : "default";
 
       log.info("CoreAgentDispatcher: agent call completed", {
         agentId,
@@ -3427,7 +3765,7 @@ async function executeBranch(
           stepResult = await executeAction(node, context, params.actions);
           break;
         case "gate":
-          stepResult = executeGate(node, context, workflow.edges);
+          stepResult = await executeGate(node, context, workflow.edges);
           break;
         case "output":
           stepResult = await executeOutput(node, context);

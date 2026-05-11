@@ -1,6 +1,15 @@
 import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
+import {
+  gatewayAuthorityDisposableLoopbackRehearsalCommand,
+  gatewayAuthorityDisposableLoopbackSmokeCommand,
+  gatewayAuthorityInstalledStatusCommand,
+  gatewayAuthorityLocalRehearsalCommand,
+  gatewayAuthorityLocalSmokeCommand,
+  gatewayAuthorityRollbackPlanCommand,
+  gatewayAuthorityStatusCommand,
+} from "../../commands/gateway-authority-status.js";
 import { gatewayStatusCommand } from "../../commands/gateway-status.js";
 import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
 import { loadConfig } from "../../config/config.js";
@@ -28,20 +37,21 @@ import {
   pickGatewayPort,
   renderBeaconLines,
 } from "./discover.js";
-import { addGatewayRunCommand, runGatewayCommand as runGatewayForeground } from "./run.js";
+import { addGatewayRunCommand } from "./run.js";
 
 function mergeGatewayCommandOptions<T extends Record<string, unknown>>(
   opts: T,
   command?: Command,
 ): T {
-  const parent =
-    command && typeof command.parent?.opts === "function"
-      ? (command.parent.opts() as Record<string, unknown>)
-      : {};
-  return {
-    ...parent,
-    ...opts,
-  } as T;
+  const parents: Record<string, unknown>[] = [];
+  let current = command?.parent;
+  while (current) {
+    if (typeof current.opts === "function") {
+      parents.unshift(current.opts());
+    }
+    current = current.parent;
+  }
+  return Object.assign({}, ...parents, opts) as T;
 }
 
 function styleHealthChannelLine(line: string, rich: boolean): string {
@@ -166,6 +176,265 @@ export function registerGatewayCli(program: Command) {
         deep: Boolean(merged.deep),
         json: Boolean(merged.json),
       });
+    });
+
+  const authority = gateway
+    .command("authority")
+    .description("Inspect Gateway authority and Rust promotion readiness");
+
+  authority
+    .command("status")
+    .description("Show read-only Gateway authority and rollback readiness")
+    .option("--json", "Output JSON", false)
+    .option("--installed-canary-url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option(
+      "--installed-canary-token <token>",
+      "Explicit installed Gateway token for canary status",
+    )
+    .option(
+      "--installed-canary-password <password>",
+      "Explicit installed Gateway password for canary status",
+    )
+    .option("--installed-canary-timeout <ms>", "Installed canary query timeout in ms")
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        const installedCanary =
+          opts.installedCanaryUrl || opts.installedCanaryToken || opts.installedCanaryPassword
+            ? {
+                url:
+                  typeof opts.installedCanaryUrl === "string" ? opts.installedCanaryUrl : undefined,
+                token:
+                  typeof opts.installedCanaryToken === "string"
+                    ? opts.installedCanaryToken
+                    : undefined,
+                password:
+                  typeof opts.installedCanaryPassword === "string"
+                    ? opts.installedCanaryPassword
+                    : undefined,
+                timeoutMs:
+                  typeof opts.installedCanaryTimeout === "string"
+                    ? Number(opts.installedCanaryTimeout)
+                    : undefined,
+              }
+            : undefined;
+        await gatewayAuthorityStatusCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          ...(installedCanary ? { installedCanary } : {}),
+        });
+      }, "Gateway authority status failed");
+    });
+
+  authority
+    .command("status-installed")
+    .description(
+      "Query the configured installed local Gateway canary status without printing secrets",
+    )
+    .option("--url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option("--token <token>", "Explicit installed Gateway token for canary status")
+    .option("--password <password>", "Explicit installed Gateway password for canary status")
+    .option("--timeout <ms>", "Installed canary query timeout in ms")
+    .option(
+      "--generate-local-receipts",
+      "Generate local-only canary receipts through the installed daemon before querying status",
+      false,
+    )
+    .option(
+      "--confirm-local-only",
+      "Confirm receipt generation is against a local-only test path",
+      false,
+    )
+    .option("--reason <reason>", "Operator-visible reason for local receipt generation")
+    .option("--json", "Output JSON", false)
+    .action(async function (opts) {
+      const merged = mergeGatewayCommandOptions(opts, this);
+      const generateLocalReceiptProof = merged.generateLocalReceipts
+        ? {
+            confirmLocalOnly: Boolean(merged.confirmLocalOnly),
+            reason: typeof merged.reason === "string" ? merged.reason : undefined,
+          }
+        : undefined;
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityInstalledStatusCommand(defaultRuntime, {
+          json: Boolean(merged.json),
+          installedCanary: {
+            url: typeof merged.url === "string" ? merged.url : undefined,
+            token: typeof merged.token === "string" ? merged.token : undefined,
+            password: typeof merged.password === "string" ? merged.password : undefined,
+            timeoutMs: typeof merged.timeout === "string" ? Number(merged.timeout) : undefined,
+            ...(generateLocalReceiptProof ? { generateLocalReceiptProof } : {}),
+          },
+        });
+      }, "Gateway authority installed status failed");
+    });
+
+  authority
+    .command("smoke-local")
+    .description("Run a read-only local operator smoke for Rust Gateway canary authority proof")
+    .option("--reason <reason>", "Operator-visible reason for local smoke")
+    .option(
+      "--confirm-local-only",
+      "Confirm this is a local-only smoke against a test harness",
+      false,
+    )
+    .option(
+      "--local-canary-self-check",
+      "Use the built-in local-only canary receipt self-check without daemon credentials",
+      false,
+    )
+    .option("--json", "Output JSON", false)
+    .option("--installed-canary-url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option(
+      "--installed-canary-token <token>",
+      "Explicit installed Gateway token for canary status",
+    )
+    .option(
+      "--installed-canary-password <password>",
+      "Explicit installed Gateway password for canary status",
+    )
+    .option("--installed-canary-timeout <ms>", "Installed canary query timeout in ms")
+    .action(async (opts) => {
+      const reason = typeof opts.reason === "string" && opts.reason.trim() ? opts.reason : null;
+      if (!reason) {
+        defaultRuntime.error(
+          "Gateway authority local smoke failed: required option '--reason <reason>' not specified",
+        );
+        defaultRuntime.exit(1);
+        return;
+      }
+      await runGatewayCommand(async () => {
+        const installedCanary =
+          opts.installedCanaryUrl || opts.installedCanaryToken || opts.installedCanaryPassword
+            ? {
+                url:
+                  typeof opts.installedCanaryUrl === "string" ? opts.installedCanaryUrl : undefined,
+                token:
+                  typeof opts.installedCanaryToken === "string"
+                    ? opts.installedCanaryToken
+                    : undefined,
+                password:
+                  typeof opts.installedCanaryPassword === "string"
+                    ? opts.installedCanaryPassword
+                    : undefined,
+                timeoutMs:
+                  typeof opts.installedCanaryTimeout === "string"
+                    ? Number(opts.installedCanaryTimeout)
+                    : undefined,
+              }
+            : undefined;
+        await gatewayAuthorityLocalSmokeCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason,
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+          localCanarySelfCheck: Boolean(opts.localCanarySelfCheck),
+          ...(installedCanary ? { installedCanary } : {}),
+        });
+      }, "Gateway authority local smoke failed");
+    });
+
+  authority
+    .command("smoke-loopback")
+    .description(
+      "Start a disposable loopback Gateway harness and run the local canary receipt smoke",
+    )
+    .option("--reason <reason>", "Operator-visible reason for disposable loopback smoke")
+    .option(
+      "--confirm-local-only",
+      "Confirm this starts only a disposable local loopback harness",
+      false,
+    )
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      const reason = typeof opts.reason === "string" && opts.reason.trim() ? opts.reason : null;
+      if (!reason) {
+        defaultRuntime.error(
+          "Gateway authority loopback smoke failed: required option '--reason <reason>' not specified",
+        );
+        defaultRuntime.exit(1);
+        return;
+      }
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityDisposableLoopbackSmokeCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason,
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+        });
+      }, "Gateway authority loopback smoke failed");
+    });
+
+  authority
+    .command("rehearse-local")
+    .description("Rehearse local-only Rust Gateway canary authority evidence without switching")
+    .requiredOption("--reason <reason>", "Operator-visible reason for local rehearsal")
+    .option("--confirm-local-only", "Confirm this is a local-only test-path rehearsal", false)
+    .option("--json", "Output JSON", false)
+    .option("--installed-canary-url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option(
+      "--installed-canary-token <token>",
+      "Explicit installed Gateway token for canary status",
+    )
+    .option(
+      "--installed-canary-password <password>",
+      "Explicit installed Gateway password for canary status",
+    )
+    .option("--installed-canary-timeout <ms>", "Installed canary query timeout in ms")
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        const installedCanary =
+          opts.installedCanaryUrl || opts.installedCanaryToken || opts.installedCanaryPassword
+            ? {
+                url:
+                  typeof opts.installedCanaryUrl === "string" ? opts.installedCanaryUrl : undefined,
+                token:
+                  typeof opts.installedCanaryToken === "string"
+                    ? opts.installedCanaryToken
+                    : undefined,
+                password:
+                  typeof opts.installedCanaryPassword === "string"
+                    ? opts.installedCanaryPassword
+                    : undefined,
+                timeoutMs:
+                  typeof opts.installedCanaryTimeout === "string"
+                    ? Number(opts.installedCanaryTimeout)
+                    : undefined,
+              }
+            : undefined;
+        await gatewayAuthorityLocalRehearsalCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason: String(opts.reason),
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+          ...(installedCanary ? { installedCanary } : {}),
+        });
+      }, "Gateway authority local rehearsal failed");
+    });
+
+  authority
+    .command("rehearse-loopback")
+    .description("Rehearse disposable loopback Rust Gateway canary and rollback proof")
+    .requiredOption("--reason <reason>", "Operator-visible reason for local rehearsal")
+    .option("--confirm-local-only", "Confirm this is a local-only test-path rehearsal", false)
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityDisposableLoopbackRehearsalCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason: String(opts.reason),
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+        });
+      }, "Gateway authority loopback rehearsal failed");
+    });
+
+  authority
+    .command("rollback-node")
+    .description("Run a local-only Node rollback proof without changing authority")
+    .requiredOption("--reason <reason>", "Operator-visible reason for local rollback proof")
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityRollbackPlanCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason: String(opts.reason),
+        });
+      }, "Gateway authority rollback-node proof failed");
     });
 
   gateway

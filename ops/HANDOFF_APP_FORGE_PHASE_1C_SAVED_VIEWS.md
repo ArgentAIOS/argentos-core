@@ -1,12 +1,5 @@
 # AppForge / TableForge Phase 1C Saved Views Handoff
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation work
-
 ## Summary
 
 Phase 1C adds the first durable TableForge-style saved views for structured AppForge tables. This is still early against the 2026 Airtable-class TableForge spec, roughly 10-15% overall, but it moves the live table surface beyond one transient browser-only grid.

@@ -1,4 +1,4 @@
-import type { TaskMutationEvidence } from "./tool-claim-validation.js";
+import type { MutationEvidence, TaskMutationEvidence } from "./tool-claim-validation.js";
 import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
 import { normalizeTargetForProvider } from "../infra/outbound/target-normalization.js";
 import { truncateUtf16Safe } from "../utils.js";
@@ -345,5 +345,153 @@ export function extractTaskMutationEvidence(
     ...(entityIds.length > 0 ? { entityIds } : {}),
     ...counts,
     ...(summaryLine ? { summary: summaryLine } : {}),
+  };
+}
+
+// ── Generalized non-task mutation extractors ────────────────────────────
+//
+// These produce same-turn MutationEvidence receipts so commitment validation
+// can block doc/workflow/project cleanup claims that aren't backed by a real
+// mutation. They are intentionally pure functions so they can be exercised
+// from unit tests independent of runtime wiring.
+
+function readTrimmedString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function collectIdsFromText(text: string | undefined): string[] {
+  if (!text) {
+    return [];
+  }
+  const ids = new Set<string>();
+  const directIdRegex = /\bID:\s*([A-Za-z0-9_-]{4,})\b/gi;
+  const bracketIdRegex = /\[([A-Za-z0-9_-]{4,})\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = directIdRegex.exec(text)) !== null) {
+    const id = match[1]?.trim();
+    if (id) {
+      ids.add(id);
+    }
+  }
+  while ((match = bracketIdRegex.exec(text)) !== null) {
+    const id = match[1]?.trim();
+    if (id) {
+      ids.add(id);
+    }
+  }
+  return Array.from(ids);
+}
+
+export function extractDocPanelMutationEvidence(
+  toolName: string,
+  args: unknown,
+  result: unknown,
+): MutationEvidence | undefined {
+  const normalized = toolName.trim().toLowerCase();
+  if (normalized !== "doc_panel_update" && normalized !== "doc_panel_delete") {
+    return undefined;
+  }
+  if (isToolResultError(result)) {
+    return undefined;
+  }
+
+  const argsRecord = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  const action = normalized === "doc_panel_delete" ? "delete" : "update";
+  const resultText = extractToolResultText(result);
+  const entityIds = new Set<string>();
+  const idFromArgs = readTrimmedString(argsRecord, "id");
+  if (idFromArgs) {
+    entityIds.add(idFromArgs);
+  }
+  for (const id of collectIdsFromText(resultText)) {
+    entityIds.add(id);
+  }
+  const summaryLine = resultText?.split(/\r?\n/, 1)[0]?.trim();
+  const afterStatus = action === "delete" ? "deleted" : "updated";
+
+  return {
+    toolName: normalized,
+    entityType: "document",
+    action,
+    ...(entityIds.size > 0 ? { entityIds: Array.from(entityIds) } : {}),
+    afterStatus,
+    ...(summaryLine ? { summary: summaryLine } : {}),
+  };
+}
+
+function readWorkflowSavedRecord(result: unknown): Record<string, unknown> | undefined {
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
+  const root = result as Record<string, unknown>;
+  // jsonResult mirrors the payload onto `details`.
+  const details = root.details;
+  if (details && typeof details === "object") {
+    const detailsRecord = details as Record<string, unknown>;
+    const saved = detailsRecord.saved;
+    if (saved && typeof saved === "object") {
+      return saved as Record<string, unknown>;
+    }
+  }
+  // Fallback to parsing the text content (jsonResult JSON-stringifies the payload).
+  const text = extractToolResultText(result);
+  if (!text) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const saved = (parsed as Record<string, unknown>).saved;
+      if (saved && typeof saved === "object") {
+        return saved as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // Ignore.
+  }
+  return undefined;
+}
+
+export function extractWorkflowBuilderMutationEvidence(
+  toolName: string,
+  args: unknown,
+  result: unknown,
+): MutationEvidence | undefined {
+  if (toolName.trim().toLowerCase() !== "workflow_builder" || isToolResultError(result)) {
+    return undefined;
+  }
+  const argsRecord = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  const action = readTrimmedString(argsRecord, "action");
+  if (action !== "save_draft") {
+    return undefined;
+  }
+
+  const saved = readWorkflowSavedRecord(result);
+  const entityIds = new Set<string>();
+  if (saved) {
+    const savedId = readTrimmedString(saved, "id") ?? readTrimmedString(saved, "workflowId");
+    if (savedId) {
+      entityIds.add(savedId);
+    }
+  }
+  const resultText = extractToolResultText(result);
+  for (const id of collectIdsFromText(resultText)) {
+    entityIds.add(id);
+  }
+  const name =
+    saved && typeof saved.name === "string" && saved.name.trim() ? saved.name.trim() : undefined;
+
+  return {
+    toolName: "workflow_builder",
+    entityType: "workflow",
+    action: "create",
+    ...(entityIds.size > 0 ? { entityIds: Array.from(entityIds) } : {}),
+    afterStatus: "saved",
+    ...(name ? { summary: `Saved workflow draft: ${name}` } : {}),
   };
 }

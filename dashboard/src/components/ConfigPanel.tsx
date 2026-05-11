@@ -84,6 +84,7 @@ import { processTextForSpeech, defaultPatternHandlers } from "../utils/textToSpe
 import { AlignmentDocs } from "./AlignmentDocs";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AvatarPreviewPane } from "./AvatarPreviewPane";
+import { ComposioSettingsPanel } from "./connectors/ComposioSettingsPanel";
 import { LicensePanel } from "./LicensePanel";
 import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
@@ -2243,6 +2244,7 @@ type TabType =
   | "authprofiles"
   | "channels"
   | "capabilities"
+  | "persona"
   | "agent"
   | "intent"
   | "knowledge"
@@ -2810,7 +2812,17 @@ export function ConfigPanel({
   const [newMProfileName, setNewMProfileName] = useState("");
   const [newMProfileLabel, setNewMProfileLabel] = useState("");
   const [newMProfileTiers, setNewMProfileTiers] = useState<
-    Record<string, { provider: string; model: string }>
+    Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        // GH #186: optional per-slot reasoning effort. UI only renders the
+        // selector when the chosen model is reasoning-capable; absent → no
+        // override (model-level extraParams.reasoningEffort still applies).
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    >
   >({
     local: { provider: "", model: "" },
     fast: { provider: "", model: "" },
@@ -2846,14 +2858,30 @@ export function ConfigPanel({
   const [providerModelsCache, setProviderModelsCache] = useState<
     Record<
       string,
-      Array<{ model: string; label: string; verified?: boolean; source?: string | null }>
+      Array<{
+        model: string;
+        label: string;
+        verified?: boolean;
+        source?: string | null;
+        // GH #186: pi-catalog `reasoning: true` gates the per-tier reasoningEffort
+        // selector. Undefined → unknown (treat as non-reasoning for gating).
+        reasoning?: boolean;
+      }>
     >
   >({});
   const providerModelsLoadingRef = useRef<Set<string>>(new Set());
   const [editingProfileName, setEditingProfileName] = useState<string | null>(null);
   const [editingMProfileLabel, setEditingMProfileLabel] = useState("");
   const [editingMProfileTiers, setEditingMProfileTiers] = useState<
-    Record<string, { provider: string; model: string }>
+    Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        // GH #186: see `newMProfileTiers` comment.
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    >
   >({
     local: { provider: "", model: "" },
     fast: { provider: "", model: "" },
@@ -3143,6 +3171,69 @@ export function ConfigPanel({
     id: string;
     label: string;
   }
+  interface AgentProfileTtsConfig {
+    provider?: string;
+    persona?: string;
+    fallbackOrder?: string[];
+    personas?: Record<
+      string,
+      {
+        label?: string;
+        description?: string;
+        provider?: string;
+        prompt?: {
+          profile?: string;
+          scene?: string;
+          sampleContext?: string;
+          style?: string;
+          accent?: string;
+          pacing?: string;
+          constraints?: string[];
+        };
+      }
+    >;
+    elevenlabs?: { voiceId?: string; modelId?: string };
+    openai?: { voice?: string; model?: string };
+    edge?: { voice?: string; lang?: string };
+  }
+  interface AgentProfileResponse {
+    agentId: string;
+    defaultAgentId?: string;
+    availableAgents?: AgentOption[];
+    profile?: {
+      id?: string;
+      name?: string;
+      workspace?: string;
+      agentDir?: string;
+      identity?: {
+        name?: string;
+        theme?: string;
+        emoji?: string;
+        avatar?: string;
+        avatarUrl?: string;
+      };
+    };
+    tts?: {
+      source?: "global" | "agent";
+      effective?: AgentProfileTtsConfig;
+      global?: AgentProfileTtsConfig;
+      agent?: AgentProfileTtsConfig;
+    };
+    auth?: {
+      profileCount?: number;
+      profiles?: Array<{
+        id: string;
+        provider: string;
+        type: string;
+        email?: string;
+        metadataKeys?: string[];
+        available: boolean;
+        lastGoodForProviders?: string[];
+      }>;
+      order?: Record<string, string[]>;
+      providerStats?: string[];
+    };
+  }
   interface AgentRawConfigResponse {
     path?: string;
     raw?: string;
@@ -3312,6 +3403,21 @@ export function ConfigPanel({
   });
   const [defaultAgentId, setDefaultAgentId] = useState("main");
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  const [personaAgentId, setPersonaAgentId] = useState("");
+  const [agentProfile, setAgentProfile] = useState<AgentProfileResponse | null>(null);
+  const [agentProfileLoading, setAgentProfileLoading] = useState(false);
+  const [agentProfileSaving, setAgentProfileSaving] = useState(false);
+  const [agentProfileMessage, setAgentProfileMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [personaProvider, setPersonaProvider] = useState("");
+  const [personaIdDraft, setPersonaIdDraft] = useState("default");
+  const [personaLabelDraft, setPersonaLabelDraft] = useState("");
+  const [personaDescriptionDraft, setPersonaDescriptionDraft] = useState("");
+  const [personaStyleDraft, setPersonaStyleDraft] = useState("");
+  const [personaVoiceIdDraft, setPersonaVoiceIdDraft] = useState("");
+  const [personaVoiceModelDraft, setPersonaVoiceModelDraft] = useState("");
   const [imagePrimaryRef, setImagePrimaryRef] = useState("google/gemini-3-flash-preview");
   const [imageFallbackRefsDraft, setImageFallbackRefsDraft] = useState(
     "anthropic/claude-sonnet-4-6",
@@ -4075,6 +4181,135 @@ export function ConfigPanel({
     [gatewayRequest, defaultAgentId, capabilitiesAgentId],
   );
 
+  const applyAgentProfileDrafts = useCallback((payload: AgentProfileResponse) => {
+    const agentTts = payload.tts?.agent ?? {};
+    const effectiveTts = payload.tts?.effective ?? {};
+    const activePersona = agentTts.persona || effectiveTts.persona || "default";
+    const personaConfig =
+      agentTts.personas?.[activePersona] ?? effectiveTts.personas?.[activePersona];
+    setPersonaProvider(agentTts.provider || effectiveTts.provider || "");
+    setPersonaIdDraft(activePersona);
+    setPersonaLabelDraft(personaConfig?.label || "");
+    setPersonaDescriptionDraft(personaConfig?.description || "");
+    setPersonaStyleDraft(personaConfig?.prompt?.style || "");
+    setPersonaVoiceIdDraft(agentTts.elevenlabs?.voiceId || effectiveTts.elevenlabs?.voiceId || "");
+    setPersonaVoiceModelDraft(
+      agentTts.elevenlabs?.modelId || effectiveTts.elevenlabs?.modelId || "",
+    );
+  }, []);
+
+  const loadAgentProfile = useCallback(
+    async (requestedAgentId?: string) => {
+      if (!gatewayRequest) {
+        setAgentProfile(null);
+        setAgentProfileMessage({
+          type: "error",
+          text: "Agent Profile unavailable: gateway request bridge is not connected.",
+        });
+        return;
+      }
+      const targetAgentId =
+        requestedAgentId?.trim() ||
+        personaAgentId.trim() ||
+        defaultAgentId.trim() ||
+        agentOptions[0]?.id ||
+        "main";
+      setAgentProfileLoading(true);
+      setAgentProfileMessage(null);
+      try {
+        const payload = await gatewayRequest<AgentProfileResponse>("agents.profile.get", {
+          agentId: targetAgentId,
+        });
+        setAgentProfile(payload);
+        const options = Array.isArray(payload.availableAgents) ? payload.availableAgents : [];
+        if (options.length > 0) {
+          setAgentOptions(options);
+        }
+        const nextDefault =
+          typeof payload.defaultAgentId === "string" && payload.defaultAgentId.trim()
+            ? payload.defaultAgentId.trim()
+            : defaultAgentId || "main";
+        setDefaultAgentId(nextDefault);
+        setPersonaAgentId(payload.agentId || targetAgentId || nextDefault);
+        applyAgentProfileDrafts(payload);
+      } catch (err) {
+        console.error("[Agent Profile] Failed to load profile:", err);
+        setAgentProfileMessage({
+          type: "error",
+          text: `Failed to load Agent Profile: ${err instanceof Error ? err.message : "request failed"}`,
+        });
+      } finally {
+        setAgentProfileLoading(false);
+      }
+    },
+    [applyAgentProfileDrafts, agentOptions, defaultAgentId, gatewayRequest, personaAgentId],
+  );
+
+  const saveAgentProfileVoice = useCallback(async () => {
+    if (!gatewayRequest) {
+      setAgentProfileMessage({
+        type: "error",
+        text: "Agent Profile unavailable: gateway request bridge is not connected.",
+      });
+      return;
+    }
+    const targetAgentId =
+      personaAgentId.trim() || agentProfile?.agentId || defaultAgentId || "main";
+    const personaId = personaIdDraft.trim() || "default";
+    setAgentProfileSaving(true);
+    setAgentProfileMessage(null);
+    try {
+      const payload = await gatewayRequest<AgentProfileResponse>("agents.profile.update", {
+        agentId: targetAgentId,
+        tts: {
+          provider: personaProvider.trim() || undefined,
+          persona: personaId,
+          personas: {
+            [personaId]: {
+              label: personaLabelDraft.trim() || undefined,
+              description: personaDescriptionDraft.trim() || undefined,
+              provider: personaProvider.trim() || undefined,
+              prompt: {
+                style: personaStyleDraft.trim() || undefined,
+              },
+            },
+          },
+          elevenlabs: {
+            voiceId: personaVoiceIdDraft.trim() || undefined,
+            modelId: personaVoiceModelDraft.trim() || undefined,
+          },
+        },
+      });
+      setAgentProfile(payload);
+      applyAgentProfileDrafts(payload);
+      setAgentProfileMessage({
+        type: "success",
+        text: `Saved Agent Persona settings for ${payload.agentId || targetAgentId}.`,
+      });
+    } catch (err) {
+      console.error("[Agent Profile] Failed to save profile:", err);
+      setAgentProfileMessage({
+        type: "error",
+        text: `Failed to save Agent Persona: ${err instanceof Error ? err.message : "request failed"}`,
+      });
+    } finally {
+      setAgentProfileSaving(false);
+    }
+  }, [
+    agentProfile?.agentId,
+    applyAgentProfileDrafts,
+    defaultAgentId,
+    gatewayRequest,
+    personaAgentId,
+    personaDescriptionDraft,
+    personaIdDraft,
+    personaLabelDraft,
+    personaProvider,
+    personaStyleDraft,
+    personaVoiceIdDraft,
+    personaVoiceModelDraft,
+  ]);
+
   const loadExecutionWorkerRuntime = useCallback(async () => {
     if (!gatewayRequest) return;
     setWorkerRuntimeLoading(true);
@@ -4578,6 +4813,12 @@ export function ConfigPanel({
     // Intentionally only refresh on tab/open transitions; manual refresh is user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeTab]);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== "persona") return;
+    void loadAgentProfile(personaAgentId || defaultAgentId);
+    // Intentionally only refresh on tab/open transitions and target changes.
+  }, [isOpen, activeTab, loadAgentProfile, personaAgentId, defaultAgentId]);
 
   useEffect(() => {
     if (!isOpen || activeTab !== "knowledge") return;
@@ -6205,7 +6446,11 @@ export function ConfigPanel({
                 typeof (entry as { source?: unknown }).source === "string"
                   ? (entry as { source: string }).source
                   : null;
-              return { model, label, verified, source };
+              // GH #186: pull through `reasoning` so the per-tier
+              // reasoningEffort selector can gate on reasoning-capable models.
+              const reasoningRaw = (entry as { reasoning?: unknown }).reasoning;
+              const reasoning = typeof reasoningRaw === "boolean" ? reasoningRaw : undefined;
+              return { model, label, verified, source, reasoning };
             })
             .filter(
               (
@@ -6214,6 +6459,7 @@ export function ConfigPanel({
                   label: string;
                   verified?: boolean;
                   source?: string | null;
+                  reasoning?: boolean;
                 } | null,
               ) => entry !== null,
             )
@@ -6231,7 +6477,13 @@ export function ConfigPanel({
 
   const modelsForProvider = (
     provider: string,
-  ): Array<{ model: string; label: string; verified?: boolean; source?: string | null }> => {
+  ): Array<{
+    model: string;
+    label: string;
+    verified?: boolean;
+    source?: string | null;
+    reasoning?: boolean;
+  }> => {
     const normalizedProvider = String(provider || "").trim();
     if (!normalizedProvider) return [];
     if (Object.prototype.hasOwnProperty.call(providerModelsCache, normalizedProvider)) {
@@ -6241,13 +6493,46 @@ export function ConfigPanel({
     void ensureProviderModelsLoaded(normalizedProvider);
     return availableModelRefs
       .filter((entry) => entry.provider === provider)
-      .map((entry) => ({ model: entry.model, label: entry.label, verified: false, source: null }));
+      .map((entry) => ({
+        model: entry.model,
+        label: entry.label,
+        verified: false,
+        source: null,
+      }));
+  };
+
+  // GH #186: returns true only when the catalog has a definitive
+  // `reasoning: true` flag for the slot's chosen model. Unknown/missing → false
+  // so the per-tier reasoningEffort selector stays hidden by default.
+  const isReasoningCapableModel = (provider: string, model: string): boolean => {
+    const normalizedProvider = String(provider || "").trim();
+    const normalizedModel = String(model || "").trim();
+    if (!normalizedProvider || !normalizedModel) return false;
+    // Prefer the cached provider-models response (carries the pi-catalog flag).
+    const cachedRows = providerModelsCache[normalizedProvider];
+    if (Array.isArray(cachedRows)) {
+      const hit = cachedRows.find((entry) => entry.model === normalizedModel);
+      if (hit && typeof hit.reasoning === "boolean") {
+        return hit.reasoning;
+      }
+    }
+    // Fall back to availableModels (the catalog endpoint surfaces `params.reasoning`
+    // for pi-backed entries — same source of truth, different fetch path).
+    const id = `${normalizedProvider}/${normalizedModel}`;
+    const fallback = availableModels.find((entry) => entry.id === id);
+    const params = fallback?.params as { reasoning?: unknown } | undefined;
+    return params?.reasoning === true;
   };
 
   const chatModelsForProvider = (
     provider: string,
-  ): Array<{ model: string; label: string; verified?: boolean; source?: string | null }> =>
-    modelsForProvider(provider).filter((entry) => !looksLikeEmbeddingOnlyModel(entry.model));
+  ): Array<{
+    model: string;
+    label: string;
+    verified?: boolean;
+    source?: string | null;
+    reasoning?: boolean;
+  }> => modelsForProvider(provider).filter((entry) => !looksLikeEmbeddingOnlyModel(entry.model));
 
   const embeddingModelsForProvider = (
     provider: string,
@@ -7196,12 +7481,57 @@ export function ConfigPanel({
     return Object.keys(routingPolicy).length > 0 ? routingPolicy : undefined;
   };
 
+  // GH #186: dashboard-side allow-list mirroring `normalizeReasoningLevel()` /
+  // `TierReasoningEffort`. We intentionally surface only the four
+  // post-spec values (no `xhigh`) — power-users editing argent.json directly
+  // can still set `xhigh` and the runtime will accept it.
+  const tierReasoningEffortOptions = ["minimal", "low", "medium", "high"] as const;
+  const normalizeUiReasoningEffort = (
+    raw: unknown,
+  ): "minimal" | "low" | "medium" | "high" | undefined => {
+    if (typeof raw !== "string") return undefined;
+    const normalized = raw.trim().toLowerCase();
+    return (tierReasoningEffortOptions as readonly string[]).includes(normalized)
+      ? (normalized as "minimal" | "low" | "medium" | "high")
+      : undefined;
+  };
+  // Strip empty/undefined `reasoningEffort` keys before PATCHing model-profiles
+  // so argent.json stays clean for users who never opt in.
+  const sanitizeTiersForPatch = (
+    tiers: Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    >,
+  ) => {
+    const out: Record<
+      string,
+      {
+        provider: string;
+        model: string;
+        reasoningEffort?: "minimal" | "low" | "medium" | "high";
+      }
+    > = {};
+    for (const [tier, slot] of Object.entries(tiers)) {
+      const effort = normalizeUiReasoningEffort(slot.reasoningEffort);
+      out[tier] = {
+        provider: slot.provider,
+        model: slot.model,
+        ...(effort ? { reasoningEffort: effort } : {}),
+      };
+    }
+    return out;
+  };
+
   const beginEditModelProfile = (
     name: string,
     profile:
       | {
           label?: string;
-          tiers?: Record<string, { provider?: string; model?: string }>;
+          tiers?: Record<string, { provider?: string; model?: string; reasoningEffort?: string }>;
           routingPolicy?: {
             likelyToolUseMinTier?: "local" | "fast" | "balanced" | "powerful";
             likelyMemoryUseMinTier?: "local" | "fast" | "balanced" | "powerful";
@@ -7215,23 +7545,20 @@ export function ConfigPanel({
     setShowNewProfileForm(false);
     setEditingProfileName(name);
     setEditingMProfileLabel(String(profile?.label || name));
+    const tierFromProfile = (tier: "local" | "fast" | "balanced" | "powerful") => {
+      const slot = profile?.tiers?.[tier];
+      const reasoningEffort = normalizeUiReasoningEffort(slot?.reasoningEffort);
+      return {
+        provider: String(slot?.provider || ""),
+        model: String(slot?.model || ""),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+      };
+    };
     setEditingMProfileTiers({
-      local: {
-        provider: String(profile?.tiers?.local?.provider || ""),
-        model: String(profile?.tiers?.local?.model || ""),
-      },
-      fast: {
-        provider: String(profile?.tiers?.fast?.provider || ""),
-        model: String(profile?.tiers?.fast?.model || ""),
-      },
-      balanced: {
-        provider: String(profile?.tiers?.balanced?.provider || ""),
-        model: String(profile?.tiers?.balanced?.model || ""),
-      },
-      powerful: {
-        provider: String(profile?.tiers?.powerful?.provider || ""),
-        model: String(profile?.tiers?.powerful?.model || ""),
-      },
+      local: tierFromProfile("local"),
+      fast: tierFromProfile("fast"),
+      balanced: tierFromProfile("balanced"),
+      powerful: tierFromProfile("powerful"),
     });
     setEditingMProfileContemplation({
       provider: String(profile?.sessionOverrides?.contemplation?.provider || ""),
@@ -7269,6 +7596,7 @@ export function ConfigPanel({
     {
       label: "System",
       items: [
+        { id: "persona" as TabType, label: "Agent Persona", icon: User, defaultView: true },
         { id: "agent" as TabType, label: "Agent", icon: Brain },
         { id: "systems" as TabType, label: "Systems", icon: Package, defaultView: true },
         { id: "capabilities" as TabType, label: "Capabilities", icon: Wrench },
@@ -8178,6 +8506,27 @@ export function ConfigPanel({
                       per-agent auth profile. Changing keys here affects every lane that resolves
                       the same secret variable.
                     </OperatorGuide>
+
+                    {/*
+                      Composio slice 2.2 panel — per-agent BYO key + per-agent
+                      feature toggle. Mounted here (rather than as a new
+                      ConfigPanel tab) because App.tsx's nav surface is frozen
+                      since PR #135. Keeps the Composio surface alongside the
+                      other service-key UIs without adding a route.
+                    */}
+                    <ComposioSettingsPanel
+                      agentId={defaultAgentId || "main"}
+                      onKeyChanged={async () => {
+                        try {
+                          const r = await fetch("/api/settings/service-keys");
+                          const d = await r.json();
+                          setServiceKeys(d.keys || []);
+                        } catch {
+                          // Best-effort refresh; the panel still surfaces its
+                          // own status independently.
+                        }
+                      }}
+                    />
 
                     {apiKeyMessage && (
                       <div
@@ -9439,7 +9788,18 @@ export function ConfigPanel({
                                       <div className="space-y-1">
                                         {routerTiers.map((tier) => {
                                           const tc = tierColors[tier];
-                                          const tierData = profile.tiers?.[tier];
+                                          const tierData = profile.tiers?.[tier] as
+                                            | {
+                                                provider?: string;
+                                                model?: string;
+                                                reasoningEffort?: string;
+                                              }
+                                            | undefined;
+                                          // GH #186: surface a configured per-slot
+                                          // reasoningEffort override in the read-only preview.
+                                          const tierEffort = normalizeUiReasoningEffort(
+                                            tierData?.reasoningEffort,
+                                          );
                                           return (
                                             <div
                                               key={tier}
@@ -9454,6 +9814,11 @@ export function ConfigPanel({
                                                 {tierData
                                                   ? `${tierData.provider}/${tierData.model}`
                                                   : "default"}
+                                                {tierEffort && (
+                                                  <span className="ml-1 text-amber-300/80">
+                                                    · effort={tierEffort}
+                                                  </span>
+                                                )}
                                               </span>
                                             </div>
                                           );
@@ -9519,6 +9884,8 @@ export function ConfigPanel({
                                                 editingMProfileTiers[tier]?.provider || "";
                                               const modelValue =
                                                 editingMProfileTiers[tier]?.model || "";
+                                              const reasoningEffortValue =
+                                                editingMProfileTiers[tier]?.reasoningEffort || "";
                                               const tierProviders = new Set(availableProviders);
                                               if (providerValue) {
                                                 tierProviders.add(providerValue);
@@ -9535,63 +9902,126 @@ export function ConfigPanel({
                                                   label: `${providerValue}/${modelValue} (custom)`,
                                                 });
                                               }
+                                              // GH #186: hard gate — only render the
+                                              // reasoningEffort selector when the catalog
+                                              // confirms this slot's model is reasoning-capable.
+                                              const showReasoningEffort = isReasoningCapableModel(
+                                                providerValue,
+                                                modelValue,
+                                              );
                                               return (
-                                                <div key={tier} className="flex items-center gap-2">
-                                                  <span className="font-mono text-[11px] font-semibold text-white/70 uppercase w-20 shrink-0">
-                                                    {tier}
-                                                  </span>
-                                                  <select
-                                                    value={providerValue}
-                                                    onChange={(e) => {
-                                                      const nextProvider = e.target.value;
-                                                      const nextModels =
-                                                        modelsForProvider(nextProvider);
-                                                      setEditingMProfileTiers((prev) => ({
-                                                        ...prev,
-                                                        [tier]: {
-                                                          provider: nextProvider,
-                                                          model:
-                                                            nextModels.length > 0
-                                                              ? nextModels[0].model
-                                                              : "",
-                                                        },
-                                                      }));
-                                                    }}
-                                                    className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                                  >
-                                                    <option value="">provider</option>
-                                                    {Array.from(tierProviders)
-                                                      .sort((a, b) => a.localeCompare(b))
-                                                      .map((provider) => (
-                                                        <option key={provider} value={provider}>
-                                                          {provider}
+                                                <div key={tier} className="space-y-1">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-[11px] font-semibold text-white/70 uppercase w-20 shrink-0">
+                                                      {tier}
+                                                    </span>
+                                                    <select
+                                                      value={providerValue}
+                                                      onChange={(e) => {
+                                                        const nextProvider = e.target.value;
+                                                        const nextModels =
+                                                          modelsForProvider(nextProvider);
+                                                        setEditingMProfileTiers((prev) => ({
+                                                          ...prev,
+                                                          [tier]: {
+                                                            provider: nextProvider,
+                                                            model:
+                                                              nextModels.length > 0
+                                                                ? nextModels[0].model
+                                                                : "",
+                                                          },
+                                                        }));
+                                                      }}
+                                                      className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                                    >
+                                                      <option value="">provider</option>
+                                                      {Array.from(tierProviders)
+                                                        .sort((a, b) => a.localeCompare(b))
+                                                        .map((provider) => (
+                                                          <option key={provider} value={provider}>
+                                                            {provider}
+                                                          </option>
+                                                        ))}
+                                                    </select>
+                                                    <select
+                                                      value={modelValue}
+                                                      onChange={(e) => {
+                                                        const nextModel = e.target.value;
+                                                        const nextReasoning =
+                                                          isReasoningCapableModel(
+                                                            providerValue,
+                                                            nextModel,
+                                                          );
+                                                        setEditingMProfileTiers((prev) => ({
+                                                          ...prev,
+                                                          [tier]: {
+                                                            ...prev[tier],
+                                                            model: nextModel,
+                                                            // Drop a stale override when the
+                                                            // newly chosen model isn't reasoning-capable.
+                                                            ...(nextReasoning
+                                                              ? {}
+                                                              : { reasoningEffort: undefined }),
+                                                          },
+                                                        }));
+                                                      }}
+                                                      disabled={!providerValue}
+                                                      className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
+                                                    >
+                                                      <option value="">model-id</option>
+                                                      {tierModels.map((entry) => (
+                                                        <option
+                                                          key={`${providerValue}/${entry.model}`}
+                                                          value={entry.model}
+                                                        >
+                                                          {entry.label}
                                                         </option>
                                                       ))}
-                                                  </select>
-                                                  <select
-                                                    value={modelValue}
-                                                    onChange={(e) =>
-                                                      setEditingMProfileTiers((prev) => ({
-                                                        ...prev,
-                                                        [tier]: {
-                                                          ...prev[tier],
-                                                          model: e.target.value,
-                                                        },
-                                                      }))
-                                                    }
-                                                    disabled={!providerValue}
-                                                    className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
-                                                  >
-                                                    <option value="">model-id</option>
-                                                    {tierModels.map((entry) => (
-                                                      <option
-                                                        key={`${providerValue}/${entry.model}`}
-                                                        value={entry.model}
+                                                    </select>
+                                                  </div>
+                                                  {showReasoningEffort && (
+                                                    <div
+                                                      data-testid={`reasoning-effort-${tier}`}
+                                                      className="flex items-center gap-2 pl-[5.5rem]"
+                                                    >
+                                                      <span className="font-mono text-[10px] font-medium text-amber-300/80 uppercase tracking-wider w-[5.5rem] shrink-0 -ml-[5.5rem]">
+                                                        ↳ effort
+                                                      </span>
+                                                      <select
+                                                        value={reasoningEffortValue}
+                                                        onChange={(e) => {
+                                                          const value = e.target.value;
+                                                          setEditingMProfileTiers((prev) => ({
+                                                            ...prev,
+                                                            [tier]: {
+                                                              ...prev[tier],
+                                                              reasoningEffort:
+                                                                value === ""
+                                                                  ? undefined
+                                                                  : (value as
+                                                                      | "minimal"
+                                                                      | "low"
+                                                                      | "medium"
+                                                                      | "high"),
+                                                            },
+                                                          }));
+                                                        }}
+                                                        className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-[11px] border border-amber-400/20 focus:border-amber-400/50 outline-none font-mono"
+                                                        title="Reasoning effort override (only takes effect on reasoning-capable models)"
                                                       >
-                                                        {entry.label}
-                                                      </option>
-                                                    ))}
-                                                  </select>
+                                                        <option value="">
+                                                          (use model default)
+                                                        </option>
+                                                        {tierReasoningEffortOptions.map(
+                                                          (effort) => (
+                                                            <option key={effort} value={effort}>
+                                                              {effort}
+                                                            </option>
+                                                          ),
+                                                        )}
+                                                      </select>
+                                                    </div>
+                                                  )}
                                                 </div>
                                               );
                                             })}
@@ -9754,7 +10184,8 @@ export function ConfigPanel({
                                                   body: JSON.stringify({
                                                     name,
                                                     label: editingMProfileLabel || name,
-                                                    tiers: editingMProfileTiers,
+                                                    tiers:
+                                                      sanitizeTiersForPatch(editingMProfileTiers),
                                                     ...(routingPolicy ? { routingPolicy } : {}),
                                                     ...(hasContemplationOverride
                                                       ? {
@@ -9862,59 +10293,121 @@ export function ConfigPanel({
                                         label: `${providerValue}/${modelValue} (custom)`,
                                       });
                                     }
+                                    const reasoningEffortValue =
+                                      newMProfileTiers[tier]?.reasoningEffort || "";
+                                    // GH #186: hard gate the per-tier reasoningEffort selector
+                                    // to reasoning-capable models (catalog `reasoning: true`).
+                                    const showReasoningEffort = isReasoningCapableModel(
+                                      providerValue,
+                                      modelValue,
+                                    );
                                     return (
-                                      <div key={tier} className="flex items-center gap-2">
-                                        <span
-                                          className={`font-mono text-[11px] font-semibold ${tc[tier].color} uppercase w-20 shrink-0`}
-                                        >
-                                          {tier}
-                                        </span>
-                                        <select
-                                          value={providerValue}
-                                          onChange={(e) => {
-                                            const nextProvider = e.target.value;
-                                            const nextModels = modelsForProvider(nextProvider);
-                                            setNewMProfileTiers((prev) => ({
-                                              ...prev,
-                                              [tier]: {
-                                                provider: nextProvider,
-                                                model:
-                                                  nextModels.length > 0 ? nextModels[0].model : "",
-                                              },
-                                            }));
-                                          }}
-                                          className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                        >
-                                          <option value="">provider</option>
-                                          {Array.from(tierProviders)
-                                            .sort((a, b) => a.localeCompare(b))
-                                            .map((provider) => (
-                                              <option key={provider} value={provider}>
-                                                {provider}
+                                      <div key={tier} className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <span
+                                            className={`font-mono text-[11px] font-semibold ${tc[tier].color} uppercase w-20 shrink-0`}
+                                          >
+                                            {tier}
+                                          </span>
+                                          <select
+                                            value={providerValue}
+                                            onChange={(e) => {
+                                              const nextProvider = e.target.value;
+                                              const nextModels = modelsForProvider(nextProvider);
+                                              setNewMProfileTiers((prev) => ({
+                                                ...prev,
+                                                [tier]: {
+                                                  provider: nextProvider,
+                                                  model:
+                                                    nextModels.length > 0
+                                                      ? nextModels[0].model
+                                                      : "",
+                                                },
+                                              }));
+                                            }}
+                                            className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                          >
+                                            <option value="">provider</option>
+                                            {Array.from(tierProviders)
+                                              .sort((a, b) => a.localeCompare(b))
+                                              .map((provider) => (
+                                                <option key={provider} value={provider}>
+                                                  {provider}
+                                                </option>
+                                              ))}
+                                          </select>
+                                          <select
+                                            value={modelValue}
+                                            onChange={(e) => {
+                                              const nextModel = e.target.value;
+                                              const nextReasoning = isReasoningCapableModel(
+                                                providerValue,
+                                                nextModel,
+                                              );
+                                              setNewMProfileTiers((prev) => ({
+                                                ...prev,
+                                                [tier]: {
+                                                  ...prev[tier],
+                                                  model: nextModel,
+                                                  ...(nextReasoning
+                                                    ? {}
+                                                    : { reasoningEffort: undefined }),
+                                                },
+                                              }));
+                                            }}
+                                            disabled={!providerValue}
+                                            className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
+                                          >
+                                            <option value="">model-id</option>
+                                            {tierModels.map((entry) => (
+                                              <option
+                                                key={`${providerValue}/${entry.model}`}
+                                                value={entry.model}
+                                              >
+                                                {entry.label}
                                               </option>
                                             ))}
-                                        </select>
-                                        <select
-                                          value={modelValue}
-                                          onChange={(e) =>
-                                            setNewMProfileTiers((prev) => ({
-                                              ...prev,
-                                              [tier]: { ...prev[tier], model: e.target.value },
-                                            }))
-                                          }
-                                          disabled={!providerValue}
-                                          className="flex-[2] bg-gray-800/50 text-white/70 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono disabled:opacity-50"
-                                        >
-                                          <option value="">model-id</option>
-                                          {tierModels.map((entry) => (
-                                            <option
-                                              key={`${providerValue}/${entry.model}`}
-                                              value={entry.model}
+                                          </select>
+                                        </div>
+                                        {showReasoningEffort && (
+                                          <div
+                                            data-testid={`new-reasoning-effort-${tier}`}
+                                            className="flex items-center gap-2"
+                                          >
+                                            <span className="font-mono text-[10px] font-medium text-amber-300/80 uppercase tracking-wider w-20 shrink-0">
+                                              ↳ effort
+                                            </span>
+                                            <select
+                                              value={reasoningEffortValue}
+                                              onChange={(e) => {
+                                                const value = e.target.value;
+                                                setNewMProfileTiers((prev) => ({
+                                                  ...prev,
+                                                  [tier]: {
+                                                    ...prev[tier],
+                                                    reasoningEffort:
+                                                      value === ""
+                                                        ? undefined
+                                                        : (value as
+                                                            | "minimal"
+                                                            | "low"
+                                                            | "medium"
+                                                            | "high"),
+                                                  },
+                                                }));
+                                              }}
+                                              className="flex-1 bg-gray-800/50 text-white/70 rounded px-2 py-1 text-[11px] border border-amber-400/20 focus:border-amber-400/50 outline-none font-mono"
+                                              title="Reasoning effort override (only takes effect on reasoning-capable models)"
                                             >
-                                              {entry.label}
-                                            </option>
-                                          ))}
-                                        </select>
+                                              <option value="">(use model default)</option>
+                                              {tierReasoningEffortOptions.map((effort) => (
+                                                <option key={effort} value={effort}>
+                                                  {effort}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })}
@@ -10067,7 +10560,7 @@ export function ConfigPanel({
                                         body: JSON.stringify({
                                           name: newMProfileName,
                                           label: newMProfileLabel || newMProfileName,
-                                          tiers: newMProfileTiers,
+                                          tiers: sanitizeTiersForPatch(newMProfileTiers),
                                           ...(routingPolicy ? { routingPolicy } : {}),
                                           ...(hasContemplationOverride
                                             ? {
@@ -11829,6 +12322,246 @@ export function ConfigPanel({
                   </div>
                 )}
 
+                {activeTab === "persona" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="text-white/80 text-sm font-medium">Agent Profile</div>
+                        <div className="text-white/40 text-xs">
+                          Persona voice, active voice ID, and redacted account summaries.
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={personaAgentId || agentProfile?.agentId || defaultAgentId}
+                          onChange={(event) => {
+                            const nextAgentId = event.target.value;
+                            setPersonaAgentId(nextAgentId);
+                            void loadAgentProfile(nextAgentId);
+                          }}
+                          className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer min-w-[220px]"
+                        >
+                          {(agentOptions.length > 0
+                            ? agentOptions
+                            : [{ id: defaultAgentId || "main", label: defaultAgentId || "main" }]
+                          ).map((row) => (
+                            <option key={row.id} value={row.id}>
+                              {row.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => void loadAgentProfile(personaAgentId || defaultAgentId)}
+                          disabled={agentProfileLoading}
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg transition-all text-xs disabled:opacity-50 flex items-center gap-2"
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${agentProfileLoading ? "animate-spin" : ""}`}
+                          />
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+
+                    {agentProfileMessage && (
+                      <div
+                        className={`rounded-lg border px-3 py-2 text-xs ${
+                          agentProfileMessage.type === "success"
+                            ? "border-green-500/30 bg-green-500/10 text-green-300"
+                            : "border-red-500/30 bg-red-500/10 text-red-300"
+                        }`}
+                      >
+                        {agentProfileMessage.text}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="w-5 h-5 text-cyan-400" />
+                          <h3 className="text-white/90 font-medium">Voice Persona</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Voice Provider
+                            </span>
+                            <select
+                              value={personaProvider}
+                              onChange={(event) => setPersonaProvider(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                            >
+                              <option value="">inherit</option>
+                              <option value="elevenlabs">ElevenLabs</option>
+                              <option value="openai">OpenAI</option>
+                              <option value="edge">Edge</option>
+                            </select>
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Persona ID
+                            </span>
+                            <input
+                              value={personaIdDraft}
+                              onChange={(event) => setPersonaIdDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                              placeholder="default"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Label
+                            </span>
+                            <input
+                              value={personaLabelDraft}
+                              onChange={(event) => setPersonaLabelDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                              placeholder="Sam"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Voice ID
+                            </span>
+                            <input
+                              value={personaVoiceIdDraft}
+                              onChange={(event) => setPersonaVoiceIdDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                              placeholder="ElevenLabs voice id"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Voice Model
+                            </span>
+                            <input
+                              value={personaVoiceModelDraft}
+                              onChange={(event) => setPersonaVoiceModelDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                              placeholder="eleven_multilingual_v2"
+                            />
+                          </label>
+                          <label className="space-y-1 md:col-span-2">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Style
+                            </span>
+                            <input
+                              value={personaStyleDraft}
+                              onChange={(event) => setPersonaStyleDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                              placeholder="warm, concise, calm"
+                            />
+                          </label>
+                          <label className="space-y-1 md:col-span-2">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Description
+                            </span>
+                            <textarea
+                              value={personaDescriptionDraft}
+                              onChange={(event) => setPersonaDescriptionDraft(event.target.value)}
+                              className="w-full min-h-[84px] bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                              placeholder="Voice and persona notes for this agent"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-white/35 text-xs">
+                            Source: {agentProfile?.tts?.source || "global"}
+                          </div>
+                          <button
+                            onClick={() => void saveAgentProfileVoice()}
+                            disabled={agentProfileSaving || agentProfileLoading}
+                            className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 rounded-lg transition-all text-xs font-medium disabled:opacity-50"
+                          >
+                            {agentProfileSaving ? "Saving..." : "Save Persona"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <User className="w-5 h-5 text-purple-400" />
+                            <h3 className="text-white/90 font-medium">Agent</h3>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 text-xs">
+                            <div className="flex justify-between gap-3">
+                              <span className="text-white/40">Name</span>
+                              <span className="text-white/75">
+                                {agentProfile?.profile?.name ||
+                                  agentProfile?.profile?.identity?.name ||
+                                  agentProfile?.agentId ||
+                                  "main"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-white/40">Workspace</span>
+                              <span className="text-white/60 font-mono text-right break-all">
+                                {agentProfile?.profile?.workspace || "not resolved"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-white/40">Agent Dir</span>
+                              <span className="text-white/60 font-mono text-right break-all">
+                                {agentProfile?.profile?.agentDir || "not resolved"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="w-5 h-5 text-amber-400" />
+                            <h3 className="text-white/90 font-medium">Credentials</h3>
+                          </div>
+                          <div className="text-white/40 text-xs">
+                            {agentProfile?.auth?.profileCount ?? 0} redacted profile
+                            {(agentProfile?.auth?.profileCount ?? 0) === 1 ? "" : "s"}
+                          </div>
+                          <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                            {agentProfile?.auth?.profiles?.length ? (
+                              agentProfile.auth.profiles.map((profile) => (
+                                <div
+                                  key={profile.id}
+                                  className="rounded-lg bg-gray-800/50 border border-white/10 px-3 py-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-white/80 text-xs font-mono">
+                                      {profile.id}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                        profile.available
+                                          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                                          : "border-amber-400/30 bg-amber-500/10 text-amber-300"
+                                      }`}
+                                    >
+                                      {profile.available ? "available" : "cooldown"}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 text-white/45 text-xs">
+                                    {profile.provider} · {profile.type}
+                                    {profile.email ? ` · ${profile.email}` : ""}
+                                  </div>
+                                  {profile.metadataKeys?.length ? (
+                                    <div className="mt-1 text-white/30 text-[11px]">
+                                      metadata: {profile.metadataKeys.join(", ")}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-lg border border-white/10 bg-gray-800/30 px-3 py-3 text-xs text-white/45">
+                                No auth profiles found for this agent.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {activeTab === "agent" && (
                   <div className="space-y-4">
                     <p className="text-white/50 text-sm">
@@ -12232,13 +12965,13 @@ export function ConfigPanel({
                                       ).toLocaleTimeString()}
                                     </div>
                                   )}
-                                  {workerRuntime && workerRuntime.agents.length > 0 && (
+                                  {workerRuntime && (workerRuntime.agents?.length ?? 0) > 0 && (
                                     <div className="rounded-lg border border-white/10 overflow-hidden">
                                       <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
                                         Per-agent queue metrics
                                       </div>
                                       <div className="max-h-32 overflow-y-auto divide-y divide-white/5">
-                                        {workerRuntime.agents.map((agent) => (
+                                        {(workerRuntime.agents ?? []).map((agent) => (
                                           <div
                                             key={agent.agentId}
                                             className="px-2 py-1 text-[11px] text-white/60 flex items-center justify-between gap-2"
@@ -12673,13 +13406,13 @@ export function ConfigPanel({
                                             : "No job overview loaded yet."}
                                         </div>
                                       )}
-                                      {jobsOverview && jobsOverview.agents.length > 0 && (
+                                      {jobsOverview && (jobsOverview.agents?.length ?? 0) > 0 && (
                                         <div className="rounded-lg border border-white/10 overflow-hidden">
                                           <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
                                             Agent roster status
                                           </div>
                                           <div className="max-h-28 overflow-y-auto divide-y divide-white/5">
-                                            {jobsOverview.agents.map((agent) => (
+                                            {(jobsOverview.agents ?? []).map((agent) => (
                                               <div
                                                 key={agent.agentId}
                                                 className="px-2 py-1 text-[11px] text-white/70 flex items-center justify-between gap-2"

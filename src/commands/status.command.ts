@@ -40,6 +40,122 @@ import {
   resolveUpdateAvailability,
 } from "./status.update.js";
 
+type WorkflowBackendStatus = {
+  ok: true;
+  label: string;
+  backend: string;
+  readFrom: string;
+  writeTo: string[];
+  postgres: {
+    requiredForSavedWorkflows: true;
+    activeForRuntime: boolean;
+    connectionSource: "env" | "config" | "default" | "not_applicable";
+    status: "configured" | "not_configured";
+  };
+  dryRun: {
+    graphPayloadAvailable: true;
+    requiresPostgres: false;
+    method?: string;
+    command?: string;
+    noLiveSideEffects?: boolean;
+    message: string;
+  };
+  savedWorkflows: {
+    available: boolean;
+    requiresPostgres: true;
+    message: string;
+  };
+  scheduleCron?: {
+    available: boolean;
+    requiresPostgres: true;
+    status: "configured" | "skipped_no_postgres";
+    message: string;
+  };
+  schedulerBoundary?: {
+    contractVersion: string;
+    schedulerAuthority: "node";
+    rustScheduler: "shadow";
+    workflowRunAuthority: "node";
+    workflowSessionAuthority: "node";
+    channelDeliveryAuthority: "node";
+    authoritySwitchAllowed: false;
+    localDryRunCompatible: true;
+    leases: {
+      requiredForLiveRuns: true;
+      storage: "postgres";
+      status: "configured" | "blocked_without_postgres";
+      owner: "node-workflows";
+      rustOwnership: "not_enabled";
+      message: string;
+    };
+    wakeups: {
+      owner: "node-cron";
+      mode: "next-heartbeat";
+      rustOwnership: "shadow";
+      duplicatePrevention: string;
+      message: string;
+    };
+    handoff: {
+      runPayload: string;
+      session: string;
+      dryRun: string;
+      liveRunRequiresPostgres: true;
+      message: string;
+    };
+    runSessionHandoff?: {
+      contractVersion: string;
+      dryRun: {
+        authority: "node-workflows";
+        input: string;
+        persistsWorkflowRun: false;
+        requiresPostgres: false;
+        duplicatePrevention: string;
+      };
+      liveRun: {
+        authority: "node-workflows";
+        input: string;
+        payloadKind: "workflowRun";
+        persistsWorkflowRun: true;
+        requiresPostgres: true;
+        sessionTarget: "isolated";
+      };
+      session: {
+        owner: "node-workflow-runner";
+        keyDerivation: string;
+        isolation: string;
+        rustOwnership: "not_enabled";
+      };
+      duplicatePrevention: {
+        scheduleCron: string;
+        duplicateWorkflow: string;
+        staleCronCleanup: string;
+        rustOwnership: "shadow_observe_only";
+      };
+      rustPromotionBlockers: string[];
+      message: string;
+    };
+    blockers: string[];
+  };
+  operatorMessages?: string[];
+};
+
+function isWorkflowBackendStatus(value: unknown): value is WorkflowBackendStatus {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Partial<WorkflowBackendStatus>;
+  return (
+    record.ok === true &&
+    typeof record.label === "string" &&
+    typeof record.backend === "string" &&
+    typeof record.readFrom === "string" &&
+    Array.isArray(record.writeTo) &&
+    typeof record.postgres === "object" &&
+    typeof record.dryRun === "object" &&
+    typeof record.savedWorkflows === "object"
+  );
+}
+
 export async function statusCommand(
   opts: {
     json?: boolean;
@@ -129,6 +245,15 @@ export async function statusCommand(
           timeoutMs: opts.timeoutMs,
         }).catch(() => null)
       : null;
+  const workflowBackendStatus = gatewayReachable
+    ? await callGateway<unknown>({
+        method: "workflows.backendStatus",
+        params: {},
+        timeoutMs: opts.timeoutMs,
+      })
+        .then((status) => (isWorkflowBackendStatus(status) ? status : null))
+        .catch(() => null)
+    : null;
 
   const configChannel = normalizeUpdateChannel(cfg.update?.channel);
   const channelInfo = resolveEffectiveUpdateChannel({
@@ -164,6 +289,7 @@ export async function statusCommand(
           },
           gatewayService: daemon,
           nodeService: nodeDaemon,
+          workflowBackendStatus,
           agents: agentStatus,
           securityAudit,
           ...(health || usage || lastHeartbeat ? { health, usage, lastHeartbeat } : {}),
@@ -284,8 +410,8 @@ export async function statusCommand(
       .filter(Boolean);
     return parts.length > 0 ? parts.join(", ") : "disabled";
   })();
-  const executiveShadowValue = (() => {
-    const status = summary.executiveShadow;
+  const rustGatewayShadowValue = (() => {
+    const status = summary.rustGatewayShadow;
     if (!status) {
       return muted("unknown");
     }
@@ -294,7 +420,107 @@ export async function statusCommand(
     }
     const parts = [
       ok("reachable"),
+      status.component && status.mode ? `${status.component} ${status.mode}` : status.mode,
+      status.protocolVersion != null ? `protocol v${status.protocolVersion}` : null,
+      status.gatewayAuthority ? `authority ${status.gatewayAuthority}` : null,
+      status.liveAuthority ? `live ${status.liveAuthority}` : null,
+      status.statePersistence ? `state ${status.statePersistence}` : null,
+      status.promotionReady === false ? "not promotion-ready" : null,
+      status.version ? `version ${status.version}` : null,
+      status.uptimeSeconds != null ? `uptime ${formatDuration(status.uptimeSeconds * 1000)}` : null,
+      status.baseUrl,
+    ].filter(Boolean);
+    return parts.join(" · ");
+  })();
+  const rustGatewayParityValue = (() => {
+    const report = summary.rustGatewayParityReport;
+    if (!report) {
+      return muted("unknown");
+    }
+    if (report.freshness === "missing") {
+      return muted("missing · isolated parity report not generated yet");
+    }
+    if (report.freshness === "invalid") {
+      return warn(`invalid${report.error ? ` (${report.error})` : ""} · ${report.path}`);
+    }
+    const freshness =
+      report.freshness === "fresh"
+        ? ok("fresh")
+        : warn(`stale${report.ageMs != null ? ` ${formatAge(report.ageMs)}` : ""}`);
+    const totals = report.totals
+      ? `${report.totals.passed} passed · ${report.totals.failed} failed · ${report.totals.skipped} skipped`
+      : "totals unknown";
+    const readiness =
+      report.promotionReady === true
+        ? ok("promotion-ready")
+        : report.promotionReady === false
+          ? warn("not promotion-ready")
+          : muted("readiness unknown");
+    const gaps =
+      report.blockers != null || report.warnings != null
+        ? `blockers ${report.blockers ?? "?"} · warnings ${report.warnings ?? "?"}`
+        : null;
+    return [freshness, readiness, totals, gaps, report.path].filter(Boolean).join(" · ");
+  })();
+  const rustSchedulerAuthorityValue = (() => {
+    const authority = summary.rustGatewaySchedulerAuthority;
+    if (!authority) {
+      return muted("unknown");
+    }
+    const nextWake =
+      authority.nextWakeAtMs != null ? new Date(authority.nextWakeAtMs).toISOString() : "none";
+    const parts = [
+      ok(`scheduler ${authority.schedulerAuthority}`),
+      `rust ${authority.rustSchedulerAuthority}`,
+      `authority record ${authority.authorityRecord}`,
+      authority.cronEnabled ? "cron enabled" : "cron disabled",
+      `${authority.enabledCronJobs}/${authority.cronJobs} cron jobs enabled`,
+      `${authority.workflowRunCronJobs} workflow timers`,
+      `next ${nextWake}`,
+      authority.cronStorePath,
+    ];
+    return parts.join(" · ");
+  })();
+  const executiveShadowValue = (() => {
+    const status = summary.executiveShadow;
+    if (!status) {
+      return muted("unknown");
+    }
+    if (!status.reachable) {
+      return muted(status.error ? `unavailable (${status.error})` : "unavailable");
+    }
+    const readiness = status.readiness;
+    const readinessParts =
+      readiness && !readiness.error
+        ? [
+            readiness.failClosed ? ok("readiness fail-closed") : warn("readiness not fail-closed"),
+            `promotion ${readiness.promotionStatus}`,
+            readiness.authoritySwitchAllowed ? warn("switchAllowed") : "switchBlocked",
+            `executive ${readiness.currentAuthority.executive}`,
+            `gateway ${readiness.currentAuthority.gateway}`,
+            `scheduler ${readiness.currentAuthority.scheduler}`,
+            `workflows ${readiness.currentAuthority.workflows}`,
+            `wakefulness ${readiness.kernelShadow.wakefulness}`,
+            readiness.kernelShadow.focus ? `focus ${readiness.kernelShadow.focus}` : null,
+            `reflection queue ${readiness.kernelShadow.reflectionQueue.depth}`,
+            `restart ${readiness.kernelShadow.restartRecovery.status}`,
+            `gates blocked ${readiness.gateCounts.blocked} proven ${readiness.gateCounts.proven}`,
+          ]
+        : readiness?.error
+          ? [
+              warn(
+                readiness.status === "unsafe"
+                  ? `readiness unsafe (${readiness.error})`
+                  : `readiness unavailable (${readiness.error})`,
+              ),
+            ]
+          : [];
+    const parts = [
+      ok("reachable"),
+      `kernel ${status.kernelStatus}`,
+      `production-daemon ${status.productionDaemon.status}`,
       status.activeLane ? `lane ${status.activeLane}` : "lane none",
+      ...readinessParts,
       status.laneCounts ? `pending ${status.laneCounts.pending}` : null,
       status.highestPendingPriority != null
         ? `pending-priority ${status.highestPendingPriority}`
@@ -322,6 +548,67 @@ export async function statusCommand(
       inspection.executiveLastEventSummary ? `last ${inspection.executiveLastEventSummary}` : null,
     ].filter(Boolean);
     return parts.join(" · ");
+  })();
+  const workflowBackendValue = (() => {
+    if (!gatewayReachable) {
+      return muted("unavailable (gateway unreachable)");
+    }
+    const status = workflowBackendStatus;
+    if (!status) {
+      return muted("unavailable");
+    }
+    const saved = status.savedWorkflows.available
+      ? ok("saved workflows configured")
+      : warn("saved workflows need PostgreSQL");
+    const dryRun = status.dryRun.requiresPostgres
+      ? warn("dry-run requires PostgreSQL")
+      : ok("dry-run available without PostgreSQL");
+    const dryRunCommand = status.dryRun.method
+      ? `local dry-run ${status.dryRun.method}${status.dryRun.noLiveSideEffects ? " no-live" : ""}`
+      : null;
+    const postgres =
+      status.postgres.status === "configured"
+        ? ok(`postgres ${status.postgres.connectionSource}`)
+        : muted("postgres not configured");
+    const scheduleCron = status.scheduleCron
+      ? status.scheduleCron.available
+        ? ok("cron reconciliation configured")
+        : muted("cron reconciliation skipped without PostgreSQL")
+      : null;
+    const schedulerBoundary = status.schedulerBoundary
+      ? [
+          `scheduler ${status.schedulerBoundary.schedulerAuthority}`,
+          `rust ${status.schedulerBoundary.rustScheduler}`,
+          status.schedulerBoundary.leases.status === "configured"
+            ? ok("leases configured")
+            : warn("leases need PostgreSQL"),
+          status.schedulerBoundary.runSessionHandoff
+            ? `handoff ${status.schedulerBoundary.runSessionHandoff.liveRun.payloadKind} ${status.schedulerBoundary.runSessionHandoff.liveRun.sessionTarget}`
+            : null,
+          status.schedulerBoundary.runSessionHandoff
+            ? `dedupe ${status.schedulerBoundary.runSessionHandoff.duplicatePrevention.rustOwnership}`
+            : null,
+          status.schedulerBoundary.authoritySwitchAllowed
+            ? warn("authority switch allowed")
+            : muted("no authority switch"),
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
+    return [
+      status.label,
+      `backend ${status.backend}`,
+      `read ${status.readFrom}`,
+      `write ${status.writeTo.join(",") || "none"}`,
+      dryRun,
+      dryRunCommand,
+      saved,
+      postgres,
+      scheduleCron,
+      schedulerBoundary,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   })();
   const lastHeartbeatValue = (() => {
     if (!opts.deep) {
@@ -378,8 +665,8 @@ export async function statusCommand(
     }
     const cache = memory.cache;
     if (cache) {
-      const summary = resolveMemoryCacheSummary(cache);
-      parts.push(colorByTone(summary.tone, summary.text));
+      const cacheSummary = resolveMemoryCacheSummary(cache);
+      parts.push(colorByTone(cacheSummary.tone, cacheSummary.text));
     }
     return parts.join(" · ");
   })();
@@ -434,8 +721,12 @@ export async function statusCommand(
     { Item: "Probes", Value: probesValue },
     { Item: "Events", Value: eventsValue },
     { Item: "Heartbeat", Value: heartbeatValue },
+    { Item: "Rust gateway shadow", Value: rustGatewayShadowValue },
+    { Item: "Rust parity report", Value: rustGatewayParityValue },
+    { Item: "Rust scheduler authority", Value: rustSchedulerAuthorityValue },
     { Item: "Executive shadow", Value: executiveShadowValue },
     { Item: "Exec inspect", Value: executiveShadowInspectionValue },
+    { Item: "Workflows backend", Value: workflowBackendValue },
     ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
     {
       Item: "Sessions",

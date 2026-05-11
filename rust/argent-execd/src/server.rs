@@ -170,6 +170,12 @@ fn build_response(
                 ),
             }
         }
+        ("GET", "/v1/executive/readiness") => {
+            let runtime = runtime.lock().expect("runtime lock should not poison");
+            let body = serde_json::to_string_pretty(&runtime.kernel_readiness_payload())
+                .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string());
+            json_response(200, &body)
+        }
         ("POST", "/v1/lanes/request") => {
             let mut payload =
                 parse_json_body::<LaneRequestPayload>(request_body).unwrap_or_default();

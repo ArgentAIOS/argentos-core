@@ -104,6 +104,89 @@ Returns a compact operator-readable summary derived from the journal:
 }
 ```
 
+### `GET /v1/executive/readiness`
+
+Returns the current shadow-readiness contract for Kernel/Executive promotion:
+
+```json
+{
+  "mode": "shadow-readiness",
+  "authoritySwitchAllowed": false,
+  "promotionStatus": "blocked",
+  "kernelShadow": {
+    "reachable": true,
+    "status": "fail-closed",
+    "authority": "shadow",
+    "wakefulness": "active",
+    "agenda": {
+      "activeLane": "operator",
+      "pendingLanes": ["background"],
+      "focus": "interactive"
+    },
+    "focus": "interactive",
+    "ticks": {
+      "count": 4,
+      "lastTickAtMs": 1776653168603,
+      "nextTickDueAtMs": 1776653173603,
+      "intervalMs": 5000
+    },
+    "reflectionQueue": {
+      "status": "shadow-only",
+      "depth": 1,
+      "items": [
+        {
+          "lane": "background",
+          "priority": 20,
+          "reason": "reflection",
+          "requestedAtMs": 1776653166950
+        }
+      ]
+    },
+    "persistedAt": 1776653168603,
+    "restartRecovery": {
+      "model": "snapshot-plus-journal-replay",
+      "status": "recovered",
+      "bootCount": 2,
+      "lastRecoveredAtMs": 1776653160000,
+      "journalEventCount": 8,
+      "snapshotFile": "executive-state.json",
+      "journalFile": "executive.journal.jsonl"
+    }
+  },
+  "currentAuthority": {
+    "gateway": "node",
+    "scheduler": "node",
+    "workflows": "node",
+    "channels": "node",
+    "sessions": "node",
+    "executive": "shadow-only"
+  },
+  "persistenceModel": {
+    "snapshotFile": "executive-state.json",
+    "journalFile": "executive.journal.jsonl",
+    "restartRecovery": "snapshot-plus-journal-replay",
+    "leaseRecovery": "tick-expiry-before-promotion"
+  },
+  "promotionGates": [
+    {
+      "id": "contract-integrity",
+      "status": "blocked",
+      "owner": "master-operator"
+    },
+    {
+      "id": "restart-and-lease-recovery",
+      "status": "blocked",
+      "owner": "master-operator"
+    },
+    {
+      "id": "authority-boundary",
+      "status": "blocked",
+      "owner": "master-operator"
+    }
+  ]
+}
+```
+
 ### `GET /v1/executive/journal?limit=<n>`
 
 Returns the most recent journal records. This is the continuity/debugging

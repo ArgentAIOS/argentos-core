@@ -159,7 +159,12 @@ export const ToolsStatusParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const ConnectorsCatalogParamsSchema = Type.Object({}, { additionalProperties: false });
+export const ConnectorsCatalogParamsSchema = Type.Object(
+  {
+    executeAdapters: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
 
 export const ToolStatusEntrySchema = Type.Object(
   {
@@ -212,6 +217,7 @@ export const ConnectorCatalogEntrySchema = Type.Object(
       Type.Literal("ready"),
       Type.Literal("needs-setup"),
       Type.Literal("repo-only"),
+      Type.Literal("metadata-only"),
       Type.Literal("error"),
     ]),
     status: Type.Object(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { AgentVisualIdentity, AccessibilityConfig, IdentityStyleCategory } from "./aevp/types";
 import { getPreset } from "./aevp/identityPresets";
 import { AmplitudeTracker } from "./aevp/speechAnalyser";
@@ -823,7 +823,12 @@ const initialLogs: LogEntry[] = [
 
 // Gateway configuration - get token from your argentos config
 // Use dynamic URL based on current hostname (allows access from any machine on network)
-const GATEWAY_URL = `ws://${window.location.hostname}:18789`;
+function resolveGatewayUrl(): string {
+  const override = String(import.meta.env.VITE_ARGENT_GATEWAY_URL ?? "").trim();
+  return override || `ws://${window.location.hostname}:18789`;
+}
+
+const GATEWAY_URL = resolveGatewayUrl();
 const CONTROL_SETTINGS_KEY = "argent.control.settings.v1";
 const TTS_DISPLAY_MODE_KEY = "argent.tts-display-mode";
 const DASHBOARD_MODE_STORAGE_KEY = "argent.dashboard.mode";
@@ -864,6 +869,25 @@ function persistGatewayToken(token: string) {
   }
 }
 
+/**
+ * Read the gateway token injected into HTML by the static-server (or any other
+ * server-side render path that respects the `__ARGENT_GATEWAY_TOKEN__`
+ * convention). This closes the bare-URL bootstrap gap: when the dashboard
+ * loads at `http://127.0.0.1:8080/` (no `?token=` in URL, fresh localStorage),
+ * the server-injected global gives us a valid token to seed into both this
+ * App's WS connection AND `localApiFetch.ts`'s REST resolution chain (via
+ * `localStorage["argent.control.settings.v1"].token`).
+ */
+function readInjectedGatewayToken(): string {
+  try {
+    const value = (window as unknown as { __ARGENT_GATEWAY_TOKEN__?: unknown })
+      .__ARGENT_GATEWAY_TOKEN__;
+    return typeof value === "string" ? value.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 function resolveGatewayToken(): string {
   const tokenFromUrl = new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
   if (tokenFromUrl) {
@@ -872,8 +896,34 @@ function resolveGatewayToken(): string {
   }
   const tokenFromStorage = readStoredGatewayToken();
   if (tokenFromStorage) return tokenFromStorage;
+  // Server-injected global (static-server `injectGatewayTokenIntoIndexHtml`)
+  // — fixes bare-URL loads where the URL carries no `?token=` and a fresh
+  // localStorage has no prior token. We persist it to localStorage so the
+  // existing same-source resolution chain in `localApiFetch.ts` (which
+  // reads `argent.control.settings.v1.token` first) can find it without
+  // needing its own coupling to `window.__ARGENT_GATEWAY_TOKEN__`.
+  const tokenFromInjection = readInjectedGatewayToken();
+  if (tokenFromInjection) {
+    persistGatewayToken(tokenFromInjection);
+    return tokenFromInjection;
+  }
   const tokenFromEnv = String(import.meta.env.VITE_GATEWAY_TOKEN ?? "").trim();
   return tokenFromEnv;
+}
+
+/**
+ * Read a `?widget=<name>` query param for nav deep-links (e.g.
+ * `?widget=workflows` lands directly in Operations → Workflows).
+ * Returns lowercase value or null when absent / unparsable.
+ */
+function readWidgetDeepLink(): string | null {
+  try {
+    const value = new URLSearchParams(window.location.search).get("widget");
+    const trimmed = value?.trim().toLowerCase() ?? "";
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 function readStoredTtsDisplayMode(): TtsDisplayMode {
@@ -1227,6 +1277,26 @@ function App() {
     }
   }, [allowOperationsSurface, workspaceTabs]);
 
+  // Deep-link via `?widget=<name>` (e.g. `?widget=workflows` jumps directly
+  // into Operations → Workflows so Playwright + bookmarks can land on the
+  // pipeline builder without first navigating the workspace tabs).
+  const initialWidgetDeepLink = useMemo(() => readWidgetDeepLink(), []);
+  const widgetDeepLinkAppliedRef = useRef(false);
+
+  // Apply `?widget=<name>` deep-link once the surface profile has loaded.
+  // Currently supports `?widget=workflows` → Operations → Workflows so the
+  // pipeline builder is reachable from a bookmarkable URL.
+  useEffect(() => {
+    if (widgetDeepLinkAppliedRef.current) return;
+    if (!initialWidgetDeepLink) return;
+    if (initialWidgetDeepLink === "workflows" && allowOperationsSurface) {
+      widgetDeepLinkAppliedRef.current = true;
+      setActiveWorkspace("operations");
+      setDashboardMode("operations");
+      setOpsView("workflows");
+    }
+  }, [initialWidgetDeepLink, allowOperationsSurface]);
+
   // Task management via backend API
   const {
     tasks,
@@ -1259,7 +1329,7 @@ function App() {
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
   const [opsView, setOpsView] = useState<
     "map" | "workers" | "jobs" | "tasks" | "org" | "schedule" | "workflows"
-  >("map");
+  >(initialWidgetDeepLink === "workflows" ? "workflows" : "map");
   const [operationsChatOpen, setOperationsChatOpen] = useState(false);
   const [operationsPresenceVisible, setOperationsPresenceVisible] = useState(false);
   const [operationsPresencePosition, setOperationsPresencePosition] = useState(() => {

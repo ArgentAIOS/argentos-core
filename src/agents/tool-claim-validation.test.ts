@@ -538,4 +538,41 @@ describe("validateToolClaims", () => {
     expect(result.claimedTools).toEqual([]);
     expect(result.structuredClaims).toEqual([]);
   });
+
+  // ── Mutation receipt enforcement (cleanup verbs over docs/workflows/projects) ─
+
+  it("blocks doc/workflow cleanup claims without mutation receipts", () => {
+    const result = validateToolClaims({
+      responseText: "Done. I archived the stale workflow and deleted the old cleanup doc.",
+      executedToolNames: ["memory_store", "read"],
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.missingClaimLabels).toContain("mutation receipt");
+  });
+
+  it("passes doc/workflow cleanup claims when matching mutation receipts are supplied", () => {
+    const result = validateToolClaims({
+      responseText: "Done. I archived workflow WF-123 and deleted document DOC-456.",
+      executedToolNames: ["workflow_builder", "doc_panel_delete"],
+      mutationEvidence: [
+        {
+          toolName: "workflows.delete",
+          entityType: "workflow",
+          action: "delete",
+          entityIds: ["WF-123"],
+          afterStatus: "deleted",
+        },
+        {
+          toolName: "doc_panel_delete",
+          entityType: "document",
+          action: "delete",
+          entityIds: ["DOC-456"],
+          afterStatus: "deleted",
+        },
+      ],
+    });
+
+    expect(result.valid).toBe(true);
+  });
 });

@@ -105,6 +105,268 @@
         "highestPendingPriority"
       ]
     },
+    "ExecutiveShadowReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "shadow-readiness"
+        },
+        "authoritySwitchAllowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "promotionStatus": {
+          "type": "string",
+          "const": "blocked"
+        },
+        "kernelShadow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reachable": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "string",
+              "const": "fail-closed"
+            },
+            "authority": {
+              "type": "string",
+              "const": "shadow"
+            },
+            "wakefulness": {
+              "type": "string",
+              "enum": ["active", "attentive", "watching"]
+            },
+            "agenda": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "activeLane": {
+                  "type": ["string", "null"]
+                },
+                "pendingLanes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "focus": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["activeLane", "pendingLanes", "focus"]
+            },
+            "focus": {
+              "type": ["string", "null"]
+            },
+            "ticks": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "type": "number"
+                },
+                "lastTickAtMs": {
+                  "type": ["number", "null"]
+                },
+                "nextTickDueAtMs": {
+                  "type": "number"
+                },
+                "intervalMs": {
+                  "type": "number"
+                }
+              },
+              "required": ["count", "lastTickAtMs", "nextTickDueAtMs", "intervalMs"]
+            },
+            "reflectionQueue": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "shadow-only"
+                },
+                "depth": {
+                  "type": "number"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "lane": {
+                        "type": "string"
+                      },
+                      "priority": {
+                        "type": "number"
+                      },
+                      "reason": {
+                        "type": ["string", "null"]
+                      },
+                      "requestedAtMs": {
+                        "type": ["number", "null"]
+                      }
+                    },
+                    "required": ["lane", "priority", "reason", "requestedAtMs"]
+                  }
+                }
+              },
+              "required": ["status", "depth", "items"]
+            },
+            "persistedAt": {
+              "type": "number"
+            },
+            "restartRecovery": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "type": "string",
+                  "const": "snapshot-plus-journal-replay"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["booted", "recovered"]
+                },
+                "bootCount": {
+                  "type": "number"
+                },
+                "lastRecoveredAtMs": {
+                  "type": ["number", "null"]
+                },
+                "journalEventCount": {
+                  "type": "number"
+                },
+                "snapshotFile": {
+                  "type": "string"
+                },
+                "journalFile": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model",
+                "status",
+                "bootCount",
+                "lastRecoveredAtMs",
+                "journalEventCount",
+                "snapshotFile",
+                "journalFile"
+              ]
+            }
+          },
+          "required": [
+            "reachable",
+            "status",
+            "authority",
+            "wakefulness",
+            "agenda",
+            "focus",
+            "ticks",
+            "reflectionQueue",
+            "persistedAt",
+            "restartRecovery"
+          ]
+        },
+        "currentAuthority": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gateway": {
+              "type": "string"
+            },
+            "scheduler": {
+              "type": "string"
+            },
+            "workflows": {
+              "type": "string"
+            },
+            "channels": {
+              "type": "string"
+            },
+            "sessions": {
+              "type": "string"
+            },
+            "executive": {
+              "type": "string"
+            }
+          },
+          "required": ["gateway", "scheduler", "workflows", "channels", "sessions", "executive"]
+        },
+        "nodeResponsibilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rustResponsibilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "persistenceModel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "snapshotFile": {
+              "type": "string"
+            },
+            "journalFile": {
+              "type": "string"
+            },
+            "restartRecovery": {
+              "type": "string"
+            },
+            "leaseRecovery": {
+              "type": "string"
+            }
+          },
+          "required": ["snapshotFile", "journalFile", "restartRecovery", "leaseRecovery"]
+        },
+        "promotionGates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["blocked", "proven"]
+              },
+              "owner": {
+                "type": "string"
+              },
+              "requiredProof": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["id", "status", "owner", "requiredProof"]
+          }
+        }
+      },
+      "required": [
+        "mode",
+        "authoritySwitchAllowed",
+        "promotionStatus",
+        "kernelShadow",
+        "currentAuthority",
+        "nodeResponsibilities",
+        "rustResponsibilities",
+        "persistenceModel",
+        "promotionGates"
+      ]
+    },
     "ExecutiveShadowTimelineSummary": {
       "type": "object",
       "additionalProperties": false,

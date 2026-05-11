@@ -177,7 +177,14 @@ export interface AgentNode {
 
 export type ActionType =
   // Messaging
-  | { type: "send_message"; channelType: string; channelId: string; template: string }
+  | {
+      type: "send_message";
+      channelType: string;
+      channelId: string;
+      template: string;
+      mediaTemplate?: string;
+      mediaTemplates?: string[];
+    }
   | { type: "send_email"; to: string; subject: string; bodyTemplate: string }
   // Data persistence
   | { type: "create_task"; title: string; assignee?: string; priority?: number; project?: string }
@@ -214,6 +221,8 @@ export type ActionType =
   | {
       type: "podcast_plan";
       title: string;
+      payload?: Record<string, unknown>;
+      payloadTemplate?: string;
       script?: string;
       dialogue?: Array<Record<string, unknown>>;
       personas?: Array<Record<string, unknown>>;

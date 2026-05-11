@@ -68,6 +68,72 @@ export type ExecutiveShadowMetrics = {
   highestPendingPriority: number | null;
 };
 
+export type ExecutiveShadowReadiness = {
+  mode: "shadow-readiness";
+  authoritySwitchAllowed: false;
+  promotionStatus: "blocked";
+  kernelShadow: {
+    reachable: boolean;
+    status: "fail-closed";
+    authority: "shadow";
+    wakefulness: "active" | "attentive" | "watching";
+    agenda: {
+      activeLane: string | null;
+      pendingLanes: string[];
+      focus: string | null;
+    };
+    focus: string | null;
+    ticks: {
+      count: number;
+      lastTickAtMs: number | null;
+      nextTickDueAtMs: number;
+      intervalMs: number;
+    };
+    reflectionQueue: {
+      status: "shadow-only";
+      depth: number;
+      items: Array<{
+        lane: string;
+        priority: number;
+        reason: string | null;
+        requestedAtMs: number | null;
+      }>;
+    };
+    persistedAt: number;
+    restartRecovery: {
+      model: "snapshot-plus-journal-replay";
+      status: "booted" | "recovered";
+      bootCount: number;
+      lastRecoveredAtMs: number | null;
+      journalEventCount: number;
+      snapshotFile: string;
+      journalFile: string;
+    };
+  };
+  currentAuthority: {
+    gateway: string;
+    scheduler: string;
+    workflows: string;
+    channels: string;
+    sessions: string;
+    executive: string;
+  };
+  nodeResponsibilities: string[];
+  rustResponsibilities: string[];
+  persistenceModel: {
+    snapshotFile: string;
+    journalFile: string;
+    restartRecovery: string;
+    leaseRecovery: string;
+  };
+  promotionGates: Array<{
+    id: string;
+    status: "blocked" | "proven";
+    owner: string;
+    requiredProof: string[];
+  }>;
+};
+
 export type ExecutiveShadowJournalRecord = {
   seq: number;
   at_ms: number;
@@ -196,6 +262,169 @@ export const executiveShadowMetricsSchema = z.object({
   nextLeaseExpiryAtMs: z.number().nullable(),
   highestPendingPriority: z.number().nullable(),
 });
+
+export const executiveShadowReadinessSchema = z
+  .object({
+    mode: z.literal("shadow-readiness"),
+    authoritySwitchAllowed: z.literal(false),
+    promotionStatus: z.literal("blocked"),
+    kernelShadow: z
+      .object({
+        reachable: z.boolean(),
+        status: z.literal("fail-closed"),
+        authority: z.literal("shadow"),
+        wakefulness: z.enum(["active", "attentive", "watching"]),
+        agenda: z.object({
+          activeLane: z.string().nullable(),
+          pendingLanes: z.array(z.string()),
+          focus: z.string().nullable(),
+        }),
+        focus: z.string().nullable(),
+        ticks: z.object({
+          count: z.number(),
+          lastTickAtMs: z.number().nullable(),
+          nextTickDueAtMs: z.number(),
+          intervalMs: z.number(),
+        }),
+        reflectionQueue: z.object({
+          status: z.literal("shadow-only"),
+          depth: z.number(),
+          items: z.array(
+            z.object({
+              lane: z.string(),
+              priority: z.number(),
+              reason: z.string().nullable(),
+              requestedAtMs: z.number().nullable(),
+            }),
+          ),
+        }),
+        persistedAt: z.number(),
+        restartRecovery: z
+          .object({
+            model: z.literal("snapshot-plus-journal-replay"),
+            status: z.enum(["booted", "recovered"]),
+            bootCount: z.number(),
+            lastRecoveredAtMs: z.number().nullable(),
+            journalEventCount: z.number(),
+            snapshotFile: z.string(),
+            journalFile: z.string(),
+          })
+          .strict(),
+      })
+      .strict(),
+    currentAuthority: z
+      .object({
+        gateway: z.string(),
+        scheduler: z.string(),
+        workflows: z.string(),
+        channels: z.string(),
+        sessions: z.string(),
+        executive: z.string(),
+      })
+      .strict(),
+    nodeResponsibilities: z.array(z.string()),
+    rustResponsibilities: z.array(z.string()),
+    persistenceModel: z
+      .object({
+        snapshotFile: z.string(),
+        journalFile: z.string(),
+        restartRecovery: z.string(),
+        leaseRecovery: z.string(),
+      })
+      .strict(),
+    promotionGates: z.array(
+      z
+        .object({
+          id: z.string(),
+          status: z.enum(["blocked", "proven"]),
+          owner: z.string(),
+          requiredProof: z.array(z.string()),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowReadiness): boolean {
+  return (
+    readiness.authoritySwitchAllowed === false &&
+    readiness.promotionStatus === "blocked" &&
+    readiness.currentAuthority.gateway === "node" &&
+    readiness.currentAuthority.scheduler === "node" &&
+    readiness.currentAuthority.workflows === "node" &&
+    readiness.currentAuthority.channels === "node" &&
+    readiness.currentAuthority.sessions === "node" &&
+    readiness.currentAuthority.executive === "shadow-only" &&
+    readiness.kernelShadow.reachable === true &&
+    readiness.kernelShadow.status === "fail-closed" &&
+    readiness.kernelShadow.authority === "shadow" &&
+    readiness.kernelShadow.reflectionQueue.status === "shadow-only" &&
+    readiness.kernelShadow.restartRecovery.model === "snapshot-plus-journal-replay" &&
+    executiveShadowReadinessSemanticIssues(readiness).length === 0 &&
+    readiness.promotionGates.length > 0 &&
+    readiness.promotionGates.every((gate) => gate.status === "blocked" || gate.status === "proven")
+  );
+}
+
+export function executiveShadowReadinessSemanticIssues(
+  readiness: ExecutiveShadowReadiness,
+): string[] {
+  const issues: string[] = [];
+  const shadow = readiness.kernelShadow;
+  const pendingLanes = shadow.reflectionQueue.items.map((item) => item.lane);
+
+  if (shadow.agenda.pendingLanes.length !== pendingLanes.length) {
+    issues.push("kernelShadow agenda pending lane count must match reflectionQueue depth");
+  }
+  if (shadow.reflectionQueue.depth !== shadow.reflectionQueue.items.length) {
+    issues.push("kernelShadow reflectionQueue depth must match item count");
+  }
+  if (shadow.agenda.pendingLanes.some((lane, index) => lane !== pendingLanes[index])) {
+    issues.push("kernelShadow agenda pending lanes must mirror reflectionQueue lanes");
+  }
+  if (shadow.focus !== shadow.agenda.focus) {
+    issues.push("kernelShadow focus must mirror agenda.focus");
+  }
+  if (shadow.ticks.lastTickAtMs !== null && shadow.persistedAt < shadow.ticks.lastTickAtMs) {
+    issues.push("kernelShadow persistedAt must not be older than lastTickAtMs");
+  }
+  if (
+    shadow.restartRecovery.lastRecoveredAtMs !== null &&
+    shadow.persistedAt < shadow.restartRecovery.lastRecoveredAtMs
+  ) {
+    issues.push("kernelShadow persistedAt must not be older than restart recovery");
+  }
+  if (
+    shadow.restartRecovery.status === "recovered" &&
+    (shadow.restartRecovery.lastRecoveredAtMs === null ||
+      shadow.restartRecovery.journalEventCount < 2)
+  ) {
+    issues.push("kernelShadow recovered status requires recoveredAt and replayed journal evidence");
+  }
+  if (
+    shadow.restartRecovery.status === "booted" &&
+    shadow.restartRecovery.lastRecoveredAtMs !== null
+  ) {
+    issues.push("kernelShadow booted status must not include recoveredAt evidence");
+  }
+  if (shadow.wakefulness === "active" && shadow.agenda.activeLane === null) {
+    issues.push("kernelShadow active wakefulness requires active agenda lane");
+  }
+  if (
+    shadow.wakefulness === "attentive" &&
+    (shadow.agenda.activeLane !== null || shadow.reflectionQueue.depth === 0)
+  ) {
+    issues.push("kernelShadow attentive wakefulness requires pending shadow work only");
+  }
+  if (
+    shadow.wakefulness === "watching" &&
+    (shadow.agenda.activeLane !== null || shadow.reflectionQueue.depth !== 0)
+  ) {
+    issues.push("kernelShadow watching wakefulness requires no active or pending shadow work");
+  }
+
+  return issues;
+}
 
 export const executiveShadowTimelineEventSchema = z.object({
   seq: z.number(),
@@ -349,6 +578,165 @@ export const executiveShadowProtocolJsonSchema = {
         "lastRecoveredAtMs",
         "nextLeaseExpiryAtMs",
         "highestPendingPriority",
+      ],
+    },
+    ExecutiveShadowReadiness: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        mode: { type: "string", const: "shadow-readiness" },
+        authoritySwitchAllowed: { type: "boolean", const: false },
+        promotionStatus: { type: "string", const: "blocked" },
+        kernelShadow: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            reachable: { type: "boolean" },
+            status: { type: "string", const: "fail-closed" },
+            authority: { type: "string", const: "shadow" },
+            wakefulness: { type: "string", enum: ["active", "attentive", "watching"] },
+            agenda: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                activeLane: { type: ["string", "null"] },
+                pendingLanes: { type: "array", items: { type: "string" } },
+                focus: { type: ["string", "null"] },
+              },
+              required: ["activeLane", "pendingLanes", "focus"],
+            },
+            focus: { type: ["string", "null"] },
+            ticks: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                count: { type: "number" },
+                lastTickAtMs: { type: ["number", "null"] },
+                nextTickDueAtMs: { type: "number" },
+                intervalMs: { type: "number" },
+              },
+              required: ["count", "lastTickAtMs", "nextTickDueAtMs", "intervalMs"],
+            },
+            reflectionQueue: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                status: { type: "string", const: "shadow-only" },
+                depth: { type: "number" },
+                items: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      lane: { type: "string" },
+                      priority: { type: "number" },
+                      reason: { type: ["string", "null"] },
+                      requestedAtMs: { type: ["number", "null"] },
+                    },
+                    required: ["lane", "priority", "reason", "requestedAtMs"],
+                  },
+                },
+              },
+              required: ["status", "depth", "items"],
+            },
+            persistedAt: { type: "number" },
+            restartRecovery: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: { type: "string", const: "snapshot-plus-journal-replay" },
+                status: { type: "string", enum: ["booted", "recovered"] },
+                bootCount: { type: "number" },
+                lastRecoveredAtMs: { type: ["number", "null"] },
+                journalEventCount: { type: "number" },
+                snapshotFile: { type: "string" },
+                journalFile: { type: "string" },
+              },
+              required: [
+                "model",
+                "status",
+                "bootCount",
+                "lastRecoveredAtMs",
+                "journalEventCount",
+                "snapshotFile",
+                "journalFile",
+              ],
+            },
+          },
+          required: [
+            "reachable",
+            "status",
+            "authority",
+            "wakefulness",
+            "agenda",
+            "focus",
+            "ticks",
+            "reflectionQueue",
+            "persistedAt",
+            "restartRecovery",
+          ],
+        },
+        currentAuthority: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            gateway: { type: "string" },
+            scheduler: { type: "string" },
+            workflows: { type: "string" },
+            channels: { type: "string" },
+            sessions: { type: "string" },
+            executive: { type: "string" },
+          },
+          required: ["gateway", "scheduler", "workflows", "channels", "sessions", "executive"],
+        },
+        nodeResponsibilities: {
+          type: "array",
+          items: { type: "string" },
+        },
+        rustResponsibilities: {
+          type: "array",
+          items: { type: "string" },
+        },
+        persistenceModel: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            snapshotFile: { type: "string" },
+            journalFile: { type: "string" },
+            restartRecovery: { type: "string" },
+            leaseRecovery: { type: "string" },
+          },
+          required: ["snapshotFile", "journalFile", "restartRecovery", "leaseRecovery"],
+        },
+        promotionGates: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              status: { type: "string", enum: ["blocked", "proven"] },
+              owner: { type: "string" },
+              requiredProof: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: ["id", "status", "owner", "requiredProof"],
+          },
+        },
+      },
+      required: [
+        "mode",
+        "authoritySwitchAllowed",
+        "promotionStatus",
+        "kernelShadow",
+        "currentAuthority",
+        "nodeResponsibilities",
+        "rustResponsibilities",
+        "persistenceModel",
+        "promotionGates",
       ],
     },
     ExecutiveShadowTimelineSummary: {

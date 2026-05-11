@@ -99,81 +99,109 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     if (!startAccount) {
       return;
     }
-    const cfg = loadConfig();
-    resetDirectoryCache({ channel: channelId, accountId });
+    const log = channelLogs[channelId];
+    let cfg: ArgentConfig;
+    let accountIds: string[];
+    try {
+      cfg = loadConfig();
+      resetDirectoryCache({ channel: channelId, accountId });
+      accountIds = accountId ? [accountId] : plugin.config.listAccountIds(cfg);
+    } catch (err) {
+      const message = formatErrorMessage(err);
+      const id = accountId ?? DEFAULT_ACCOUNT_ID;
+      setRuntime(channelId, id, {
+        accountId: id,
+        running: false,
+        lastError: message,
+        lastStopAt: Date.now(),
+      });
+      log.error?.(`[${id}] channel startup skipped: ${message}`);
+      return;
+    }
     const store = getStore(channelId);
-    const accountIds = accountId ? [accountId] : plugin.config.listAccountIds(cfg);
     if (accountIds.length === 0) {
       return;
     }
 
     await Promise.all(
       accountIds.map(async (id) => {
-        if (store.tasks.has(id)) {
-          return;
-        }
-        const account = plugin.config.resolveAccount(cfg, id);
-        const enabled = plugin.config.isEnabled
-          ? plugin.config.isEnabled(account, cfg)
-          : isAccountEnabled(account);
-        if (!enabled) {
-          setRuntime(channelId, id, {
-            accountId: id,
-            running: false,
-            lastError: plugin.config.disabledReason?.(account, cfg) ?? "disabled",
-          });
-          return;
-        }
-
-        let configured = true;
-        if (plugin.config.isConfigured) {
-          configured = await plugin.config.isConfigured(account, cfg);
-        }
-        if (!configured) {
-          setRuntime(channelId, id, {
-            accountId: id,
-            running: false,
-            lastError: plugin.config.unconfiguredReason?.(account, cfg) ?? "not configured",
-          });
-          return;
-        }
-
-        const abort = new AbortController();
-        store.aborts.set(id, abort);
-        setRuntime(channelId, id, {
-          accountId: id,
-          running: true,
-          lastStartAt: Date.now(),
-          lastError: null,
-        });
-
-        const log = channelLogs[channelId];
-        const task = startAccount({
-          cfg,
-          accountId: id,
-          account,
-          runtime: channelRuntimeEnvs[channelId],
-          abortSignal: abort.signal,
-          log,
-          getStatus: () => getRuntime(channelId, id),
-          setStatus: (next) => setRuntime(channelId, id, next),
-        });
-        const tracked = Promise.resolve(task)
-          .catch((err) => {
-            const message = formatErrorMessage(err);
-            setRuntime(channelId, id, { accountId: id, lastError: message });
-            log.error?.(`[${id}] channel exited: ${message}`);
-          })
-          .finally(() => {
-            store.aborts.delete(id);
-            store.tasks.delete(id);
+        try {
+          if (store.tasks.has(id)) {
+            return;
+          }
+          const account = plugin.config.resolveAccount(cfg, id);
+          const enabled = plugin.config.isEnabled
+            ? plugin.config.isEnabled(account, cfg)
+            : isAccountEnabled(account);
+          if (!enabled) {
             setRuntime(channelId, id, {
               accountId: id,
               running: false,
-              lastStopAt: Date.now(),
+              lastError: plugin.config.disabledReason?.(account, cfg) ?? "disabled",
             });
+            return;
+          }
+
+          let configured = true;
+          if (plugin.config.isConfigured) {
+            configured = await plugin.config.isConfigured(account, cfg);
+          }
+          if (!configured) {
+            setRuntime(channelId, id, {
+              accountId: id,
+              running: false,
+              lastError: plugin.config.unconfiguredReason?.(account, cfg) ?? "not configured",
+            });
+            return;
+          }
+
+          const abort = new AbortController();
+          store.aborts.set(id, abort);
+          setRuntime(channelId, id, {
+            accountId: id,
+            running: true,
+            lastStartAt: Date.now(),
+            lastError: null,
           });
-        store.tasks.set(id, tracked);
+
+          const task = startAccount({
+            cfg,
+            accountId: id,
+            account,
+            runtime: channelRuntimeEnvs[channelId],
+            abortSignal: abort.signal,
+            log,
+            getStatus: () => getRuntime(channelId, id),
+            setStatus: (next) => setRuntime(channelId, id, next),
+          });
+          const tracked = Promise.resolve(task)
+            .catch((err) => {
+              const message = formatErrorMessage(err);
+              setRuntime(channelId, id, { accountId: id, lastError: message });
+              log.error?.(`[${id}] channel exited: ${message}`);
+            })
+            .finally(() => {
+              store.aborts.delete(id);
+              store.tasks.delete(id);
+              setRuntime(channelId, id, {
+                accountId: id,
+                running: false,
+                lastStopAt: Date.now(),
+              });
+            });
+          store.tasks.set(id, tracked);
+        } catch (err) {
+          const message = formatErrorMessage(err);
+          store.aborts.delete(id);
+          store.tasks.delete(id);
+          setRuntime(channelId, id, {
+            accountId: id,
+            running: false,
+            lastError: message,
+            lastStopAt: Date.now(),
+          });
+          log.error?.(`[${id}] channel startup failed: ${message}`);
+        }
       }),
     );
   };
@@ -231,7 +259,27 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
 
   const startChannels = async () => {
     for (const plugin of listChannelPlugins()) {
-      await startChannel(plugin.id);
+      try {
+        await startChannel(plugin.id);
+      } catch (err) {
+        const message = formatErrorMessage(err);
+        let id = DEFAULT_ACCOUNT_ID;
+        try {
+          id = resolveChannelDefaultAccountId({
+            plugin,
+            cfg: loadConfig(),
+          });
+        } catch {
+          // Keep gateway startup responsive even if config loading is the failure source.
+        }
+        setRuntime(plugin.id, id, {
+          accountId: id,
+          running: false,
+          lastError: message,
+          lastStopAt: Date.now(),
+        });
+        channelLogs[plugin.id].error?.(`[${id}] channel startup failed: ${message}`);
+      }
     }
   };
 
@@ -265,30 +313,57 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     const channelAccounts: ChannelRuntimeSnapshot["channelAccounts"] = {};
     for (const plugin of listChannelPlugins()) {
       const store = getStore(plugin.id);
-      const accountIds = plugin.config.listAccountIds(cfg);
-      const defaultAccountId = resolveChannelDefaultAccountId({
-        plugin,
-        cfg,
-        accountIds,
-      });
+      let accountIds: string[];
+      let defaultAccountId: string;
+      try {
+        accountIds = plugin.config.listAccountIds(cfg);
+        defaultAccountId = resolveChannelDefaultAccountId({
+          plugin,
+          cfg,
+          accountIds,
+        });
+      } catch (err) {
+        const message = formatErrorMessage(err);
+        defaultAccountId = DEFAULT_ACCOUNT_ID;
+        accountIds = [defaultAccountId];
+        setRuntime(plugin.id, defaultAccountId, {
+          accountId: defaultAccountId,
+          running: false,
+          lastError: message,
+          lastStopAt: Date.now(),
+        });
+        channelLogs[plugin.id].error?.(`[${defaultAccountId}] channel status failed: ${message}`);
+      }
       const accounts: Record<string, ChannelAccountSnapshot> = {};
       for (const id of accountIds) {
-        const account = plugin.config.resolveAccount(cfg, id);
-        const enabled = plugin.config.isEnabled
-          ? plugin.config.isEnabled(account, cfg)
-          : isAccountEnabled(account);
-        const described = plugin.config.describeAccount?.(account, cfg);
-        const configured = described?.configured;
-        const current = store.runtimes.get(id) ?? cloneDefaultRuntime(plugin.id, id);
-        const next = { ...current, accountId: id };
-        if (!next.running) {
-          if (!enabled) {
-            next.lastError ??= plugin.config.disabledReason?.(account, cfg) ?? "disabled";
-          } else if (configured === false) {
-            next.lastError ??= plugin.config.unconfiguredReason?.(account, cfg) ?? "not configured";
+        try {
+          const account = plugin.config.resolveAccount(cfg, id);
+          const enabled = plugin.config.isEnabled
+            ? plugin.config.isEnabled(account, cfg)
+            : isAccountEnabled(account);
+          const described = plugin.config.describeAccount?.(account, cfg);
+          const configured = described?.configured;
+          const current = store.runtimes.get(id) ?? cloneDefaultRuntime(plugin.id, id);
+          const next = { ...current, accountId: id };
+          if (!next.running) {
+            if (!enabled) {
+              next.lastError ??= plugin.config.disabledReason?.(account, cfg) ?? "disabled";
+            } else if (configured === false) {
+              next.lastError ??=
+                plugin.config.unconfiguredReason?.(account, cfg) ?? "not configured";
+            }
           }
+          accounts[id] = next;
+        } catch (err) {
+          const message = formatErrorMessage(err);
+          accounts[id] = setRuntime(plugin.id, id, {
+            accountId: id,
+            running: false,
+            lastError: message,
+            lastStopAt: Date.now(),
+          });
+          channelLogs[plugin.id].error?.(`[${id}] channel status failed: ${message}`);
         }
-        accounts[id] = next;
       }
       const defaultAccount =
         accounts[defaultAccountId] ?? cloneDefaultRuntime(plugin.id, defaultAccountId);

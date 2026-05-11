@@ -15,6 +15,7 @@ const tempDirs: string[] = [];
 const prevBundledDir = process.env.ARGENT_BUNDLED_PLUGINS_DIR;
 const prevStateDir = process.env.ARGENT_STATE_DIR;
 const prevOrgId = process.env.ARGENT_ORG_ID;
+const prevSkipPlugins = process.env.ARGENT_SKIP_PLUGINS;
 const EMPTY_PLUGIN_SCHEMA = { type: "object", additionalProperties: false, properties: {} };
 
 function makeTempDir() {
@@ -72,9 +73,42 @@ afterEach(() => {
   } else {
     process.env.ARGENT_ORG_ID = prevOrgId;
   }
+  if (prevSkipPlugins === undefined) {
+    delete process.env.ARGENT_SKIP_PLUGINS;
+  } else {
+    process.env.ARGENT_SKIP_PLUGINS = prevSkipPlugins;
+  }
 });
 
 describe("loadArgentPlugins", () => {
+  it("honors ARGENT_SKIP_PLUGINS as a process-local plugin disable switch", () => {
+    const bundledDir = makeTempDir();
+    writePlugin({
+      id: "bundled",
+      body: `export default { id: "bundled", register() {} };`,
+      dir: bundledDir,
+      filename: "bundled.ts",
+    });
+    process.env.ARGENT_BUNDLED_PLUGINS_DIR = bundledDir;
+    process.env.ARGENT_SKIP_PLUGINS = "1";
+
+    const registry = loadArgentPlugins({
+      cache: false,
+      config: {
+        plugins: {
+          allow: ["bundled"],
+          entries: {
+            bundled: { enabled: true },
+          },
+        },
+      },
+    });
+
+    const bundled = registry.plugins.find((entry) => entry.id === "bundled");
+    expect(bundled?.status).toBe("disabled");
+    expect(bundled?.error).toBe("plugins disabled");
+  });
+
   it("disables bundled plugins by default", () => {
     const bundledDir = makeTempDir();
     writePlugin({

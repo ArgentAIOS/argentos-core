@@ -1,0 +1,12 @@
+{
+  "tool": "aos-telegram",
+  "backend": "telegram-bot-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "health.check": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "message.send": "write"
+  }
+}

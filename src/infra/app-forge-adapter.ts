@@ -111,6 +111,14 @@ function cloneTable(table: AppForgeTable): AppForgeTable {
       options: field.options ? [...field.options] : undefined,
     })),
     records: table.records.map(cloneRecord),
+    views: table.views
+      ? table.views.map((view) =>
+          view !== null && typeof view === "object" && !Array.isArray(view)
+            ? { ...(view as Record<string, unknown>) }
+            : view,
+        )
+      : undefined,
+    activeCell: table.activeCell ? { ...table.activeCell } : undefined,
   };
 }
 

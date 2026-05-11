@@ -296,6 +296,10 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         purpose: "Deliver the Morning Brief podcast status to the operator.",
       },
     ],
+    dependencies: [
+      { kind: "connector", id: "aos-telegram", label: "Telegram" },
+      { kind: "channel", id: "telegram.workflow", label: "Telegram delivery channel" },
+    ],
     nodes: [
       agent(
         "github-scout",
@@ -356,7 +360,8 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         type: "send_message",
         channelType: "telegram",
         channelId: "{{operator.phone.telegramChatId}}",
-        template: "AI Morning Brief podcast finished: {{previous.text}}",
+        template: "AI Morning Brief podcast audio is ready: {{previous.json.path}}",
+        mediaTemplate: "{{previous.json.path}}",
       }),
       docOutput(
         "run-ledger",

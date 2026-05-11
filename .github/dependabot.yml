@@ -18,6 +18,17 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # Keep all pi-ai / pi-coding-agent / pi-tui / pi-agent-core packages in
+      # lockstep — partial bumps trip cross-package type drift. Group covers
+      # both the legacy @mariozechner/* scope and the new @earendil-works/*
+      # scope so future renames pick up the same lockstep treatment.
+      pi-packages:
+        patterns:
+          - "@mariozechner/pi-*"
+          - "@earendil-works/pi-*"
+        update-types:
+          - minor
+          - patch
       production:
         dependency-type: production
         update-types:

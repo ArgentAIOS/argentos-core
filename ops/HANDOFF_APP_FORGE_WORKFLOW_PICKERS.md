@@ -1,12 +1,5 @@
 # AppForge Workflow Picker Contract
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core-appforge-picker
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation work
-
 ## Purpose
 
 Workflows can populate AppForge binding dropdowns without importing AppForge UI internals.

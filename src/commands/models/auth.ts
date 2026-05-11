@@ -23,7 +23,7 @@ import { resolvePluginProviders } from "../../plugins/providers.js";
 import { stylePromptHint, stylePromptMessage } from "../../terminal/prompt-style.js";
 import { createClackPrompter } from "../../wizard/clack-prompter.js";
 import { validateAnthropicSetupToken } from "../auth-token.js";
-import { isRemoteEnvironment } from "../oauth-env.js";
+import { isHeadlessSession, isRemoteEnvironment } from "../oauth-env.js";
 import { createVpsAwareOAuthHandlers } from "../oauth-flow.js";
 import { applyAuthProfileConfig } from "../onboard-auth.js";
 import { writeOAuthCredentials } from "../onboard-auth.js";
@@ -245,6 +245,29 @@ type LoginOptions = {
   setDefault?: boolean;
 };
 
+/**
+ * Post-auth sanity check for the Codex device-code flow. The flow can return
+ * a partial / empty credential after a timeout or expired code; downstream
+ * writes would silently persist something useless. Fail loud here so the
+ * user sees the failure and re-runs.
+ *
+ * Equivalent to subctl's auth.json `tokens` field check.
+ *
+ * Exported for direct unit testing.
+ */
+export function assertOpenAICodexCredentialsValid(
+  creds: { access?: string; refresh?: string } | null | undefined,
+): asserts creds is { access: string; refresh: string } {
+  if (!creds) {
+    throw new Error("OpenAI Codex OAuth did not return credentials.");
+  }
+  if (!creds.access || !creds.refresh) {
+    throw new Error(
+      `OpenAI Codex OAuth completed but tokens are missing — re-run \`${formatCliCommand("argent models auth login --provider openai-codex")}\`.`,
+    );
+  }
+}
+
 async function runBuiltInOpenAICodexLogin(params: {
   opts: LoginOptions;
   runtime: RuntimeEnv;
@@ -254,13 +277,38 @@ async function runBuiltInOpenAICodexLogin(params: {
   const resolveOAuthEmail = (value: unknown) =>
     typeof value === "string" && value.trim() ? value.trim() : "default";
 
+  // Headless / SSH detection: codex's OAuth flow needs a browser somewhere,
+  // but on a remote shell the local machine has none. Print an explicit
+  // device-code education message and skip the local browser-open attempt.
+  // The device-auth API endpoints we hit (server-side) require the per-account
+  // "Enable device code authorization for Codex" toggle in ChatGPT web →
+  // Settings → Security; without it the user gets a confusing error and a
+  // round-trip back to settings — the inline note cuts a support cycle.
+  const headless = isHeadlessSession();
+  if (headless) {
+    await params.prompter.note(
+      [
+        "Detected headless / SSH session — using device-code flow.",
+        "Codex will print a URL and a short code. Open the URL in any browser,",
+        "paste the code, and approve.",
+        "",
+        "NOTE: device-code requires that you've enabled it once in",
+        'ChatGPT web → Settings → Security → "Enable device code authorization',
+        "for Codex\" for the account you're authenticating.",
+      ].join("\n"),
+      "OpenAI Codex headless login",
+    );
+  }
+
   const creds = await loginOpenAICodexDevice({
     onStart: async (info) => {
       params.runtime.log("Open this URL in your browser:");
       params.runtime.log(`  ${info.verificationUri}`);
       params.runtime.log("Enter this code:");
       params.runtime.log(`  ${info.userCode}`);
-      await openUrl(info.verificationUri);
+      if (!headless) {
+        await openUrl(info.verificationUri);
+      }
       await params.prompter.note(
         [`Open: ${info.verificationUri}`, `Code: ${info.userCode}`].join("\n"),
         "OpenAI Codex device login",
@@ -271,9 +319,7 @@ async function runBuiltInOpenAICodexLogin(params: {
     },
   });
 
-  if (!creds) {
-    throw new Error("OpenAI Codex OAuth did not return credentials.");
-  }
+  assertOpenAICodexCredentialsValid(creds);
 
   await writeOAuthCredentials("openai-codex", creds, params.agentDir);
   const profileId = `openai-codex:${resolveOAuthEmail((creds as Record<string, unknown>).email)}`;

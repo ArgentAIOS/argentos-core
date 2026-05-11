@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkAppForgeRevision,
   projectLegacyAppForgeBase,
+  validateAppForgeFieldDefinitions,
   validateAppForgeRecordValues,
   type AppForgeField,
 } from "./app-forge-model.js";
@@ -83,6 +84,66 @@ describe("AppForge core model", () => {
     ]);
   });
 
+  it("validates field definitions before they become durable table metadata", () => {
+    const result = validateAppForgeFieldDefinitions([
+      { id: "name", name: "", type: "text" },
+      { id: "name", name: "Duplicate Name", type: "text" },
+      {
+        id: "status",
+        name: "Status",
+        type: "single_select",
+        selectOptions: [
+          { id: "opt-open", label: "Open" },
+          { id: "opt-empty", label: "" },
+          { id: "opt-open-2", label: "Open" },
+        ],
+        defaultValue: "Missing",
+      },
+      {
+        id: "files",
+        name: "Files",
+        type: "attachment",
+        defaultValue: ["brief.pdf"],
+      },
+    ]);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((error) => error.code)).toEqual([
+      "missing_name",
+      "duplicate_field_id",
+      "missing_option",
+      "duplicate_option",
+      "invalid_default",
+      "invalid_default",
+    ]);
+  });
+
+  it("uses rich select options when validating record values and defaults", () => {
+    const fieldsWithRichOptions: AppForgeField[] = [
+      {
+        id: "status",
+        name: "Status",
+        type: "single_select",
+        selectOptions: [
+          { id: "opt-plan", label: "Planning", color: "sky" },
+          { id: "opt-review", label: "Review", color: "amber" },
+        ],
+        defaultValue: "Review",
+      },
+    ];
+
+    expect(validateAppForgeFieldDefinitions(fieldsWithRichOptions)).toEqual({
+      ok: true,
+      errors: [],
+    });
+    expect(validateAppForgeRecordValues(fieldsWithRichOptions, { status: "Review" })).toMatchObject(
+      { ok: true, values: { status: "Review" } },
+    );
+    expect(
+      validateAppForgeRecordValues(fieldsWithRichOptions, { status: "Blocked" }).errors,
+    ).toEqual([expect.objectContaining({ code: "invalid_option" })]);
+  });
+
   it("returns a conflict when expected revision is stale", () => {
     expect(checkAppForgeRevision(3, undefined)).toEqual({ ok: true });
     expect(checkAppForgeRevision(3, 3)).toEqual({ ok: true });
@@ -115,7 +176,13 @@ describe("AppForge core model", () => {
                 fields: [
                   { id: "name", name: "Name", type: "text", required: true },
                   { id: "notes", name: "Notes", type: "long_text" },
-                  { id: "status", name: "Status", type: "single_select", options: ["Review"] },
+                  {
+                    id: "status",
+                    name: "Status",
+                    type: "single_select",
+                    defaultValue: "Review",
+                    selectOptions: [{ id: "opt-review", label: "Review", color: "amber" }],
+                  },
                   { id: "score", name: "Score", type: "number" },
                   { id: "files", name: "Files", type: "attachment" },
                   { id: "related", name: "Related", type: "linked_record" },
@@ -164,6 +231,11 @@ describe("AppForge core model", () => {
         files: ["brief.pdf", "https://example.com/mock.png"],
         related: ["record-2"],
       },
+    });
+    expect(base.tables[0]?.fields[2]).toMatchObject({
+      defaultValue: "Review",
+      options: ["Review"],
+      selectOptions: [{ id: "opt-review", label: "Review", color: "amber" }],
     });
   });
 });

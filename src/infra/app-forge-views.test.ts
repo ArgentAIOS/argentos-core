@@ -222,4 +222,72 @@ describe("AppForge saved named views", () => {
       items: [],
     });
   });
+
+  it("survives a full save/reload metadata round-trip with the active view selection intact", () => {
+    // Simulates the gateway-backed durability path the dashboard depends on:
+    //   1. Operator creates a named view + activates it.
+    //   2. The dashboard merges named-view state into the base metadata.
+    //   3. The metadata blob is persisted (gateway / metadata fallback).
+    //   4. Operator restarts (browser close + token rotation).
+    //   5. Dashboard projects views back from metadata.
+    // The active view selection MUST survive — that's the regression that
+    // motivates moving view state out of localStorage.
+    const tables = base(["table-leads", "table-deals"]);
+
+    const initial = normalizeAppForgeNamedViews(undefined);
+    const afterSave = setActiveAppForgeNamedView(
+      putAppForgeNamedView(initial, {
+        id: "view-pipeline",
+        tableId: "table-deals",
+        name: "Pipeline",
+        viewMode: "kanban",
+        settings: {
+          filterText: "Open",
+          sortFieldId: "close_date",
+          sortDirection: "desc",
+          groupFieldId: "stage",
+        },
+        createdAt: "2026-05-06T19:00:00.000Z",
+        updatedAt: "2026-05-06T19:00:00.000Z",
+      }),
+      "table-deals",
+      "view-pipeline",
+    );
+
+    const persisted = mergeAppForgeNamedViewsIntoMetadata(
+      {
+        appForge: {
+          structured: {
+            baseId: "base-1",
+            activeTableId: "table-deals",
+            tables: [{ id: "table-deals", name: "Deals" }],
+          },
+        },
+      },
+      afterSave,
+    );
+
+    // Round-trip through JSON to mimic what the gateway/metadata fallback
+    // path does end-to-end (serialize, transit, deserialize).
+    const reloaded = JSON.parse(JSON.stringify(persisted));
+    const projected = projectAppForgeNamedViewsFromMetadata(reloaded, tables);
+
+    expect(projected.activeViewIdByTable).toEqual({ "table-deals": "view-pipeline" });
+    expect(projected.items).toEqual([
+      {
+        id: "view-pipeline",
+        tableId: "table-deals",
+        name: "Pipeline",
+        viewMode: "kanban",
+        settings: {
+          filterText: "Open",
+          sortFieldId: "close_date",
+          sortDirection: "desc",
+          groupFieldId: "stage",
+        },
+        createdAt: "2026-05-06T19:00:00.000Z",
+        updatedAt: "2026-05-06T19:00:00.000Z",
+      },
+    ]);
+  });
 });

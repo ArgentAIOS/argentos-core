@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CronJob } from "../../cron/types.js";
+import type { StorageConfig } from "../../data/storage-config.js";
 import type { WorkflowRow } from "../../infra/workflow-execution-service.js";
 import {
   activeWorkflowScheduleConflictIssues,
   duplicatedWorkflowShouldStartActive,
+  reconcileWorkflowScheduleCronJobs,
   syncWorkflowScheduleCronJob,
 } from "./workflows.js";
 
@@ -47,6 +49,14 @@ function cronJob(overrides: Partial<CronJob> = {}): CronJob {
 function fakeSql() {
   return vi.fn(async () => []) as unknown as ReturnType<typeof import("postgres").default>;
 }
+
+const sqliteStorage: StorageConfig = {
+  backend: "sqlite",
+  readFrom: "sqlite",
+  writeTo: ["sqlite"],
+  postgres: null,
+  redis: null,
+};
 
 describe("syncWorkflowScheduleCronJob", () => {
   it("adds an isolated workflowRun cron job for active schedule triggers", async () => {
@@ -132,6 +142,32 @@ describe("syncWorkflowScheduleCronJob", () => {
 
     expect(result).toMatchObject({ action: "removed", jobId: null });
     expect(cron.remove).toHaveBeenCalledWith("cron-paused");
+  });
+});
+
+describe("reconcileWorkflowScheduleCronJobs", () => {
+  it("reports local no-Postgres cron reconciliation as skipped readiness, not a hard failure", async () => {
+    const cron = {
+      list: vi.fn(),
+      add: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const result = await reconcileWorkflowScheduleCronJobs(cron as never, {
+      storage: sqliteStorage,
+    });
+
+    expect(result).toMatchObject({
+      reconciled: [],
+      skipped: true,
+      reason: "postgres_not_configured",
+      message: expect.stringContaining("local/parity gateways"),
+    });
+    expect(cron.list).not.toHaveBeenCalled();
+    expect(cron.add).not.toHaveBeenCalled();
+    expect(cron.update).not.toHaveBeenCalled();
+    expect(cron.remove).not.toHaveBeenCalled();
   });
 });
 

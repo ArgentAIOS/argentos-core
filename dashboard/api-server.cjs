@@ -311,41 +311,139 @@ app.use("/api", (req, res, next) => {
   });
 });
 
-// Optional bearer token auth — if DASHBOARD_API_TOKEN is set, enforce it
+// Dashboard API auth — accepts DASHBOARD_API_TOKEN env var OR the gateway auth
+// token from argent.json. This unifies auth so the browser-supplied
+// ?token=<gateway-token> works for both the gateway WebSocket AND the
+// REST API on this dashboard sidecar. Re-applied from commit eb93ca3b
+// "fix: api-server accepts gateway auth token", which was reverted by
+// 41f5caaa "fix: seed workspace bootstrap for Core installs". Without this,
+// the AppForge tokenized browser smoke and the Rust installed-daemon
+// receipt-persistence proof both fail with 401 on every REST call.
+//
+// SECURITY NOTE: The public-core route-blocking gate above (the
+// `getDashboardSurfaceProfile`/`isBlockedInPublicCore` middleware) runs
+// BEFORE this auth gate, so accepting an additional token here cannot
+// widen the public-core surface — blocked routes still 403 regardless of
+// which accepted token authenticates.
 const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
-if (DASHBOARD_API_TOKEN) {
-  app.use("/api/", (req, res, next) => {
-    // Allow preflight and health check (no auth needed)
-    if (req.method === "OPTIONS") return next();
-    if (req.path === "/api/health" || req.path === "/health") return next();
-    if (req.originalUrl?.includes("/api/settings/auth-profiles/openai-codex/oauth/callback")) {
-      return next();
-    }
-    if (req.path.endsWith("/events")) return next(); // SSE — EventSource can't send headers
-    if (req.path === "/media" || req.path === "/api/media") return next(); // Media served via <img>/<video>/<audio> tags — has own path-based security
-    if (req.path === "/proxy/tts/elevenlabs" || req.path === "/api/proxy/tts/elevenlabs")
-      return next(); // Browser TTS calls may not have access to dashboard API token
-    if (req.path === "/proxy/tts/openai" || req.path === "/api/proxy/tts/openai") return next();
-    if (req.path === "/proxy/tts/fish" || req.path === "/api/proxy/tts/fish") return next();
-    if (req.path.startsWith("/license")) return next(); // License endpoints need to work before auth is established
-    const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
-    if (!token) {
-      return res.status(401).json({ error: "Authorization required" });
-    }
-    try {
-      const a = Buffer.from(token);
-      const b = Buffer.from(DASHBOARD_API_TOKEN);
-      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-        return res.status(401).json({ error: "Invalid token" });
-      }
-    } catch {
+
+// Per-request gateway-token resolver — kills the 401-after-rotation drift class.
+//
+// Background: the gateway's WS path re-reads `gateway.auth.token` from
+// `~/.argentos/argent.json` on each connect (PR #130 / `f2ae17a0`).
+// The dashboard sidecar (this file) used to read it ONCE at module load
+// inside an IIFE and cache it forever. When something writes a new token
+// to argent.json (`argent update`, the wizard, the browser auto-gen path
+// in `src/browser/control-auth.ts`, etc.), the gateway picks it up but
+// this api-server didn't — drift → every `/api/*` returns 401 until the
+// daemon restarts (`launchctl kickstart -k gui/$UID/ai.argent.dashboard-api`).
+//
+// This was originally flagged in PR #130's worker report as follow-up #4:
+//   "dashboard sidecar reads `gateway.auth.token` once at module load —
+//    Fix-1 doesn't cover this for the api-server process."
+// PR #160 / #161 / #163 fixed CLIENT-side resolution (localStorage, URL
+// fallback, server-side injection) but never the api-server SERVER-side
+// caching bug. Each subsequent `argent update` re-triggered the cascade.
+//
+// Mirrors the per-request pattern shipped in `dashboard/static-server.cjs`
+// (PR #161) and `src/gateway/gateway-proxy-token.ts` (PR #163).
+//
+// Cost is one `fs.existsSync` + one tiny JSON.parse per request — negligible
+// on loopback and well worth the correctness. No TTL cache: the brief
+// (and Jason) explicitly chose correctness over micro-optimization, and
+// gating mid-rotation correctness behind a 1s window would only restore a
+// thinner version of the same drift class. If a future benchmark surfaces
+// real impact, a tiny TTL can be added here without touching callers.
+function resolveGatewayConfigToken() {
+  try {
+    const argentConfigPath = path.join(
+      process.env.HOME || os.homedir(),
+      ".argentos",
+      "argent.json",
+    );
+    if (!fs.existsSync(argentConfigPath)) return null;
+    const cfg = JSON.parse(fs.readFileSync(argentConfigPath, "utf-8"));
+    const token = cfg?.gateway?.auth?.token;
+    return typeof token === "string" && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveAcceptedTokens() {
+  return [DASHBOARD_API_TOKEN, resolveGatewayConfigToken()].filter(Boolean);
+}
+
+// Install the auth middleware unconditionally. The set of accepted tokens is
+// resolved per-request via resolveAcceptedTokens() so that:
+//   1. A token written to argent.json AFTER boot (post-install wizard, first
+//      run, gateway auto-gen) is recognized without restarting api-server.
+//   2. A token rotated in argent.json (any future regenerator) is recognized
+//      without restarting api-server — extinguishes the 401 drift class.
+//   3. If both sources are empty at request time, the gate is open (matches
+//      the prior "auth DISABLED" behavior). This preserves behavior for
+//      tests / fresh installs while still protecting any normal install.
+app.use("/api/", (req, res, next) => {
+  // Allow preflight and health check (no auth needed)
+  if (req.method === "OPTIONS") return next();
+  if (req.path === "/api/health" || req.path === "/health") return next();
+  if (req.originalUrl?.includes("/api/settings/auth-profiles/openai-codex/oauth/callback")) {
+    return next();
+  }
+  if (req.path.endsWith("/events")) return next(); // SSE — EventSource can't send headers
+  if (req.path === "/media" || req.path === "/api/media") return next(); // Media served via <img>/<video>/<audio> tags — has own path-based security
+  if (req.path === "/proxy/tts/elevenlabs" || req.path === "/api/proxy/tts/elevenlabs")
+    return next(); // Browser TTS calls may not have access to dashboard API token
+  if (req.path === "/proxy/tts/openai" || req.path === "/api/proxy/tts/openai") return next();
+  if (req.path === "/proxy/tts/fish" || req.path === "/api/proxy/tts/fish") return next();
+  if (req.path.startsWith("/license")) return next(); // License endpoints need to work before auth is established
+
+  const acceptedTokens = resolveAcceptedTokens();
+  if (acceptedTokens.length === 0) {
+    // No tokens configured at all — auth effectively disabled (matches
+    // legacy fresh-install behavior). The startup log emits a one-time
+    // warning so an operator running without auth notices it.
+    return next();
+  }
+
+  const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
+  if (!token) {
+    return res.status(401).json({ error: "Authorization required" });
+  }
+  try {
+    const a = Buffer.from(token);
+    const matched = acceptedTokens.some((accepted) => {
+      const b = Buffer.from(accepted);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    });
+    if (!matched) {
       return res.status(401).json({ error: "Invalid token" });
     }
-    next();
-  });
-  console.log("[Security] Dashboard API token auth ENABLED");
-} else {
-  console.log("[Security] Dashboard API token auth DISABLED (set DASHBOARD_API_TOKEN to enable)");
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+  next();
+});
+
+// One-time startup log reflects the AT-BOOT auth state. Per-request
+// resolution may differ if argent.json changes, but that's invisible to
+// the operator other than via "401 → 200 without restart" — exactly the
+// behavior we want.
+{
+  const bootTokens = resolveAcceptedTokens();
+  if (bootTokens.length > 0) {
+    const sources = [
+      DASHBOARD_API_TOKEN ? "DASHBOARD_API_TOKEN" : null,
+      resolveGatewayConfigToken() ? "gateway.auth.token" : null,
+    ].filter(Boolean);
+    console.log(
+      `[Security] Dashboard API token auth ENABLED (per-request; sources at boot: ${sources.join(", ")})`,
+    );
+  } else {
+    console.log(
+      "[Security] Dashboard API token auth DISABLED (set DASHBOARD_API_TOKEN or gateway.auth.token to enable; resolved per-request)",
+    );
+  }
 }
 
 app.use(express.json({ limit: "50mb" }));
@@ -9303,6 +9401,12 @@ const KNOWN_API_VARIABLES = [
     category: "Media",
     description: "HeyGen video generation",
   },
+  {
+    variable: "COMPOSIO_API_KEY",
+    service: "Composio",
+    category: "Connectors",
+    description: "Composio agent-infrastructure platform (1,000+ toolkits, BYO key)",
+  },
 ];
 
 // ---- Secret Encryption (AES-256-GCM, master key from Keychain / file) ----
@@ -9888,6 +9992,195 @@ app.get("/api/settings/service-keys/audit", async (req, res) => {
   } catch (err) {
     console.error("[ServiceKeys] Audit query error:", err);
     res.status(500).json({ error: "Failed to query service key audit" });
+  }
+});
+
+// ============================================
+// COMPOSIO CONNECTOR API (slice 2.2)
+// ============================================
+//
+// Decision map (locked per ops/HANDOFF_OPEN_DESIGN_COMPOSIO_INTEGRATION_REPLY.md):
+//   - Q1 user_id source       : agentId from query/body, normalized server-side
+//   - Q2 secret store         : COMPOSIO_API_KEY in service-keys.json (existing)
+//   - Q3 AOS overlap policy   : flags.preferComposio per-agent override
+//   - Q4 default-off gate     : flags.enabled false until explicit opt-in
+//   - Q4 Tool Router beta     : flags.toolRouter.enabled false until explicit opt-in
+//
+// The endpoints surface the same shape the slice 2.2 settings panel
+// renders. The dist module provides the canonical persistence + probe;
+// when it is unavailable (e.g. fresh checkout, dist not yet built) the
+// endpoints degrade to a stable shape so the UI stays usable.
+
+let _composioConnectorModulePromise = null;
+let _composioMissingLoggedOnce = false;
+// Resolves to the composio connector module, or `null` when the compiled dist
+// is unavailable (fresh checkout, dist not yet built, or installed bundle
+// shipped without this chunk). Callers MUST treat a `null` return as
+// "feature disabled" and respond with 503; this loader never throws for the
+// expected `ERR_MODULE_NOT_FOUND` case, so the gateway log stays clean.
+function loadComposioConnectorModule() {
+  if (_composioConnectorModulePromise) return _composioConnectorModulePromise;
+  _composioConnectorModulePromise = import("../dist/connectors/composio/index.js").then(
+    (mod) => mod,
+    (err) => {
+      const isMissing = err?.code === "ERR_MODULE_NOT_FOUND";
+      if (isMissing) {
+        // Expected when the connector chunk wasn't emitted by tsdown.
+        // Log a single info-level breadcrumb the first time we hit it so
+        // operators can see the feature is intentionally degraded without
+        // the log turning into a per-request stack-trace stream.
+        if (!_composioMissingLoggedOnce) {
+          console.log(
+            "[Composio] dist/connectors/composio/index.js not present; flag persistence + connectivity probe disabled. (Run `pnpm build` to enable.)",
+          );
+          _composioMissingLoggedOnce = true;
+        }
+      } else {
+        // Unexpected import error — keep this loud so it isn't lost.
+        console.error("[Composio] connector module import failed:", err);
+      }
+      // Allow a future rebuild to retry by clearing the cache after 30s.
+      // The dashboard runs long-lived so a one-shot failure should not
+      // stick forever.
+      setTimeout(() => {
+        _composioConnectorModulePromise = null;
+      }, 30_000);
+      return null;
+    },
+  );
+  return _composioConnectorModulePromise;
+}
+
+function findComposioServiceKeyEntry() {
+  try {
+    const data = readServiceKeys();
+    return (data.keys || []).find((k) => k.variable === "COMPOSIO_API_KEY");
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/connectors/composio/status?agentId=<id>
+// Returns whether COMPOSIO_API_KEY is configured (masked tail only) plus
+// the per-agent flags. Never reveals the raw key.
+app.get("/api/connectors/composio/status", async (req, res) => {
+  try {
+    const agentId =
+      typeof req.query?.agentId === "string" && req.query.agentId.trim().length > 0
+        ? req.query.agentId.trim()
+        : undefined;
+    const entry = findComposioServiceKeyEntry();
+    const configured = Boolean(entry && entry.value);
+    let apiKeyTail = null;
+    if (configured) {
+      const decrypted = tryDecryptSecret(entry.value);
+      if (!decrypted.error && typeof decrypted.value === "string" && decrypted.value.length > 0) {
+        const trimmed = decrypted.value.trim();
+        apiKeyTail =
+          trimmed.length <= 4 ? "*".repeat(Math.max(trimmed.length, 1)) : `…${trimmed.slice(-4)}`;
+      }
+    }
+
+    let flags = {
+      enabled: false,
+      preferComposio: [],
+      toolRouter: { enabled: false },
+    };
+    let flagsAvailable = false;
+    if (agentId) {
+      // loadComposioConnectorModule resolves to null when the dist chunk is
+      // missing; treat that as "feature disabled" and degrade the response
+      // to the default flag shape instead of throwing.
+      const mod = await loadComposioConnectorModule();
+      if (mod && typeof mod.readComposioFlagsForAgent === "function") {
+        try {
+          flags = mod.readComposioFlagsForAgent(agentId);
+          flagsAvailable = true;
+        } catch (err) {
+          console.warn("[Composio] flags read failed for agent:", err?.message || err);
+        }
+      }
+    }
+
+    res.json({
+      agentId: agentId || null,
+      configured,
+      apiKeyTail,
+      enabled: entry?.enabled !== false,
+      allowedAgents: Array.isArray(entry?.allowedAgents) ? entry.allowedAgents : [],
+      flags,
+      flagsAvailable,
+      keyId: entry?.id || null,
+      apiKeyVariable: "COMPOSIO_API_KEY",
+      learnMoreUrl: "https://app.composio.dev",
+    });
+  } catch (err) {
+    console.error("[Composio] status error:", err);
+    res.status(500).json({ error: "Failed to read Composio status" });
+  }
+});
+
+// PUT /api/connectors/composio/flags
+// Body: { agentId, enabled?, toolRouterEnabled?, preferComposio? }
+app.put("/api/connectors/composio/flags", async (req, res) => {
+  try {
+    const { agentId, enabled, toolRouterEnabled, preferComposio } = req.body || {};
+    if (!agentId || typeof agentId !== "string" || !agentId.trim()) {
+      return res.status(400).json({ error: "agentId is required" });
+    }
+    const mod = await loadComposioConnectorModule();
+    if (!mod || typeof mod.writeComposioFlagsForAgent !== "function") {
+      return res
+        .status(503)
+        .json({ error: "Composio flags persistence unavailable in runtime build" });
+    }
+    const next = mod.writeComposioFlagsForAgent(agentId.trim(), {
+      enabled: enabled === true,
+      toolRouter: { enabled: toolRouterEnabled === true },
+      preferComposio: Array.isArray(preferComposio)
+        ? preferComposio.filter((s) => typeof s === "string")
+        : [],
+    });
+    res.json({ agentId: agentId.trim(), flags: next });
+  } catch (err) {
+    console.error("[Composio] flags write error:", err);
+    res.status(500).json({ error: "Failed to write Composio flags" });
+  }
+});
+
+// POST /api/connectors/composio/test
+// Body: { agentId } — runs the slice 2.1 connectivity probe end-to-end.
+app.post("/api/connectors/composio/test", async (req, res) => {
+  try {
+    const agentId =
+      typeof req.body?.agentId === "string" && req.body.agentId.trim().length > 0
+        ? req.body.agentId.trim()
+        : undefined;
+    if (!agentId) {
+      return res.status(400).json({ error: "agentId is required" });
+    }
+    const mod = await loadComposioConnectorModule();
+    if (!mod || typeof mod.checkComposioConnectivity !== "function") {
+      return res
+        .status(503)
+        .json({ error: "Composio connectivity probe unavailable in runtime build" });
+    }
+    const flags =
+      typeof mod.readComposioFlagsForAgent === "function"
+        ? mod.readComposioFlagsForAgent(agentId)
+        : { enabled: true };
+    // For an explicit operator-driven test we treat the request as opt-in
+    // even if the persisted gate is off — otherwise the user can never
+    // verify their key works before flipping the master switch.
+    const probeFlags = { ...flags, enabled: true };
+    const result = await mod.checkComposioConnectivity({
+      actor: { actorId: agentId },
+      flags: probeFlags,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("[Composio] connectivity test error:", err);
+    res.status(500).json({ error: "Failed to run Composio connectivity probe" });
   }
 });
 
@@ -14332,19 +14625,35 @@ app.patch("/api/settings/models", (req, res) => {
 // MODEL PROFILES API
 // ============================================
 
+// Memoize the "missing dist" log so the gateway log doesn't spam every time
+// the settings panel reloads.
+let _builtinProfilesMissingLoggedOnce = false;
+
 // GET /api/settings/model-profiles — Returns all profiles + activeProfile
 app.get("/api/settings/model-profiles", async (req, res) => {
   try {
     const config = readArgentConfig();
     const router = config.agents?.defaults?.modelRouter || {};
 
-    // Load built-in profiles from single source of truth (compiled dist)
+    // Load built-in profiles from single source of truth (compiled dist).
+    // When the dist chunk is missing (fresh checkout / partial bundle) we
+    // degrade to an empty built-in set rather than failing the request, and
+    // log only once at info level so the gateway log stays clean.
     let builtinProfiles = {};
     try {
       const { BUILTIN_PROFILES } = await import("../dist/models/builtin-profiles.js");
       builtinProfiles = BUILTIN_PROFILES || {};
-    } catch {
-      console.warn("[ModelProfiles] Could not load built-in profiles from dist, using empty set");
+    } catch (err) {
+      if (err?.code === "ERR_MODULE_NOT_FOUND") {
+        if (!_builtinProfilesMissingLoggedOnce) {
+          console.log(
+            "[ModelProfiles] dist/models/builtin-profiles.js not present; using empty built-in set. (Run `pnpm build` to enable.)",
+          );
+          _builtinProfilesMissingLoggedOnce = true;
+        }
+      } else {
+        console.warn("[ModelProfiles] Failed to load built-in profiles:", err?.message || err);
+      }
     }
 
     const profiles = { ...builtinProfiles, ...(router.profiles || {}) };
@@ -14816,13 +15125,19 @@ app.get("/api/settings/provider-models", async (req, res) => {
       if (!model) return;
       const verified = options?.verified === true;
       const source = typeof options?.source === "string" ? options.source : "configured";
+      const reasoning = typeof options?.reasoning === "boolean" ? options.reasoning : undefined;
       if (seen.has(model)) {
         // Upgrade existing rows when a live verification arrives after static/config seeding.
-        if (verified) {
-          const idx = rowIndexByModel.get(model);
-          if (typeof idx === "number" && rows[idx]) {
+        const idx = rowIndexByModel.get(model);
+        if (typeof idx === "number" && rows[idx]) {
+          if (verified) {
             rows[idx].verified = true;
             rows[idx].source = source;
+          }
+          // Late-arriving catalog data (e.g. pi catalog) carries the
+          // `reasoning` flag; promote it onto rows seeded earlier without it.
+          if (reasoning !== undefined && rows[idx].reasoning === undefined) {
+            rows[idx].reasoning = reasoning;
           }
         }
         return;
@@ -14837,6 +15152,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
         alias,
         verified,
         source,
+        ...(reasoning !== undefined ? { reasoning } : {}),
       });
     };
 
@@ -14943,6 +15259,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
         continue;
       pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
         source: "pi",
+        // GH #186: surface the catalog `reasoning` flag so the dashboard can
+        // gate the per-tier reasoningEffort selector on reasoning-capable models.
+        ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
       });
     }
 

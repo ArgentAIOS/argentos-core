@@ -280,9 +280,68 @@ vi.mock("../daemon/node-service.js", () => ({
 vi.mock("../security/audit.js", () => ({
   runSecurityAudit: mocks.runSecurityAudit,
 }));
+const rustGatewayShadowMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    reachable: true,
+    status: "ok",
+    version: "0.1.0",
+    uptimeSeconds: 12,
+    component: "argentd",
+    mode: "shadow",
+    protocolVersion: 3,
+    liveAuthority: "node",
+    gatewayAuthority: "shadow-only",
+    promotionReady: false,
+    readinessReason: "shadow parity evidence incomplete",
+    statePersistence: "memory-only",
+    baseUrl: "http://127.0.0.1:18799",
+    error: null,
+  }),
+);
+vi.mock("./status.rust-gateway-shadow.js", () => ({
+  getRustGatewayShadowSummary: rustGatewayShadowMock,
+}));
+vi.mock("./status.rust-gateway-parity-report.js", () => ({
+  getRustGatewayParityReportStatus: vi.fn().mockResolvedValue({
+    path: "/tmp/rust-gateway-parity-report.json",
+    freshness: "fresh",
+    generatedAtMs: Date.now() - 60_000,
+    ageMs: 60_000,
+    totals: { passed: 10, failed: 0, skipped: 3 },
+    promotionReady: false,
+    blockers: 0,
+    warnings: 7,
+    error: null,
+  }),
+}));
+vi.mock("./status.rust-gateway-scheduler-authority.js", () => ({
+  getRustGatewaySchedulerAuthoritySummary: vi.fn().mockResolvedValue({
+    schedulerAuthority: "node",
+    rustSchedulerAuthority: "shadow-only",
+    authorityRecord: "missing",
+    cronEnabled: true,
+    cronStorePath: "/tmp/cron/jobs.json",
+    cronJobs: 3,
+    enabledCronJobs: 2,
+    workflowRunCronJobs: 1,
+    nextWakeAtMs: 1_776_600_000_000,
+    notes: ["Node remains live scheduler authority."],
+  }),
+}));
 vi.mock("./status.executive-shadow.js", () => ({
   getExecutiveShadowSummary: vi.fn().mockResolvedValue({
     reachable: true,
+    kernelStatus: "fail-closed",
+    productionDaemon: {
+      binary: "argent-execd",
+      status: "fail-closed",
+      checkedEndpoint: "/v1/executive/readiness",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+      detail: "argent-execd reachable; readiness is fail-closed and authoritySwitchAllowed=false",
+    },
     activeLane: "operator",
     tickCount: 4,
     bootCount: 2,
@@ -294,6 +353,79 @@ vi.mock("./status.executive-shadow.js", () => ({
     lastEventSummary: "lane operator activated (lease expires at 13000)",
     lastEventType: "lane_activated",
     stateDir: "/tmp/executive",
+    readiness: {
+      status: "fail-closed",
+      mode: "shadow-readiness",
+      authoritySwitchAllowed: false,
+      promotionStatus: "blocked",
+      failClosed: true,
+      kernelShadow: {
+        reachable: true,
+        status: "fail-closed",
+        authority: "shadow",
+        wakefulness: "active",
+        agenda: {
+          activeLane: "operator",
+          pendingLanes: ["background"],
+          focus: "interactive",
+        },
+        focus: "interactive",
+        ticks: {
+          count: 4,
+          lastTickAtMs: 12222,
+          nextTickDueAtMs: 12345,
+          intervalMs: 5000,
+        },
+        reflectionQueue: {
+          status: "shadow-only",
+          depth: 1,
+          items: [
+            {
+              lane: "background",
+              priority: 50,
+              reason: "reflect",
+              requestedAtMs: 12000,
+            },
+          ],
+        },
+        persistedAt: 12222,
+        restartRecovery: {
+          model: "snapshot-plus-journal-replay",
+          status: "recovered",
+          bootCount: 2,
+          lastRecoveredAtMs: 11111,
+          journalEventCount: 8,
+          snapshotFile: "executive-state.json",
+          journalFile: "executive.journal.jsonl",
+        },
+      },
+      currentAuthority: {
+        gateway: "node",
+        scheduler: "node",
+        workflows: "node",
+        channels: "node",
+        sessions: "node",
+        executive: "shadow-only",
+      },
+      persistenceModel: {
+        snapshotFile: "executive-state.json",
+        journalFile: "executive.journal.jsonl",
+        restartRecovery: "snapshot-plus-journal-replay",
+        leaseRecovery: "tick-expiry-before-promotion",
+      },
+      promotionGates: [
+        {
+          id: "authority-boundary",
+          status: "blocked",
+          owner: "master-operator",
+          requiredProof: ["no authority switch"],
+        },
+      ],
+      gateCounts: { blocked: 1, proven: 0 },
+      nodeResponsibilities: ["gateway live authority"],
+      rustResponsibilities: ["executive shadow state"],
+      error: null,
+    },
     error: null,
   }),
 }));
@@ -338,9 +470,30 @@ describe("statusCommand", () => {
     expect(payload.securityAudit.summary.warn).toBe(1);
     expect(payload.gatewayService.label).toBe("LaunchAgent");
     expect(payload.nodeService.label).toBe("LaunchAgent");
+    expect(payload.rustGatewayShadow.reachable).toBe(true);
+    expect(payload.rustGatewayShadow.version).toBe("0.1.0");
+    expect(payload.rustGatewayShadow.protocolVersion).toBe(3);
+    expect(payload.rustGatewayShadow.gatewayAuthority).toBe("shadow-only");
+    expect(payload.rustGatewayParityReport.freshness).toBe("fresh");
+    expect(payload.rustGatewayParityReport.totals.passed).toBe(10);
+    expect(payload.rustGatewayParityReport.warnings).toBe(7);
+    expect(payload.rustGatewaySchedulerAuthority.schedulerAuthority).toBe("node");
+    expect(payload.rustGatewaySchedulerAuthority.rustSchedulerAuthority).toBe("shadow-only");
     expect(payload.executiveShadow.reachable).toBe(true);
+    expect(payload.executiveShadow.kernelStatus).toBe("fail-closed");
+    expect(payload.executiveShadow.productionDaemon).toMatchObject({
+      binary: "argent-execd",
+      status: "fail-closed",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+    });
     expect(payload.executiveShadow.activeLane).toBe("operator");
     expect(payload.executiveShadow.laneCounts.pending).toBe(2);
+    expect(payload.executiveShadow.readiness.failClosed).toBe(true);
+    expect(payload.executiveShadow.readiness.currentAuthority.gateway).toBe("node");
+    expect(payload.executiveShadow.readiness.currentAuthority.executive).toBe("shadow-only");
     expect(payload.executiveShadowKernelInspection.laneMatch).toBe(true);
   });
 
@@ -356,7 +509,18 @@ describe("statusCommand", () => {
     expect(logs.some((l) => l.includes("Dashboard"))).toBe(true);
     expect(logs.some((l) => l.includes("macos 14.0 (arm64)"))).toBe(true);
     expect(logs.some((l) => l.includes("Memory"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rust gateway shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("authority shadow-only"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rust parity report"))).toBe(true);
+    expect(logs.some((l) => l.includes("not promotion-ready"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rust scheduler authority"))).toBe(true);
+    expect(logs.some((l) => l.includes("scheduler node"))).toBe(true);
     expect(logs.some((l) => l.includes("Executive shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("kernel fail-closed"))).toBe(true);
+    expect(logs.some((l) => l.includes("production-daemon fail-closed"))).toBe(true);
+    expect(logs.some((l) => l.includes("readiness fail-closed"))).toBe(true);
+    expect(logs.some((l) => l.includes("switchBlocked"))).toBe(true);
+    expect(logs.some((l) => l.includes("executive shadow-only"))).toBe(true);
     expect(logs.some((l) => l.includes("Exec inspect"))).toBe(true);
     expect(logs.some((l) => l.includes("pending 2"))).toBe(true);
     expect(logs.some((l) => l.includes("Channels"))).toBe(true);
@@ -407,6 +571,59 @@ describe("statusCommand", () => {
     }
   });
 
+  it("does not crash when rust gateway shadow is unreachable (regression #170)", async () => {
+    // Regression: when the rust gateway shadow daemon is unreachable, the CLI
+    // previously read `status.productionDaemon.status` on a type that has no
+    // `productionDaemon` field, throwing
+    // `TypeError: Cannot read properties of undefined (reading 'status')`.
+    rustGatewayShadowMock.mockResolvedValueOnce({
+      reachable: false,
+      status: null,
+      version: null,
+      uptimeSeconds: null,
+      component: null,
+      mode: null,
+      protocolVersion: null,
+      liveAuthority: null,
+      gatewayAuthority: null,
+      promotionReady: null,
+      readinessReason: null,
+      statePersistence: null,
+      baseUrl: "http://127.0.0.1:18799",
+      error: "ECONNREFUSED",
+    });
+    (runtime.log as vi.Mock).mockClear();
+    await expect(statusCommand({}, runtime as never)).resolves.toBeUndefined();
+    const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
+    expect(logs.some((l) => l.includes("Rust gateway shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("unavailable"))).toBe(true);
+    expect(logs.some((l) => l.includes("ECONNREFUSED"))).toBe(true);
+  });
+
+  it("does not crash when rust gateway shadow is unreachable without an error message (regression #170)", async () => {
+    rustGatewayShadowMock.mockResolvedValueOnce({
+      reachable: false,
+      status: null,
+      version: null,
+      uptimeSeconds: null,
+      component: null,
+      mode: null,
+      protocolVersion: null,
+      liveAuthority: null,
+      gatewayAuthority: null,
+      promotionReady: null,
+      readinessReason: null,
+      statePersistence: null,
+      baseUrl: "http://127.0.0.1:18799",
+      error: null,
+    });
+    (runtime.log as vi.Mock).mockClear();
+    await expect(statusCommand({}, runtime as never)).resolves.toBeUndefined();
+    const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
+    expect(logs.some((l) => l.includes("Rust gateway shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("unavailable"))).toBe(true);
+  });
+
   it("surfaces channel runtime errors from the gateway", async () => {
     mocks.probeGateway.mockResolvedValueOnce({
       ok: true,
@@ -449,6 +666,155 @@ describe("statusCommand", () => {
     expect(logs.join("\n")).toMatch(/iMessage/i);
     expect(logs.join("\n")).toMatch(/gateway:/i);
     expect(logs.join("\n")).toMatch(/WARN/);
+  });
+
+  it("surfaces workflow backend dry-run readiness without PostgreSQL", async () => {
+    mocks.probeGateway.mockResolvedValueOnce({
+      ok: true,
+      url: "ws://127.0.0.1:18789",
+      connectLatencyMs: 10,
+      error: null,
+      close: null,
+      health: {},
+      status: {},
+      presence: [],
+      configSnapshot: null,
+    });
+    mocks.callGateway.mockImplementation(async ({ method }: { method?: string }) => {
+      if (method === "workflows.backendStatus") {
+        return {
+          ok: true,
+          label: "Dry-run available; saved workflows need PostgreSQL",
+          backend: "sqlite",
+          readFrom: "sqlite",
+          writeTo: ["sqlite"],
+          postgres: {
+            requiredForSavedWorkflows: true,
+            activeForRuntime: false,
+            connectionSource: "not_applicable",
+            status: "not_configured",
+          },
+          dryRun: {
+            graphPayloadAvailable: true,
+            requiresPostgres: false,
+            method: "workflows.dryRun",
+            command: "argent gateway call workflows.dryRun --params '<canvas-payload-json>' --json",
+            noLiveSideEffects: true,
+            message:
+              "Canvas payload dry-runs can validate workflow shape and step readiness without PostgreSQL.",
+          },
+          savedWorkflows: {
+            available: false,
+            requiresPostgres: true,
+            message: "Saved workflow create/list/run paths require PostgreSQL.",
+          },
+          scheduleCron: {
+            available: false,
+            requiresPostgres: true,
+            status: "skipped_no_postgres",
+            message:
+              "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.",
+          },
+          schedulerBoundary: {
+            contractVersion: "rust-spine-scheduler-v1",
+            schedulerAuthority: "node",
+            rustScheduler: "shadow",
+            workflowRunAuthority: "node",
+            workflowSessionAuthority: "node",
+            channelDeliveryAuthority: "node",
+            authoritySwitchAllowed: false,
+            localDryRunCompatible: true,
+            leases: {
+              requiredForLiveRuns: true,
+              storage: "postgres",
+              status: "blocked_without_postgres",
+              owner: "node-workflows",
+              rustOwnership: "not_enabled",
+              message:
+                "Live workflow scheduler leases require PostgreSQL and remain unavailable locally; Rust scheduler remains shadow-only.",
+            },
+            wakeups: {
+              owner: "node-cron",
+              mode: "next-heartbeat",
+              rustOwnership: "shadow",
+              duplicatePrevention:
+                "one workflowRun cron job per active schedule; duplicate scheduled workflows start inactive",
+              message:
+                "Node cron owns workflow wakeups in next-heartbeat mode; duplicate prevention keeps one workflowRun cron job per active schedule and starts scheduled duplicates inactive.",
+            },
+            handoff: {
+              runPayload: "cron payload kind=workflowRun workflowId",
+              session: "isolated workflow agent session",
+              dryRun: "canvas payload validation",
+              liveRunRequiresPostgres: true,
+              message:
+                "Node workflows own workflowRun payload handling and isolated workflow agent sessions; Rust may observe the contract but cannot take authority.",
+            },
+            runSessionHandoff: {
+              contractVersion: "workflow-run-session-handoff-v1",
+              dryRun: {
+                authority: "node-workflows",
+                input: "canvas payload",
+                persistsWorkflowRun: false,
+                requiresPostgres: false,
+                duplicatePrevention: "not_applicable_no_saved_run",
+              },
+              liveRun: {
+                authority: "node-workflows",
+                input: "saved workflow row",
+                payloadKind: "workflowRun",
+                persistsWorkflowRun: true,
+                requiresPostgres: true,
+                sessionTarget: "isolated",
+              },
+              session: {
+                owner: "node-workflow-runner",
+                keyDerivation: "buildWorkflowAgentSessionKey(agentId, stepIndex)",
+                isolation: "per agent step",
+                rustOwnership: "not_enabled",
+              },
+              duplicatePrevention: {
+                scheduleCron: "one workflowRun cron job per active schedule",
+                duplicateWorkflow: "scheduled duplicates start inactive",
+                staleCronCleanup: "extra workflowRun cron jobs are removed during reconciliation",
+                rustOwnership: "shadow_observe_only",
+              },
+              rustPromotionBlockers: [
+                "postgres_required_for_live_scheduler_leases",
+                "rust_scheduler_shadow_only",
+                "authority_switch_not_allowed",
+              ],
+              message:
+                "Dry-run validates canvas payloads without persisted runs; live workflowRun payloads and isolated agent sessions remain Node-owned with PostgreSQL-backed duplicate prevention.",
+            },
+            blockers: [
+              "postgres_required_for_live_scheduler_leases",
+              "rust_scheduler_shadow_only",
+              "authority_switch_not_allowed",
+            ],
+          },
+        };
+      }
+      return {};
+    });
+
+    (runtime.log as vi.Mock).mockClear();
+    await statusCommand({}, runtime as never);
+    const logs = (runtime.log as vi.Mock).mock.calls.map((c) => String(c[0]));
+    expect(logs.join("\n")).toContain("Workflows backend");
+    expect(logs.join("\n")).toContain("dry-run available without PostgreSQL");
+    expect(logs.join("\n")).toContain("local dry-run workflows.dryRun");
+    expect(logs.join("\n")).toContain("saved workflows need PostgreSQL");
+    expect(logs.join("\n")).toContain("cron reconciliation");
+    expect(logs.join("\n")).toContain("skipped without PostgreSQL");
+    expect(logs.join("\n")).toContain("scheduler node");
+    expect(logs.join("\n")).toContain("rust shadow");
+    expect(logs.join("\n")).toContain("leases need PostgreSQL");
+    expect(logs.join("\n")).toContain("handoff workflowRun isolated");
+    expect(logs.join("\n")).toContain("dedupe shadow_observe_only");
+    expect(logs.join("\n")).toContain("authority switch");
+
+    mocks.callGateway.mockReset().mockResolvedValue({});
   });
 
   it("includes sessions across agents in JSON output", async () => {

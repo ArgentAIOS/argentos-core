@@ -38,6 +38,8 @@ const BASE_METHODS = [
   "models.list",
   "connectors.catalog",
   "agents.list",
+  "agents.profile.get",
+  "agents.profile.update",
   "family.members",
   "family.register",
   "agents.files.list",
@@ -163,6 +165,8 @@ const BASE_METHODS = [
   // Intent
   "intent.simulate",
   // Workflows
+  "workflows.backendStatus",
+  "workflows.dryRun",
   "workflows.emitAppForgeEvent",
   "workflows.importPreview",
   "workflows.templates.list",

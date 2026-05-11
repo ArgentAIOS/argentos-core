@@ -1,0 +1,1373 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  collectGatewayAuthorityDisposableLoopbackRehearsal,
+  collectGatewayAuthorityDisposableLoopbackSmoke,
+  gatewayAuthorityInstalledStatusCommand,
+  gatewayAuthorityLocalSmokeCommand,
+  gatewayAuthorityLocalRehearsalCommand,
+  gatewayAuthorityRollbackPlanCommand,
+  gatewayAuthorityStatusCommand,
+} from "./gateway-authority-status.js";
+
+vi.mock("./status.rust-gateway-shadow.js", () => ({
+  getRustGatewayShadowSummary: vi.fn().mockResolvedValue({
+    reachable: true,
+    status: "ok",
+    version: "0.1.0",
+    uptimeSeconds: 10,
+    component: "argentd",
+    mode: "shadow",
+    protocolVersion: 3,
+    liveAuthority: "node",
+    gatewayAuthority: "shadow-only",
+    promotionReady: false,
+    readinessReason: "shadow parity evidence incomplete",
+    statePersistence: "memory-only",
+    baseUrl: "http://127.0.0.1:18799",
+    error: null,
+  }),
+}));
+
+vi.mock("./status.rust-gateway-parity-report.js", () => ({
+  getRustGatewayParityReportStatus: vi.fn().mockResolvedValue({
+    path: "/tmp/rust-gateway-parity-report.json",
+    freshness: "fresh",
+    generatedAtMs: 1,
+    ageMs: 100,
+    totals: { passed: 15, failed: 0, skipped: 3 },
+    promotionReady: false,
+    blockers: 0,
+    warnings: 11,
+    error: null,
+  }),
+}));
+
+vi.mock("./status.rust-gateway-scheduler-authority.js", () => ({
+  getRustGatewaySchedulerAuthoritySummary: vi.fn().mockResolvedValue({
+    schedulerAuthority: "node",
+    rustSchedulerAuthority: "shadow-only",
+    authorityRecord: "missing",
+    cronEnabled: true,
+    cronStorePath: "/tmp/cron/jobs.json",
+    cronJobs: 2,
+    enabledCronJobs: 1,
+    workflowRunCronJobs: 1,
+    nextWakeAtMs: null,
+    notes: ["Node remains live scheduler authority."],
+  }),
+}));
+
+describe("gatewayAuthorityInstalledStatusCommand", () => {
+  it("queries configured local daemon status with config-redacted credentials and never prints the secret", async () => {
+    const logs: string[] = [];
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ]),
+    });
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: (line) => logs.push(line) },
+      {
+        json: true,
+        configPath: "/tmp/argent.json",
+        config: {
+          gateway: {
+            port: 18789,
+            auth: { mode: "token", token: "config-secret-token" },
+          },
+        },
+        installedCanary: { requestStatus },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "config-secret-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(status.status).toBe("read-only-ready");
+    expect(status.target).toMatchObject({
+      url: "ws://127.0.0.1:18789",
+      urlSource: "config-local",
+      credentialSource: "config-redacted",
+      credentialConfigured: true,
+      secretPrinted: false,
+    });
+    expect(status.installedDaemonCanary.credentialSource).toBe("config-redacted");
+    expect(status.installedServiceReadiness.tokenDiscovery).toMatchObject({
+      status: "config-redacted",
+      secretStoredOrExposed: false,
+    });
+    expect(status.authorityChanges).toEqual([]);
+    expect(status.productionTrafficUsed).toBe(false);
+    expect(status.authoritySwitchAllowed).toBe(false);
+    expect(logs.join("\n")).not.toContain("config-secret-token");
+  });
+
+  it("reports an exact blocked status when installed daemon credentials are missing", async () => {
+    const requestStatus = vi.fn();
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: () => undefined },
+      {
+        configPath: "/tmp/argent.json",
+        config: { gateway: { port: 18789 } },
+        installedCanary: { requestStatus },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(status.status).toBe("blocked");
+    expect(status.target).toMatchObject({
+      url: "ws://127.0.0.1:18789",
+      credentialSource: "missing",
+      credentialConfigured: false,
+      secretPrinted: false,
+    });
+    expect(status.blockers).toEqual(
+      expect.arrayContaining([
+        "installed daemon token/password source is missing",
+        "missing installed daemon capability: rustGateway.canaryReceipts.status-exposure",
+      ]),
+    );
+    expect(status.rollback.rollbackActions).toHaveLength(3);
+    expect(
+      status.installedServiceReadiness.rollbackReadiness.productionInstalledDaemonRollback,
+    ).toBe("blocked");
+  });
+
+  it("uses env-redacted credentials with an explicit loopback target", async () => {
+    const requestStatus = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: () => undefined },
+      {
+        env: { ARGENT_GATEWAY_TOKEN: "env-secret-token" },
+        configPath: "/tmp/argent.json",
+        config: {},
+        installedCanary: {
+          url: "ws://127.0.0.1:19999",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:19999",
+      token: "env-secret-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(status.target.credentialSource).toBe("env-redacted");
+    expect(status.installedDaemonCanary.status).toBe("unavailable");
+    expect(status.blockers).toEqual(
+      expect.arrayContaining(["installed daemon canary status query failed"]),
+    );
+  });
+});
+
+describe("gatewayAuthorityStatusCommand", () => {
+  it("prints read-only human authority status", async () => {
+    const logs: string[] = [];
+
+    const summary = await gatewayAuthorityStatusCommand({ log: (line) => logs.push(line) });
+
+    expect(summary.liveGatewayAuthority).toBe("node");
+    expect(summary.rustGatewayAuthority).toBe("shadow-only");
+    expect(summary.sessionAuthority).toBe("node");
+    expect(summary.runAuthority).toBe("node");
+    expect(summary.promotionReady).toBe(false);
+    expect(summary.authorityBoundaries.rustMustNotOwn).toContain("workflow execution");
+    expect(summary.promotionGates.find((gate) => gate.id === "parity-report")).toMatchObject({
+      status: "passing",
+    });
+    expect(summary.promotionGates.find((gate) => gate.id === "promotion-readiness")).toMatchObject({
+      status: "blocked",
+    });
+    expect(logs.join("\n")).toContain("Live gateway authority: node");
+    expect(logs.join("\n")).toContain("Session authority: node");
+    expect(logs.join("\n")).toContain("Run authority: node");
+    expect(logs.join("\n")).toContain("Rollback command: executable local-only proof");
+  });
+
+  it("prints JSON authority status", async () => {
+    const logs: string[] = [];
+
+    await gatewayAuthorityStatusCommand({ log: (line) => logs.push(line) }, { json: true });
+
+    const parsed = JSON.parse(logs[0] ?? "{}");
+    expect(parsed.liveGatewayAuthority).toBe("node");
+    expect(parsed.authorityBoundaries.rustMode).toBe("shadow-only");
+    expect(parsed.promotionGates.map((gate: { id: string }) => gate.id)).toContain(
+      "rollback-rehearsal",
+    );
+    expect(parsed.rollbackCommand.implemented).toBe(true);
+    expect(parsed.rollbackCommand.localOnly).toBe(true);
+    expect(parsed.rollbackCommand.authoritySwitchAllowed).toBe(false);
+    expect(parsed.installedDaemonCanary.status).toBe("not-configured");
+    expect(parsed.installedDaemonCanary.queried).toBe(false);
+    expect(parsed.installedDaemonCanary.productionTrafficUsed).toBe(false);
+    expect(parsed.installedDaemonCanary.authoritySwitchAllowed).toBe(false);
+    expect(parsed.installedServiceReadiness).toMatchObject({
+      status: "not-configured",
+      proofKind: "none",
+      localOnly: true,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      missingCapabilities: [
+        "explicit-loopback-url",
+        "explicit-token-or-password",
+        "local-daemon-query",
+        "receipt-persistence-complete-surfaces",
+        "rustGateway.canaryReceipts.status-exposure",
+      ],
+    });
+    expect(parsed.nextCommands).toContain(
+      "pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000",
+    );
+    expect(parsed.nextCommands).toContain(
+      "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
+    );
+  });
+
+  it("keeps installed daemon canary status blocked without explicit credentials", async () => {
+    const logs: string[] = [];
+    const requestStatus = vi.fn();
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: (line) => logs.push(line) },
+      {
+        json: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.installedDaemonCanary.blockers.join("\n")).toContain("explicit");
+  });
+
+  it("reports installed daemon canary status unavailable without enabling traffic", async () => {
+    const requestStatus = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "unavailable",
+      queried: true,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      error: "ECONNREFUSED",
+    });
+    expect(summary.installedServiceReadiness).toMatchObject({
+      status: "blocked",
+      proofKind: "loopback-local-daemon",
+      queried: true,
+      methodExposure: {
+        method: "rustGateway.canaryReceipts.status",
+        exposed: false,
+        source: "queried-loopback",
+      },
+      tokenDiscovery: {
+        status: "explicit-only",
+        secretStoredOrExposed: false,
+      },
+      receiptPersistence: {
+        status: "not-proven",
+        receiptProofComplete: false,
+      },
+      rollbackReadiness: {
+        rollbackNodeExecutableLocalProof: true,
+        productionInstalledDaemonRollback: "blocked",
+        authoritySwitchAllowed: false,
+      },
+      missingCapabilities: [
+        "receipt-persistence-complete-surfaces",
+        "rustGateway.canaryReceipts.status-exposure",
+      ],
+      remainingPromotionGaps: [
+        "production-installed-daemon-canary",
+        "production-installed-daemon-rollback",
+        "Rust authority promotion",
+      ],
+    });
+  });
+
+  it("narrows installed daemon blockers when the runtime advertises the canary method but dispatch fails", async () => {
+    const requestStatus = vi.fn().mockRejectedValue(new Error("gateway closed 1006"));
+    const requestRuntimeProbe = vi.fn().mockResolvedValue({
+      queried: true,
+      helloReceived: true,
+      method: "rustGateway.canaryReceipts.status",
+      methodAdvertised: true,
+      protocolVersion: 1,
+      methodCount: 128,
+      closeCode: null,
+      closeReason: null,
+      error: null,
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestRuntimeProbe,
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestRuntimeProbe).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(summary.installedDaemonCanary.runtimeProbe).toMatchObject({
+      helloReceived: true,
+      methodAdvertised: true,
+      methodCount: 128,
+    });
+    expect(summary.installedServiceReadiness.methodExposure).toMatchObject({
+      exposed: false,
+      runtimeAdvertised: true,
+      runtimeProbeError: null,
+    });
+    expect(summary.installedServiceReadiness.missingCapabilities).toEqual([
+      "installed-daemon-canary-handler-dispatch-failed",
+      "receipt-persistence-complete-surfaces",
+      "rustGateway.canaryReceipts.status-exposure",
+    ]);
+  });
+
+  it("blocks non-loopback installed daemon canary URLs before querying", async () => {
+    const requestStatus = vi.fn();
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "wss://gateway.example.com",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      url: "wss://gateway.example.com",
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.installedDaemonCanary.blockers.join("\n")).toContain("loopback/local");
+  });
+
+  it("accepts redacted installed daemon canary status with no production traffic or authority switch", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: {
+        containsSecrets: false,
+      },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ],
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          timeoutMs: 1250,
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 1250,
+    });
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      queried: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      authoritySwitchAllowed: false,
+      dashboardVisible: true,
+      receiptCount: 1,
+      redactionVerified: true,
+      receiptProofComplete: false,
+      requiredReceiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      missingReceiptSurfaces: ["cron.add", "workflows.run"],
+      blockers: [],
+    });
+  });
+
+  it("reports complete installed daemon canary receipt proof for all guarded surfaces", async () => {
+    const receipts = ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+    ]);
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: {
+        containsSecrets: false,
+      },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts,
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(summary.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      queried: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      receiptProofComplete: true,
+      requiredReceiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      missingReceiptSurfaces: [],
+      receiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      blockers: [],
+    });
+    expect(summary.installedServiceReadiness).toMatchObject({
+      status: "read-only-ready",
+      proofKind: "loopback-local-daemon",
+      queried: true,
+      localOnly: true,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      methodExposure: {
+        exposed: true,
+        source: "queried-loopback",
+      },
+      tokenDiscovery: {
+        status: "explicit-only",
+        secretStoredOrExposed: false,
+      },
+      receiptPersistence: {
+        status: "proven",
+        receiptProofComplete: true,
+        missingReceiptSurfaces: [],
+      },
+      rollbackReadiness: {
+        rollbackNodeExecutableLocalProof: true,
+        productionInstalledDaemonRollback: "blocked",
+        authoritySwitchAllowed: false,
+      },
+      missingCapabilities: [],
+      remainingPromotionGaps: [
+        "production-installed-daemon-canary",
+        "production-installed-daemon-rollback",
+        "Rust authority promotion",
+      ],
+    });
+  });
+
+  it("generates local installed daemon receipts before status when explicitly confirmed", async () => {
+    const receipts = ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+    ]);
+    const requestGenerateLocalReceiptProof = vi.fn().mockResolvedValue({
+      status: "ok",
+      receiptCount: 6,
+    });
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts,
+    });
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          timeoutMs: 1250,
+          generateLocalReceiptProof: {
+            confirmLocalOnly: true,
+            reason: "operator proof",
+            proofRunId: "proof-1",
+          },
+          requestGenerateLocalReceiptProof,
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestGenerateLocalReceiptProof).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 1250,
+      confirmLocalOnly: true,
+      reason: "operator proof",
+      proofRunId: "proof-1",
+    });
+    expect(requestGenerateLocalReceiptProof.mock.invocationCallOrder[0]).toBeLessThan(
+      requestStatus.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(status).toMatchObject({
+      status: "read-only-ready",
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      installedDaemonCanary: {
+        receiptProofComplete: true,
+        missingReceiptSurfaces: [],
+        receiptCount: 6,
+      },
+    });
+    expect(status.proof.join("\n")).toContain("--generate-local-receipts");
+  });
+
+  it("marks unsafe installed daemon canary payloads without relabeling readiness", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      productionTrafficUsed: true,
+      canaryFlagEnabled: true,
+      policy: {
+        containsSecrets: false,
+      },
+      authority: {
+        authoritySwitchAllowed: true,
+      },
+      receipts: [
+        {
+          surface: "workflows.run",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: false,
+        },
+      ],
+    });
+
+    const summary = await gatewayAuthorityStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(summary.installedDaemonCanary.status).toBe("unsafe");
+    expect(summary.installedDaemonCanary.productionTrafficUsed).toBe(true);
+    expect(summary.installedDaemonCanary.authoritySwitchAllowed).toBe(true);
+    expect(summary.installedDaemonCanary.redactionVerified).toBe(false);
+    expect(summary.promotionReady).toBe(false);
+    expect(summary.installedDaemonCanary.blockers).toEqual(
+      expect.arrayContaining([
+        "productionTrafficUsed is not false",
+        "authoritySwitchAllowed is not false",
+        "one or more receipts are not marked redacted",
+      ]),
+    );
+  });
+
+  it("blocks local authority rehearsal without explicit opt-in", async () => {
+    const beforeStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: { containsSecrets: false },
+      authority: { authoritySwitchAllowed: false },
+      receipts: [],
+    });
+    const afterStatus = vi.fn();
+
+    const rehearsal = await gatewayAuthorityLocalRehearsalCommand(
+      { log: () => undefined },
+      {
+        reason: "local proof",
+        beforeCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: beforeStatus,
+        },
+        afterCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: afterStatus,
+        },
+      },
+    );
+
+    expect(beforeStatus).toHaveBeenCalledTimes(1);
+    expect(afterStatus).not.toHaveBeenCalled();
+    expect(rehearsal.status).toBe("blocked");
+    expect(rehearsal.explicitOptIn).toBe(false);
+    expect(rehearsal.authorityChanges).toEqual([]);
+    expect(rehearsal.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.blockers).toContain("explicit local-only rehearsal opt-in is required");
+  });
+
+  it("rehearses local-only canary enable and rollback evidence without authority changes", async () => {
+    const beforeStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: { containsSecrets: false },
+      authority: { authoritySwitchAllowed: false },
+      receipts: [],
+    });
+    const afterStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ]),
+    });
+
+    const rehearsal = await gatewayAuthorityLocalRehearsalCommand(
+      { log: () => undefined },
+      {
+        reason: "local proof",
+        confirmLocalOnly: true,
+        beforeCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: beforeStatus,
+        },
+        afterCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus: afterStatus,
+        },
+      },
+    );
+
+    expect(rehearsal.status).toBe("rehearsed");
+    expect(rehearsal.before.canaryFlagEnabled).toBe(false);
+    expect(rehearsal.after.canaryFlagEnabled).toBe(true);
+    expect(rehearsal.after.productionTrafficUsed).toBe(false);
+    expect(rehearsal.after.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.after.redactionVerified).toBe(true);
+    expect(rehearsal.after.receiptCount).toBe(6);
+    expect(rehearsal.rollback.authorityChanges).toEqual([]);
+    expect(rehearsal.rollback.executable).toBe(true);
+    expect(rehearsal.duplicateReceiptSafety.requiredReceipts).toEqual([
+      "RUST_CANARY_DENIED",
+      "RUST_CANARY_DUPLICATE_PREVENTED",
+    ]);
+    expect(rehearsal.blockers).toEqual([]);
+  });
+
+  it("blocks local smoke by default with exact operator guidance", async () => {
+    const logs: string[] = [];
+    const requestStatus = vi.fn();
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: (line) => logs.push(line) },
+      {
+        reason: "dev.20 local smoke",
+        installedCanary: {
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.authorityChanges).toEqual([]);
+    expect(smoke.authoritySwitchAllowed).toBe(false);
+    expect(smoke.liveProductionTrafficAllowed).toBe(false);
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "not-configured",
+      configured: false,
+      queried: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(smoke.installedServiceReadiness).toMatchObject({
+      status: "not-configured",
+      proofKind: "none",
+      queried: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      missingCapabilities: [
+        "explicit-loopback-url",
+        "explicit-token-or-password",
+        "local-daemon-query",
+        "receipt-persistence-complete-surfaces",
+        "rustGateway.canaryReceipts.status-exposure",
+      ],
+    });
+    expect(smoke.blockers).toContain("explicit local-only smoke opt-in is required");
+    expect(smoke.blockers).toContain("installed daemon canary status is not configured");
+    expect(smoke.operatorGuidance.join("\n")).toContain("--installed-canary-url");
+    expect(logs.join("\n")).toContain("Gateway authority local smoke");
+    expect(logs.join("\n")).toContain("Status: blocked");
+    expect(logs.join("\n")).toContain("Authority changes: none");
+  });
+
+  it("passes local smoke only when canary receipts prove no authority switch", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface,
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ]),
+    });
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.20 local smoke",
+        confirmLocalOnly: true,
+        json: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 3000,
+    });
+    expect(smoke.status).toBe("passed");
+    expect(smoke.explicitOptIn).toBe(true);
+    expect(smoke.noDefaultSwitchProof).toMatchObject({
+      liveGatewayAuthority: "node",
+      rustGatewayAuthority: "shadow-only",
+      schedulerAuthority: "node",
+      workflowAuthority: "node",
+      channelAuthority: "node",
+      sessionAuthority: "node",
+      runAuthority: "node",
+    });
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      queried: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      receiptProofComplete: true,
+      missingReceiptSurfaces: [],
+    });
+    expect(smoke.installedServiceReadiness).toMatchObject({
+      status: "read-only-ready",
+      proofKind: "loopback-local-daemon",
+      queried: true,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      missingCapabilities: [],
+      receiptPersistence: {
+        status: "proven",
+        receiptProofComplete: true,
+        missingReceiptSurfaces: [],
+      },
+      rollbackReadiness: {
+        rollbackNodeExecutableLocalProof: true,
+        productionInstalledDaemonRollback: "blocked",
+      },
+    });
+    expect(smoke.blockers).toEqual([]);
+    expect(smoke.operatorGuidance.join("\n")).toContain("PASS");
+    expect(smoke.proof).toContain(
+      "smoke does not start, stop, restart, install, or configure any daemon",
+    );
+  });
+
+  it("passes local smoke with the built-in local canary self-check without daemon credentials", async () => {
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.23 local canary self-check",
+        confirmLocalOnly: true,
+        localCanarySelfCheck: true,
+        json: true,
+      },
+    );
+
+    expect(smoke.status).toBe("passed");
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      configured: true,
+      queried: true,
+      url: "local-canary-self-check://rust-gateway/smoke-local",
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      receiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+    });
+    expect(smoke.installedServiceReadiness).toMatchObject({
+      status: "read-only-ready",
+      proofKind: "local-self-check",
+      methodExposure: {
+        method: "rustGateway.canaryReceipts.status",
+        exposed: true,
+        source: "local-self-check",
+      },
+      missingCapabilities: [],
+    });
+    expect(smoke.blockers).toEqual([]);
+    expect(smoke.proof.join("\n")).toContain("in-process disposable canary receipt harness");
+  });
+
+  it("blocks disposable loopback smoke without explicit local-only opt-in", async () => {
+    const smoke = await collectGatewayAuthorityDisposableLoopbackSmoke({
+      reason: "missing opt-in",
+      confirmLocalOnly: false,
+    });
+
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.disposableHarness.started).toBe(false);
+    expect(smoke.disposableHarness.installedServiceControlUsed).toBe(false);
+    expect(smoke.blockers).toContain("explicit local-only loopback smoke opt-in is required");
+  });
+
+  it("blocks disposable loopback rehearsal without explicit local-only opt-in", async () => {
+    const rehearsal = await collectGatewayAuthorityDisposableLoopbackRehearsal({
+      reason: "missing opt-in",
+      confirmLocalOnly: false,
+    });
+
+    expect(rehearsal.status).toBe("blocked");
+    expect(rehearsal.disposableHarness.started).toBe(false);
+    expect(rehearsal.rollback.authorityChanges).toEqual([]);
+    expect(rehearsal.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.blockers).toContain(
+      "explicit local-only loopback rehearsal opt-in is required",
+    );
+  });
+
+  it("proves disposable loopback smoke with temp state and redacted receipts", async () => {
+    const close = vi.fn(async () => undefined);
+    const mkdir = vi.fn(async () => undefined);
+    const writeFile = vi.fn(async () => undefined);
+    const startEnv: Record<string, string | undefined> = {};
+    const calls: Array<{ method: string; params?: unknown }> = [];
+    const callGateway = vi.fn(async (request: { method: string; params?: unknown }) => {
+      calls.push(request);
+      if (request.method === "rustGateway.canaryReceipts.status") {
+        return {
+          status: "ok",
+          dashboardVisible: true,
+          productionTrafficUsed: false,
+          canaryFlagEnabled: true,
+          policy: { containsSecrets: false },
+          authority: {
+            nodeAuthority: "live",
+            rustAuthority: "shadow-only",
+            authoritySwitchAllowed: false,
+          },
+          receipts: [
+            ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+              surface,
+              receiptCode: "RUST_CANARY_DENIED",
+              tokenMaterialRedacted: true,
+              authoritySwitchAllowed: false,
+              mutationBlockedBeforeHandler: true,
+            })),
+            ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+              surface,
+              receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+              tokenMaterialRedacted: true,
+              authoritySwitchAllowed: false,
+              mutationBlockedBeforeHandler: true,
+            })),
+          ],
+        };
+      }
+      throw new Error("Rust canary denied before mutation");
+    });
+
+    const smoke = await collectGatewayAuthorityDisposableLoopbackSmoke({
+      reason: "disposable loopback proof",
+      confirmLocalOnly: true,
+      dependencies: {
+        mkdtemp: async () => "/tmp/rust-gateway-loopback-test",
+        rm: vi.fn(async () => undefined),
+        mkdir,
+        writeFile,
+        getFreePort: async () => 19876,
+        randomToken: () => "random-loopback-token",
+        startGateway: vi.fn(async () => {
+          startEnv.ARGENT_SKIP_PLUGINS = process.env.ARGENT_SKIP_PLUGINS;
+          startEnv.ARGENT_CONFIG_PATH = process.env.ARGENT_CONFIG_PATH;
+          return { close } as never;
+        }),
+        callGateway: callGateway as never,
+      },
+    });
+
+    expect(smoke.status).toBe("passed");
+    expect(mkdir).toHaveBeenCalledWith("/tmp/rust-gateway-loopback-test/.argentos");
+    expect(writeFile.mock.calls[0]?.[0]).toBe(
+      "/tmp/rust-gateway-loopback-test/.argentos/argent.json",
+    );
+    expect(writeFile.mock.calls[0]?.[1]).toContain('"enabled": false');
+    expect(startEnv.ARGENT_SKIP_PLUGINS).toBe("1");
+    expect(startEnv.ARGENT_CONFIG_PATH).toBe(
+      "/tmp/rust-gateway-loopback-test/.argentos/argent.json",
+    );
+    expect(smoke.disposableHarness).toMatchObject({
+      started: true,
+      url: "ws://127.0.0.1:19876",
+      tempHomeUsed: true,
+      tempStateUsed: true,
+      randomPortUsed: true,
+      randomTokenUsed: true,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(smoke.receiptProof).toMatchObject({
+      generatedSurfaces: ["chat.send", "cron.add", "workflows.run"],
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      redactionVerified: true,
+      receiptCount: 6,
+    });
+    expect(calls.filter((call) => call.method === "chat.send")).toHaveLength(2);
+    expect(calls.filter((call) => call.method === "cron.add")).toHaveLength(2);
+    expect(calls.filter((call) => call.method === "workflows.run")).toHaveLength(2);
+    expect(close).toHaveBeenCalledWith({
+      reason: "disposable loopback canary smoke complete",
+    });
+  });
+
+  it("rehearses disposable loopback before/after canary with rollback proof", async () => {
+    const close = vi.fn(async () => undefined);
+    const callGateway = vi.fn(async (request: { method: string; params?: unknown }) => {
+      if (request.method === "rustGateway.canaryReceipts.status") {
+        const canaryEnabled = process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS === "1";
+        const receipts = canaryEnabled
+          ? [
+              ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+                surface,
+                receiptCode: "RUST_CANARY_DENIED",
+                tokenMaterialRedacted: true,
+                authoritySwitchAllowed: false,
+                mutationBlockedBeforeHandler: true,
+              })),
+              ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+                surface,
+                receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+                tokenMaterialRedacted: true,
+                authoritySwitchAllowed: false,
+                mutationBlockedBeforeHandler: true,
+              })),
+            ]
+          : [];
+        return {
+          status: "ok",
+          dashboardVisible: true,
+          productionTrafficUsed: false,
+          canaryFlagEnabled: canaryEnabled,
+          policy: { containsSecrets: false },
+          authority: {
+            nodeAuthority: "live",
+            rustAuthority: "shadow-only",
+            authoritySwitchAllowed: false,
+          },
+          receipts,
+        };
+      }
+      throw new Error("Rust canary denied before mutation");
+    });
+
+    const rehearsal = await collectGatewayAuthorityDisposableLoopbackRehearsal({
+      reason: "local rollback proof",
+      confirmLocalOnly: true,
+      dependencies: {
+        mkdtemp: async () => "/tmp/rust-gateway-loopback-rehearsal-test",
+        rm: vi.fn(async () => undefined),
+        mkdir: vi.fn(async () => undefined),
+        writeFile: vi.fn(async () => undefined),
+        getFreePort: async () => 19877,
+        randomToken: () => "random-loopback-rehearsal-token",
+        startGateway: vi.fn(async () => ({ close }) as never),
+        callGateway: callGateway as never,
+      },
+    });
+
+    expect(rehearsal.status).toBe("rehearsed");
+    expect(rehearsal.before).toMatchObject({
+      status: "ok",
+      canaryFlagEnabled: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(rehearsal.after).toMatchObject({
+      status: "ok",
+      canaryFlagEnabled: true,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+    });
+    expect(rehearsal.rollback).toMatchObject({
+      mode: "local-node-rollback-proof",
+      executable: true,
+      authorityChanges: [],
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(rehearsal.receiptProof.generatedSurfaces).toEqual([
+      "chat.send",
+      "cron.add",
+      "workflows.run",
+    ]);
+    expect(rehearsal.authorityChanges).toEqual([]);
+    expect(rehearsal.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.blockers).toEqual([]);
+    expect(close).toHaveBeenCalledWith({
+      reason: "disposable loopback rehearsal complete",
+    });
+  });
+
+  it("blocks local smoke against non-loopback daemon URLs before querying", async () => {
+    const requestStatus = vi.fn();
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "installed loopback boundary",
+        confirmLocalOnly: true,
+        installedCanary: {
+          url: "wss://gateway.example.com",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestStatus).not.toHaveBeenCalled();
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "blocked",
+      configured: true,
+      queried: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(smoke.blockers).toContain("installed daemon canary status was not queried");
+    expect(smoke.operatorGuidance.join("\n")).toContain("loopback");
+  });
+
+  it("blocks local smoke when duplicate-prevention receipt proof is missing", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface: "cron.add",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ],
+    });
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.23 local smoke",
+        confirmLocalOnly: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.installedDaemonCanary.status).toBe("ok");
+    expect(smoke.blockers).toContain("RUST_CANARY_DUPLICATE_PREVENTED receipt must be present");
+    expect(smoke.blockers).toContain(
+      "all required canary receipt surfaces must be present and redacted",
+    );
+  });
+
+  it("blocks local smoke when canary status implies production traffic or authority switch", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: true,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: { authoritySwitchAllowed: true },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+        },
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+        },
+      ],
+    });
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.20 local smoke",
+        confirmLocalOnly: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.installedDaemonCanary.status).toBe("unsafe");
+    expect(smoke.blockers).toEqual(
+      expect.arrayContaining([
+        "installed daemon canary status must be ok; got unsafe",
+        "productionTrafficUsed must be false",
+        "authoritySwitchAllowed must be false",
+      ]),
+    );
+    expect(smoke.authoritySwitchAllowed).toBe(false);
+    expect(smoke.authorityChanges).toEqual([]);
+  });
+
+  it("runs local-only rollback-node proof without authority changes", async () => {
+    const logs: string[] = [];
+
+    const plan = await gatewayAuthorityRollbackPlanCommand(
+      { log: (line) => logs.push(line) },
+      { reason: "canary drift", json: false },
+    );
+
+    expect(plan.mode).toBe("local-node-rollback-proof");
+    expect(plan.status).toBe("passed");
+    expect(plan.executable).toBe(true);
+    expect(plan.authorityChanges).toEqual([]);
+    expect(plan.before.liveGateway).toBe("node");
+    expect(plan.before.rustGateway).toBe("shadow-only");
+    expect(plan.after.liveGateway).toBe("node");
+    expect(plan.after.rustGateway).toBe("shadow-only");
+    expect(plan.productionTrafficUsed).toBe(false);
+    expect(plan.authoritySwitchAllowed).toBe(false);
+    expect(plan.preventedActions).toContain("Did not edit config or authority state.");
+    expect(logs.join("\n")).toContain("Gateway authority rollback-node proof");
+    expect(logs.join("\n")).toContain("Authority changes: none");
+  });
+
+  it("prints JSON rollback-node proof", async () => {
+    const logs: string[] = [];
+
+    await gatewayAuthorityRollbackPlanCommand(
+      { log: (line) => logs.push(line) },
+      { reason: "operator rehearsal", json: true },
+    );
+
+    const parsed = JSON.parse(logs[0] ?? "{}");
+    expect(parsed.mode).toBe("local-node-rollback-proof");
+    expect(parsed.status).toBe("passed");
+    expect(parsed.reason).toBe("operator rehearsal");
+    expect(parsed.before.sessions).toBe("node");
+    expect(parsed.after.sessions).toBe("node");
+    expect(parsed.executable).toBe(true);
+    expect(parsed.implemented).toBe(true);
+    expect(parsed.authoritySwitchAllowed).toBe(false);
+  });
+});

@@ -5,6 +5,7 @@ import postgres from "postgres";
 import type { ArgentConfig } from "../../config/config.js";
 import type { CronService } from "../../cron/service.js";
 import type { CronJob, CronJobCreate, CronJobPatch } from "../../cron/types.js";
+import type { StorageConfig } from "../../data/storage-config.js";
 import type { WorkflowDefinition, WorkflowNode } from "../../infra/workflow-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
@@ -72,6 +73,7 @@ import {
   parseWorkflowPackageText,
   type WorkflowPackage,
   type WorkflowPackageFormat,
+  type WorkflowPackageLiveReadinessContext,
 } from "../../infra/workflow-package.js";
 import {
   buildWorkflowAgentSessionKey,
@@ -86,6 +88,7 @@ import { buildToolsStatusPayload } from "./tools.js";
 
 const log = createSubsystemLogger("gateway/workflows");
 const WORKFLOW_SCHEDULE_CRON_MARKER = "[workflow_schedule]";
+export const WORKFLOWS_LIST_NO_LIVE_DATA_SNAPSHOT = "rust-parity-v1";
 
 const WORKFLOW_PRIMITIVES = [
   { id: "trigger", label: "Trigger", description: "Start condition" },
@@ -130,8 +133,28 @@ type WorkflowConnectorCapability = {
   installState: string;
   statusOk: boolean;
   scaffoldOnly: boolean;
-  readinessState: "blocked" | "setup_required" | "write_ready";
+  readinessState: "blocked" | "setup_required" | "read_ready" | "write_ready";
 };
+
+function workflowConnectorReadinessState(
+  connector: ConnectorCatalogEntry,
+  scaffoldOnly: boolean,
+): WorkflowConnectorCapability["readinessState"] {
+  if (
+    scaffoldOnly ||
+    connector.installState === "repo-only" ||
+    connector.installState === "error"
+  ) {
+    return "blocked";
+  }
+  if (connector.installState === "metadata-only") {
+    return "read_ready";
+  }
+  if (connector.installState === "ready") {
+    return connector.discovery.binaryPath ? "write_ready" : "read_ready";
+  }
+  return "setup_required";
+}
 
 function isWorkflowOutputConnectorCommand(command: {
   id: string;
@@ -165,7 +188,7 @@ function stableJson(value: unknown): string {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
-      .sort()
+      .toSorted()
       .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
       .join(",")}}`;
   }
@@ -176,9 +199,269 @@ function jsonEqual(left: unknown, right: unknown): boolean {
   return stableJson(left ?? null) === stableJson(right ?? null);
 }
 
-function isPgBacked(): boolean {
-  const cfg = resolveRuntimeStorageConfig(process.env);
+function isPgBacked(env: NodeJS.ProcessEnv = process.env): boolean {
+  const cfg = resolveRuntimeStorageConfig(env);
   return cfg.backend === "postgres" || cfg.backend === "dual";
+}
+
+type WorkflowBackendStatus = {
+  ok: true;
+  label: string;
+  backend: StorageConfig["backend"];
+  readFrom: StorageConfig["readFrom"];
+  writeTo: StorageConfig["writeTo"];
+  postgres: {
+    requiredForSavedWorkflows: true;
+    activeForRuntime: boolean;
+    connectionSource: "env" | "config" | "default" | "not_applicable";
+    status: "configured" | "not_configured";
+  };
+  dryRun: {
+    graphPayloadAvailable: true;
+    requiresPostgres: false;
+    method: "workflows.dryRun";
+    command: string;
+    noLiveSideEffects: true;
+    message: string;
+  };
+  savedWorkflows: {
+    available: boolean;
+    requiresPostgres: true;
+    message: string;
+  };
+  scheduleCron: {
+    available: boolean;
+    requiresPostgres: true;
+    status: "configured" | "skipped_no_postgres";
+    message: string;
+  };
+  schedulerBoundary: {
+    contractVersion: "rust-spine-scheduler-v1";
+    schedulerAuthority: "node";
+    rustScheduler: "shadow";
+    workflowRunAuthority: "node";
+    workflowSessionAuthority: "node";
+    channelDeliveryAuthority: "node";
+    authoritySwitchAllowed: false;
+    localDryRunCompatible: true;
+    leases: {
+      requiredForLiveRuns: true;
+      storage: "postgres";
+      status: "configured" | "blocked_without_postgres";
+      owner: "node-workflows";
+      rustOwnership: "not_enabled";
+      message: string;
+    };
+    wakeups: {
+      owner: "node-cron";
+      mode: "next-heartbeat";
+      rustOwnership: "shadow";
+      duplicatePrevention: string;
+      message: string;
+    };
+    handoff: {
+      runPayload: "cron payload kind=workflowRun workflowId";
+      session: "isolated workflow agent session";
+      dryRun: "canvas payload validation";
+      liveRunRequiresPostgres: true;
+      message: string;
+    };
+    runSessionHandoff: {
+      contractVersion: "workflow-run-session-handoff-v1";
+      dryRun: {
+        authority: "node-workflows";
+        input: "canvas payload";
+        persistsWorkflowRun: false;
+        requiresPostgres: false;
+        duplicatePrevention: "not_applicable_no_saved_run";
+      };
+      liveRun: {
+        authority: "node-workflows";
+        input: "saved workflow row";
+        payloadKind: "workflowRun";
+        persistsWorkflowRun: true;
+        requiresPostgres: true;
+        sessionTarget: "isolated";
+      };
+      session: {
+        owner: "node-workflow-runner";
+        keyDerivation: "buildWorkflowAgentSessionKey(agentId, stepIndex)";
+        isolation: "per agent step";
+        rustOwnership: "not_enabled";
+      };
+      duplicatePrevention: {
+        scheduleCron: "one workflowRun cron job per active schedule";
+        duplicateWorkflow: "scheduled duplicates start inactive";
+        staleCronCleanup: "extra workflowRun cron jobs are removed during reconciliation";
+        rustOwnership: "shadow_observe_only";
+      };
+      rustPromotionBlockers: string[];
+      message: string;
+    };
+    blockers: string[];
+  };
+  operatorMessages: string[];
+};
+
+function resolvePostgresConnectionSource(
+  env: NodeJS.ProcessEnv,
+  storage: StorageConfig,
+): WorkflowBackendStatus["postgres"]["connectionSource"] {
+  if (storage.backend !== "postgres" && storage.backend !== "dual") {
+    return "not_applicable";
+  }
+  if (env.ARGENT_PG_URL?.trim() || env.PG_URL?.trim()) {
+    return "env";
+  }
+  if (storage.postgres?.connectionString?.trim()) {
+    return "config";
+  }
+  return "default";
+}
+
+export function buildWorkflowBackendStatus(options?: {
+  env?: NodeJS.ProcessEnv;
+  storage?: StorageConfig;
+}): WorkflowBackendStatus {
+  const env = options?.env ?? process.env;
+  const storage = options?.storage ?? resolveRuntimeStorageConfig(env);
+  const pgActive = storage.backend === "postgres" || storage.backend === "dual";
+  const connectionSource = resolvePostgresConnectionSource(env, storage);
+  const savedWorkflowsAvailable = pgActive;
+  const dryRunMessage =
+    "Canvas payload dry-runs can validate workflow shape and step readiness without PostgreSQL.";
+  const savedMessage = savedWorkflowsAvailable
+    ? "Saved workflow create/list/run paths are configured to use PostgreSQL at runtime."
+    : "Saved workflow create/list/run paths require PostgreSQL; use canvas payload dry-run or configure storage.backend=postgres/dual.";
+  const scheduleCronMessage = savedWorkflowsAvailable
+    ? "Scheduled workflow cron reconciliation is configured for saved workflows."
+    : "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.";
+  const leaseMessage = savedWorkflowsAvailable
+    ? "Live workflow scheduler leases are owned by Node workflows and backed by PostgreSQL; Rust scheduler remains shadow-only."
+    : "Live workflow scheduler leases require PostgreSQL and remain unavailable locally; Rust scheduler remains shadow-only.";
+  const wakeupMessage =
+    "Node cron owns workflow wakeups in next-heartbeat mode; duplicate prevention keeps one workflowRun cron job per active schedule and starts scheduled duplicates inactive.";
+  const handoffMessage =
+    "Node workflows own workflowRun payload handling and isolated workflow agent sessions; Rust may observe the contract but cannot take authority.";
+  const runSessionHandoffMessage =
+    "Dry-run validates canvas payloads without persisted runs; live workflowRun payloads and isolated agent sessions remain Node-owned with PostgreSQL-backed duplicate prevention.";
+  const schedulerBlockers = savedWorkflowsAvailable
+    ? ["rust_scheduler_shadow_only", "authority_switch_not_allowed"]
+    : [
+        "postgres_required_for_live_scheduler_leases",
+        "rust_scheduler_shadow_only",
+        "authority_switch_not_allowed",
+      ];
+
+  return {
+    ok: true,
+    label: savedWorkflowsAvailable
+      ? "Saved workflows configured; dry-run also available without PostgreSQL"
+      : "Dry-run available; saved workflows need PostgreSQL",
+    backend: storage.backend,
+    readFrom: storage.readFrom,
+    writeTo: storage.writeTo,
+    postgres: {
+      requiredForSavedWorkflows: true,
+      activeForRuntime: pgActive,
+      connectionSource,
+      status: pgActive ? "configured" : "not_configured",
+    },
+    dryRun: {
+      graphPayloadAvailable: true,
+      requiresPostgres: false,
+      method: "workflows.dryRun",
+      command: "argent gateway call workflows.dryRun --params '<canvas-payload-json>' --json",
+      noLiveSideEffects: true,
+      message: dryRunMessage,
+    },
+    savedWorkflows: {
+      available: savedWorkflowsAvailable,
+      requiresPostgres: true,
+      message: savedMessage,
+    },
+    scheduleCron: {
+      available: savedWorkflowsAvailable,
+      requiresPostgres: true,
+      status: savedWorkflowsAvailable ? "configured" : "skipped_no_postgres",
+      message: scheduleCronMessage,
+    },
+    schedulerBoundary: {
+      contractVersion: "rust-spine-scheduler-v1",
+      schedulerAuthority: "node",
+      rustScheduler: "shadow",
+      workflowRunAuthority: "node",
+      workflowSessionAuthority: "node",
+      channelDeliveryAuthority: "node",
+      authoritySwitchAllowed: false,
+      localDryRunCompatible: true,
+      leases: {
+        requiredForLiveRuns: true,
+        storage: "postgres",
+        status: savedWorkflowsAvailable ? "configured" : "blocked_without_postgres",
+        owner: "node-workflows",
+        rustOwnership: "not_enabled",
+        message: leaseMessage,
+      },
+      wakeups: {
+        owner: "node-cron",
+        mode: "next-heartbeat",
+        rustOwnership: "shadow",
+        duplicatePrevention:
+          "one workflowRun cron job per active schedule; duplicate scheduled workflows start inactive",
+        message: wakeupMessage,
+      },
+      handoff: {
+        runPayload: "cron payload kind=workflowRun workflowId",
+        session: "isolated workflow agent session",
+        dryRun: "canvas payload validation",
+        liveRunRequiresPostgres: true,
+        message: handoffMessage,
+      },
+      runSessionHandoff: {
+        contractVersion: "workflow-run-session-handoff-v1",
+        dryRun: {
+          authority: "node-workflows",
+          input: "canvas payload",
+          persistsWorkflowRun: false,
+          requiresPostgres: false,
+          duplicatePrevention: "not_applicable_no_saved_run",
+        },
+        liveRun: {
+          authority: "node-workflows",
+          input: "saved workflow row",
+          payloadKind: "workflowRun",
+          persistsWorkflowRun: true,
+          requiresPostgres: true,
+          sessionTarget: "isolated",
+        },
+        session: {
+          owner: "node-workflow-runner",
+          keyDerivation: "buildWorkflowAgentSessionKey(agentId, stepIndex)",
+          isolation: "per agent step",
+          rustOwnership: "not_enabled",
+        },
+        duplicatePrevention: {
+          scheduleCron: "one workflowRun cron job per active schedule",
+          duplicateWorkflow: "scheduled duplicates start inactive",
+          staleCronCleanup: "extra workflowRun cron jobs are removed during reconciliation",
+          rustOwnership: "shadow_observe_only",
+        },
+        rustPromotionBlockers: schedulerBlockers,
+        message: runSessionHandoffMessage,
+      },
+      blockers: schedulerBlockers,
+    },
+    operatorMessages: [
+      dryRunMessage,
+      savedMessage,
+      scheduleCronMessage,
+      leaseMessage,
+      wakeupMessage,
+      handoffMessage,
+      runSessionHandoffMessage,
+    ],
+  };
 }
 
 async function getSql(): Promise<ReturnType<typeof postgres>> {
@@ -343,7 +626,7 @@ export function workflowRowWithCanvasOverride(
     ...row,
     nodes: normalized.workflow.nodes,
     edges: normalized.workflow.edges,
-    canvas_layout: normalized.canvasLayout,
+    canvas_layout: preserveWorkflowCanvasMetadata(normalized.canvasLayout, row.canvas_layout),
     default_on_error: normalized.workflow.defaultOnError,
     max_run_duration_ms: normalized.workflow.maxRunDurationMs ?? row.max_run_duration_ms,
     max_run_cost_usd: normalized.workflow.maxRunCostUsd ?? row.max_run_cost_usd,
@@ -371,6 +654,115 @@ function optionalBoolean(params: Record<string, unknown>, key: string): boolean 
     throw new Error(`${key} must be a boolean`);
   }
   return v;
+}
+
+function noLiveDataWorkflowRows(): WorkflowRow[] {
+  const now = "2026-05-02T19:19:28.000Z";
+  const baseNodes = [
+    {
+      id: "trigger-manual",
+      kind: "trigger",
+      label: "Synthetic trigger",
+      config: { triggerType: "manual" },
+    },
+    {
+      id: "output-doc",
+      kind: "output",
+      label: "Synthetic output",
+      config: { outputType: "docpanel", target: "doc_panel" },
+    },
+  ];
+  const baseEdges = [{ id: "trigger-output", source: "trigger-manual", target: "output-doc" }];
+  const baseCanvas = {
+    nodes: [
+      {
+        id: "trigger-manual",
+        type: "trigger",
+        position: { x: 0, y: 0 },
+        data: { label: "Synthetic trigger", triggerType: "manual" },
+      },
+      {
+        id: "output-doc",
+        type: "output",
+        position: { x: 240, y: 0 },
+        data: { label: "Synthetic output", outputType: "docpanel", target: "doc_panel" },
+      },
+    ],
+    edges: [{ id: "trigger-output", source: "trigger-manual", target: "output-doc" }],
+  };
+
+  return [
+    {
+      id: "wf-rust-parity-active",
+      name: "Rust Parity Synthetic Active Workflow",
+      description: "Synthetic no-live-data workflow row for Rust shadow parity.",
+      version: 1,
+      is_active: true,
+      owner_agent_id: "rust-parity-agent",
+      trigger_type: "manual",
+      trigger_config: { fixture: true },
+      nodes: baseNodes,
+      edges: baseEdges,
+      canvas_layout: baseCanvas,
+      default_on_error: { strategy: "fail" },
+      max_run_duration_ms: 300_000,
+      max_run_cost_usd: "0",
+      deployment_stage: "simulate",
+      run_count: 0,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: "wf-rust-parity-draft",
+      name: "Rust Parity Synthetic Draft Workflow",
+      description: "Inactive synthetic row for list filtering parity.",
+      version: 1,
+      is_active: false,
+      owner_agent_id: "rust-parity-agent",
+      trigger_type: "manual",
+      trigger_config: { fixture: true },
+      nodes: baseNodes,
+      edges: baseEdges,
+      canvas_layout: baseCanvas,
+      default_on_error: { strategy: "fail" },
+      max_run_duration_ms: 300_000,
+      max_run_cost_usd: "0",
+      deployment_stage: "simulate",
+      run_count: 0,
+      created_at: now,
+      updated_at: now,
+    },
+  ] as WorkflowRow[];
+}
+
+export function workflowListNoLiveDataSnapshot(params: Record<string, unknown>) {
+  const limit = optionalNumber(params, "limit") ?? 50;
+  const offset = optionalNumber(params, "offset") ?? 0;
+  const activeOnly = optionalBoolean(params, "activeOnly") ?? false;
+  const ownerAgentId = optionalString(params, "ownerAgentId");
+  const rows = noLiveDataWorkflowRows().filter((row) => {
+    if (activeOnly && row.is_active !== true) {
+      return false;
+    }
+    return !ownerAgentId || row.owner_agent_id === ownerAgentId;
+  });
+
+  return {
+    workflows: rows
+      .slice(offset, offset + limit)
+      .map((row) => publicWorkflowRow(row as unknown as WorkflowRow)),
+    total: rows.length,
+    limit,
+    offset,
+    snapshot: {
+      id: WORKFLOWS_LIST_NO_LIVE_DATA_SNAPSHOT,
+      source: "synthetic",
+      noLiveData: true,
+      workflowExecution: false,
+      workflowRunsMutated: false,
+      authority: "node-live-rust-shadow",
+    },
+  };
 }
 
 function timestampIso(value: unknown): string | undefined {
@@ -415,6 +807,14 @@ function recordValue(value: unknown, label: string): Record<string, unknown> | u
   return value as Record<string, unknown>;
 }
 
+function optionalRecordValue(value: unknown): Record<string, unknown> | undefined {
+  const parsed = parseWorkflowJsonColumn(value);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+  return undefined;
+}
+
 function optionalArray(params: Record<string, unknown>, key: string): unknown[] | undefined {
   const v = params[key];
   if (v === undefined || v === null) {
@@ -456,6 +856,18 @@ function optionalStringValue(value: unknown): string | undefined {
 
 function workflowDefinitionParam(params: Record<string, unknown>) {
   return optionalObject(params, "definition") ?? optionalObject(params, "workflowDefinition");
+}
+
+function preserveWorkflowCanvasMetadata(canvasLayout: unknown, fallbackCanvasLayout: unknown) {
+  const fallback = optionalRecordValue(fallbackCanvasLayout);
+  if (!fallback || !("importReport" in fallback)) {
+    return canvasLayout;
+  }
+  const next = optionalRecordValue(canvasLayout) ?? {};
+  if ("importReport" in next) {
+    return canvasLayout;
+  }
+  return { ...next, importReport: fallback.importReport };
 }
 
 function workflowDeploymentStageFromDefinition(
@@ -571,7 +983,7 @@ function workflowScheduleCronDescription(row: WorkflowRow): string {
 }
 
 export function duplicatedWorkflowShouldStartActive(source: WorkflowRow): boolean {
-  return resolveWorkflowSchedule(source) ? false : true;
+  return !resolveWorkflowSchedule(source);
 }
 
 function workflowScheduleCronSpec(row: WorkflowRow, schedule: { expr: string; timezone?: string }) {
@@ -646,7 +1058,22 @@ export async function syncWorkflowScheduleCronJob(params: {
   };
 }
 
-export async function reconcileWorkflowScheduleCronJobs(cron: CronService) {
+export async function reconcileWorkflowScheduleCronJobs(
+  cron: CronService,
+  options?: { env?: NodeJS.ProcessEnv; storage?: StorageConfig },
+) {
+  const storage = options?.storage ?? resolveRuntimeStorageConfig(options?.env ?? process.env);
+  if (storage.backend !== "postgres" && storage.backend !== "dual") {
+    const message =
+      "workflow schedule cron reconciliation skipped: saved workflow schedules require PostgreSQL; local/parity gateways can still use workflow dry-run readiness.";
+    log.info(message);
+    return {
+      reconciled: [],
+      skipped: true,
+      reason: "postgres_not_configured" as const,
+      message,
+    };
+  }
   const sql = await getSql();
   const rows = await sql`SELECT * FROM workflows`;
   const scheduledWorkflowIds = new Set<string>();
@@ -758,8 +1185,112 @@ function optionalDeploymentStage(params: Record<string, unknown>) {
   throw new Error("deploymentStage must be simulate, shadow, limited_live, or live");
 }
 
-function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
-  const imported = importWorkflowPackage(workflowPackage);
+type WorkflowImportReportLike = {
+  packageName?: string;
+  packageSlug?: string;
+  okForImport?: boolean;
+  okForPinnedTestRun?: boolean;
+  liveReadiness?: {
+    okForLive?: boolean;
+    status?: string;
+    label?: string;
+    reasons?: Array<{ code?: string; id?: string; label?: string; message?: string }>;
+  };
+  requirements?: Array<{
+    key?: string;
+    id?: string;
+    label?: string;
+    requiredForLive?: boolean;
+  }>;
+  bindings?: Record<string, { value?: string }>;
+};
+
+export type WorkflowLiveRunGateResult =
+  | { ok: true }
+  | { ok: false; message: string; codes: string[] };
+
+function importReportFromWorkflowRow(row: WorkflowRow): WorkflowImportReportLike | undefined {
+  const canvas = optionalRecordValue(row.canvas_layout);
+  const report = canvas?.importReport ?? row.importReport;
+  if (report && typeof report === "object" && !Array.isArray(report)) {
+    return report as WorkflowImportReportLike;
+  }
+  return undefined;
+}
+
+function missingRequiredLiveBindingLabels(report: WorkflowImportReportLike): string[] {
+  const requirements = Array.isArray(report.requirements) ? report.requirements : [];
+  return requirements
+    .filter((requirement) => requirement.requiredForLive !== false)
+    .filter((requirement) => {
+      const key = requirement.key;
+      return !key || !report.bindings?.[key]?.value;
+    })
+    .map(
+      (requirement) => requirement.label ?? requirement.id ?? requirement.key ?? "required item",
+    );
+}
+
+function workflowStageRequiresLiveReadiness(stage: WorkflowDefinition["deploymentStage"]) {
+  return stage === "live" || stage === "limited_live";
+}
+
+export function evaluateWorkflowLiveRunGate(args: {
+  deploymentStage?: WorkflowDefinition["deploymentStage"];
+  importReport?: WorkflowImportReportLike;
+}): WorkflowLiveRunGateResult {
+  if (!workflowStageRequiresLiveReadiness(args.deploymentStage)) {
+    return { ok: true };
+  }
+  const report = args.importReport;
+  if (!report) {
+    return { ok: true };
+  }
+  const codes: string[] = [];
+  const messages: string[] = [];
+  const missingBindings = missingRequiredLiveBindingLabels(report);
+  if (missingBindings.length > 0) {
+    codes.push("missing_live_bindings");
+    messages.push(
+      `Missing required live bindings: ${missingBindings.slice(0, 6).join(", ")}${
+        missingBindings.length > 6 ? ` and ${missingBindings.length - 6} more` : ""
+      }.`,
+    );
+  }
+  if (report.liveReadiness?.okForLive !== true) {
+    const reasons = report.liveReadiness?.reasons ?? [];
+    for (const reason of reasons) {
+      if (reason.code) {
+        codes.push(reason.code);
+      }
+    }
+    if (reasons.length > 0) {
+      messages.push(
+        `Live readiness is not satisfied: ${reasons
+          .slice(0, 6)
+          .map((reason) => reason.message ?? reason.label ?? reason.code ?? "readiness blocker")
+          .join("; ")}${reasons.length > 6 ? `; and ${reasons.length - 6} more` : ""}.`,
+      );
+    } else {
+      codes.push("live_readiness_not_proven");
+      messages.push("Live readiness has not been proven for this imported workflow.");
+    }
+  }
+  if (messages.length === 0) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    message: `Live workflow run blocked. ${messages.join(" ")}`,
+    codes: [...new Set(codes)],
+  };
+}
+
+function workflowTemplateSummary(
+  workflowPackage: WorkflowPackage,
+  liveContext?: WorkflowPackageLiveReadinessContext,
+) {
+  const imported = importWorkflowPackage(workflowPackage, liveContext);
   return {
     id: workflowPackage.id,
     slug: workflowPackage.slug,
@@ -773,12 +1304,17 @@ function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
     okForImport: imported.readiness.okForImport,
     okForPinnedTestRun: imported.readiness.okForPinnedTestRun,
     liveRequirements: imported.readiness.liveRequirements,
+    dryRunEvidence: imported.readiness.dryRunEvidence,
+    liveReadiness: imported.readiness.liveReadiness,
     notes: workflowPackage.notes ?? [],
   };
 }
 
-function workflowPackagePreviewPayload(workflowPackage: WorkflowPackage) {
-  const imported = importWorkflowPackage(workflowPackage);
+function workflowPackagePreviewPayload(
+  workflowPackage: WorkflowPackage,
+  liveContext?: WorkflowPackageLiveReadinessContext,
+) {
+  const imported = importWorkflowPackage(workflowPackage, liveContext);
   return {
     package: workflowPackage,
     workflow: applyWorkflowPackageTestFixtures(workflowPackage),
@@ -789,6 +1325,16 @@ function workflowPackagePreviewPayload(workflowPackage: WorkflowPackage) {
       issues: imported.normalized.issues,
     },
   };
+}
+
+async function buildWorkflowPackageLiveReadinessContext(): Promise<WorkflowPackageLiveReadinessContext> {
+  try {
+    const catalog = await discoverConnectorCatalog();
+    return { connectors: catalog.connectors };
+  } catch (err) {
+    log.warn(`workflow template live readiness connector discovery failed: ${String(err)}`);
+    return { connectors: [] };
+  }
 }
 
 type WorkflowRunPublicStep = {
@@ -1503,7 +2049,7 @@ export async function buildWorkflowConnectorCapabilities(): Promise<WorkflowConn
         break;
       }
     }
-    const isBlocked = scaffoldOnly || c.installState === "repo-only";
+    const readinessState = workflowConnectorReadinessState(c, scaffoldOnly);
     return {
       id: c.tool,
       name: c.label || c.tool.replace(/^aos-/, "").replace(/-/g, " "),
@@ -1517,11 +2063,7 @@ export async function buildWorkflowConnectorCapabilities(): Promise<WorkflowConn
       installState: c.installState,
       statusOk: c.status.ok,
       scaffoldOnly,
-      readinessState: isBlocked
-        ? "blocked"
-        : c.installState === "ready"
-          ? "write_ready"
-          : "setup_required",
+      readinessState,
     };
   });
 }
@@ -1555,12 +2097,12 @@ export async function validateWorkflowRuntimeCapabilities(
   );
   const availableConnectors = new Set(
     connectors
-      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState === "write_ready")
       .map((connector) => connector.id),
   );
   const outputConnectorOperations = new Set(
     connectors
-      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState === "write_ready")
       .flatMap((connector) =>
         connector.commands
           .filter(isWorkflowOutputConnectorCommand)
@@ -1660,7 +2202,15 @@ export async function buildWorkflowDryRunTrace(workflow: WorkflowDefinition): Pr
   steps: WorkflowDryRunTraceStep[];
   issues: WorkflowIssue[];
 }> {
-  const issues = await validateWorkflowRuntimeCapabilities(workflow);
+  const runtimeIssues = await validateWorkflowRuntimeCapabilities(workflow);
+  const issues =
+    workflow.deploymentStage === "simulate"
+      ? runtimeIssues.map((issue) => ({
+          ...issue,
+          severity: "warning" as const,
+          message: `${issue.message} Local simulate dry-run continues; live execution remains gated.`,
+        }))
+      : runtimeIssues;
   const steps: WorkflowDryRunTraceStep[] = [];
 
   try {
@@ -1842,6 +2392,15 @@ export async function startAppForgeEventTriggeredWorkflows(opts: {
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 export const workflowsHandlers: GatewayRequestHandlers = {
+  "workflows.backendStatus": async ({ respond }) => {
+    try {
+      respond(true, buildWorkflowBackendStatus());
+    } catch (err) {
+      log.warn(`workflows.backendStatus failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
   // ── Import / Export ───────────────────────────────────────────────────────
 
   "workflows.templates.list": async ({ params, respond }) => {
@@ -1849,6 +2408,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const department = optionalString(params, "department");
       const runPattern = optionalString(params, "runPattern");
       const query = optionalString(params, "query")?.toLowerCase();
+      const liveContext = await buildWorkflowPackageLiveReadinessContext();
       const templates = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((workflowPackage) => {
         if (department && workflowPackage.scenario.department !== department) {
           return false;
@@ -1869,7 +2429,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           return haystack.includes(query);
         }
         return true;
-      }).map(workflowTemplateSummary);
+      }).map((workflowPackage) => workflowTemplateSummary(workflowPackage, liveContext));
       respond(true, { templates });
     } catch (err) {
       log.warn(`workflows.templates.list failed: ${String(err)}`);
@@ -1889,7 +2449,8 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       if (!workflowPackage) {
         throw new Error(`Workflow template not found: ${slugOrId}`);
       }
-      respond(true, workflowPackagePreviewPayload(workflowPackage));
+      const liveContext = await buildWorkflowPackageLiveReadinessContext();
+      respond(true, workflowPackagePreviewPayload(workflowPackage, liveContext));
     } catch (err) {
       log.warn(`workflows.templates.get failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
@@ -1901,7 +2462,8 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const text = requireString(params, "text");
       const format = optionalWorkflowPackageFormat(params);
       const workflowPackage = parseWorkflowPackageText(text, format);
-      respond(true, workflowPackagePreviewPayload(workflowPackage));
+      const liveContext = await buildWorkflowPackageLiveReadinessContext();
+      respond(true, workflowPackagePreviewPayload(workflowPackage, liveContext));
     } catch (err) {
       log.warn(`workflows.importPreview failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
@@ -2280,6 +2842,15 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
   "workflows.list": async ({ params, respond }) => {
     try {
+      const snapshot = optionalString(params, "snapshot");
+      if (snapshot) {
+        if (snapshot !== WORKFLOWS_LIST_NO_LIVE_DATA_SNAPSHOT) {
+          throw new Error(`Unsupported workflows.list snapshot "${snapshot}"`);
+        }
+        respond(true, workflowListNoLiveDataSnapshot(params));
+        return;
+      }
+
       const sql = await getSql();
       const limit = optionalNumber(params, "limit") ?? 50;
       const offset = optionalNumber(params, "offset") ?? 0;
@@ -2763,6 +3334,20 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         );
         return;
       }
+      const liveGate = evaluateWorkflowLiveRunGate({
+        deploymentStage: normalizedForRun.workflow.deploymentStage,
+        importReport: importReportFromWorkflowRow(wf),
+      });
+      if (!liveGate.ok) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, liveGate.message, {
+            details: { codes: liveGate.codes },
+          }),
+        );
+        return;
+      }
 
       let resume;
       if (fromStepId) {
@@ -2954,15 +3539,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           }
         }
 
-        // Determine readiness state for sidebar badge
-        const isBlocked = scaffoldOnly || c.installState === "repo-only";
-        const readinessState: string = isBlocked
-          ? "blocked"
-          : c.installState === "ready"
-            ? "write_ready"
-            : c.installState === "needs-setup"
-              ? "setup_required"
-              : "setup_required";
+        const readinessState = workflowConnectorReadinessState(c, scaffoldOnly);
 
         return {
           id: c.tool,

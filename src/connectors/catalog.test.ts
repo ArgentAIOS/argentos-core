@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultRepoRoots, discoverConnectorCatalog } from "./catalog.js";
+import {
+  APPFORGE_CORE_CONNECTOR_ID,
+  defaultRepoRoots,
+  discoverConnectorCatalog,
+} from "./catalog.js";
 
 const tempDirs: string[] = [];
 
@@ -130,6 +134,7 @@ describe("discoverConnectorCatalog", () => {
       repoRoots: [root],
       pathEnv: "",
       timeoutMs: 500,
+      includeBuiltIns: false,
     });
 
     expect(result.total).toBe(1);
@@ -216,6 +221,7 @@ describe("discoverConnectorCatalog", () => {
       repoRoots: [root],
       pathEnv: "",
       timeoutMs: 500,
+      includeBuiltIns: false,
     });
 
     expect(result.total).toBe(1);
@@ -300,6 +306,7 @@ describe("discoverConnectorCatalog", () => {
       repoRoots: [root],
       pathEnv: binDir,
       timeoutMs: 500,
+      includeBuiltIns: false,
     });
 
     expect(result.total).toBe(1);
@@ -321,5 +328,239 @@ describe("discoverConnectorCatalog", () => {
       }),
     });
     expect(result.connectors[0]?.commands).toHaveLength(1);
+  });
+
+  it("can catalog connector metadata without executing adapter binaries", async () => {
+    const root = makeTempDir("connector-no-exec-");
+    const binDir = makeTempDir("connector-no-exec-bin-");
+    const markerPath = path.join(binDir, "adapter-executed");
+    writeRepoFixture({
+      root,
+      tool: "aos-noexec",
+      description: "Agent-native no-exec connector",
+      permissions: {
+        "record.list": "readonly",
+      },
+      connectorMeta: {
+        connector: {
+          label: "No Exec",
+          category: "records",
+          resources: ["record"],
+        },
+        commands: [
+          {
+            id: "record.list",
+            summary: "List records",
+            required_mode: "readonly",
+            supports_json: true,
+            resource: "record",
+            action_class: "read",
+          },
+        ],
+      },
+    });
+
+    const binaryPath = path.join(binDir, "aos-noexec");
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        `touch ${JSON.stringify(markerPath)}`,
+        `printf '%s' '${JSON.stringify({ ok: true, data: { status: "healthy" } })}'`,
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, 0o755);
+
+    const result = await discoverConnectorCatalog({
+      repoRoots: [root],
+      pathEnv: binDir,
+      timeoutMs: 500,
+      includeBuiltIns: false,
+      executeAdapters: false,
+    });
+
+    expect(fs.existsSync(markerPath)).toBe(false);
+    expect(result.connectors[0]).toMatchObject({
+      tool: "aos-noexec",
+      label: "No Exec",
+      installState: "repo-only",
+      commands: [
+        expect.objectContaining({
+          id: "record.list",
+          requiredMode: "readonly",
+          actionClass: "read",
+        }),
+      ],
+      discovery: expect.objectContaining({
+        binaryPath,
+      }),
+    });
+  });
+
+  it("includes AppForge Core as a metadata-only built-in connector", async () => {
+    const result = await discoverConnectorCatalog({
+      repoRoots: [],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.connectors).toContainEqual(
+      expect.objectContaining({
+        tool: APPFORGE_CORE_CONNECTOR_ID,
+        label: "AppForge Core",
+        backend: "core-gateway",
+        installState: "metadata-only",
+        status: expect.objectContaining({
+          ok: true,
+          label: "Metadata only",
+        }),
+        categories: expect.arrayContaining(["appforge", "workflow"]),
+        resources: expect.arrayContaining(["base", "table", "record", "event"]),
+        commands: expect.arrayContaining([
+          expect.objectContaining({
+            id: "appforge.bases.list",
+            actionClass: "read",
+            resource: "base",
+          }),
+          expect.objectContaining({
+            id: "appforge.tables.list",
+            actionClass: "read",
+            resource: "table",
+          }),
+          expect.objectContaining({
+            id: "workflows.emitAppForgeEvent",
+            actionClass: "read",
+            resource: "event",
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("runs local harness binaries from relative repo roots using absolute executable paths", async () => {
+    const root = makeTempDir("connector-local-harness-");
+    const { harnessDir } = writeRepoFixture({
+      root,
+      tool: "aos-local",
+      description: "Agent-native local harness connector",
+      permissions: {
+        "item.list": "readonly",
+      },
+    });
+    const binDir = path.join(harnessDir, ".venv", "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const binaryPath = path.join(binDir, "aos-local");
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "--json" ] && [ "$2" = "capabilities" ]; then',
+        `  printf '%s' '${JSON.stringify({
+          ok: true,
+          data: {
+            tool: "aos-local",
+            backend: "local-backend",
+            commands: [
+              {
+                id: "item.list",
+                summary: "List items",
+                required_mode: "readonly",
+                supports_json: true,
+                resource: "item",
+                action_class: "read",
+              },
+            ],
+          },
+        })}'`,
+        "  exit 0",
+        "fi",
+        'if [ "$1" = "--json" ] && [ "$2" = "health" ]; then',
+        `  printf '%s' '${JSON.stringify({ ok: true, data: { status: "healthy" } })}'`,
+        "  exit 0",
+        "fi",
+        "exit 2",
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, 0o755);
+
+    const relativeRoot = path.relative(process.cwd(), root);
+    const result = await discoverConnectorCatalog({
+      repoRoots: [relativeRoot],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.connectors[0]).toMatchObject({
+      tool: "aos-local",
+      installState: "ready",
+      discovery: expect.objectContaining({
+        binaryPath,
+      }),
+      status: expect.objectContaining({
+        ok: true,
+      }),
+    });
+  });
+
+  it("discovers committed harness bin shims before reporting a connector as repo-only", async () => {
+    const root = makeTempDir("connector-tracked-bin-");
+    const { harnessDir } = writeRepoFixture({
+      root,
+      tool: "aos-shim",
+      description: "Agent-native shim connector",
+      permissions: {
+        health: "readonly",
+      },
+    });
+    const binDir = path.join(harnessDir, "shims");
+    fs.mkdirSync(binDir, { recursive: true });
+    const binaryPath = path.join(binDir, "aos-shim");
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "--json" ] && [ "$2" = "capabilities" ]; then',
+        `  printf '%s' '${JSON.stringify({
+          ok: true,
+          data: {
+            tool: "aos-shim",
+            commands: [
+              {
+                id: "health",
+                required_mode: "readonly",
+                supports_json: true,
+                resource: "connector",
+                action_class: "read",
+              },
+            ],
+          },
+        })}'`,
+        "  exit 0",
+        "fi",
+        'if [ "$1" = "--json" ] && [ "$2" = "health" ]; then',
+        `  printf '%s' '${JSON.stringify({ ok: true, data: { status: "needs_setup" } })}'`,
+        "  exit 0",
+        "fi",
+        "exit 2",
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, 0o755);
+
+    const result = await discoverConnectorCatalog({
+      repoRoots: [root],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.connectors[0]).toMatchObject({
+      tool: "aos-shim",
+      installState: "needs-setup",
+      discovery: expect.objectContaining({
+        binaryPath,
+      }),
+    });
   });
 });

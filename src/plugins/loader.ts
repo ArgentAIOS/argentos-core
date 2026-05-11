@@ -182,9 +182,19 @@ function applyManifestMetadata(record: PluginRecord, manifestRecord: PluginManif
 
 export function loadArgentPlugins(options: PluginLoadOptions = {}): PluginRegistry {
   const cfg = options.config ?? {};
+  const effectiveCfg =
+    process.env.ARGENT_SKIP_PLUGINS === "1"
+      ? {
+          ...cfg,
+          plugins: {
+            ...cfg.plugins,
+            enabled: false,
+          },
+        }
+      : cfg;
   const logger = options.logger ?? defaultLogger();
   const validateOnly = options.mode === "validate";
-  const normalized = normalizePluginsConfig(cfg.plugins);
+  const normalized = normalizePluginsConfig(effectiveCfg.plugins);
   const cacheKey = buildCacheKey({
     workspaceDir: options.workspaceDir,
     plugins: normalized,
@@ -208,7 +218,7 @@ export function loadArgentPlugins(options: PluginLoadOptions = {}): PluginRegist
     coreGatewayHandlers: options.coreGatewayHandlers as Record<string, GatewayRequestHandler>,
   });
 
-  const orgScope = resolveOrgPluginScope(cfg);
+  const orgScope = resolveOrgPluginScope(effectiveCfg);
   if (orgScope.error) {
     registry.diagnostics.push({
       level: "error",
@@ -223,7 +233,7 @@ export function loadArgentPlugins(options: PluginLoadOptions = {}): PluginRegist
     organizationId: orgScope.orgId ?? undefined,
   });
   const manifestRegistry = loadPluginManifestRegistry({
-    config: cfg,
+    config: effectiveCfg,
     workspaceDir: options.workspaceDir,
     cache: options.cache,
     candidates: discovery.candidates,

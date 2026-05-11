@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 
 const mocks = vi.hoisted(() => ({
   createExecutiveShadowClient: vi.fn(),
@@ -7,6 +8,40 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../infra/executive-shadow-client.js", () => ({
   createExecutiveShadowClient: mocks.createExecutiveShadowClient,
 }));
+
+const kernelShadow = {
+  reachable: true,
+  status: "fail-closed",
+  authority: "shadow",
+  wakefulness: "active",
+  agenda: {
+    activeLane: "operator",
+    pendingLanes: ["background"],
+    focus: "interactive",
+  },
+  focus: "interactive",
+  ticks: {
+    count: 4,
+    lastTickAtMs: 12222,
+    nextTickDueAtMs: 12345,
+    intervalMs: 5000,
+  },
+  reflectionQueue: {
+    status: "shadow-only",
+    depth: 1,
+    items: [{ lane: "background", priority: 50, reason: "reflect", requestedAtMs: 12000 }],
+  },
+  persistedAt: 12222,
+  restartRecovery: {
+    model: "snapshot-plus-journal-replay",
+    status: "recovered",
+    bootCount: 2,
+    lastRecoveredAtMs: 11111,
+    journalEventCount: 8,
+    snapshotFile: "executive-state.json",
+    journalFile: "executive.journal.jsonl",
+  },
+} as const;
 
 describe("getExecutiveShadowSummary", () => {
   it("returns a read-only executive shadow summary when reachable", async () => {
@@ -58,6 +93,42 @@ describe("getExecutiveShadowSummary", () => {
         lastReleaseAtMs: null,
         lastReleaseOutcome: null,
       })),
+      getReadiness: vi.fn(async () => ({
+        mode: "shadow-readiness",
+        authoritySwitchAllowed: false,
+        promotionStatus: "blocked",
+        kernelShadow,
+        currentAuthority: {
+          gateway: "node",
+          scheduler: "node",
+          workflows: "node",
+          channels: "node",
+          sessions: "node",
+          executive: "shadow-only",
+        },
+        nodeResponsibilities: ["gateway live authority", "scheduler live authority"],
+        rustResponsibilities: ["executive shadow state"],
+        persistenceModel: {
+          snapshotFile: "executive-state.json",
+          journalFile: "executive.journal.jsonl",
+          restartRecovery: "snapshot-plus-journal-replay",
+          leaseRecovery: "tick-expiry-before-promotion",
+        },
+        promotionGates: [
+          {
+            id: "authority-boundary",
+            status: "blocked",
+            owner: "master-operator",
+            requiredProof: ["no authority switch"],
+          },
+          {
+            id: "restart-and-lease-recovery",
+            status: "proven",
+            owner: "aos",
+            requiredProof: ["restart test"],
+          },
+        ],
+      })),
     });
 
     const { getExecutiveShadowSummary } = await import("./status.executive-shadow.js");
@@ -65,6 +136,17 @@ describe("getExecutiveShadowSummary", () => {
 
     expect(summary).toEqual({
       reachable: true,
+      kernelStatus: "fail-closed",
+      productionDaemon: {
+        binary: "argent-execd",
+        status: "fail-closed",
+        checkedEndpoint: "/v1/executive/readiness",
+        readOnly: true,
+        authoritySwitchAllowed: false,
+        destructiveProcessControlUsed: false,
+        productionRolloutAttempted: false,
+        detail: "argent-execd reachable; readiness is fail-closed and authoritySwitchAllowed=false",
+      },
       activeLane: "operator",
       tickCount: 4,
       bootCount: 2,
@@ -76,8 +158,193 @@ describe("getExecutiveShadowSummary", () => {
       lastEventSummary: "lane operator activated (lease expires at 13000)",
       lastEventType: "lane_activated",
       stateDir: "/tmp/executive",
+      readiness: {
+        status: "fail-closed",
+        mode: "shadow-readiness",
+        authoritySwitchAllowed: false,
+        promotionStatus: "blocked",
+        failClosed: true,
+        kernelShadow,
+        currentAuthority: {
+          gateway: "node",
+          scheduler: "node",
+          workflows: "node",
+          channels: "node",
+          sessions: "node",
+          executive: "shadow-only",
+        },
+        nodeResponsibilities: ["gateway live authority", "scheduler live authority"],
+        rustResponsibilities: ["executive shadow state"],
+        persistenceModel: {
+          snapshotFile: "executive-state.json",
+          journalFile: "executive.journal.jsonl",
+          restartRecovery: "snapshot-plus-journal-replay",
+          leaseRecovery: "tick-expiry-before-promotion",
+        },
+        promotionGates: [
+          {
+            id: "authority-boundary",
+            status: "blocked",
+            owner: "master-operator",
+            requiredProof: ["no authority switch"],
+          },
+          {
+            id: "restart-and-lease-recovery",
+            status: "proven",
+            owner: "aos",
+            requiredProof: ["restart test"],
+          },
+        ],
+        gateCounts: { blocked: 1, proven: 1 },
+        error: null,
+      },
       error: null,
     });
+  });
+
+  it("keeps health visible when Kernel readiness is unsafe", async () => {
+    mocks.createExecutiveShadowClient.mockReturnValue({
+      getHealth: vi.fn(async () => ({
+        status: "ok",
+        uptimeSeconds: 12,
+        bootCount: 2,
+        tickCount: 4,
+        activeLane: "operator",
+        journalEventCount: 8,
+        stateDir: "/tmp/executive",
+        nextTickDueAtMs: 12345,
+      })),
+      getMetrics: vi.fn(async () => ({
+        activeLane: "operator",
+        laneCounts: { idle: 1, pending: 2, active: 1 },
+        bootCount: 2,
+        tickCount: 4,
+        journalEventCount: 8,
+        nextTickDueAtMs: 12345,
+        lastTickAtMs: 12222,
+        lastRecoveredAtMs: 11111,
+        nextLeaseExpiryAtMs: 12456,
+        highestPendingPriority: 50,
+      })),
+      getTimeline: vi.fn(async () => ({
+        activeLane: "operator",
+        journalEventCount: 8,
+        recentEvents: [],
+        counts: {
+          booted: 1,
+          recovered: 1,
+          tick: 4,
+          lane_requested: 2,
+          lane_activated: 1,
+          lane_released: 0,
+        },
+        lastRequestAtMs: 12000,
+        lastActivationAtMs: 12456,
+        lastReleaseAtMs: null,
+        lastReleaseOutcome: null,
+      })),
+      getReadiness: vi.fn(async () => {
+        throw new ZodError([
+          {
+            code: "invalid_value",
+            values: [false],
+            path: ["authoritySwitchAllowed"],
+            message: "Invalid input: expected false",
+          },
+        ]);
+      }),
+    });
+
+    const { getExecutiveShadowSummary } = await import("./status.executive-shadow.js");
+    const summary = await getExecutiveShadowSummary();
+
+    expect(summary.reachable).toBe(true);
+    expect(summary.kernelStatus).toBe("unsafe");
+    expect(summary.productionDaemon).toMatchObject({
+      binary: "argent-execd",
+      status: "unsafe",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+    });
+    expect(summary.productionDaemon.detail).toContain("unsafe");
+    expect(summary.readiness).toMatchObject({
+      status: "unsafe",
+      promotionStatus: "blocked",
+      authoritySwitchAllowed: false,
+      failClosed: false,
+    });
+    expect(summary.readiness?.error).toContain("expected false");
+  });
+
+  it("distinguishes readiness endpoint unavailability from unsafe payloads", async () => {
+    mocks.createExecutiveShadowClient.mockReturnValue({
+      getHealth: vi.fn(async () => ({
+        status: "ok",
+        uptimeSeconds: 12,
+        bootCount: 2,
+        tickCount: 4,
+        activeLane: "operator",
+        journalEventCount: 8,
+        stateDir: "/tmp/executive",
+        nextTickDueAtMs: 12345,
+      })),
+      getMetrics: vi.fn(async () => ({
+        activeLane: "operator",
+        laneCounts: { idle: 1, pending: 2, active: 1 },
+        bootCount: 2,
+        tickCount: 4,
+        journalEventCount: 8,
+        nextTickDueAtMs: 12345,
+        lastTickAtMs: 12222,
+        lastRecoveredAtMs: 11111,
+        nextLeaseExpiryAtMs: 12456,
+        highestPendingPriority: 50,
+      })),
+      getTimeline: vi.fn(async () => ({
+        activeLane: "operator",
+        journalEventCount: 8,
+        recentEvents: [],
+        counts: {
+          booted: 1,
+          recovered: 1,
+          tick: 4,
+          lane_requested: 2,
+          lane_activated: 1,
+          lane_released: 0,
+        },
+        lastRequestAtMs: 12000,
+        lastActivationAtMs: 12456,
+        lastReleaseAtMs: null,
+        lastReleaseOutcome: null,
+      })),
+      getReadiness: vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
+    });
+
+    const { getExecutiveShadowSummary } = await import("./status.executive-shadow.js");
+    const summary = await getExecutiveShadowSummary();
+
+    expect(summary.reachable).toBe(true);
+    expect(summary.kernelStatus).toBe("unavailable");
+    expect(summary.productionDaemon).toMatchObject({
+      binary: "argent-execd",
+      status: "unavailable",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+    });
+    expect(summary.productionDaemon.detail).toContain("ECONNREFUSED");
+    expect(summary.readiness).toMatchObject({
+      status: "unavailable",
+      promotionStatus: "blocked",
+      authoritySwitchAllowed: false,
+      failClosed: false,
+    });
+    expect(summary.readiness?.error).toContain("ECONNREFUSED");
   });
 
   it("returns an unavailable summary when the shadow daemon errors", async () => {
@@ -91,12 +358,18 @@ describe("getExecutiveShadowSummary", () => {
       getTimeline: vi.fn(async () => {
         throw new Error("connect ECONNREFUSED");
       }),
+      getReadiness: vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
     });
 
     const { getExecutiveShadowSummary } = await import("./status.executive-shadow.js");
     const summary = await getExecutiveShadowSummary();
 
     expect(summary.reachable).toBe(false);
+    expect(summary.kernelStatus).toBe("unavailable");
+    expect(summary.productionDaemon.status).toBe("unavailable");
+    expect(summary.productionDaemon.detail).toContain("ECONNREFUSED");
     expect(summary.error).toContain("ECONNREFUSED");
   });
 });

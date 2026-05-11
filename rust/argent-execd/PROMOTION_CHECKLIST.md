@@ -45,6 +45,7 @@ Recommended stronger evidence before promotion:
   - `GET /v1/executive/state`
   - `GET /v1/executive/metrics`
   - `GET /v1/executive/timeline?limit=<n>`
+  - `GET /v1/executive/readiness`
   - `GET /v1/executive/journal?limit=<n>`
 
 ## 5. Authority boundary

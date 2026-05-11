@@ -68,6 +68,18 @@ def test_runtime_config_prefers_operator_service_keys(monkeypatch):
     assert config["auth"]["redacted"]["QBO_REFRESH_TOKEN"] == "se...oken"
 
 
+def test_runtime_config_uses_sandbox_environment(monkeypatch):
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("QBO_ENVIRONMENT", "sandbox")
+    monkeypatch.delenv("QBO_API_BASE_URL", raising=False)
+
+    config = runtime.runtime_config()
+
+    assert config["runtime"]["environment"] == "sandbox"
+    assert config["runtime"]["sandbox"] is True
+    assert config["runtime"]["api_base_url"] == "https://sandbox-quickbooks.api.intuit.com"
+
+
 def test_doctor_reports_probe_failure(monkeypatch):
     _set_required_env(monkeypatch)
     monkeypatch.setattr(
@@ -209,6 +221,39 @@ def test_customer_list_uses_live_query(monkeypatch):
     assert '"resource": "customer"' in result.output
     assert '"Acme Corp"' in result.output
     assert "select+%2A+from+Customer" in calls[0]["url"]
+    assert calls[0]["headers"]["Authorization"] == "Bearer token"
+
+
+def test_invoice_list_overdue_uses_open_balance_due_date_query(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(runtime, "refresh_access_token", lambda _config: {"access_token": "token"})
+
+    def fake_request_json(method, url, *, headers=None, payload=None, timeout_seconds=None):
+        calls.append({"method": method, "url": url, "headers": headers, "payload": payload})
+        return {
+            "QueryResponse": {
+                "Invoice": [
+                    {
+                        "Id": "inv-1",
+                        "DocNumber": "INV-1",
+                        "DueDate": "2026-01-01",
+                        "Balance": 125.0,
+                        "CustomerRef": {"value": "cust-1", "name": "Acme"},
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(cli, ["--json", "invoice", "list_overdue", "due_before=2026-02-01"])
+    assert result.exit_code == 0
+    assert '"resource": "invoice"' in result.output
+    assert '"operation": "list_overdue"' in result.output
+    assert '"due_before": "2026-02-01"' in result.output
+    assert "Balance+%3E+%270%27" in calls[0]["url"]
+    assert "DueDate+%3C+%272026-02-01%27" in calls[0]["url"]
     assert calls[0]["headers"]["Authorization"] == "Bearer token"
 
 

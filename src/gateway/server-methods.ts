@@ -1,4 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
+import {
+  createRustGatewayReceiptStore,
+  describeRustGatewayReceiptStorePolicy,
+  type RustGatewayPromotionReceipt,
+  type RustGatewayReceiptCode,
+  type RustGatewayReceiptSurface,
+} from "../infra/rust-gateway-receipt-store.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { aevpHandlers } from "./server-methods/aevp.js";
 import { agentHandlers } from "./server-methods/agent.js";
@@ -47,6 +55,7 @@ const READ_SCOPE = "operator.read";
 const WRITE_SCOPE = "operator.write";
 const APPROVALS_SCOPE = "operator.approvals";
 const PAIRING_SCOPE = "operator.pairing";
+const RUST_CANARY_DENY_RECEIPTS_FLAG = "ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS";
 
 const APPROVAL_METHODS = new Set(["exec.approval.request", "exec.approval.resolve"]);
 const NODE_ROLE_METHODS = new Set(["node.invoke.result", "node.event", "skills.bins"]);
@@ -64,6 +73,11 @@ const PAIRING_METHODS = new Set([
   "node.rename",
 ]);
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
+const RUST_CANARY_DENIAL_METHODS = new Set<RustGatewayReceiptSurface>([
+  "chat.send",
+  "cron.add",
+  "workflows.run",
+]);
 const READ_METHODS = new Set([
   "health",
   "logs.tail",
@@ -76,6 +90,7 @@ const READ_METHODS = new Set([
   "tts.providers",
   "models.list",
   "agents.list",
+  "agents.profile.get",
   "family.members",
   "agent.identity.get",
   "skills.status",
@@ -91,6 +106,7 @@ const READ_METHODS = new Set([
   "cron.list",
   "cron.status",
   "cron.runs",
+  "rustGateway.canaryReceipts.status",
   "system-presence",
   "last-heartbeat",
   "node.list",
@@ -175,6 +191,7 @@ const WRITE_METHODS = new Set([
   "jobs.runs.retry",
   "jobs.runs.advance",
   "family.register",
+  "agents.profile.update",
   "copilot.mode.set",
   "jobs.orchestrator.event",
   "execution.worker.runNow",
@@ -282,6 +299,201 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
   return errorShape(ErrorCodes.INVALID_REQUEST, "missing scope: operator.admin");
 }
 
+async function maybeDenyRustCanaryBeforeMutation(
+  req: GatewayRequestOptions["req"],
+  respond: GatewayRequestOptions["respond"],
+): Promise<boolean> {
+  if (process.env[RUST_CANARY_DENY_RECEIPTS_FLAG] !== "1") {
+    return false;
+  }
+  if (!RUST_CANARY_DENIAL_METHODS.has(req.method as RustGatewayReceiptSurface)) {
+    return false;
+  }
+  const params = (req.params ?? {}) as Record<string, unknown>;
+  const surface = req.method as RustGatewayReceiptSurface;
+  const store = createRustGatewayReceiptStore();
+  const receipt = await store.append({
+    surface,
+    receiptCode: "RUST_CANARY_DENIED",
+    sourceFixtureId: `rust-shadow-gate-${surface.replace(".", "-")}`,
+    requestId: req.id,
+    duplicateKey: deriveRustCanaryDuplicateKey(surface, params),
+    reason: `${surface} denied before mutation because ${RUST_CANARY_DENY_RECEIPTS_FLAG}=1`,
+    params,
+  });
+  respond(
+    false,
+    undefined,
+    errorShape(ErrorCodes.INVALID_REQUEST, "Rust canary denied before mutation", {
+      details: {
+        auditRecordId: receipt.auditRecordId,
+        receiptId: receipt.receiptId,
+        receiptCode: receipt.receiptCode,
+        surface: receipt.surface,
+        nodeAuthority: receipt.nodeAuthority,
+        rustAuthority: receipt.rustAuthority,
+        authoritySwitchAllowed: receipt.authoritySwitchAllowed,
+        mutationBlockedBeforeHandler: receipt.mutationBlockedBeforeHandler,
+      },
+    }),
+  );
+  return true;
+}
+
+function deriveRustCanaryDuplicateKey(
+  surface: RustGatewayReceiptSurface,
+  params: Record<string, unknown>,
+): string | null {
+  const key =
+    stringParam(params.idempotencyKey) ??
+    stringParam(params.runId) ??
+    stringParam(params.workflowId) ??
+    stringParam(params.name) ??
+    stringParam(params.sessionKey);
+  return key ? `${surface}:${key}` : null;
+}
+
+function stringParam(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+const CANARY_STATUS_SURFACES: RustGatewayReceiptSurface[] = [
+  "chat.send",
+  "cron.add",
+  "workflows.run",
+];
+
+const CANARY_STATUS_RECEIPT_CODES = new Set<RustGatewayReceiptCode>([
+  "RUST_CANARY_DENIED",
+  "RUST_CANARY_DUPLICATE_PREVENTED",
+]);
+
+function buildCanarySurfaceStatus(receipts: RustGatewayPromotionReceipt[]) {
+  return CANARY_STATUS_SURFACES.map((surface) => {
+    const surfaceReceipts = receipts.filter((receipt) => receipt.surface === surface);
+    return {
+      surface,
+      denied: surfaceReceipts.some((receipt) => receipt.receiptCode === "RUST_CANARY_DENIED"),
+      duplicatePrevented: surfaceReceipts.some(
+        (receipt) => receipt.receiptCode === "RUST_CANARY_DUPLICATE_PREVENTED",
+      ),
+      receiptCount: surfaceReceipts.length,
+      latestReceiptCode: surfaceReceipts.at(-1)?.receiptCode ?? null,
+    };
+  });
+}
+
+async function buildRustGatewayCanaryReceiptStatus(params: Record<string, unknown>) {
+  const limitParam = typeof params.limit === "number" ? params.limit : 20;
+  const limit = Math.min(Math.max(Math.trunc(limitParam), 1), 100);
+  const receipts = await createRustGatewayReceiptStore().list({ limit });
+  const canaryReceipts = receipts.filter(
+    (receipt) =>
+      CANARY_STATUS_SURFACES.includes(receipt.surface) &&
+      CANARY_STATUS_RECEIPT_CODES.has(receipt.receiptCode),
+  );
+
+  return {
+    status: "ok",
+    dashboardVisible: true,
+    productionTrafficUsed: false,
+    canaryFlagEnabled: process.env[RUST_CANARY_DENY_RECEIPTS_FLAG] === "1",
+    policy: describeRustGatewayReceiptStorePolicy(),
+    authority: {
+      nodeAuthority: "live",
+      rustAuthority: "shadow-only",
+      authoritySwitchAllowed: false,
+    },
+    surfaces: buildCanarySurfaceStatus(canaryReceipts),
+    receipts: canaryReceipts,
+  };
+}
+
+async function generateRustGatewayLocalCanaryReceiptProof(params: unknown) {
+  const record =
+    typeof params === "object" && params !== null ? (params as Record<string, unknown>) : {};
+  if (record.confirmLocalOnly !== true) {
+    throw new Error("confirmLocalOnly=true is required for local canary receipt proof generation");
+  }
+  const reason =
+    typeof record.reason === "string" && record.reason.trim()
+      ? record.reason.trim()
+      : "installed daemon local canary receipt proof";
+  const proofRunId =
+    typeof record.proofRunId === "string" && record.proofRunId.trim()
+      ? record.proofRunId.trim()
+      : `installed-daemon-local-proof-${randomUUID()}`;
+  const store = createRustGatewayReceiptStore();
+  const receipts: RustGatewayPromotionReceipt[] = [];
+  for (const surface of CANARY_STATUS_SURFACES) {
+    const proofParams = buildRustGatewayLocalCanaryProofParams(surface, proofRunId);
+    const duplicateKey = deriveRustCanaryDuplicateKey(surface, proofParams);
+    receipts.push(
+      await store.append({
+        surface,
+        method: surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        sourceFixtureId: `rust-local-proof-${surface}`,
+        requestId: `${proofRunId}:${surface}:denied`,
+        duplicateKey,
+        reason,
+        params: proofParams,
+      }),
+    );
+    receipts.push(
+      await store.append({
+        surface,
+        method: surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        sourceFixtureId: `rust-local-proof-${surface}`,
+        requestId: `${proofRunId}:${surface}:duplicate`,
+        duplicateKey,
+        reason,
+        params: proofParams,
+      }),
+    );
+  }
+  return {
+    status: "ok",
+    proofRunId,
+    productionTrafficUsed: false,
+    authority: {
+      nodeAuthority: "live",
+      rustAuthority: "shadow-only",
+      authoritySwitchAllowed: false,
+    },
+    generatedSurfaces: [...CANARY_STATUS_SURFACES],
+    receiptCount: receipts.length,
+    receipts,
+  };
+}
+
+function buildRustGatewayLocalCanaryProofParams(
+  surface: RustGatewayReceiptSurface,
+  proofRunId: string,
+): Record<string, unknown> {
+  if (surface === "chat.send") {
+    return {
+      sessionKey: "main",
+      idempotencyKey: `idem-${proofRunId}`,
+      message: "installed daemon local canary proof",
+      token: "super-secret-token-value",
+    };
+  }
+  if (surface === "cron.add") {
+    return {
+      name: `cron-${proofRunId}`,
+      schedule: { kind: "every", everyMs: 60_000 },
+      payload: { token: "super-secret-token-value" },
+    };
+  }
+  return {
+    workflowId: `wf-${proofRunId}`,
+    runId: `run-${proofRunId}`,
+    input: { token: "super-secret-token-value" },
+  };
+}
+
 export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...connectHandlers,
   ...connectorsHandlers,
@@ -324,6 +536,23 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...specforgeHandlers,
   ...intentHandlers,
   ...workflowsHandlers,
+  "rustGateway.canaryReceipts.generateLocalProof": async ({ params, respond }) => {
+    try {
+      respond(true, await generateRustGatewayLocalCanaryReceiptProof(params), undefined);
+    } catch (error) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          error instanceof Error ? error.message : String(error),
+        ),
+      );
+    }
+  },
+  "rustGateway.canaryReceipts.status": async ({ params, respond }) => {
+    respond(true, await buildRustGatewayCanaryReceiptStatus(params), undefined);
+  },
 };
 
 export async function handleGatewayRequest(
@@ -333,6 +562,9 @@ export async function handleGatewayRequest(
   const authError = authorizeGatewayMethod(req.method, client);
   if (authError) {
     respond(false, undefined, authError);
+    return;
+  }
+  if (await maybeDenyRustCanaryBeforeMutation(req, respond)) {
     return;
   }
   const handler = opts.extraHandlers?.[req.method] ?? coreGatewayHandlers[req.method];

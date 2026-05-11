@@ -8,7 +8,10 @@ use crate::http::{
     copilot_mode_get_payload_json, cron_status_payload_json, device_pair_list_payload_json,
     knowledge_collections_list_payload_json, node_pair_list_payload_json,
     agent_identity_get_payload_json,
-    knowledge_library_list_payload_json, cron_list_payload_json, jobs_overview_payload_json,
+    knowledge_library_list_payload_json, cron_list_payload_json, workflows_list_payload_json,
+    workflows_backend_status_payload_json, workflows_dry_run_payload_json,
+    workflows_templates_get_payload_json, workflows_templates_list_payload_json,
+    jobs_overview_payload_json,
     contemplation_run_once_payload_json, agent_wait_payload_json, node_event_payload_json,
     copilot_mode_set_payload_json, config_set_payload_json, family_register_payload_json,
     commands_compact_payload_json, channels_logout_payload_json, config_patch_payload_json,
@@ -238,7 +241,10 @@ pub fn serve_websocket_session(
                     is_connected = true;
                 }
                 Err(code) => {
-                    send_text_frame(&writer, &error_response(None, code, "invalid connect params"))?;
+                    send_text_frame(
+                        &writer,
+                        &error_response(Some(&meta.id), code, "invalid connect params"),
+                    )?;
                     close_stream(&writer)?;
                     break;
                 }
@@ -548,6 +554,36 @@ pub fn serve_websocket_session(
             }
             "cron.list" => {
                 send_text_frame(&writer, &ok_response(&meta.id, &cron_list_payload_json()))?;
+            }
+            "workflows.list" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_list_payload_json()),
+                )?;
+            }
+            "workflows.backendStatus" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_backend_status_payload_json()),
+                )?;
+            }
+            "workflows.dryRun" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_dry_run_payload_json()),
+                )?;
+            }
+            "workflows.templates.list" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_templates_list_payload_json()),
+                )?;
+            }
+            "workflows.templates.get" => {
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &workflows_templates_get_payload_json()),
+                )?;
             }
             "cron.add" => {
                 let payload = cron_add_payload_json();

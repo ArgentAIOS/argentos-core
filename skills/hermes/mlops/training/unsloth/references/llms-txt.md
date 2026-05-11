@@ -6266,7 +6266,7 @@ Defines how much the model’s weights are adjusted during each training step.
 - **Higher Learning Rates**: Lead to faster initial convergence but can cause training to become unstable or fail to find an optimal minimum if set too high.
 - **Lower Learning Rates**: Result in more stable and precise training but may require more epochs to converge, increasing overall training time. While low learning rates are often thought to cause underfitting, they actually can lead to **overfitting** or even prevent the model from learning.
 - **Typical Range**: `2e-4` (0.0002) to `5e-6` (0.000005). \
-  :green*square: \*\*\_For normal LoRA/QLoRA Fine-tuning***, _we recommend_ **`2e-4`** _as a starting point._ \
+  :green\*square: \*\*\_For normal LoRA/QLoRA Fine-tuning**\*, *we recommend* **`2e-4`** _as a starting point._ \
   :blue_square: **\*For Reinforcement Learning** (DPO, GRPO etc.), we recommend\* **`5e-6` .** \
   :white_large_square: **\*For Full Fine-tuning,\*\* lower learning rates are generally more appropriate.\*
 

@@ -32,6 +32,17 @@ export type HeartbeatStatus = {
 
 export type ExecutiveShadowStatus = {
   reachable: boolean;
+  kernelStatus: "fail-closed" | "unsafe" | "unavailable";
+  productionDaemon: {
+    binary: "argent-execd";
+    status: "fail-closed" | "unsafe" | "unavailable";
+    checkedEndpoint: "/v1/executive/readiness";
+    readOnly: true;
+    authoritySwitchAllowed: false;
+    destructiveProcessControlUsed: false;
+    productionRolloutAttempted: false;
+    detail: string;
+  };
   activeLane: string | null;
   tickCount: number | null;
   bootCount: number | null;
@@ -43,6 +54,78 @@ export type ExecutiveShadowStatus = {
   lastEventSummary: string | null;
   lastEventType: string | null;
   stateDir: string | null;
+  readiness: {
+    status: "fail-closed" | "unsafe" | "unavailable";
+    mode: "shadow-readiness";
+    promotionStatus: "blocked";
+    authoritySwitchAllowed: false;
+    failClosed: boolean;
+    kernelShadow: {
+      reachable: boolean;
+      status: "fail-closed";
+      authority: "shadow";
+      wakefulness: "active" | "attentive" | "watching";
+      agenda: {
+        activeLane: string | null;
+        pendingLanes: string[];
+        focus: string | null;
+      };
+      focus: string | null;
+      ticks: {
+        count: number;
+        lastTickAtMs: number | null;
+        nextTickDueAtMs: number;
+        intervalMs: number;
+      };
+      reflectionQueue: {
+        status: "shadow-only";
+        depth: number;
+        items: Array<{
+          lane: string;
+          priority: number;
+          reason: string | null;
+          requestedAtMs: number | null;
+        }>;
+      };
+      persistedAt: number;
+      restartRecovery: {
+        model: "snapshot-plus-journal-replay";
+        status: "booted" | "recovered";
+        bootCount: number;
+        lastRecoveredAtMs: number | null;
+        journalEventCount: number;
+        snapshotFile: string;
+        journalFile: string;
+      };
+    };
+    currentAuthority: {
+      gateway: string;
+      scheduler: string;
+      workflows: string;
+      channels: string;
+      sessions: string;
+      executive: string;
+    };
+    persistenceModel: {
+      snapshotFile: string;
+      journalFile: string;
+      restartRecovery: string;
+      leaseRecovery: string;
+    };
+    promotionGates: Array<{
+      id: string;
+      status: "blocked" | "proven";
+      owner: string;
+      requiredProof: string[];
+    }>;
+    gateCounts: {
+      blocked: number;
+      proven: number;
+    };
+    nodeResponsibilities: string[];
+    rustResponsibilities: string[];
+    error: string | null;
+  } | null;
   error: string | null;
 };
 
@@ -55,6 +138,52 @@ export type ExecutiveShadowKernelInspectionStatus = {
   executiveActiveLane: string | null;
   kernelFocus: string | null;
   executiveLastEventSummary: string | null;
+  notes: string[];
+};
+
+export type RustGatewayShadowStatus = {
+  reachable: boolean;
+  status: string | null;
+  version: string | null;
+  uptimeSeconds: number | null;
+  component: string | null;
+  mode: string | null;
+  protocolVersion: number | null;
+  liveAuthority: string | null;
+  gatewayAuthority: string | null;
+  promotionReady: boolean | null;
+  readinessReason: string | null;
+  statePersistence: string | null;
+  baseUrl: string;
+  error: string | null;
+};
+
+export type RustGatewayParityReportStatus = {
+  path: string;
+  freshness: "missing" | "fresh" | "stale" | "invalid";
+  generatedAtMs: number | null;
+  ageMs: number | null;
+  totals: {
+    passed: number;
+    failed: number;
+    skipped: number;
+  } | null;
+  promotionReady: boolean | null;
+  blockers: number | null;
+  warnings: number | null;
+  error: string | null;
+};
+
+export type RustGatewaySchedulerAuthorityStatus = {
+  schedulerAuthority: "node";
+  rustSchedulerAuthority: "shadow-only";
+  authorityRecord: "missing";
+  cronEnabled: boolean;
+  cronStorePath: string;
+  cronJobs: number;
+  enabledCronJobs: number;
+  workflowRunCronJobs: number;
+  nextWakeAtMs: number | null;
   notes: string[];
 };
 
@@ -76,6 +205,9 @@ export type StatusSummary = {
     defaultAgentId: string;
     agents: HeartbeatStatus[];
   };
+  rustGatewayShadow?: RustGatewayShadowStatus;
+  rustGatewayParityReport?: RustGatewayParityReportStatus;
+  rustGatewaySchedulerAuthority?: RustGatewaySchedulerAuthorityStatus;
   executiveShadow?: ExecutiveShadowStatus;
   executiveShadowKernelInspection?: ExecutiveShadowKernelInspectionStatus;
   channelSummary: string[];

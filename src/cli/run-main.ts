@@ -34,9 +34,23 @@ export function shouldSkipGlobalPluginRegistration(
   _primary: string | null,
 ): boolean {
   if (!hasHelpOrVersion(argv)) {
-    return false;
+    return isGatewayAuthoritySmokeLoopbackArgv(argv);
   }
   return true;
+}
+
+function isGatewayAuthoritySmokeLoopbackArgv(argv: string[]): boolean {
+  const args = argv.slice(2);
+  for (let index = 0; index <= args.length - 3; index += 1) {
+    if (
+      args[index] === "gateway" &&
+      args[index + 1] === "authority" &&
+      args[index + 2] === "smoke-loopback"
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function runCli(argv: string[] = process.argv) {

@@ -140,6 +140,7 @@ describe("buildWorkflowOutputChannels", () => {
           commands: [{ id: "message.send", summary: "Send message", actionClass: "write" }],
           installState: "ready",
           status: { ok: true },
+          discovery: { binaryPath: "/tmp/aos-slack" },
         },
         {
           tool: "aos-placeholder",
@@ -165,6 +166,44 @@ describe("buildWorkflowOutputChannels", () => {
       expect.objectContaining({
         id: "aos-placeholder",
         readinessState: "blocked",
+      }),
+    ]);
+  });
+
+  it("truth-labels AppForge Core as read-ready metadata, not connector runtime write-ready", async () => {
+    mocks.discoverConnectorCatalog.mockResolvedValue({
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          category: "appforge",
+          categories: ["appforge", "workflow"],
+          commands: [
+            { id: "appforge.bases.list", summary: "List bases", actionClass: "read" },
+            { id: "appforge.tables.list", summary: "List tables", actionClass: "read" },
+            { id: "workflows.emitAppForgeEvent", summary: "Emit event", actionClass: "read" },
+          ],
+          installState: "metadata-only",
+          status: { ok: true },
+          discovery: {},
+        },
+      ],
+    });
+
+    const connectors = await buildWorkflowConnectorCapabilities();
+
+    expect(connectors).toEqual([
+      expect.objectContaining({
+        id: "appforge-core",
+        name: "AppForge Core",
+        readinessState: "read_ready",
+        installState: "metadata-only",
+        statusOk: true,
+        commands: expect.arrayContaining([
+          expect.objectContaining({ id: "appforge.bases.list", actionClass: "read" }),
+          expect.objectContaining({ id: "appforge.tables.list", actionClass: "read" }),
+          expect.objectContaining({ id: "workflows.emitAppForgeEvent", actionClass: "read" }),
+        ]),
       }),
     ]);
   });
@@ -273,6 +312,7 @@ describe("buildWorkflowOutputChannels", () => {
           commands: [{ id: "post.list", summary: "List posts", actionClass: "read" }],
           installState: "ready",
           status: { ok: true },
+          discovery: { binaryPath: "/tmp/aos-buffer" },
         },
       ],
     });

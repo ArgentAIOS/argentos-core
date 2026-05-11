@@ -28,6 +28,9 @@ jobs:
       - name: Verify repo lane
         run: node scripts/check-repo-lane.mjs
 
+      - name: Architectural invariants
+        run: node scripts/check-invariants.mjs
+
   install-check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:

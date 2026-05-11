@@ -873,6 +873,81 @@ def search_messages(
     )
 
 
+def history_messages(
+    *,
+    config: dict[str, Any] | None = None,
+    channel: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    resolved = config or runtime_config()
+    resolved_channel = (channel or resolved.get("channel_id_hint") or "").strip()
+    if not resolved_channel:
+        raise CliError(
+            code="INVALID_USAGE",
+            message="message.history requires a channel or SLACK_CHANNEL_ID",
+            exit_code=2,
+            details={
+                "required_scope": "channels:history",
+                "env": resolved.get("channel_id_hint_env") or DEFAULT_CHANNEL_ID_ENV,
+            },
+        )
+    token = _require_bot_token(resolved)
+    identity = auth_identity(resolved)
+    workspace = _workspace_context(identity, resolved)
+    payload = _request_json("conversations.history", token, params={"channel": resolved_channel, "limit": limit})
+    messages = []
+    for item in payload.get("messages", []):
+        if not isinstance(item, dict):
+            continue
+        messages.append(
+            {
+                "channel_id": resolved_channel,
+                "channel_name": None,
+                "ts": item.get("ts"),
+                "user": item.get("user"),
+                "username": item.get("username"),
+                "text": item.get("text"),
+                "permalink": None,
+                "score": None,
+            }
+        )
+    scope_label = f"Message history for {resolved_channel}"
+    picker_items = [
+        _message_picker_item(item, workspace_label=workspace["label"], scope_label=scope_label, surface="message.history")
+        for item in messages
+    ]
+    item_labels = [item["label"] for item in picker_items]
+    scope_preview = f"{workspace['label']} > {scope_label}: {_compact_preview(item_labels, empty_text='no messages')}"
+    scope = _scope_metadata(
+        kind="workspace",
+        preview=scope_preview,
+        label=workspace["label"],
+        scope_id=workspace["id"],
+        selection_surface="message",
+        workspace=workspace,
+        channel_id=resolved_channel,
+        item_count=len(picker_items),
+        has_more=payload.get("has_more"),
+    )
+    return _ok_result(
+        "history",
+        "message",
+        {
+            "channel_id": resolved_channel,
+            "count": len(messages),
+            "messages": messages,
+            "workspace": workspace,
+            "scope_preview": scope_preview,
+            "scope": scope,
+            "picker": {
+                "scope": scope,
+                "items": picker_items,
+            },
+            "has_more": payload.get("has_more"),
+        },
+    )
+
+
 def mention_scan(
     *,
     config: dict[str, Any] | None = None,

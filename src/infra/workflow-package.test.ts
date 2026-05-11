@@ -6,6 +6,7 @@ import {
 } from "./workflow-owner-operator-templates.js";
 import {
   applyWorkflowPackageTestFixtures,
+  auditWorkflowPackageLiveReadiness,
   importWorkflowPackage,
   parseWorkflowPackageText,
   serializeWorkflowPackage,
@@ -137,6 +138,128 @@ describe("owner-operator workflow packages", () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
+  it("proves Morning Brief imports and dry-runs end to end with visible DocPanel artifacts", async () => {
+    dispatchMock.mockClear();
+    const morningBrief = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "ai-morning-brief-podcast",
+    );
+    expect(morningBrief).toBeDefined();
+    if (!morningBrief) {
+      return;
+    }
+
+    const imported = importWorkflowPackage(morningBrief);
+    expect(imported.readiness.okForImport).toBe(true);
+    expect(imported.readiness.okForPinnedTestRun).toBe(true);
+    expect(imported.readiness.liveReadiness).toMatchObject({
+      okForLive: false,
+      status: "dry_run_only",
+      label: "Import/dry-run only",
+    });
+    expect(imported.readiness.liveReadiness?.reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "missing_connector",
+        "missing_credentials",
+        "missing_channel",
+        "canary_required",
+      ]),
+    );
+    expect(imported.readiness.liveRequirements).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("credential:elevenlabs.primary"),
+        expect.stringContaining("connector:aos-telegram"),
+        expect.stringContaining("channel:telegram.workflow"),
+      ]),
+    );
+    expect(imported.readiness.dryRunEvidence).toMatchObject({
+      mode: "pinned_fixture",
+      dryRunOnly: true,
+      noLiveSideEffects: true,
+      stepCount: 12,
+      ledgerNodeId: "run-ledger",
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({ nodeId: "brief-doc", type: "docpanel" }),
+        expect.objectContaining({ nodeId: "run-ledger", type: "docpanel" }),
+      ]),
+    });
+    expect(imported.readiness.liveReadiness?.canary.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "connector-runtime", status: "blocked" }),
+        expect.objectContaining({ id: "live-bindings", status: "blocked" }),
+        expect.objectContaining({
+          id: "appforge-write-ready",
+          status: "passed",
+          message: "This template family does not require AppForge base/table resources.",
+        }),
+        expect.objectContaining({ id: "family-canary", status: "blocked" }),
+      ]),
+    );
+
+    const savedDocs: Array<{ title: string; content: string; format?: string }> = [];
+    const saveToDocPanel = vi.fn(async (title: string, content: string, format?: string) => {
+      savedDocs.push({ title, content, format });
+      return { ok: true, docId: `doc-${savedDocs.length}` };
+    });
+    const workflow = applyWorkflowPackageTestFixtures(morningBrief);
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "morning-brief-visible-e2e-dry-run",
+      dispatcher,
+      triggerSource: "gateway:manual_test",
+      triggerPayload: morningBrief.testFixtures?.triggerPayload,
+      actions: { saveToDocPanel },
+    });
+
+    const stepLedger = result.steps.map((step) => ({
+      nodeId: step.nodeId,
+      nodeKind: step.nodeKind,
+      nodeLabel: step.nodeLabel,
+      status: step.status,
+      artifactTypes: step.output.items.flatMap((item) =>
+        (item.artifacts ?? []).map((artifact) => artifact.type),
+      ),
+    }));
+
+    expect(result.status).toBe("completed");
+    expect(stepLedger).toEqual([
+      expect.objectContaining({ nodeId: "trigger", status: "completed" }),
+      expect.objectContaining({ nodeId: "github-scout", status: "completed" }),
+      expect.objectContaining({ nodeId: "frontier-scout", status: "completed" }),
+      expect.objectContaining({ nodeId: "thought-scout", status: "completed" }),
+      expect.objectContaining({ nodeId: "synthesize-brief", status: "completed" }),
+      expect.objectContaining({
+        nodeId: "brief-doc",
+        status: "completed",
+        artifactTypes: ["docpanel"],
+      }),
+      expect.objectContaining({ nodeId: "podcast-script", status: "completed" }),
+      expect.objectContaining({ nodeId: "podcast-plan", status: "completed" }),
+      expect.objectContaining({ nodeId: "approve-podcast-render", status: "completed" }),
+      expect.objectContaining({ nodeId: "podcast-generate", status: "completed" }),
+      expect.objectContaining({ nodeId: "delivery-status", status: "completed" }),
+      expect.objectContaining({
+        nodeId: "run-ledger",
+        status: "completed",
+        artifactTypes: ["docpanel"],
+      }),
+    ]);
+    expect(saveToDocPanel).toHaveBeenCalledTimes(2);
+    expect(savedDocs).toEqual([
+      expect.objectContaining({
+        title: "AI Morning Brief — morning-brief-visible-e2e-dry-run",
+        format: "markdown",
+      }),
+      expect.objectContaining({
+        title: "AI Morning Brief Run Ledger — morning-brief-visible-e2e-dry-run",
+        format: "markdown",
+      }),
+    ]);
+    expect(savedDocs[0]?.content).toContain("Synthesis Agent: fixture result");
+    expect(savedDocs[1]?.content).toContain("Delivery Status: fixture action result");
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
   it("surfaces live requirements so import can explain missing credentials and bases", () => {
     const newsletter = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
       (pkg) => pkg.slug === "newsletter-builder",
@@ -152,6 +275,176 @@ describe("owner-operator workflow packages", () => {
         expect.stringContaining("credential:resend.primary"),
         expect.stringContaining("connector:aos-resend"),
       ]),
+    );
+  });
+
+  it("keeps templates dry-run only when live bindings are missing or connector-only metadata is read-ready", () => {
+    const dailyMarketing = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "daily-marketing-brief",
+    );
+    expect(dailyMarketing).toBeDefined();
+    if (!dailyMarketing) {
+      return;
+    }
+
+    const readiness = auditWorkflowPackageLiveReadiness(dailyMarketing, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "metadata-only",
+          status: { ok: true, label: "Metadata only" },
+          modes: ["readonly"],
+          discovery: {},
+        },
+        {
+          tool: "aos-slack",
+          label: "Slack",
+          installState: "repo-only",
+          status: { ok: false, label: "Repo only" },
+          modes: ["readonly"],
+          discovery: {},
+        },
+      ],
+    });
+
+    expect(readiness.okForLive).toBe(false);
+    expect(readiness.status).toBe("dry_run_only");
+    expect(readiness.reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "appforge_metadata_only",
+        "appforge_write_not_ready",
+        "connector_repo_only",
+        "missing_credentials",
+        "missing_appforge_base",
+        "missing_appforge_table",
+        "missing_channel",
+        "canary_required",
+      ]),
+    );
+    expect(readiness.deferrals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner: "appforge",
+          label: "Deferred on AppForge resources",
+          reasonCodes: expect.arrayContaining([
+            "appforge_metadata_only",
+            "appforge_write_not_ready",
+            "missing_appforge_base",
+            "missing_appforge_table",
+          ]),
+        }),
+        expect.objectContaining({
+          owner: "aos",
+          label: "Deferred on AOS connector runtime",
+          reasonCodes: expect.arrayContaining(["connector_repo_only"]),
+        }),
+        expect.objectContaining({
+          owner: "operator",
+          label: "Deferred on operator bindings",
+          reasonCodes: expect.arrayContaining(["missing_credentials", "missing_channel"]),
+        }),
+        expect.objectContaining({
+          owner: "workflows",
+          label: "Deferred on Workflows canary",
+          reasonCodes: ["canary_required"],
+        }),
+      ]),
+    );
+  });
+
+  it("requires a canary even after connector, credential, channel, and AppForge bindings are live-ready", () => {
+    const newsletter = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "newsletter-builder",
+    );
+    expect(newsletter).toBeDefined();
+    if (!newsletter) {
+      return;
+    }
+
+    const almostReady = auditWorkflowPackageLiveReadiness(newsletter, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/appforge-core" },
+        },
+        {
+          tool: "aos-resend",
+          label: "Resend",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/aos-resend" },
+        },
+      ],
+      credentialIds: ["resend.primary"],
+      appForgeBases: [
+        {
+          id: "marketing-ops",
+          writeReady: true,
+          tables: [{ id: "Content Calendar", readReady: true, writeReady: true }],
+        },
+      ],
+    });
+
+    expect(almostReady.okForLive).toBe(false);
+    expect(almostReady.status).toBe("canary_required");
+    expect(almostReady.reasons.map((reason) => reason.code)).toEqual(["canary_required"]);
+    expect(almostReady.canary).toMatchObject({
+      familyId: "marketing:schedule",
+      required: true,
+      passed: false,
+    });
+    expect(almostReady.canary.checklist).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "pending" })]),
+    );
+    expect(almostReady.deferrals).toEqual([
+      expect.objectContaining({
+        owner: "workflows",
+        label: "Deferred on Workflows canary",
+        reasonCodes: ["canary_required"],
+      }),
+    ]);
+
+    const ready = auditWorkflowPackageLiveReadiness(newsletter, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/appforge-core" },
+        },
+        {
+          tool: "aos-resend",
+          label: "Resend",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/aos-resend" },
+        },
+      ],
+      credentialIds: ["resend.primary"],
+      appForgeBases: [
+        {
+          id: "marketing-ops",
+          writeReady: true,
+          tables: [{ id: "Content Calendar", readReady: true, writeReady: true }],
+        },
+      ],
+      canaryPassedPackageSlugs: ["newsletter-builder"],
+    });
+
+    expect(ready.okForLive).toBe(true);
+    expect(ready.status).toBe("live_ready");
+    expect(ready.deferrals).toEqual([]);
+    expect(ready.canary.checklist).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "passed" })]),
     );
   });
 });

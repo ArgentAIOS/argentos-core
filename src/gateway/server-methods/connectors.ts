@@ -22,7 +22,9 @@ export const connectorsHandlers: GatewayRequestHandlers = {
     }
 
     try {
-      const result = await discoverConnectorCatalog();
+      const result = await discoverConnectorCatalog({
+        executeAdapters: params.executeAdapters,
+      });
       respond(true, result, undefined);
     } catch (error) {
       respond(

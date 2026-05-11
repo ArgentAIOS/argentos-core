@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+HARNESS_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+PYTHONPATH="$HARNESS_DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m cli_aos.calendar.cli "$@"

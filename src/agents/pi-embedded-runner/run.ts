@@ -1059,6 +1059,9 @@ export async function runEmbeddedPiAgent(
             onAgentEvent: params.onAgentEvent,
             extraSystemPrompt: effectiveExtraSystemPrompt,
             streamParams: params.streamParams,
+            // GH #186: per-tier reasoningEffort wins over model-level
+            // extraParams.reasoningEffort; absent → no override.
+            routingReasoningEffort: routing.reasoningEffort,
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
             isHeartbeat: params.isHeartbeat,

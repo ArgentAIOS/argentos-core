@@ -1,6 +1,6 @@
 {
   "name": "argentos",
-  "version": "2026.4.30",
+  "version": "2026.5.6-dev.36",
   "description": "The Operating System for Personal AI",
   "keywords": [
     "agent",
@@ -62,7 +62,8 @@
     "argentos:rpc": "node scripts/run-node.mjs agent --mode rpc --json",
     "build": "pnpm canvas:a2ui:bundle && tsdown && node --import tsx scripts/canvas-a2ui-copy.ts && node --import tsx scripts/copy-hook-metadata.ts && node --import tsx scripts/write-build-info.ts && node --import tsx scripts/write-cli-compat.ts",
     "canvas:a2ui:bundle": "bash scripts/bundle-a2ui.sh",
-    "check": "pnpm check:repo-lane && pnpm tsgo && pnpm lint && pnpm format",
+    "check": "pnpm check:repo-lane && pnpm check-invariants && pnpm tsgo && pnpm lint && pnpm format",
+    "check-invariants": "node scripts/check-invariants.mjs",
     "check:loc": "node --import tsx scripts/check-ts-max-loc.ts --max 500",
     "check:repo-lane": "node scripts/check-repo-lane.mjs",
     "dev": "node scripts/run-node.mjs",
@@ -101,6 +102,7 @@
     "protocol:gen:executive-shadow": "node --import tsx scripts/executive-shadow-protocol-gen.ts",
     "protocol:gen:swift": "node --import tsx scripts/protocol-gen-swift.ts",
     "release:check": "node --import tsx scripts/release-check.ts",
+    "rust-gateway:parity:report": "node --import tsx scripts/rust-gateway-parity-report.ts",
     "stack:reset": "bash scripts/dev/reset-stack.sh",
     "start": "node scripts/run-node.mjs",
     "sync:hosted-installers:site": "node --import tsx scripts/sync-hosted-installers-to-site.ts",
@@ -126,6 +128,7 @@
     "test:install:local:smoke": "bash scripts/test-install-local-smoke.sh",
     "test:install:smoke": "bash scripts/test-install-sh-docker.sh",
     "test:live": "ARGENT_LIVE_TEST=1 vitest run --config vitest.live.config.ts",
+    "test:slice": "node scripts/test-slice.mjs",
     "test:ui": "pnpm --dir ui test",
     "test:watch": "vitest",
     "threadmaster:ack": "node scripts/threadmaster-bus.mjs ack",
@@ -137,11 +140,13 @@
     "threadmaster:task-add": "node scripts/threadmaster-bus.mjs task-add",
     "threadmaster:task-list": "node scripts/threadmaster-bus.mjs task-list",
     "threadmaster:task-update": "node scripts/threadmaster-bus.mjs task-update",
+    "tsc:since": "node scripts/tsc-since.mjs",
     "tui": "node scripts/run-node.mjs tui",
     "tui:dev": "ARGENT_PROFILE=dev node scripts/run-node.mjs --dev tui",
     "ui:build": "node scripts/ui.js build",
     "ui:dev": "node scripts/ui.js dev",
-    "ui:install": "node scripts/ui.js install"
+    "ui:install": "node scripts/ui.js install",
+    "verified": "pnpm test:slice && pnpm check:repo-lane && pnpm tsc:since"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.14.0",
@@ -149,6 +154,7 @@
     "@aws-sdk/client-bedrock": "^3.983.0",
     "@buape/carbon": "0.14.0",
     "@clack/prompts": "^1.0.0",
+    "@composio/core": "^0.8.1",
     "@google/generative-ai": "^0.24.1",
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/transformer-throttler": "^1.2.1",

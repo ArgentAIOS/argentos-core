@@ -323,6 +323,67 @@ describe("runGatewayUpdate", () => {
     expect(calls).toContain("pnpm exec vite build");
   });
 
+  it("relinks pnpm dependencies and retries setup when stale module links break bootstrap", async () => {
+    await fs.mkdir(path.join(tempDir, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@10.0.0" }),
+      "utf-8",
+    );
+    const upstreamSha = "upstream123";
+    const calls: string[] = [];
+    let headReads = 0;
+    let setupAttempts = 0;
+    const runner = async (argv: string[]) => {
+      const key = argv.join(" ");
+      calls.push(key);
+      if (key === `git -C ${tempDir} rev-parse --show-toplevel`) {
+        return { stdout: tempDir, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse HEAD`) {
+        headReads += 1;
+        return { stdout: headReads === 1 ? "abc123" : upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse --abbrev-ref HEAD`) {
+        return { stdout: "dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} status --porcelain -- :!dist/control-ui/`) {
+        return { stdout: "", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`) {
+        return { stdout: "origin/dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse @{upstream}`) {
+        return { stdout: upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-list --max-count=10 ${upstreamSha}`) {
+        return { stdout: `${upstreamSha}\n`, stderr: "", code: 0 };
+      }
+      if (key === "pnpm argent setup") {
+        setupAttempts += 1;
+        return setupAttempts === 1
+          ? {
+              stdout: "",
+              stderr: "Error: Cannot find module 'axios'\ncode: 'MODULE_NOT_FOUND'",
+              code: 1,
+            }
+          : { stdout: "setup ok", stderr: "", code: 0 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const result = await runGatewayUpdate({
+      cwd: tempDir,
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(calls).toContain("pnpm install --force --frozen-lockfile");
+    expect(calls.filter((call) => call === "pnpm argent setup")).toHaveLength(2);
+    expect(result.steps.some((step) => step.name === "workspace setup retry")).toBe(true);
+  });
+
   it("uses stable tag when beta tag is older than release", async () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(

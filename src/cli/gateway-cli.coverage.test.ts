@@ -15,6 +15,13 @@ const serviceIsLoaded = vi.fn().mockResolvedValue(true);
 const serviceInstall = vi.fn(async () => {});
 const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityInstalledStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityLocalSmokeCommand = vi.fn(async () => {});
+const gatewayAuthorityDisposableLoopbackSmokeCommand = vi.fn(async () => {});
+const gatewayAuthorityDisposableLoopbackRehearsalCommand = vi.fn(async () => {});
+const gatewayAuthorityLocalRehearsalCommand = vi.fn(async () => {});
+const gatewayAuthorityRollbackPlanCommand = vi.fn(async () => {});
 
 const runtimeLogs: string[] = [];
 const runtimeErrors: string[] = [];
@@ -106,6 +113,23 @@ vi.mock("../commands/gateway-status.js", () => ({
   gatewayStatusCommand: (opts: unknown) => gatewayStatusCommand(opts),
 }));
 
+vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityDisposableLoopbackRehearsalCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityDisposableLoopbackRehearsalCommand(runtime, opts),
+  gatewayAuthorityDisposableLoopbackSmokeCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityDisposableLoopbackSmokeCommand(runtime, opts),
+  gatewayAuthorityInstalledStatusCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityInstalledStatusCommand(runtime, opts),
+  gatewayAuthorityLocalSmokeCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityLocalSmokeCommand(runtime, opts),
+  gatewayAuthorityLocalRehearsalCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityLocalRehearsalCommand(runtime, opts),
+  gatewayAuthorityRollbackPlanCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityRollbackPlanCommand(runtime, opts),
+  gatewayAuthorityStatusCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityStatusCommand(runtime, opts),
+}));
+
 describe("gateway-cli coverage", () => {
   it("registers call/health commands and routes to callGateway", async () => {
     runtimeLogs.length = 0;
@@ -138,6 +162,347 @@ describe("gateway-cli coverage", () => {
     await program.parseAsync(["gateway", "probe", "--json"], { from: "user" });
 
     expect(gatewayStatusCommand).toHaveBeenCalledTimes(1);
+  }, 30_000);
+
+  it("registers gateway authority status and routes to read-only status command", async () => {
+    gatewayAuthorityStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(["gateway", "authority", "status", "--json"], { from: "user" });
+
+    expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({ json: true });
+  }, 30_000);
+
+  it("registers gateway authority status-installed and routes redacted operator options", async () => {
+    gatewayAuthorityInstalledStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "status-installed",
+        "--json",
+        "--url",
+        "ws://127.0.0.1:18789",
+        "--token",
+        "test-token",
+        "--timeout",
+        "1250",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityInstalledStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityInstalledStatusCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: 1250,
+      },
+    });
+  }, 30_000);
+
+  it("routes status-installed local receipt generation only with explicit operator flags", async () => {
+    gatewayAuthorityInstalledStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "status-installed",
+        "--url",
+        "ws://127.0.0.1:18789",
+        "--token",
+        "test-token",
+        "--generate-local-receipts",
+        "--confirm-local-only",
+        "--reason",
+        "operator proof",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityInstalledStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityInstalledStatusCommand.mock.calls[0]?.[1]).toEqual({
+      json: false,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: undefined,
+        generateLocalReceiptProof: {
+          confirmLocalOnly: true,
+          reason: "operator proof",
+        },
+      },
+    });
+  }, 30_000);
+
+  it("routes explicit installed canary status options without enabling them by default", async () => {
+    gatewayAuthorityStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "status",
+        "--json",
+        "--installed-canary-url",
+        "ws://127.0.0.1:18789",
+        "--installed-canary-token",
+        "test-token",
+        "--installed-canary-timeout",
+        "1250",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: 1250,
+      },
+    });
+  }, 30_000);
+
+  it("registers gateway authority smoke-local as a read-only operator smoke", async () => {
+    gatewayAuthorityLocalSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "smoke-local",
+        "--reason",
+        "dev.20 operator smoke",
+        "--confirm-local-only",
+        "--installed-canary-url",
+        "ws://127.0.0.1:18789",
+        "--installed-canary-token",
+        "test-token",
+        "--local-canary-self-check",
+        "--installed-canary-timeout",
+        "1250",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityLocalSmokeCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityLocalSmokeCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "dev.20 operator smoke",
+      confirmLocalOnly: true,
+      localCanarySelfCheck: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: 1250,
+      },
+    });
+  }, 30_000);
+
+  it("registers gateway authority smoke-loopback as a disposable local harness", async () => {
+    gatewayAuthorityDisposableLoopbackSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "smoke-loopback",
+        "--reason",
+        "disposable loopback proof",
+        "--confirm-local-only",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityDisposableLoopbackSmokeCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityDisposableLoopbackSmokeCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "disposable loopback proof",
+      confirmLocalOnly: true,
+    });
+  }, 30_000);
+
+  it("shows gateway authority smoke-loopback help without requiring a reason first", async () => {
+    gatewayAuthorityDisposableLoopbackSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    const helpOutput: string[] = [];
+    program.exitOverride();
+    program.configureOutput({
+      writeOut: (line) => helpOutput.push(line),
+      writeErr: (line) => helpOutput.push(line),
+    });
+    registerGatewayCli(program);
+
+    await expect(
+      program.parseAsync(["gateway", "authority", "smoke-loopback", "--help"], {
+        from: "user",
+      }),
+    ).rejects.toMatchObject({ code: "commander.helpDisplayed" });
+
+    const help = helpOutput.join("");
+    expect(help).toContain("smoke-loopback");
+    expect(help).toContain("--reason <reason>");
+    expect(help).toContain("--confirm-local-only");
+    expect(gatewayAuthorityDisposableLoopbackSmokeCommand).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("shows gateway authority smoke-local help without requiring a reason first", async () => {
+    gatewayAuthorityLocalSmokeCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    const helpOutput: string[] = [];
+    program.exitOverride();
+    program.configureOutput({
+      writeOut: (line) => helpOutput.push(line),
+      writeErr: (line) => helpOutput.push(line),
+    });
+    registerGatewayCli(program);
+
+    await expect(
+      program.parseAsync(["gateway", "authority", "smoke-local", "--help"], {
+        from: "user",
+      }),
+    ).rejects.toMatchObject({ code: "commander.helpDisplayed" });
+
+    const help = helpOutput.join("");
+    expect(help).toContain("smoke-local");
+    expect(help).toContain("--reason <reason>");
+    expect(help).toContain("--confirm-local-only");
+    expect(help).toContain("--local-canary-self-check");
+    expect(help).toContain("--installed-canary-url <url>");
+    expect(gatewayAuthorityLocalSmokeCommand).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("registers gateway authority rollback-node as a read-only plan command", async () => {
+    gatewayAuthorityRollbackPlanCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      ["gateway", "authority", "rollback-node", "--reason", "canary drift", "--json"],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityRollbackPlanCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityRollbackPlanCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "canary drift",
+    });
+  }, 30_000);
+
+  it("registers gateway authority rehearse-local as an explicit local-only test path", async () => {
+    gatewayAuthorityLocalRehearsalCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "rehearse-local",
+        "--reason",
+        "local canary rehearsal",
+        "--confirm-local-only",
+        "--installed-canary-url",
+        "ws://127.0.0.1:18789",
+        "--installed-canary-token",
+        "test-token",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityLocalRehearsalCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityLocalRehearsalCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "local canary rehearsal",
+      confirmLocalOnly: true,
+      installedCanary: {
+        url: "ws://127.0.0.1:18789",
+        token: "test-token",
+        password: undefined,
+        timeoutMs: undefined,
+      },
+    });
+  }, 30_000);
+
+  it("registers gateway authority rehearse-loopback as a disposable local rollback proof", async () => {
+    gatewayAuthorityDisposableLoopbackRehearsalCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "rehearse-loopback",
+        "--reason",
+        "local rollback rehearsal",
+        "--confirm-local-only",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityDisposableLoopbackRehearsalCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityDisposableLoopbackRehearsalCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "local rollback rehearsal",
+      confirmLocalOnly: true,
+    });
   }, 30_000);
 
   it("registers gateway discover and prints JSON", async () => {
@@ -360,6 +725,7 @@ describe("gateway-cli coverage", () => {
     runtimeLogs.length = 0;
     runtimeErrors.length = 0;
     serviceIsLoaded.mockResolvedValue(true);
+    startGatewayServer.mockReset();
 
     const { GatewayLockError } = await import("../infra/gateway-lock.js");
     startGatewayServer.mockRejectedValueOnce(

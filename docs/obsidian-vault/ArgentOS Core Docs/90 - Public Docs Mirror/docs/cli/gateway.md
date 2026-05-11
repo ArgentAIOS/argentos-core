@@ -105,6 +105,210 @@ Options:
 - `--no-probe`: skip the RPC probe (service-only view).
 - `--deep`: scan system-level services too.
 
+### `gateway authority`
+
+`gateway authority` is the read-only operator surface for Rust Gateway shadow/promotion checks.
+It does not switch authority. TypeScript remains live Gateway, scheduler, workflow, channel,
+session, and run authority unless a separate release/promotion process explicitly changes that.
+
+Status check:
+
+```bash
+argent gateway authority status --json
+```
+
+Installed daemon operator status:
+
+```bash
+argent gateway authority status-installed --json
+```
+
+`status-installed` is the operator-friendly local daemon path. By default it uses the configured
+local Gateway URL and finds auth from explicit flags, `ARGENT_GATEWAY_TOKEN` /
+`ARGENT_GATEWAY_PASSWORD`, or local config. The JSON reports only redacted credential provenance
+(`explicit-only`, `env-redacted`, `config-redacted`, or `missing`) plus `secretPrinted=false`; it
+never prints the token/password value. It calls only `rustGateway.canaryReceipts.status`, accepts
+only loopback/local targets, does not control services, and keeps
+`productionTrafficUsed=false`, `authoritySwitchAllowed=false`, and `authorityChanges=[]`.
+
+Local installed-canary smoke:
+
+```bash
+argent gateway authority smoke-local \
+  --reason "local canary receipt proof" \
+  --confirm-local-only \
+  --local-canary-self-check \
+  --json
+```
+
+The built-in `--local-canary-self-check` path is the safest first proof. It uses an in-process,
+disposable canary receipt self-check and does not query a daemon, require a token/password, start a
+service, send production traffic, or switch authority. It still exercises the same `smoke-local`
+PASS criteria: denial and duplicate-prevention receipts for `chat.send`, `cron.add`, and
+`workflows.run`, redacted receipt material, `productionTrafficUsed=false`, and
+`authoritySwitchAllowed=false`.
+
+Installed daemon smoke:
+
+```bash
+argent gateway authority smoke-local \
+  --reason "local canary receipt proof" \
+  --confirm-local-only \
+  --installed-canary-url ws://127.0.0.1:<port> \
+  --installed-canary-token <token> \
+  --json
+```
+
+Installed daemon status proof:
+
+```bash
+argent gateway authority status-installed \
+  --url ws://127.0.0.1:<port> \
+  --token <token> \
+  --json
+
+argent gateway authority status-installed \
+  --url ws://127.0.0.1:<port> \
+  --token <token> \
+  --generate-local-receipts \
+  --confirm-local-only \
+  --reason "installed daemon local receipt proof" \
+  --json
+
+argent gateway authority status \
+  --installed-canary-url ws://127.0.0.1:<port> \
+  --installed-canary-token <token> \
+  --json
+```
+
+`authority status` performs the narrow read-only installed-daemon query. It accepts only a
+loopback/local URL and explicit credentials, then calls `rustGateway.canaryReceipts.status`.
+`status-installed --generate-local-receipts --confirm-local-only --reason ...` is the explicit
+operator path for filling a local installed daemon receipt store: it first calls
+`rustGateway.canaryReceipts.generateLocalProof` with synthetic redaction fixtures, then re-queries
+`rustGateway.canaryReceipts.status`. The generation path does not call `chat.send`, `cron.add`, or
+`workflows.run`, does not start/stop/reconfigure a service, and still requires a loopback/local
+daemon target. A promotion-gate packet should include `installedDaemonCanary.status=ok`,
+`receiptProofComplete=true`, `missingReceiptSurfaces=[]`, `productionTrafficUsed=false`, and
+`authoritySwitchAllowed=false`. If any guarded surface is missing, the JSON names it in
+`missingReceiptSurfaces` so the packet can be BLOCKED with the exact daemon proof gap.
+
+The same JSON also includes `installedServiceReadiness`, which is the operator-facing gate for an
+installed/local service. It distinguishes `proofKind=loopback-local-daemon` from
+`proofKind=local-self-check`, lists `missingCapabilities` such as
+`rustGateway.canaryReceipts.status-exposure`, `receipt-persistence-complete-surfaces`, missing
+explicit credentials, or missing loopback daemon query, and keeps production rollback truth-labeled
+as blocked under `rollbackReadiness.productionInstalledDaemonRollback`. A `read-only-ready` service
+readiness status means the local loopback daemon exposed the canary status method and completed the
+receipt proof; it still does not authorize production traffic or Rust authority promotion.
+
+Disposable loopback daemon smoke:
+
+```bash
+ARGENT_SKIP_PLUGINS=1 argent gateway authority smoke-loopback \
+  --reason "disposable loopback canary proof" \
+  --confirm-local-only \
+  --json
+```
+
+`smoke-loopback` starts a disposable Gateway bound only to `127.0.0.1` with temp HOME/state, a
+random local port, a random token, and canary receipts enabled. It generates denied and
+duplicate-prevented receipts for `chat.send`, `cron.add`, and `workflows.run`, then runs the same
+installed-canary status proof against that loopback daemon. The command sets `ARGENT_SKIP_PLUGINS=1`
+for the disposable Gateway; prefixing the command with the same env var also keeps CLI bootstrap
+plugins out of the proof process. It does not use `launchctl`, `systemd`, `schtasks`, an installed
+production service, bundled plugins, connector credentials, production traffic, or an authority
+switch.
+
+Disposable loopback rehearsal and rollback proof:
+
+```bash
+ARGENT_SKIP_PLUGINS=1 argent gateway authority rehearse-loopback \
+  --reason "local Rust Gateway rehearsal" \
+  --confirm-local-only \
+  --json
+```
+
+`rehearse-loopback` is the next local promotion-blocker proof after `smoke-loopback`. It starts the
+same disposable loopback Gateway with temp HOME/state, random local port, and random token, but first
+queries `rustGateway.canaryReceipts.status` with the local canary flag default-off. It then enables
+the canary flag only in the temporary process environment, generates denied and duplicate-prevented
+receipts for `chat.send`, `cron.add`, and `workflows.run`, queries the status again, and includes the
+paired `rollback-node` JSON plan. A passing rehearsal proves `canaryFlagEnabled=false` before
+explicit local-only enablement, `canaryFlagEnabled=true` after, `productionTrafficUsed=false`,
+`authoritySwitchAllowed=false`, redacted receipt material, and `authorityChanges=[]` in the rollback
+plan. It still does not start, stop, restart, install, configure, or promote any production daemon.
+
+The installed-canary URL must be loopback/local: `localhost`, `127.0.0.1`, `::1`, or an
+SSH-forwarded loopback URL. Non-loopback URLs are blocked before the CLI queries anything so this
+proof cannot accidentally become production daemon traffic.
+
+Use `--installed-canary-password <password>` instead of `--installed-canary-token <token>`
+when the target daemon is configured for password auth. Do not put tokens, passwords, or
+command output containing sensitive local paths in git, docs, Threadmaster bus messages, or
+handoff artifacts.
+
+The smoke is intentionally default-blocked. It only queries
+`rustGateway.canaryReceipts.status`; it does not start, stop, restart, install, configure, or
+send traffic through a daemon. A passing local smoke requires:
+
+- `--confirm-local-only` was provided.
+- The installed canary URL and explicit token/password were provided, or
+  `--local-canary-self-check` was used for the built-in local-only self-check.
+- `rustGateway.canaryReceipts.status` returned `status=ok`.
+- `productionTrafficUsed=false`.
+- `authoritySwitchAllowed=false`.
+- `canaryFlagEnabled=true` for a disposable local canary harness.
+- Receipt redaction is verified.
+- Denial and duplicate-prevention receipts are present.
+- `receiptProofComplete=true` and `missingReceiptSurfaces=[]` for `chat.send`, `cron.add`, and
+  `workflows.run`.
+
+Common blocked states:
+
+- `not-configured`: rerun with `--installed-canary-url` and explicit credentials.
+- `blocked`: URL was configured but no explicit token/password was provided.
+- `blocked`: URL is not loopback/local; use a disposable local daemon or SSH-forwarded loopback URL.
+- `unavailable`: the daemon could not be reached or the status RPC timed out.
+- `unsafe`: the daemon payload did not prove the safety invariants above.
+
+`status-installed --json` also includes `installedDaemonCanary.runtimeProbe`, a read-only handshake
+probe that reports whether the daemon advertised `rustGateway.canaryReceipts.status` before the
+status RPC was attempted. This narrows the operator blocker without starting, restarting, or
+reconfiguring the installed service.
+
+Common `installedServiceReadiness.missingCapabilities`:
+
+- `explicit-loopback-url`: no local daemon URL was provided.
+- `explicit-token-or-password`: no explicit local credential was provided.
+- `local-daemon-query`: the service readiness check has not queried a daemon.
+- `rustGateway.canaryReceipts.status-exposure`: the daemon did not expose the read-only canary
+  status method.
+- `installed-daemon-method-not-advertised`: the daemon handshake succeeded but the method list did
+  not include `rustGateway.canaryReceipts.status`.
+- `installed-daemon-canary-handler-dispatch-failed`: the daemon advertised the method, but the
+  read-only status RPC still closed or failed.
+- `installed-daemon-handshake-failed`: the daemon did not complete a readable handshake before the
+  status RPC failed.
+- `receipt-persistence-complete-surfaces`: the daemon did not prove redacted denial and
+  duplicate-prevention receipts for all guarded surfaces.
+
+Generate the local parity proof separately:
+
+```bash
+pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000
+```
+
+If `argent status` or `argent gateway authority status` reports that the Rust parity report is
+missing, stale, or invalid, it means the local `.omx/state/rust-gateway-parity/latest/` artifact
+has not been generated recently in that checkout. Generate it with the command above from the
+core repo, then rerun status. The parity report and `smoke-local` are complementary: parity proves
+read-only protocol/status shape, while `smoke-local` proves the local installed-canary receipt
+status path. Both remain evidence only.
+
+The parity report is evidence only. It does not authorize production traffic or a Rust authority
+switch.
+
 ### `gateway probe`
 
 `gateway probe` is the “debug everything” command. It always probes:

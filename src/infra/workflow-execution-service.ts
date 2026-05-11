@@ -150,6 +150,12 @@ export function workflowFromRow(row: WorkflowRow): NormalizedWorkflowRow {
 
 export function publicWorkflowRow(row: WorkflowRow) {
   const normalized = workflowFromRow(row);
+  const importReport =
+    normalized.canvasLayout &&
+    typeof normalized.canvasLayout.importReport === "object" &&
+    !Array.isArray(normalized.canvasLayout.importReport)
+      ? normalized.canvasLayout.importReport
+      : undefined;
   return {
     ...row,
     nodes: normalized.canvasLayout.nodes,
@@ -157,6 +163,7 @@ export function publicWorkflowRow(row: WorkflowRow) {
     canvasLayout: normalized.canvasLayout,
     canvas_layout: normalized.canvasLayout,
     definition: normalized.workflow,
+    importReport,
     validation: {
       ok: !hasBlockingWorkflowIssues(normalized.issues),
       issues: normalized.issues,
@@ -226,12 +233,31 @@ export async function finishWorkflowRun(
   const failedStep = steps.find((step) => step.status === "failed");
   const runError =
     status === "failed" ? (failedStep?.error ?? failedStep?.output.items[0]?.text ?? null) : null;
+  // Aggregate per-step token + cost into the run-level totals. We sum the
+  // in-memory `steps` array first, but fall back to a SQL-side aggregation
+  // over `workflow_step_runs` when the in-memory value is zero. This guards
+  // against runs that were resumed with empty in-memory history (where the
+  // earlier steps live only in the persisted step-run rows).
+  const memoryTokens = steps.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0);
+  const memoryCostUsd = steps.reduce((sum, step) => sum + (step.costUsd ?? 0), 0);
   await sql`
     UPDATE workflow_runs SET
       status = ${status},
       error = COALESCE(${runError}, error),
-      total_tokens_used = ${steps.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0)},
-      total_cost_usd = ${steps.reduce((sum, step) => sum + (step.costUsd ?? 0), 0)},
+      total_tokens_used = GREATEST(
+        ${memoryTokens}::int,
+        COALESCE(
+          (SELECT SUM(tokens_used)::int FROM workflow_step_runs WHERE run_id = ${runId}),
+          0
+        )
+      ),
+      total_cost_usd = GREATEST(
+        ${memoryCostUsd}::numeric,
+        COALESCE(
+          (SELECT SUM(cost_usd)::numeric FROM workflow_step_runs WHERE run_id = ${runId}),
+          0::numeric
+        )
+      ),
       ended_at = CASE
         WHEN ${status} IN ('waiting_approval', 'waiting_event', 'waiting_duration') THEN ended_at
         ELSE NOW()
@@ -511,6 +537,16 @@ export async function executeWorkflowRunFromRow(opts: {
     resume: opts.resume,
     redis,
     pgSql: opts.sql,
+    durablePauses: true,
+    isRunCancelled: async (runId) => {
+      const [row] = await opts.sql`
+        SELECT status
+        FROM workflow_runs
+        WHERE id = ${runId}
+        LIMIT 1
+      `;
+      return (row as { status?: string } | undefined)?.status === "cancelled";
+    },
     onApprovalRequested: (nodeId, request) => {
       const node = workflow.nodes.find((candidate) => candidate.id === nodeId);
       void (async () => {
@@ -600,8 +636,8 @@ export async function executeWorkflowRunFromRow(opts: {
         nodeKind: node.kind,
       });
     },
-    onStepComplete: (nodeId, record) => {
-      void persistWorkflowStepRun(opts.sql, opts.runId, record).catch((err: unknown) => {
+    onStepComplete: async (nodeId, record) => {
+      await persistWorkflowStepRun(opts.sql, opts.runId, record).catch((err: unknown) => {
         log.warn(`failed to persist workflow step: ${String(err)}`);
       });
       opts.broadcast?.("workflow.step.completed", {
@@ -614,8 +650,8 @@ export async function executeWorkflowRunFromRow(opts: {
         tokensUsed: record.tokensUsed,
       });
     },
-    onRunComplete: (status, steps) => {
-      void finishWorkflowRun(opts.sql, opts.runId, status, steps).catch((err: unknown) => {
+    onRunComplete: async (status, steps) => {
+      await finishWorkflowRun(opts.sql, opts.runId, status, steps).catch((err: unknown) => {
         log.warn(`failed to finish workflow run: ${String(err)}`);
       });
       opts.broadcast?.("workflow.run.completed", {
@@ -944,6 +980,18 @@ export async function resumeWorkflowRunAfterEvent(opts: {
     throw new Error(`Workflow event ${opts.eventType} did not match wait filter`);
   }
 
+  const [claimedRunRow] = await opts.sql`
+    UPDATE workflow_runs
+    SET status = 'running', current_node_id = NULL
+    WHERE id = ${opts.runId}
+      AND current_node_id = ${opts.nodeId}
+      AND status = 'waiting_event'
+    RETURNING *
+  `;
+  if (!claimedRunRow) {
+    throw new Error(`Workflow event wait ${opts.runId}/${opts.nodeId} was already claimed`);
+  }
+
   const { workflow, issues } = workflowFromRow(workflowRow as unknown as WorkflowRow);
   if (hasBlockingWorkflowIssues(issues)) {
     throw new Error(
@@ -976,17 +1024,13 @@ export async function resumeWorkflowRunAfterEvent(opts: {
     WHERE run_id = ${opts.runId}
       AND node_id = ${opts.nodeId}
   `;
-  await opts.sql`
-    UPDATE workflow_runs SET status = 'running', current_node_id = NULL
-    WHERE id = ${opts.runId}
-  `;
 
   const resume = await buildWorkflowResumeOptions({
     sql: opts.sql,
     runId: opts.runId,
     resumeNodeId: opts.nodeId,
     workflow,
-    runRow: runRow as Record<string, unknown>,
+    runRow: claimedRunRow as Record<string, unknown>,
     resumeStepOutput: eventOutput,
     triggerSource: opts.triggerSource ?? "gateway:event_resume",
   });
@@ -1003,10 +1047,10 @@ export async function resumeWorkflowRunAfterEvent(opts: {
     sql: opts.sql,
     workflowRow: workflowRow as unknown as WorkflowRow,
     runId: opts.runId,
-    triggerType: String(runRow.trigger_type ?? "manual"),
+    triggerType: String(claimedRunRow.trigger_type ?? "manual"),
     triggerPayload:
-      runRow.trigger_payload && typeof runRow.trigger_payload === "object"
-        ? (runRow.trigger_payload as Record<string, unknown>)
+      claimedRunRow.trigger_payload && typeof claimedRunRow.trigger_payload === "object"
+        ? (claimedRunRow.trigger_payload as Record<string, unknown>)
         : {},
     triggerSource: opts.triggerSource ?? "gateway:event_resume",
     broadcast: opts.broadcast,

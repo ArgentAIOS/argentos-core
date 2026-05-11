@@ -194,6 +194,25 @@ def email_batch_send_result(ctx_obj: dict[str, Any], *, to_list: list[str], subj
     return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Batch sent to {len(to_list)} recipient(s).", "result": result}
 
 
+def email_create_draft_result(ctx_obj: dict[str, Any], *, to: str, subject: str, html: str) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    from_email = runtime["from_email"]
+    draft = {
+        "from": from_email,
+        "to": [to],
+        "subject": subject,
+        "html": html,
+    }
+    return {
+        "status": "local_preview",
+        "backend": BACKEND_NAME,
+        "summary": f"Prepared local Resend draft for {to}; no email was sent.",
+        "draft": draft,
+        "runtime_ready": bool(runtime["api_key"]),
+        "missing_keys": [] if runtime["api_key"] else [runtime["api_key_env"]],
+    }
+
+
 # ── Domains ────────────────────────────────────────────────────
 
 def domains_list_result(ctx_obj: dict[str, Any]) -> dict[str, Any]:

@@ -1,12 +1,5 @@
 # Z.AI Coding Plan Provider Handoff
 
-LANE LOCK:
-Repo: ArgentAIOS/argentos-core
-Local path: /Users/sem/code/argent-core
-Target branch: dev
-Forbidden repo for this task: ArgentAIOS/argentos
-Reason: pure core foundation work
-
 ## Slice
 
 - Branch: `codex/openai-codex-device-flow`
