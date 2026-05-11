@@ -10,7 +10,18 @@ export const APP_FORGE_FIELD_TYPES = [
   "email",
   "attachment",
   "linked_record",
+  "rating",
 ] as const;
+
+export const APP_FORGE_RATING_ICONS = ["star", "heart", "thumb", "flame"] as const;
+export type AppForgeRatingIcon = (typeof APP_FORGE_RATING_ICONS)[number];
+
+/** Default maximum rating value when a rating field omits `ratingMax`. */
+export const APP_FORGE_DEFAULT_RATING_MAX = 5;
+/** Minimum supported rating scale (avoids degenerate 0/1-only fields). */
+export const APP_FORGE_MIN_RATING_MAX = 3;
+/** Maximum supported rating scale (keeps the UI from becoming a slider). */
+export const APP_FORGE_MAX_RATING_MAX = 10;
 
 export type AppForgeFieldType = (typeof APP_FORGE_FIELD_TYPES)[number];
 
@@ -31,6 +42,10 @@ export type AppForgeField = {
   defaultValue?: AppForgeRecordValue;
   options?: string[];
   selectOptions?: AppForgeSelectOption[];
+  /** Maximum value for `rating` fields. Defaults to {@link APP_FORGE_DEFAULT_RATING_MAX}. */
+  ratingMax?: number;
+  /** Glyph used to render `rating` fields. Defaults to `"star"`. */
+  ratingIcon?: AppForgeRatingIcon;
 };
 
 export type AppForgeRecord = {
@@ -79,7 +94,8 @@ export type AppForgeValidationError = {
     | "invalid_option"
     | "invalid_email"
     | "invalid_url"
-    | "invalid_array";
+    | "invalid_array"
+    | "invalid_rating";
   message: string;
 };
 
@@ -96,7 +112,8 @@ export type AppForgeFieldConfigError = {
     | "duplicate_field_id"
     | "missing_option"
     | "duplicate_option"
-    | "invalid_default";
+    | "invalid_default"
+    | "invalid_rating_max";
   message: string;
 };
 
@@ -170,6 +187,45 @@ function fieldSupportsDefaultValue(type: AppForgeFieldType): boolean {
   return type !== "attachment" && type !== "linked_record";
 }
 
+/** Clamp a candidate rating-max to the supported range, returning the field default on garbage. */
+export function resolveAppForgeRatingMax(field: Pick<AppForgeField, "ratingMax">): number {
+  const candidate = field.ratingMax;
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return APP_FORGE_DEFAULT_RATING_MAX;
+  }
+  const rounded = Math.trunc(candidate);
+  if (rounded < APP_FORGE_MIN_RATING_MAX) {
+    return APP_FORGE_MIN_RATING_MAX;
+  }
+  if (rounded > APP_FORGE_MAX_RATING_MAX) {
+    return APP_FORGE_MAX_RATING_MAX;
+  }
+  return rounded;
+}
+
+/** Normalize a rating value to a non-negative integer ≤ resolved max, or `null` when invalid. */
+export function coerceAppForgeRatingValue(
+  field: Pick<AppForgeField, "ratingMax">,
+  value: unknown,
+): number | null {
+  if (value === null || value === undefined || value === "") {
+    return 0;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const rounded = Math.round(parsed);
+  if (rounded < 0) {
+    return null;
+  }
+  const max = resolveAppForgeRatingMax(field);
+  if (rounded > max) {
+    return null;
+  }
+  return rounded;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -234,12 +290,19 @@ export function coerceAppForgeRecordValue(
     if (isArrayFieldType(field.type)) {
       return [];
     }
+    if (field.type === "rating") {
+      return 0;
+    }
     return "";
   }
 
   if (field.type === "number") {
     const parsed = typeof value === "number" ? value : Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (field.type === "rating") {
+    return coerceAppForgeRatingValue(field, value);
   }
 
   if (field.type === "checkbox") {
@@ -286,6 +349,19 @@ export function validateAppForgeRecordValues(
 
     if (field.type === "number" && typeof value !== "number") {
       errors.push(validationError(field, "invalid_number", `${field.name} must be a number.`));
+    }
+
+    if (field.type === "rating") {
+      const max = resolveAppForgeRatingMax(field);
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+        errors.push(
+          validationError(
+            field,
+            "invalid_rating",
+            `${field.name} must be a whole number between 0 and ${max}.`,
+          ),
+        );
+      }
     }
 
     if (field.type === "checkbox" && typeof value !== "boolean") {
@@ -357,6 +433,24 @@ export function validateAppForgeFieldDefinitions(
       );
     }
     fieldIds.add(field.id);
+
+    if (field.type === "rating" && field.ratingMax !== undefined) {
+      if (
+        typeof field.ratingMax !== "number" ||
+        !Number.isFinite(field.ratingMax) ||
+        !Number.isInteger(field.ratingMax) ||
+        field.ratingMax < APP_FORGE_MIN_RATING_MAX ||
+        field.ratingMax > APP_FORGE_MAX_RATING_MAX
+      ) {
+        errors.push(
+          fieldConfigError(
+            field,
+            "invalid_rating_max",
+            `${field.name} must use a rating scale between ${APP_FORGE_MIN_RATING_MAX} and ${APP_FORGE_MAX_RATING_MAX}.`,
+          ),
+        );
+      }
+    }
 
     if (fieldSupportsOptions(field.type)) {
       const rawLabels = field.selectOptions?.length
@@ -452,6 +546,16 @@ export function normalizeLegacyAppForgeField(value: unknown): AppForgeField | nu
       : undefined,
     selectOptions: fieldSupportsOptions(type) ? selectOptions : undefined,
   };
+  if (type === "rating") {
+    const rawMax = numberValue(value.ratingMax);
+    if (rawMax !== undefined) {
+      field.ratingMax = resolveAppForgeRatingMax({ ratingMax: rawMax });
+    }
+    const rawIcon = stringValue(value.ratingIcon);
+    if (rawIcon && (APP_FORGE_RATING_ICONS as readonly string[]).includes(rawIcon)) {
+      field.ratingIcon = rawIcon as AppForgeRatingIcon;
+    }
+  }
   const defaultValue = value.defaultValue;
   if (
     defaultValue === null ||

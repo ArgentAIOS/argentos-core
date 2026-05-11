@@ -35,6 +35,35 @@ export function isValidUrlInput(value: string): boolean {
 }
 
 /**
+ * Parse a serialized rating cell draft (the grid uses string-typed drafts) to
+ * an integer in [0, max]. Returns `null` for invalid input so the editor can
+ * keep the prior value rather than silently writing garbage.
+ */
+export function parseRatingDraftValue(value: string, max: number): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const rounded = Math.round(parsed);
+  if (rounded < 0 || rounded > max) {
+    return null;
+  }
+  return rounded;
+}
+
+/** Serialize a rating value (0 = unrated) for storage in the string-typed draft. */
+export function serializeRatingDraftValue(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "";
+  }
+  return String(Math.round(value));
+}
+
+/**
  * Mirrors `validateAppForgeRecordValues` for the `number` field type so the
  * cell editor can surface the same error inline. Empty input is treated as
  * "clear the cell" and accepted.

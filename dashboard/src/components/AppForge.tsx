@@ -27,9 +27,14 @@ import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent }
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import {
+  FORGE_DEFAULT_RATING_MAX,
+  FORGE_MAX_RATING_MAX,
+  FORGE_MIN_RATING_MAX,
+  FORGE_RATING_ICONS,
   toGatewayBase,
   toGatewayTable,
   useForgeStructuredData,
+  type ForgeRatingIcon,
   type GatewayRequestFn,
   type ForgeFieldType,
   type ForgeStructuredBase,
@@ -49,6 +54,8 @@ import {
   MultiSelectCellDisplay,
   MultiSelectCellEditor,
   NumberCellEditor,
+  RatingCellDisplay,
+  RatingCellEditor,
   UrlCellDisplay,
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
@@ -143,6 +150,7 @@ const FIELD_TYPE_OPTIONS: Array<{ value: ForgeFieldType; label: string }> = [
   { value: "single_select", label: "Single select" },
   { value: "multi_select", label: "Multi select" },
   { value: "number", label: "Number" },
+  { value: "rating", label: "Rating" },
   { value: "date", label: "Date" },
   { value: "checkbox", label: "Checkbox" },
   { value: "url", label: "URL" },
@@ -797,6 +805,9 @@ function fieldTypeConversionWarning(from: ForgeFieldType, to: ForgeFieldType): s
     to === "linked_record"
   ) {
     return "Attachment and linked-record fields are metadata-only in this slice. Existing cell values will be coerced to the new field shape.";
+  }
+  if (from === "rating" || to === "rating") {
+    return "Rating fields store a whole number 0–max. Existing values outside that range will reset to 0.";
   }
   if (from === "multi_select" || to === "multi_select") {
     return "Multi-select conversions can split or collapse values. Existing cells will be normalized when you apply the type change.";
@@ -3683,6 +3694,14 @@ export function AppForge({
                                                   onCommit={() => void commitEditingCell()}
                                                   onCancel={() => setEditingCell(null)}
                                                 />
+                                              ) : activeEditingCell && field.type === "rating" ? (
+                                                <RatingCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
                                               ) : activeEditingCell &&
                                                 field.type === "linked_record" ? (
                                                 <LinkedRecordCellEditor
@@ -3781,6 +3800,11 @@ export function AppForge({
                                                 />
                                               ) : field.type === "url" ? (
                                                 <UrlCellDisplay value={value} />
+                                              ) : field.type === "rating" ? (
+                                                <RatingCellDisplay
+                                                  field={field}
+                                                  value={record.values[field.id]}
+                                                />
                                               ) : field.type === "single_select" && value ? (
                                                 <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
                                                   {value}
@@ -4335,6 +4359,65 @@ export function AppForge({
                                   cells currently accept comma-separated record names.
                                 </div>
                               </label>
+                            )}
+
+                            {structured.selectedField.type === "rating" && (
+                              <div
+                                data-testid="appforge-rating-config"
+                                className="grid grid-cols-2 gap-3 rounded-xl border border-white/10 bg-black/15 p-3"
+                              >
+                                <label className="block">
+                                  <span className="mb-2 block text-xs text-white/38">Maximum</span>
+                                  <select
+                                    data-testid="appforge-rating-max-select"
+                                    value={String(
+                                      structured.selectedField.ratingMax ??
+                                        FORGE_DEFAULT_RATING_MAX,
+                                    )}
+                                    onChange={(event) =>
+                                      void structured.updateField(structured.selectedField!.id, {
+                                        ratingMax: Number(event.target.value),
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                                  >
+                                    {Array.from(
+                                      {
+                                        length: FORGE_MAX_RATING_MAX - FORGE_MIN_RATING_MAX + 1,
+                                      },
+                                      (_, index) => FORGE_MIN_RATING_MAX + index,
+                                    ).map((value) => (
+                                      <option key={value} value={String(value)}>
+                                        {value}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="mb-2 block text-xs text-white/38">Icon</span>
+                                  <select
+                                    data-testid="appforge-rating-icon-select"
+                                    value={structured.selectedField.ratingIcon ?? "star"}
+                                    onChange={(event) =>
+                                      void structured.updateField(structured.selectedField!.id, {
+                                        ratingIcon: event.target.value as ForgeRatingIcon,
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                                  >
+                                    {FORGE_RATING_ICONS.map((icon) => (
+                                      <option key={icon} value={icon}>
+                                        {icon.charAt(0).toUpperCase() + icon.slice(1)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <div className="col-span-2 text-[11px] leading-relaxed text-white/34">
+                                  Rating cells store a whole number from 0 to the maximum. Click the
+                                  active glyph in the grid to clear, press a number key to jump, or
+                                  use arrow keys.
+                                </div>
+                              </div>
                             )}
 
                             {fieldSupportsSelectOptions(structured.selectedField.type) && (
