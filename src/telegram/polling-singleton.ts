@@ -30,6 +30,42 @@ export function fingerprintTelegramToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex").slice(0, 12);
 }
 
+/**
+ * Telegram bot tokens have the shape `<botId>:<secret>` where `<botId>` is
+ * the numeric Telegram user id of the bot account. Extract the leading
+ * numeric segment so we can include it in logs/status without ever
+ * touching the secret half. Returns `null` if the token doesn't match the
+ * expected shape (e.g. unconfigured or truncated tokens during tests).
+ */
+export function extractTelegramBotIdFromToken(token: string | undefined | null): string | null {
+  if (typeof token !== "string") {
+    return null;
+  }
+  const match = token.trim().match(/^(\d+):/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Build a redacted identity string for log/status messages so future 409
+ * cascades can be triaged without reading argent.json. Includes the bot
+ * id (when derivable) and a non-reversible 4-char suffix of the token to
+ * disambiguate when the same gateway holds tokens for multiple accounts.
+ * Never returns the full token.
+ *
+ * Examples:
+ *   describeTelegramBotForLog("8619589114:AAH...XYZW") → "bot=8619589114, token=...XYZW"
+ *   describeTelegramBotForLog("malformed")            → "bot=?, token=...rmed"
+ *   describeTelegramBotForLog("")                     → "bot=?, token=?"
+ */
+export function describeTelegramBotForLog(token: string | undefined | null): string {
+  const trimmed = typeof token === "string" ? token.trim() : "";
+  const botId = extractTelegramBotIdFromToken(trimmed);
+  const suffix = trimmed.length >= 4 ? trimmed.slice(-4) : "";
+  const botPart = botId ? `bot=${botId}` : "bot=?";
+  const tokenPart = suffix ? `token=...${suffix}` : "token=?";
+  return `${botPart}, ${tokenPart}`;
+}
+
 export function acquireTelegramPollingSlot(params: {
   token: string;
   accountId: string;

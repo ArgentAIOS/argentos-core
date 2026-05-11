@@ -111,6 +111,14 @@ export type ChannelAccountSnapshot = {
   state?: string;
   /** ms epoch of the next scheduled retry, when in a backoff state. */
   nextRetryAt?: number | null;
+  /**
+   * Channel-supplied flag set when the runtime has been stuck in a
+   * cross-instance conflict (e.g. Telegram getUpdates 409 cascade) for
+   * long enough that the operator should be alerted to investigate. The
+   * dashboard / `argent channels status` surface render a UX warning
+   * chip when true. Cleared the moment the channel recovers. (GH #194)
+   */
+  persistentConflict?: boolean;
   reconnectAttempts?: number;
   lastConnectedAt?: number | null;
   lastDisconnect?:
