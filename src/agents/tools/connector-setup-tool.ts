@@ -184,11 +184,25 @@ function summarizePreflight(payload: PreflightPayload) {
 }
 
 function resolveGooglePreflightPath(): string {
+  // The helper script lives at `<root>/tools/aos/aos-google/installer/preflight_gws.py`.
+  // We need to find that `<root>` across three layouts:
+  //   - source tree (vitest, `pnpm dev`):
+  //       MODULE_DIR = <repo>/src/agents/tools  → root is `../../..`
+  //   - installed package (`npm i -g argentos`, bundled by tsdown):
+  //       MODULE_DIR = <pkg>/dist                → root is `..`
+  //   - installed sub-bundle (e.g. dist/plugin-sdk/):
+  //       MODULE_DIR = <pkg>/dist/<sub>          → root is `../..`
+  //
+  // Earlier this list only had the source-tree depths, so `connector_setup`
+  // crashed on installed CLIs with a raw Python file-not-found error when
+  // `process.cwd()` happened to be the active workspace (see GH #128).
   const candidateRoots = [
     process.env.ARGENT_CORE_ROOT,
     process.env.ARGENTOS_CORE_ROOT,
     process.env.INIT_CWD,
     process.cwd(),
+    path.resolve(MODULE_DIR, ".."),
+    path.resolve(MODULE_DIR, "..", ".."),
     path.resolve(MODULE_DIR, "..", "..", ".."),
     path.resolve(MODULE_DIR, "..", "..", "..", ".."),
   ].filter((root): root is string => Boolean(root));
@@ -206,6 +220,31 @@ function resolveGooglePreflightPath(): string {
 async function runPreflight(options: ConnectorSetupToolOptions, installMissing: boolean) {
   const runCommand = options.runCommand ?? defaultRunCommand;
   const preflightPath = options.preflightPath ?? resolveGooglePreflightPath();
+
+  // Guard: if the helper script is genuinely missing from the install, return
+  // a structured payload instead of letting python3 crash with a raw "No such
+  // file or directory" trace. The caller wraps this into operatorSteps so the
+  // agent can speak to the business owner in plain language. See GH #128.
+  if (!fs.existsSync(preflightPath)) {
+    return {
+      ok: false,
+      checks: [
+        {
+          name: "gws_binary",
+          ok: false,
+          details: {
+            missing_helper: true,
+            attempted_path: preflightPath,
+          },
+        },
+      ],
+      next_steps: [
+        "Reinstall the Argent CLI so the Google Workspace helper script is restored.",
+        `Expected helper at: ${preflightPath}`,
+      ],
+    } satisfies PreflightPayload;
+  }
+
   const args = [preflightPath, "--require-auth", "--json"];
   if (installMissing) {
     args.splice(1, 0, "--install-missing");
