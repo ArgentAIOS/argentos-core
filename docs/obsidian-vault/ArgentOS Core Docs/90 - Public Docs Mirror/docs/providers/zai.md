@@ -29,6 +29,27 @@ argent onboard --zai-api-key "$ZAI_API_KEY"
 }
 ```
 
+If your Z.AI key belongs to a Coding subscription, select the Coding API lane with a provider
+base URL override:
+
+```json5
+{
+  models: {
+    mode: "merge",
+    providers: {
+      zai: {
+        baseUrl: "https://api.z.ai/api/coding/paas/v4",
+        api: "openai-completions",
+        models: [],
+      },
+    },
+  },
+}
+```
+
+Use `https://api.z.ai/api/paas/v4` for a General/API subscription. ArgentOS appends
+`/chat/completions` automatically when needed.
+
 ## Notes
 
 - GLM models are available as `zai/<model>` (example: `zai/glm-4.7`).

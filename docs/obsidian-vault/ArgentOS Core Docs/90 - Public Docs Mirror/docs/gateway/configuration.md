@@ -2545,11 +2545,29 @@ Notes:
 - `z.ai/*` and `z-ai/*` are accepted aliases and normalize to `zai/*`.
 - If `ZAI_API_KEY` is missing, requests to `zai/*` will fail with an auth error at runtime.
 - Example error: `No API key found for provider "zai".`
-- Z.AI’s general API endpoint is `https://api.z.ai/api/paas/v4`. GLM coding
-  requests use the dedicated Coding endpoint `https://api.z.ai/api/coding/paas/v4`.
-  The built-in `zai` provider uses the Coding endpoint. If you need the general
-  endpoint, define a custom provider in `models.providers` with the base URL
-  override (see the custom providers section above).
+- Z.AI has separate subscription lanes. Use
+  `https://api.z.ai/api/paas/v4` for General/API subscriptions, and
+  `https://api.z.ai/api/coding/paas/v4` for Coding subscriptions. ArgentOS appends
+  `/chat/completions` automatically when needed.
+- To select a lane for the built-in `zai` provider, set `models.providers.zai.baseUrl`
+  with `models: []`. That override applies to built-in, fallback, and discovered
+  `zai/*` models, including discovered models such as `zai/glm-5.1`.
+
+```json5
+{
+  models: {
+    mode: "merge",
+    providers: {
+      zai: {
+        baseUrl: "https://api.z.ai/api/coding/paas/v4",
+        api: "openai-completions",
+        models: [],
+      },
+    },
+  },
+}
+```
+
 - Use a fake placeholder in docs/configs; never commit real API keys.
 
 ### Moonshot AI (Kimi)
