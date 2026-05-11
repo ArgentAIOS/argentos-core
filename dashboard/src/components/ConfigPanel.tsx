@@ -4871,18 +4871,17 @@ export function ConfigPanel({
     }
   }, [jobAssignmentAgentId, defaultAgentId]);
 
-  const normalizeLocalModelRuntimes = (
-    runtimes: unknown,
-  ): Array<{
+  type LocalModelRuntime = {
     provider: string;
     label: string;
     running: boolean;
-    baseUrl?: string;
+    baseUrl: string;
     models: Array<{ id: string; ref: string; label: string }>;
-  }> => {
+  };
+  const normalizeLocalModelRuntimes = (runtimes: unknown): LocalModelRuntime[] => {
     if (!Array.isArray(runtimes)) return [];
     return runtimes
-      .map((runtime: unknown) => {
+      .map((runtime: unknown): LocalModelRuntime | null => {
         if (!runtime || typeof runtime !== "object") return null;
         const provider =
           typeof (runtime as { provider?: unknown }).provider === "string"
@@ -4928,23 +4927,7 @@ export function ConfigPanel({
             : [],
         };
       })
-      .filter(
-        (
-          runtime: {
-            provider: string;
-            label: string;
-            running: boolean;
-            baseUrl?: string;
-            models: Array<{ id: string; ref: string; label: string }>;
-          } | null,
-        ): runtime is {
-          provider: string;
-          label: string;
-          running: boolean;
-          baseUrl?: string;
-          models: Array<{ id: string; ref: string; label: string }>;
-        } => runtime !== null,
-      );
+      .filter((runtime): runtime is LocalModelRuntime => runtime !== null);
   };
 
   const patchAgentSetting = async (
@@ -10636,6 +10619,41 @@ export function ConfigPanel({
                             </div>
                           )}
                         </div>
+
+                        {/* LM Studio Status — parallel to Ollama. LM Studio's
+                            OpenAI-compatible /v1/models returns id + owned_by;
+                            size is sometimes absent, so render it conditionally. */}
+                        <div className="bg-white/5 rounded-xl p-4 space-y-3 xl:max-w-md">
+                          <div className="flex items-center gap-2">
+                            <Cpu className="w-5 h-5 text-blue-400" />
+                            <h3 className="text-white/90 font-medium">LM Studio Models</h3>
+                          </div>
+                          {modelConfig?.lmStudioModels?.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {modelConfig.lmStudioModels.map((m: any) => (
+                                <div
+                                  key={m.name}
+                                  className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2"
+                                >
+                                  <span className="text-white/70 text-sm font-mono">{m.name}</span>
+                                  {typeof m.size === "number" && Number.isFinite(m.size) ? (
+                                    <span className="text-white/30 text-xs">
+                                      {(m.size / 1e9).toFixed(1)}GB
+                                    </span>
+                                  ) : m.ownedBy ? (
+                                    <span className="text-white/30 text-xs">{m.ownedBy}</span>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-white/30 text-sm">
+                              {modelConfig?.lmStudioRunning
+                                ? "LM Studio reachable, but no models are currently loaded"
+                                : "LM Studio not running or no models loaded"}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -15311,7 +15329,9 @@ export function ConfigPanel({
                                     </option>
                                     {!kernelLocalModelIsDiscovered && kernelLocalModelValue ? (
                                       <option value={kernelLocalModelValue}>
-                                        Current custom: {kernelLocalModelValue}
+                                        {runningKernelLocalRuntimes.length > 0
+                                          ? `Current saved (not currently loaded): ${kernelLocalModelValue}`
+                                          : `Current custom: ${kernelLocalModelValue}`}
                                       </option>
                                     ) : null}
                                     {runningKernelLocalRuntimes.map((runtime) => (

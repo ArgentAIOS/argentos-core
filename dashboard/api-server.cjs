@@ -10412,12 +10412,30 @@ async function collectAvailableModelsCatalog(config) {
 
   const pushModel = (id, alias = null, params = null) => {
     if (typeof id !== "string" || id.trim().length === 0) return;
-    if (seen.has(id)) return;
-    seen.add(id);
     const slashIndex = id.indexOf("/");
     if (slashIndex > 0) {
       availableProviders.add(id.slice(0, slashIndex));
     }
+    // Late live-runtime evidence ("liveRuntime") upgrades an existing entry so
+    // the suggestion filter can distinguish currently-loaded local models from
+    // statically configured (but possibly unloaded) ones.
+    if (seen.has(id)) {
+      if (params && typeof params === "object" && params.liveRuntime) {
+        const idx = available.findIndex((entry) => entry.id === id);
+        if (idx >= 0) {
+          const prevParams =
+            available[idx].params && typeof available[idx].params === "object"
+              ? available[idx].params
+              : {};
+          available[idx] = {
+            ...available[idx],
+            params: { ...prevParams, liveRuntime: params.liveRuntime },
+          };
+        }
+      }
+      return;
+    }
+    seen.add(id);
     available.push({ id, alias, params });
   };
 
@@ -10603,15 +10621,7 @@ async function collectAvailableModelsCatalog(config) {
     }
   };
 
-  try {
-    const ollamaRes = execSync("curl -s http://127.0.0.1:11434/api/tags", { timeout: 3000 });
-    const ollamaData = JSON.parse(ollamaRes.toString());
-    for (const m of ollamaData.models || []) {
-      pushModel(`ollama/${m.name}`);
-    }
-  } catch {
-    /* Ollama not running */
-  }
+  const localRuntimes = await probeLocalModelRuntimes(config, configuredProviders, pushModel);
 
   try {
     await Promise.all([
@@ -10638,34 +10648,117 @@ async function collectAvailableModelsCatalog(config) {
     /* live provider model discovery best-effort */
   }
 
-  try {
-    const baseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
-    const normalizedBaseUrl = baseUrlRaw.replace(/\/+$/, "");
-    const lmStudioModelsUrl = normalizedBaseUrl.endsWith("/v1")
-      ? `${normalizedBaseUrl}/models`
-      : `${normalizedBaseUrl}/v1/models`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const lmStudioRes = await fetch(lmStudioModelsUrl, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (lmStudioRes.ok) {
-      const lmStudioData = await lmStudioRes.json();
-      for (const model of Array.isArray(lmStudioData?.data) ? lmStudioData.data : []) {
-        if (typeof model?.id === "string" && model.id.trim().length > 0) {
-          pushModel(`lmstudio/${model.id.trim()}`);
-        }
-      }
-    }
-  } catch {
-    /* LM Studio not running */
-  }
-
   return {
     models: available,
     providers: Array.from(availableProviders).sort((a, b) => a.localeCompare(b)),
+    localRuntimes,
   };
+}
+
+/**
+ * Probe local-runtime endpoints (Ollama, LM Studio) and report which are
+ * reachable along with their currently-loaded model lists.
+ *
+ * Each probe is best-effort: a failure / timeout / refused-connection marks
+ * the runtime as `running: false` but never throws. Models discovered via
+ * a successful probe are ALSO pushed into the flat catalog (via `pushModel`)
+ * so existing consumers of `available-models.models` keep working.
+ *
+ * The structured return shape (`provider`, `label`, `running`, `baseUrl`,
+ * `models: [{id, ref, label}]`) is what the dashboard's
+ * `normalizeLocalModelRuntimes` expects in `localRuntimes` — it powers the
+ * Consciousness Kernel "Local model" dropdown so the user can pick from
+ * models that are *currently loaded*, not just statically configured.
+ *
+ * @param {object} config — argent.json contents.
+ * @param {object} configuredProviders — `config.models.providers || {}`.
+ * @param {(id: string) => void} pushModel — flat-catalog inserter (deduped).
+ * @returns {Promise<Array<{provider:string,label:string,running:boolean,baseUrl:string,models:Array<{id:string,ref:string,label:string}>}>>}
+ */
+async function probeLocalModelRuntimes(config, configuredProviders, pushModel) {
+  const lmStudioBaseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
+  const lmStudioBaseUrl = String(lmStudioBaseUrlRaw || "").replace(/\/+$/, "");
+  const ollamaBaseUrl =
+    typeof configuredProviders?.ollama?.baseUrl === "string" &&
+    configuredProviders.ollama.baseUrl.trim().length > 0
+      ? configuredProviders.ollama.baseUrl.trim().replace(/\/+$/, "")
+      : "http://127.0.0.1:11434";
+
+  const runtimes = [
+    {
+      provider: "ollama",
+      label: "Ollama (Local)",
+      baseUrl: ollamaBaseUrl,
+      running: false,
+      models: [],
+    },
+    {
+      provider: "lmstudio",
+      label: "LM Studio (Local)",
+      baseUrl: lmStudioBaseUrl,
+      running: false,
+      models: [],
+    },
+  ];
+
+  const probeWithTimeout = async (url, ms = 3000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+      return await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // Ollama probe — `/api/tags` returns `{models: [{name, ...}]}`.
+  try {
+    const ollamaTagsUrl = `${ollamaBaseUrl}/api/tags`;
+    const res = await probeWithTimeout(ollamaTagsUrl);
+    if (res.ok) {
+      const data = await res.json();
+      const ollamaRuntime = runtimes[0];
+      ollamaRuntime.running = true;
+      for (const entry of Array.isArray(data?.models) ? data.models : []) {
+        const id =
+          typeof entry?.name === "string" && entry.name.trim().length > 0 ? entry.name.trim() : "";
+        if (!id) continue;
+        const ref = `ollama/${id}`;
+        pushModel(ref, null, { liveRuntime: "ollama" });
+        ollamaRuntime.models.push({ id, ref, label: ref });
+      }
+    }
+  } catch {
+    /* Ollama not reachable */
+  }
+
+  // LM Studio probe — OpenAI-compatible `/v1/models` returns `{data:[{id,...}]}`.
+  try {
+    const lmStudioModelsUrl = lmStudioBaseUrl.endsWith("/v1")
+      ? `${lmStudioBaseUrl}/models`
+      : `${lmStudioBaseUrl}/v1/models`;
+    const res = await probeWithTimeout(lmStudioModelsUrl);
+    if (res.ok) {
+      const data = await res.json();
+      const lmStudioRuntime = runtimes[1];
+      lmStudioRuntime.running = true;
+      for (const entry of Array.isArray(data?.data) ? data.data : []) {
+        const id =
+          typeof entry?.id === "string" && entry.id.trim().length > 0 ? entry.id.trim() : "";
+        if (!id) continue;
+        const ref = `lmstudio/${id}`;
+        pushModel(ref, null, { liveRuntime: "lmstudio" });
+        lmStudioRuntime.models.push({ id, ref, label: ref });
+      }
+    }
+  } catch {
+    /* LM Studio not reachable */
+  }
+
+  return runtimes;
 }
 
 function buildBackgroundModelRecommendations(config, catalog) {
@@ -10717,23 +10810,101 @@ function buildBackgroundModelRecommendations(config, catalog) {
     catalog.models.map((entry) => [String(entry.id).trim().toLowerCase(), entry]),
   );
 
-  const resolveSuggested = (preferredRefs, fallbackCurrentRef = "") => {
+  // Local-runtime providers — track which ones probed as running so we can
+  // filter suggestions to currently-loaded models and skip suggesting from
+  // a runtime that isn't responding.
+  const localProviderRunning = new Map();
+  for (const runtime of Array.isArray(catalog.localRuntimes) ? catalog.localRuntimes : []) {
+    if (typeof runtime?.provider === "string" && runtime.provider.trim()) {
+      localProviderRunning.set(runtime.provider.trim().toLowerCase(), runtime.running === true);
+    }
+  }
+  const isLocalRuntimeProvider = (provider) =>
+    localProviderRunning.has(String(provider).trim().toLowerCase());
+  const isLocalRuntimeUp = (provider) =>
+    localProviderRunning.get(String(provider).trim().toLowerCase()) === true;
+
+  /**
+   * Resolve a suggested model for a lane.
+   *
+   * @param {string[]} preferredRefs — preference-ordered candidate refs.
+   * @param {string} fallbackCurrentRef — current saved value to fall back to.
+   * @param {object} [opts]
+   * @param {boolean} [opts.requireLiveLocal] — if true, candidates that resolve
+   *   to a local-runtime provider (ollama, lmstudio) must come from a live
+   *   probe (params.liveRuntime present) AND that runtime must be running.
+   *   Used for kernel inner-reflection where the suggestion is *only* useful
+   *   if the model is currently loaded.
+   * @param {boolean} [opts.skipDownLocalRuntimes] — if true (default), any
+   *   candidate that points at a local-runtime provider that isn't currently
+   *   running is skipped (but configured-only non-local candidates remain
+   *   valid).
+   */
+  const resolveSuggested = (preferredRefs, fallbackCurrentRef = "", opts = {}) => {
+    const requireLiveLocal = opts.requireLiveLocal === true;
+    const skipDownLocalRuntimes = opts.skipDownLocalRuntimes !== false; // default: skip
     for (const ref of preferredRefs) {
       const hit = availableByLower.get(String(ref).trim().toLowerCase());
-      if (hit) {
-        const parsed = parseProviderModelRef(hit.id);
-        if (parsed) {
-          return {
-            provider: parsed.provider,
-            model: parsed.model,
-            ref: parsed.ref,
-            label: hit.alias ? `${parsed.ref} (${hit.alias})` : parsed.ref,
-          };
-        }
+      if (!hit) continue;
+      const parsed = parseProviderModelRef(hit.id);
+      if (!parsed) continue;
+      // Filter: never suggest from a local runtime that isn't running.
+      if (
+        skipDownLocalRuntimes &&
+        isLocalRuntimeProvider(parsed.provider) &&
+        !isLocalRuntimeUp(parsed.provider)
+      ) {
+        continue;
       }
+      // Filter: kernel lane wants currently-loaded models only.
+      if (requireLiveLocal && isLocalRuntimeProvider(parsed.provider)) {
+        const live =
+          hit.params &&
+          typeof hit.params === "object" &&
+          typeof hit.params.liveRuntime === "string";
+        if (!live) continue;
+      }
+      return {
+        provider: parsed.provider,
+        model: parsed.model,
+        ref: parsed.ref,
+        label: hit.alias ? `${parsed.ref} (${hit.alias})` : parsed.ref,
+      };
+    }
+    // For kernel inner reflection, prefer any *live* local model over a stale
+    // saved value so the suggestion engine never points at an unloaded model.
+    if (requireLiveLocal) {
+      for (const entry of catalog.models) {
+        const parsed = parseProviderModelRef(entry.id);
+        if (!parsed) continue;
+        if (!isLocalRuntimeProvider(parsed.provider)) continue;
+        if (!isLocalRuntimeUp(parsed.provider)) continue;
+        const live =
+          entry.params &&
+          typeof entry.params === "object" &&
+          typeof entry.params.liveRuntime === "string";
+        if (!live) continue;
+        return {
+          provider: parsed.provider,
+          model: parsed.model,
+          ref: parsed.ref,
+          label: entry.alias ? `${parsed.ref} (${entry.alias})` : parsed.ref,
+        };
+      }
+      // No live local model available — surface empty so dashboard can hide
+      // the card or show "No higher-confidence local model available".
+      return { provider: "", model: "", ref: "", label: "" };
     }
     const currentParsed = parseProviderModelRef(fallbackCurrentRef);
     if (currentParsed) {
+      // Don't fall back to a saved value that targets a down local runtime.
+      if (
+        skipDownLocalRuntimes &&
+        isLocalRuntimeProvider(currentParsed.provider) &&
+        !isLocalRuntimeUp(currentParsed.provider)
+      ) {
+        return { provider: "", model: "", ref: "", label: "" };
+      }
       return {
         provider: currentParsed.provider,
         model: currentParsed.model,
@@ -10779,12 +10950,20 @@ function buildBackgroundModelRecommendations(config, catalog) {
       current: current.kernel,
       suggested: resolveSuggested(
         [
+          // Currently-loaded LM Studio models (Qwen 3.6 family) — preferred
+          // when the runtime is live.
+          "lmstudio/qwen/qwen3.6-35b-a3b",
+          "lmstudio/qwen/qwen3.6-27b",
+          "lmstudio/nvidia/nemotron-3-super",
+          "lmstudio/google/gemma-4-31b",
+          "lmstudio/google/gemma-4-26b-a4b",
           "lmstudio/qwen/qwen3.5-35b-a3b",
-          "lmstudio/qwen/qwen3.5-9b",
+          // Ollama fallbacks (only honored when Ollama is actually running).
           "ollama/qwen3:30b-a3b-instruct-2507-q4_K_M",
           "ollama/qwen3.5:27b",
         ],
         current.kernel.ref,
+        { requireLiveLocal: true },
       ),
       reason:
         "Kernel inner reflection should prefer an available low-cost local model so continuity stays private and resilient during autonomous shadow work.",
@@ -14554,15 +14733,16 @@ app.put("/api/settings/alignment/:agent/:file", (req, res) => {
   }
 });
 
-// GET /api/settings/models — Returns model config + Ollama status
-app.get("/api/settings/models", (req, res) => {
+// GET /api/settings/models — Returns model config + local-runtime status
+app.get("/api/settings/models", async (req, res) => {
   try {
     const config = readArgentConfig();
+    const configuredProviders = config.models?.providers || {};
     const agentDefaults = config.agents?.defaults || {};
     const subagentModel =
       typeof agentDefaults?.subagents?.model === "string" ? agentDefaults.subagents.model : null;
 
-    // Try Ollama status
+    // Try Ollama status — best-effort, doesn't break the response if down.
     let ollamaModels = [];
     try {
       const ollamaRes = execSync("curl -s http://127.0.0.1:11434/api/tags", { timeout: 3000 });
@@ -14572,11 +14752,59 @@ app.get("/api/settings/models", (req, res) => {
       /* Ollama not running */
     }
 
+    // Try LM Studio status — OpenAI-compatible /v1/models. Mirrors the Ollama
+    // probe so the dashboard can render a parallel "LM Studio Models" section
+    // with model id + size when available.
+    let lmStudioModels = [];
+    let lmStudioRunning = false;
+    try {
+      const baseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
+      const normalizedBaseUrl = String(baseUrlRaw || "").replace(/\/+$/, "");
+      if (normalizedBaseUrl) {
+        const lmStudioModelsUrl = normalizedBaseUrl.endsWith("/v1")
+          ? `${normalizedBaseUrl}/models`
+          : `${normalizedBaseUrl}/v1/models`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        try {
+          const response = await fetch(lmStudioModelsUrl, {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          });
+          if (response.ok) {
+            lmStudioRunning = true;
+            const payload = await response.json();
+            for (const entry of Array.isArray(payload?.data) ? payload.data : []) {
+              if (typeof entry?.id !== "string" || entry.id.trim().length === 0) continue;
+              const id = entry.id.trim();
+              const size =
+                typeof entry?.size === "number" && Number.isFinite(entry.size)
+                  ? entry.size
+                  : typeof entry?.metadata?.size === "number"
+                    ? entry.metadata.size
+                    : null;
+              lmStudioModels.push({
+                name: id,
+                ownedBy: typeof entry?.owned_by === "string" ? entry.owned_by : null,
+                size,
+              });
+            }
+          }
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+    } catch {
+      /* LM Studio not running */
+    }
+
     res.json({
       model: agentDefaults.model || null,
       modelRouter: agentDefaults.modelRouter || null,
       subagentModel,
       ollamaModels,
+      lmStudioModels,
+      lmStudioRunning,
     });
   } catch (err) {
     console.error("[Models] Error reading:", err);
@@ -18531,6 +18759,12 @@ if (require.main === module) {
       setPgSqlClientForTests,
       setReminderDeliveryHooksForTests,
       runSchedulerTick,
+      // Exposed for local-model-dropdown-fix-3 tests: probe + suggestion logic
+      // must be unit-testable independently of a running Ollama/LM Studio
+      // because CI hosts don't run either daemon.
+      collectAvailableModelsCatalog,
+      buildBackgroundModelRecommendations,
+      probeLocalModelRuntimes,
       getStorageInfo() {
         return {
           backend: STORAGE_BACKEND,
