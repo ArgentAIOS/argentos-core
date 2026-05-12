@@ -34,7 +34,7 @@ import {
   maybeRepairGatewayServiceConfig,
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
-import { noteSourceInstallIssues } from "./doctor-install.js";
+import { maybeRepairLegacyInstallSymlinks, noteSourceInstallIssues } from "./doctor-install.js";
 import { noteLaunchAgentInstallPathDrift } from "./doctor-launchagent-paths.js";
 import {
   noteMacLaunchAgentOverrides,
@@ -90,6 +90,7 @@ export async function doctorCommand(
 
   await maybeRepairUiProtocolFreshness(runtime, prompter);
   noteSourceInstallIssues(root);
+  await maybeRepairLegacyInstallSymlinks(root, { repair: prompter.shouldRepair });
   noteDeprecatedLegacyEnvVars();
 
   const configResult = await loadAndMaybeMigrateDoctorConfig({
