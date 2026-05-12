@@ -32,6 +32,7 @@ import {
   getPresetForCurrentTime,
 } from "../lib/avatarConfig";
 import { buildPresetConfig } from "../lib/avatarPresets";
+import { fetchLocalApi } from "../utils/localApiFetch";
 import { setBackgroundOverride, type BackgroundMode } from "./AvatarBackground";
 import { applyCustomization, resetCustomizationParams } from "./Live2DAvatar";
 import { ZoomControls } from "./ZoomControls";
@@ -112,7 +113,7 @@ export function StatusBar({
     const controller = new AbortController();
     const loadBuildInfo = async () => {
       try {
-        const res = await fetch("/api/build-info", { signal: controller.signal });
+        const res = await fetchLocalApi("/api/build-info", { signal: controller.signal });
         if (!res.ok) {
           return;
         }
@@ -141,7 +142,7 @@ export function StatusBar({
     scoreAbortRef.current = controller;
     const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
-      const res = await fetch("/api/score", { signal: controller.signal });
+      const res = await fetchLocalApi("/api/score", { signal: controller.signal });
       if (res.ok) {
         const data = await res.json();
         setScore({
@@ -216,7 +217,7 @@ export function StatusBar({
       }
 
       // Check critical backing services (Postgres/Redis) so outages surface in UI alerts.
-      const healthRes = await fetch("/api/health", { signal: controller.signal });
+      const healthRes = await fetchLocalApi("/api/health", { signal: controller.signal });
       if (healthRes.ok) {
         const health = await healthRes.json();
         const down = Array.isArray(health?.criticalServicesDown)

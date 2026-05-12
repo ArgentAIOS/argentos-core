@@ -72,6 +72,7 @@ import {
   parseDashboardSurfaceProfile,
   type DashboardSurfaceProfile,
 } from "../lib/configSurfaceProfile";
+import { fetchLocalApi } from "../utils/localApiFetch";
 import {
   hasChallengePhrase,
   setChallengePhrase,
@@ -3663,7 +3664,7 @@ export function ConfigPanel({
   const loadMemoryV3Status = useCallback(async () => {
     try {
       setMemoryV3StatusLoading(true);
-      const response = await fetch("/api/settings/memory-v3/status");
+      const response = await fetchLocalApi("/api/settings/memory-v3/status");
       if (!response.ok) {
         const details = await response.json().catch(() => ({}));
         throw new Error(
@@ -3762,7 +3763,7 @@ export function ConfigPanel({
   useEffect(() => {
     if (isOpen && activeTab === "nudges") {
       setNudgesLoading(true);
-      fetch("/api/settings/nudges")
+      fetchLocalApi("/api/settings/nudges")
         .then((r) => r.json())
         .then((data) => {
           setNudges(data.nudges || []);
@@ -4989,7 +4990,7 @@ export function ConfigPanel({
 
   const setAgentLoadProfile = async (active: "desktop" | "balanced-laptop" | "cool-laptop") => {
     try {
-      const response = await fetch("/api/settings/agent", {
+      const response = await fetchLocalApi("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ loadProfile: { active } }),
@@ -5013,7 +5014,7 @@ export function ConfigPanel({
         );
         onRuntimeLoadProfileChange?.(nextProfile);
       }
-      const refreshed = await fetch(
+      const refreshed = await fetchLocalApi(
         `/api/settings/agent?agentId=${encodeURIComponent(agentTargetId)}`,
       ).then((r) => r.json());
       setAgentSettings(refreshed);
@@ -5025,7 +5026,7 @@ export function ConfigPanel({
   const clearExecutionWorkerOverride = async () => {
     if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) return;
     try {
-      const response = await fetch(
+      const response = await fetchLocalApi(
         `/api/settings/agent?agentId=${encodeURIComponent(agentTargetId)}`,
         {
           method: "PATCH",
@@ -5036,7 +5037,7 @@ export function ConfigPanel({
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      const refreshed = await fetch(
+      const refreshed = await fetchLocalApi(
         `/api/settings/agent?agentId=${encodeURIComponent(agentTargetId)}`,
       ).then((r) => r.json());
       setAgentSettings(refreshed);
@@ -5164,7 +5165,7 @@ export function ConfigPanel({
     try {
       setMemoryLlmSaving(true);
       setMemoryLlmError(null);
-      await fetch("/api/settings/agent", {
+      await fetchLocalApi("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ memory: { memu: { llm: patch } } }),
@@ -5195,7 +5196,7 @@ export function ConfigPanel({
     try {
       setMemoryV3Saving(true);
       setMemoryV3Message(null);
-      const response = await fetch("/api/settings/agent", {
+      const response = await fetchLocalApi("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ memory: patch }),
@@ -5235,7 +5236,7 @@ export function ConfigPanel({
     try {
       setMemoryV3Saving(true);
       setMemoryV3Message(null);
-      const response = await fetch("/api/settings/agent", {
+      const response = await fetchLocalApi("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contemplation: { discoveryPhase: patch } }),
@@ -5314,7 +5315,7 @@ export function ConfigPanel({
     try {
       setMemoryV3StatusAction(forceBind ? "bind" : "bootstrap");
       setMemoryV3Message(null);
-      const response = await fetch("/api/settings/memory-v3/bootstrap-vault", {
+      const response = await fetchLocalApi("/api/settings/memory-v3/bootstrap-vault", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ forceBind }),
@@ -5358,7 +5359,7 @@ export function ConfigPanel({
     try {
       setMemoryV3StatusAction("bind");
       setMemoryV3Message(null);
-      const response = await fetch("/api/settings/memory-v3/choose-vault-folder", {
+      const response = await fetchLocalApi("/api/settings/memory-v3/choose-vault-folder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bind: true }),
@@ -5408,7 +5409,7 @@ export function ConfigPanel({
     try {
       setAosGooglePreflightLoading(true);
       setMemoryV3Message(null);
-      const response = await fetch("/api/settings/aos-google/preflight", {
+      const response = await fetchLocalApi("/api/settings/aos-google/preflight", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ installMissing, requireAuth: true }),
@@ -5455,7 +5456,7 @@ export function ConfigPanel({
     }
 
     try {
-      const response = await fetch("/api/settings/agent/raw-config", {
+      const response = await fetchLocalApi("/api/settings/agent/raw-config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ raw: formattedRaw }),
@@ -5745,7 +5746,7 @@ export function ConfigPanel({
           deny: parseMultilineList(capabilitiesDenyDraft),
         },
       };
-      const response = await fetch(
+      const response = await fetchLocalApi(
         `/api/settings/agent?agentId=${encodeURIComponent(targetAgentId)}`,
         {
           method: "PATCH",
@@ -5795,7 +5796,7 @@ export function ConfigPanel({
       setCapabilitiesSaving(true);
       setCapabilitiesMessage(null);
       const skills = parseMultilineList(capabilitiesSkillDraft);
-      const response = await fetch(
+      const response = await fetchLocalApi(
         `/api/settings/agent?agentId=${encodeURIComponent(targetAgentId)}`,
         {
           method: "PATCH",
@@ -5916,7 +5917,7 @@ export function ConfigPanel({
     setIntentPreviewing(true);
     setIntentMessage(null);
     try {
-      const response = await fetch("/api/settings/intent/preview", {
+      const response = await fetchLocalApi("/api/settings/intent/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent: build.payload, agentId: runtimeIntentTargetAgentId }),
@@ -5968,7 +5969,7 @@ export function ConfigPanel({
     setIntentSaving(true);
     setIntentMessage(null);
     try {
-      const response = await fetch("/api/settings/intent", {
+      const response = await fetchLocalApi("/api/settings/intent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent: build.payload }),
@@ -6090,7 +6091,7 @@ export function ConfigPanel({
 
       let granted = false;
       try {
-        const response = await fetch("/api/settings/knowledge/collections/grant", {
+        const response = await fetchLocalApi("/api/settings/knowledge/collections/grant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(grantPayload),
@@ -6430,7 +6431,7 @@ export function ConfigPanel({
     if (providerModelsLoadingRef.current.has(normalizedProvider)) return;
     providerModelsLoadingRef.current.add(normalizedProvider);
     try {
-      const resp = await fetch(
+      const resp = await fetchLocalApi(
         `/api/settings/provider-models?provider=${encodeURIComponent(normalizedProvider)}&limit=300`,
       );
       if (!resp.ok) return;
@@ -6664,7 +6665,7 @@ export function ConfigPanel({
     setImageAnalysisSaving(true);
     setImageAnalysisMessage(null);
     try {
-      const response = await fetch("/api/settings/agent", {
+      const response = await fetchLocalApi("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6766,7 +6767,7 @@ export function ConfigPanel({
                   : normalizedModel,
             };
 
-      await fetch("/api/settings/agent", {
+      await fetchLocalApi("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ backgroundModels: { [lane]: payload } }),
@@ -6873,7 +6874,7 @@ export function ConfigPanel({
     setShowEditingAuthProfileToken(false);
     setEditingAuthProfileLoading(true);
     try {
-      const resp = await fetch(
+      const resp = await fetchLocalApi(
         `/api/settings/auth-profiles/${encodeURIComponent(profile.key)}/reveal`,
       );
       const data = await resp.json().catch(() => ({}));
@@ -6900,7 +6901,7 @@ export function ConfigPanel({
     setEditingAuthProfileSaving(true);
     setAuthMessage(null);
     try {
-      const resp = await fetch(
+      const resp = await fetchLocalApi(
         `/api/settings/auth-profiles/${encodeURIComponent(editingAuthProfile.key)}`,
         {
           method: "PATCH",
@@ -6949,9 +6950,12 @@ export function ConfigPanel({
     setOpenAICodexOauthBusy(true);
     setAuthMessage(null);
     try {
-      const startResp = await fetch("/api/settings/auth-profiles/openai-codex/oauth/start", {
-        method: "POST",
-      });
+      const startResp = await fetchLocalApi(
+        "/api/settings/auth-profiles/openai-codex/oauth/start",
+        {
+          method: "POST",
+        },
+      );
       const startData = await startResp.json().catch(() => ({}));
       if (!startResp.ok || !startData?.authUrl || !startData?.state) {
         throw new Error(String(startData?.error || "Failed to start OpenAI Codex OAuth"));
@@ -6971,7 +6975,7 @@ export function ConfigPanel({
 
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        const statusResp = await fetch(
+        const statusResp = await fetchLocalApi(
           `/api/settings/auth-profiles/openai-codex/oauth/status?state=${encodeURIComponent(state)}`,
         );
         const statusData = await statusResp.json().catch(() => ({}));
@@ -7213,14 +7217,14 @@ export function ConfigPanel({
           : Promise.resolve(null);
 
         Promise.all([
-          fetch("/api/health").then((r) => r.json()),
-          fetch("/api/usage/cost?days=7")
+          fetchLocalApi("/api/health").then((r) => r.json()),
+          fetchLocalApi("/api/usage/cost?days=7")
             .then((r) => r.json())
             .catch(() => ({})),
-          fetch("/api/logs/tail?limit=100")
+          fetchLocalApi("/api/logs/tail?limit=100")
             .then((r) => r.json())
             .catch(() => ({ lines: [] })),
-          fetch("/api/settings/auth-profiles")
+          fetchLocalApi("/api/settings/auth-profiles")
             .then((r) => r.json())
             .catch(() => ({ profiles: [] })),
           routingPromise,
@@ -7278,7 +7282,7 @@ export function ConfigPanel({
   // Fetch devices when Devices tab is active
   const fetchDevices = useCallback(() => {
     setDevicesLoading(true);
-    fetch("/api/devices")
+    fetchLocalApi("/api/devices")
       .then((r) => r.json())
       .then((data) => {
         setPairedDevices(data.devices || []);
@@ -7446,7 +7450,7 @@ export function ConfigPanel({
 
     // Persist the failover order to auth-profiles.json
     try {
-      const resp = await fetch("/api/settings/auth-profiles/order", {
+      const resp = await fetchLocalApi("/api/settings/auth-profiles/order", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: reordered.map((p) => p.key) }),
@@ -8207,7 +8211,7 @@ export function ConfigPanel({
                                     <button
                                       onClick={async () => {
                                         try {
-                                          await fetch(
+                                          await fetchLocalApi(
                                             `/api/settings/cors-allowlist/${encodeURIComponent(entry.domain)}`,
                                             { method: "DELETE" },
                                           );
@@ -8246,14 +8250,17 @@ export function ConfigPanel({
                                 disabled={!newCorsDomain.trim()}
                                 onClick={async () => {
                                   try {
-                                    const resp = await fetch("/api/settings/cors-allowlist", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        domain: newCorsDomain.trim(),
-                                        note: newCorsNote.trim() || undefined,
-                                      }),
-                                    });
+                                    const resp = await fetchLocalApi(
+                                      "/api/settings/cors-allowlist",
+                                      {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                          domain: newCorsDomain.trim(),
+                                          note: newCorsNote.trim() || undefined,
+                                        }),
+                                      },
+                                    );
                                     if (resp.ok) {
                                       const data = await resp.json();
                                       setCorsAllowlist(data.domains || []);
@@ -8317,7 +8324,7 @@ export function ConfigPanel({
                                     <button
                                       onClick={async () => {
                                         try {
-                                          const resp = await fetch(
+                                          const resp = await fetchLocalApi(
                                             `/api/settings/filesystem-allowlist/${encodeURIComponent(entry.path)}`,
                                             { method: "DELETE" },
                                           );
@@ -8362,15 +8369,18 @@ export function ConfigPanel({
                                 disabled={!newFilesystemPath.trim()}
                                 onClick={async () => {
                                   try {
-                                    const resp = await fetch("/api/settings/filesystem-allowlist", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        path: newFilesystemPath.trim(),
-                                        note: newFilesystemNote.trim() || undefined,
-                                        source: "security-ui",
-                                      }),
-                                    });
+                                    const resp = await fetchLocalApi(
+                                      "/api/settings/filesystem-allowlist",
+                                      {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                          path: newFilesystemPath.trim(),
+                                          note: newFilesystemNote.trim() || undefined,
+                                          source: "security-ui",
+                                        }),
+                                      },
+                                    );
                                     if (resp.ok) {
                                       const data = await resp.json();
                                       setFilesystemAllowlist(data.entries || []);
@@ -8438,7 +8448,7 @@ export function ConfigPanel({
                             disabled={!permissionAttemptedPath.trim()}
                             onClick={async () => {
                               try {
-                                const resp = await fetch(
+                                const resp = await fetchLocalApi(
                                   "/api/security/filesystem-permissions/decision",
                                   {
                                     method: "POST",
@@ -8525,7 +8535,7 @@ export function ConfigPanel({
                       agentId={defaultAgentId || "main"}
                       onKeyChanged={async () => {
                         try {
-                          const r = await fetch("/api/settings/service-keys");
+                          const r = await fetchLocalApi("/api/settings/service-keys");
                           const d = await r.json();
                           setServiceKeys(d.keys || []);
                         } catch {
@@ -8758,7 +8768,7 @@ export function ConfigPanel({
                                     addVariable === "__custom__"
                                       ? addService
                                       : catalogEntry?.service || "";
-                                  const resp = await fetch("/api/settings/service-keys", {
+                                  const resp = await fetchLocalApi("/api/settings/service-keys", {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({
@@ -8777,7 +8787,7 @@ export function ConfigPanel({
                                     });
                                     setShowAddForm(false);
                                     // Refresh
-                                    const r = await fetch("/api/settings/service-keys");
+                                    const r = await fetchLocalApi("/api/settings/service-keys");
                                     const d = await r.json();
                                     setServiceKeys(d.keys || []);
                                     setTimeout(() => setApiKeyMessage(null), 3000);
@@ -8841,11 +8851,14 @@ export function ConfigPanel({
                                       {/* Toggle */}
                                       <button
                                         onClick={async () => {
-                                          await fetch(`/api/settings/service-keys/${k.id}`, {
-                                            method: "PATCH",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ enabled: !k.enabled }),
-                                          });
+                                          await fetchLocalApi(
+                                            `/api/settings/service-keys/${k.id}`,
+                                            {
+                                              method: "PATCH",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ enabled: !k.enabled }),
+                                            },
+                                          );
                                           setServiceKeys((prev) =>
                                             prev.map((sk) =>
                                               sk.id === k.id ? { ...sk, enabled: !sk.enabled } : sk,
@@ -8895,16 +8908,23 @@ export function ConfigPanel({
                                             <button
                                               onClick={async () => {
                                                 if (!editValue.trim()) return;
-                                                await fetch(`/api/settings/service-keys/${k.id}`, {
-                                                  method: "PATCH",
-                                                  headers: { "Content-Type": "application/json" },
-                                                  body: JSON.stringify({ value: editValue.trim() }),
-                                                });
+                                                await fetchLocalApi(
+                                                  `/api/settings/service-keys/${k.id}`,
+                                                  {
+                                                    method: "PATCH",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({
+                                                      value: editValue.trim(),
+                                                    }),
+                                                  },
+                                                );
                                                 setEditingKeyId(null);
                                                 setEditValue("");
                                                 setShowEditValue(false);
                                                 // Refresh
-                                                const r = await fetch("/api/settings/service-keys");
+                                                const r = await fetchLocalApi(
+                                                  "/api/settings/service-keys",
+                                                );
                                                 const d = await r.json();
                                                 setServiceKeys(d.keys || []);
                                                 setApiKeyMessage({
@@ -8944,7 +8964,7 @@ export function ConfigPanel({
                                                   });
                                                 } else {
                                                   try {
-                                                    const resp = await fetch(
+                                                    const resp = await fetchLocalApi(
                                                       `/api/settings/service-keys/${k.id}/reveal`,
                                                     );
                                                     if (resp.ok) {
@@ -8985,9 +9005,12 @@ export function ConfigPanel({
                                           </button>
                                           <button
                                             onClick={async () => {
-                                              await fetch(`/api/settings/service-keys/${k.id}`, {
-                                                method: "DELETE",
-                                              });
+                                              await fetchLocalApi(
+                                                `/api/settings/service-keys/${k.id}`,
+                                                {
+                                                  method: "DELETE",
+                                                },
+                                              );
                                               setServiceKeys((prev) =>
                                                 prev.filter((sk) => sk.id !== k.id),
                                               );
@@ -9125,7 +9148,7 @@ export function ConfigPanel({
                                         : { primary };
                                     setDefaultModelSaving(true);
                                     try {
-                                      await fetch("/api/settings/models", {
+                                      await fetchLocalApi("/api/settings/models", {
                                         method: "PATCH",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({ model: nextModel }),
@@ -9226,7 +9249,7 @@ export function ConfigPanel({
                                       const subagentModel = `${subagentModelProvider}/${subagentModelId}`;
                                       setSubagentModelSaving(true);
                                       try {
-                                        await fetch("/api/settings/models", {
+                                        await fetchLocalApi("/api/settings/models", {
                                           method: "PATCH",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({ subagentModel }),
@@ -9253,7 +9276,7 @@ export function ConfigPanel({
                                     onClick={async () => {
                                       setSubagentModelSaving(true);
                                       try {
-                                        await fetch("/api/settings/models", {
+                                        await fetchLocalApi("/api/settings/models", {
                                           method: "PATCH",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({ subagentModel: "" }),
@@ -9303,7 +9326,7 @@ export function ConfigPanel({
                                     const newEnabled = !routerEnabled;
                                     setRouterEnabled(newEnabled);
                                     const router = modelConfig?.modelRouter || {};
-                                    await fetch("/api/settings/models", {
+                                    await fetchLocalApi("/api/settings/models", {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({
@@ -9753,7 +9776,7 @@ export function ConfigPanel({
                                           {!isActive && (
                                             <button
                                               onClick={async () => {
-                                                await fetch(
+                                                await fetchLocalApi(
                                                   `/api/settings/model-profiles/${name}/activate`,
                                                   {
                                                     method: "POST",
@@ -9776,7 +9799,7 @@ export function ConfigPanel({
                                           {!isBuiltin && (
                                             <button
                                               onClick={async () => {
-                                                await fetch(
+                                                await fetchLocalApi(
                                                   `/api/settings/model-profiles/${name}`,
                                                   {
                                                     method: "DELETE",
@@ -10185,35 +10208,39 @@ export function ConfigPanel({
                                                 const hasContemplationOverride =
                                                   !!editingMProfileContemplation.provider &&
                                                   !!editingMProfileContemplation.model;
-                                                await fetch("/api/settings/model-profiles", {
-                                                  method: "PATCH",
-                                                  headers: { "Content-Type": "application/json" },
-                                                  body: JSON.stringify({
-                                                    name,
-                                                    label: editingMProfileLabel || name,
-                                                    tiers:
-                                                      sanitizeTiersForPatch(editingMProfileTiers),
-                                                    ...(routingPolicy ? { routingPolicy } : {}),
-                                                    ...(hasContemplationOverride
-                                                      ? {
-                                                          sessionOverrides: {
-                                                            contemplation: {
-                                                              provider:
-                                                                editingMProfileContemplation.provider,
-                                                              model:
-                                                                editingMProfileContemplation.model,
-                                                              ...(contemplationFallbacks.length > 0
-                                                                ? {
-                                                                    fallbacks:
-                                                                      contemplationFallbacks,
-                                                                  }
-                                                                : {}),
+                                                await fetchLocalApi(
+                                                  "/api/settings/model-profiles",
+                                                  {
+                                                    method: "PATCH",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({
+                                                      name,
+                                                      label: editingMProfileLabel || name,
+                                                      tiers:
+                                                        sanitizeTiersForPatch(editingMProfileTiers),
+                                                      ...(routingPolicy ? { routingPolicy } : {}),
+                                                      ...(hasContemplationOverride
+                                                        ? {
+                                                            sessionOverrides: {
+                                                              contemplation: {
+                                                                provider:
+                                                                  editingMProfileContemplation.provider,
+                                                                model:
+                                                                  editingMProfileContemplation.model,
+                                                                ...(contemplationFallbacks.length >
+                                                                0
+                                                                  ? {
+                                                                      fallbacks:
+                                                                        contemplationFallbacks,
+                                                                    }
+                                                                  : {}),
+                                                              },
                                                             },
-                                                          },
-                                                        }
-                                                      : {}),
-                                                  }),
-                                                });
+                                                          }
+                                                        : {}),
+                                                    }),
+                                                  },
+                                                );
                                                 cancelEditModelProfile();
                                                 loadProfiles();
                                               }}
@@ -10561,7 +10588,7 @@ export function ConfigPanel({
                                       const hasContemplationOverride =
                                         !!newMProfileContemplation.provider &&
                                         !!newMProfileContemplation.model;
-                                      await fetch("/api/settings/model-profiles", {
+                                      await fetchLocalApi("/api/settings/model-profiles", {
                                         method: "PATCH",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({
@@ -10934,7 +10961,7 @@ export function ConfigPanel({
                                 const timeout = setTimeout(() => controller.abort(), 10_000);
                                 let resp: Response;
                                 try {
-                                  resp = await fetch("/api/settings/auth-profiles", {
+                                  resp = await fetchLocalApi("/api/settings/auth-profiles", {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({
@@ -10954,7 +10981,7 @@ export function ConfigPanel({
                                   setNewProfileToken("");
                                   // Refresh
                                   const data = await (
-                                    await fetch("/api/settings/auth-profiles")
+                                    await fetchLocalApi("/api/settings/auth-profiles")
                                   ).json();
                                   setAuthProfiles(data.profiles || []);
                                   setAuthLastGood(data.lastGood || {});
@@ -10980,7 +11007,7 @@ export function ConfigPanel({
                                       10_000,
                                     );
                                     try {
-                                      const legacyResp = await fetch("/api/settings/auth", {
+                                      const legacyResp = await fetchLocalApi("/api/settings/auth", {
                                         method: "PUT",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({
@@ -11003,7 +11030,7 @@ export function ConfigPanel({
                                       setNewProfileName("");
                                       setNewProfileToken("");
                                       const data = await (
-                                        await fetch("/api/settings/auth-profiles")
+                                        await fetchLocalApi("/api/settings/auth-profiles")
                                       ).json();
                                       setAuthProfiles(data.profiles || []);
                                       setAuthLastGood(data.lastGood || {});
@@ -11135,7 +11162,7 @@ export function ConfigPanel({
                                         });
                                       } else {
                                         try {
-                                          const resp = await fetch(
+                                          const resp = await fetchLocalApi(
                                             `/api/settings/auth-profiles/${encodeURIComponent(p.key)}/reveal`,
                                           );
                                           if (resp.ok) {
@@ -11196,7 +11223,7 @@ export function ConfigPanel({
 
                                     console.log(`[Auth] Clicked Set Active for: ${p.key}`);
                                     try {
-                                      const resp = await fetch(
+                                      const resp = await fetchLocalApi(
                                         `/api/settings/auth-profiles/${encodeURIComponent(p.key)}/set-active`,
                                         { method: "POST" },
                                       );
@@ -11292,7 +11319,7 @@ export function ConfigPanel({
                         const clearCooldown = async (profileKey?: string) => {
                           setDiagClearing(profileKey || "__all__");
                           try {
-                            const resp = await fetch(
+                            const resp = await fetchLocalApi(
                               "/api/settings/auth-profiles/clear-cooldowns",
                               {
                                 method: "POST",
@@ -11629,7 +11656,7 @@ export function ConfigPanel({
                             onClick={async () => {
                               if (!newChannelToken.trim()) return;
                               try {
-                                const resp = await fetch("/api/settings/channels", {
+                                const resp = await fetchLocalApi("/api/settings/channels", {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json" },
                                   body: JSON.stringify({
@@ -11647,7 +11674,9 @@ export function ConfigPanel({
                                   setShowAddChannel(false);
                                   setNewChannelToken("");
                                   setNewChannelAllowFrom("");
-                                  const data = await (await fetch("/api/settings/channels")).json();
+                                  const data = await (
+                                    await fetchLocalApi("/api/settings/channels")
+                                  ).json();
                                   setChannelList(data.channels || []);
                                 } else {
                                   const err = await resp.json();
@@ -11759,7 +11788,7 @@ export function ConfigPanel({
                                     ),
                                   );
                                   try {
-                                    await fetch(`/api/settings/channels/${ch.id}`, {
+                                    await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ enabled: newEnabled }),
@@ -11787,11 +11816,11 @@ export function ConfigPanel({
                                 onClick={async () => {
                                   if (!confirm(`Delete channel "${ch.id}"?`)) return;
                                   try {
-                                    await fetch(`/api/settings/channels/${ch.id}`, {
+                                    await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                       method: "DELETE",
                                     });
                                     const data = await (
-                                      await fetch("/api/settings/channels")
+                                      await fetchLocalApi("/api/settings/channels")
                                     ).json();
                                     setChannelList(data.channels || []);
                                     setChannelMessage({
@@ -11826,7 +11855,7 @@ export function ConfigPanel({
                                         ),
                                       );
                                       try {
-                                        await fetch(`/api/settings/channels/${ch.id}`, {
+                                        await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                           method: "PATCH",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({ dmPolicy: val }),
@@ -11862,7 +11891,7 @@ export function ConfigPanel({
                                         ),
                                       );
                                       try {
-                                        await fetch(`/api/settings/channels/${ch.id}`, {
+                                        await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                           method: "PATCH",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({ groupPolicy: val }),
@@ -11936,7 +11965,7 @@ export function ConfigPanel({
                                           ),
                                         );
                                         try {
-                                          await fetch(`/api/settings/channels/${ch.id}`, {
+                                          await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                             method: "PATCH",
                                             headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify({ allowFrom }),
@@ -11977,7 +12006,7 @@ export function ConfigPanel({
                                         ),
                                       );
                                       try {
-                                        await fetch(`/api/settings/channels/${ch.id}`, {
+                                        await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                           method: "PATCH",
                                           headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({ mentionGating: newVal }),
@@ -18688,7 +18717,7 @@ export function ConfigPanel({
                           onClick={async () => {
                             const newValue = !nudgesGlobalEnabled;
                             setNudgesGlobalEnabled(newValue);
-                            await fetch("/api/settings/nudges/global-toggle", {
+                            await fetchLocalApi("/api/settings/nudges/global-toggle", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ enabled: newValue }),
@@ -18803,7 +18832,7 @@ export function ConfigPanel({
 
                               if (!id || !label || !prompt) return;
 
-                              const resp = await fetch("/api/settings/nudges", {
+                              const resp = await fetchLocalApi("/api/settings/nudges", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
@@ -18863,7 +18892,7 @@ export function ConfigPanel({
                                 {/* TTS Toggle */}
                                 <button
                                   onClick={async () => {
-                                    await fetch(`/api/settings/nudges/${nudge.id}`, {
+                                    await fetchLocalApi(`/api/settings/nudges/${nudge.id}`, {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ ttsEnabled: !nudge.ttsEnabled }),
@@ -18886,7 +18915,7 @@ export function ConfigPanel({
                                 {/* Enable/Disable Toggle */}
                                 <button
                                   onClick={async () => {
-                                    await fetch(`/api/settings/nudges/${nudge.id}`, {
+                                    await fetchLocalApi(`/api/settings/nudges/${nudge.id}`, {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ enabled: !nudge.enabled }),
@@ -18913,7 +18942,7 @@ export function ConfigPanel({
                                         `Delete nudge "${nudge.label}"? This cannot be undone.`,
                                       )
                                     ) {
-                                      await fetch(`/api/settings/nudges/${nudge.id}`, {
+                                      await fetchLocalApi(`/api/settings/nudges/${nudge.id}`, {
                                         method: "DELETE",
                                       });
                                       setNudges((prev) => prev.filter((n) => n.id !== nudge.id));
@@ -19024,7 +19053,7 @@ export function ConfigPanel({
                                 onChange={async (e) => {
                                   const newBind = e.target.value;
                                   try {
-                                    await fetch("/api/settings/gateway", {
+                                    await fetchLocalApi("/api/settings/gateway", {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ bind: newBind }),
@@ -19083,7 +19112,7 @@ export function ConfigPanel({
                                     )
                                       return;
                                     try {
-                                      const resp = await fetch(
+                                      const resp = await fetchLocalApi(
                                         "/api/settings/gateway/regenerate-token",
                                         {
                                           method: "POST",
@@ -19164,7 +19193,7 @@ export function ConfigPanel({
                                   setCalendarAccountLoading(true);
                                   setCalendarAccountMessage(null);
                                   try {
-                                    const resp = await fetch("/api/calendar/account", {
+                                    const resp = await fetchLocalApi("/api/calendar/account", {
                                       method: "POST",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ account: next || null }),
@@ -19269,7 +19298,7 @@ export function ConfigPanel({
                                 onClick={async () => {
                                   const newEnabled = !gatewayConfig.alwaysOnLoop?.enabled;
                                   try {
-                                    await fetch("/api/settings/gateway", {
+                                    await fetchLocalApi("/api/settings/gateway", {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({
@@ -19311,7 +19340,7 @@ export function ConfigPanel({
                                   const newIntegration =
                                     !gatewayConfig.alwaysOnLoop?.dashboardIntegration;
                                   try {
-                                    await fetch("/api/settings/gateway", {
+                                    await fetchLocalApi("/api/settings/gateway", {
                                       method: "PATCH",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({
@@ -19380,7 +19409,7 @@ export function ConfigPanel({
                                   });
                                   setTimeout(async () => {
                                     try {
-                                      const r = await fetch("/api/settings/gateway");
+                                      const r = await fetchLocalApi("/api/settings/gateway");
                                       const data = await r.json();
                                       setGatewayConfig(data);
                                     } catch {}
@@ -19411,11 +19440,13 @@ export function ConfigPanel({
                             onClick={async () => {
                               setGatewayRestarting(true);
                               try {
-                                await fetch("/api/settings/gateway/restart", { method: "POST" });
+                                await fetchLocalApi("/api/settings/gateway/restart", {
+                                  method: "POST",
+                                });
                                 // Wait a moment for the gateway to restart, then refresh
                                 setTimeout(async () => {
                                   try {
-                                    const r = await fetch("/api/settings/gateway");
+                                    const r = await fetchLocalApi("/api/settings/gateway");
                                     const data = await r.json();
                                     setGatewayConfig(data);
                                   } catch {}
@@ -19553,7 +19584,7 @@ export function ConfigPanel({
                                         onClick={async () => {
                                           setGatewayServiceAction(actionKey);
                                           try {
-                                            await fetch(
+                                            await fetchLocalApi(
                                               `/api/settings/services/${service.id}/${action}`,
                                               { method: "POST" },
                                             );
@@ -19731,7 +19762,7 @@ export function ConfigPanel({
                                     setDatabaseServiceAction(actionKey);
                                     setDatabaseMessage(null);
                                     try {
-                                      const resp = await fetch(
+                                      const resp = await fetchLocalApi(
                                         `/api/settings/database/service/postgres/${action}`,
                                         { method: "POST" },
                                       );
@@ -19803,7 +19834,7 @@ export function ConfigPanel({
                                     setDatabaseServiceAction(actionKey);
                                     setDatabaseMessage(null);
                                     try {
-                                      const resp = await fetch(
+                                      const resp = await fetchLocalApi(
                                         `/api/settings/database/service/redis/${action}`,
                                         { method: "POST" },
                                       );
@@ -19849,9 +19880,12 @@ export function ConfigPanel({
                                 setDatabaseBackupAction("backup");
                                 setDatabaseMessage(null);
                                 try {
-                                  const resp = await fetch("/api/settings/database/backup", {
-                                    method: "POST",
-                                  });
+                                  const resp = await fetchLocalApi(
+                                    "/api/settings/database/backup",
+                                    {
+                                      method: "POST",
+                                    },
+                                  );
                                   const data = await resp.json();
                                   if (!resp.ok) throw new Error(data.error || data.details);
                                   setDatabaseMessage({
@@ -19883,9 +19917,12 @@ export function ConfigPanel({
                                 setDatabaseBackupAction("schedule");
                                 setDatabaseMessage(null);
                                 try {
-                                  const resp = await fetch("/api/settings/database/backup/cron", {
-                                    method: "POST",
-                                  });
+                                  const resp = await fetchLocalApi(
+                                    "/api/settings/database/backup/cron",
+                                    {
+                                      method: "POST",
+                                    },
+                                  );
                                   const data = await resp.json();
                                   if (!resp.ok) throw new Error(data.error || data.details);
                                   setDatabaseMessage({
@@ -20812,7 +20849,7 @@ export function ConfigPanel({
                             setVoiceSaving(true);
                             setVoiceMessage(null);
                             try {
-                              const res = await fetch("/api/settings/tts", {
+                              const res = await fetchLocalApi("/api/settings/tts", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify(voiceSettings),
@@ -21666,7 +21703,7 @@ export function ConfigPanel({
                               </button>
                               <button
                                 onClick={() => {
-                                  fetch("/api/logs/tail?limit=100")
+                                  fetchLocalApi("/api/logs/tail?limit=100")
                                     .then((r) => r.json())
                                     .then((logs) => {
                                       setObservabilityData((prev) => ({ ...prev, logs }));
@@ -21825,7 +21862,9 @@ export function ConfigPanel({
                                 setPairingGenerating(true);
                                 setDevicesMessage(null);
                                 try {
-                                  const r = await fetch("/api/devices/pair", { method: "POST" });
+                                  const r = await fetchLocalApi("/api/devices/pair", {
+                                    method: "POST",
+                                  });
                                   if (!r.ok) throw new Error("Failed to generate pairing code");
                                   const payload = await r.json();
                                   setPairingPayload(payload);
@@ -21917,7 +21956,7 @@ export function ConfigPanel({
                               <button
                                 onClick={async () => {
                                   try {
-                                    await fetch("/api/devices/approve", {
+                                    await fetchLocalApi("/api/devices/approve", {
                                       method: "POST",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({
@@ -21945,7 +21984,7 @@ export function ConfigPanel({
                               <button
                                 onClick={async () => {
                                   try {
-                                    await fetch("/api/devices/deny", {
+                                    await fetchLocalApi("/api/devices/deny", {
                                       method: "POST",
                                       headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({
@@ -22035,9 +22074,12 @@ export function ConfigPanel({
                                   <button
                                     onClick={async () => {
                                       try {
-                                        await fetch(`/api/devices/${device.deviceId}/revoke`, {
-                                          method: "POST",
-                                        });
+                                        await fetchLocalApi(
+                                          `/api/devices/${device.deviceId}/revoke`,
+                                          {
+                                            method: "POST",
+                                          },
+                                        );
                                         setRevokeConfirm(null);
                                         setDevicesMessage({
                                           type: "success",
@@ -22387,11 +22429,13 @@ export function ConfigPanel({
                         if (deleteConfirmText !== deleteConfirmProfile.provider.toUpperCase()) {
                           return;
                         }
-                        await fetch(
+                        await fetchLocalApi(
                           `/api/settings/auth-profiles/${encodeURIComponent(deleteConfirmProfile.key)}`,
                           { method: "DELETE" },
                         );
-                        const data = await (await fetch("/api/settings/auth-profiles")).json();
+                        const data = await (
+                          await fetchLocalApi("/api/settings/auth-profiles")
+                        ).json();
                         setAuthProfiles(data.profiles || []);
                         setAuthLastGood(data.lastGood || {});
                         setDeleteConfirmProfile(null);

@@ -6,6 +6,7 @@
 
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 interface ThroughputStats {
   completedToday: number;
@@ -28,7 +29,7 @@ export function ThroughputWidget() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/tasks/throughput");
+      const res = await fetchLocalApi("/api/tasks/throughput");
       if (res.ok) {
         const data = await res.json();
         setStats(data);

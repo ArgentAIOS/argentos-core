@@ -1,5 +1,6 @@
 import { Plus, Trash2, Shield, Save, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 interface SafetyRulesState {
   enabled: boolean;
@@ -62,7 +63,7 @@ export default function SafetyRulesPanel({ showUpgradeHint = true }: SafetyRules
 
   const loadRules = useCallback(async () => {
     try {
-      const res = await fetch("/api/settings/intent");
+      const res = await fetchLocalApi("/api/settings/intent");
       if (res.ok) {
         const data = await res.json();
         const intent = data?.intent || {};
@@ -106,7 +107,7 @@ export default function SafetyRulesPanel({ showUpgradeHint = true }: SafetyRules
           requiresHumanApproval: rules.requiresHumanApproval,
         },
       };
-      const res = await fetch("/api/settings/intent", {
+      const res = await fetchLocalApi("/api/settings/intent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent: nextIntent }),

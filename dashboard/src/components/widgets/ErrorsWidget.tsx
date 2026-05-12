@@ -6,6 +6,7 @@
 
 import { AlertOctagon, Cpu, Zap, RefreshCw } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 interface ErrorEntry {
   id: string;
@@ -35,7 +36,7 @@ export function ErrorsWidget() {
 
   const fetchErrors = useCallback(async () => {
     try {
-      const res = await fetch("/api/health/errors");
+      const res = await fetchLocalApi("/api/health/errors");
       if (res.ok) {
         const data = await res.json();
         setErrors(data.errors || []);
