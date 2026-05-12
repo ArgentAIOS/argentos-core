@@ -95,6 +95,7 @@
     "mac:restart": "bash scripts/restart-mac.sh",
     "parity:report": "node --import tsx scripts/storage-parity-report.ts",
     "plugins:sync": "node --import tsx scripts/sync-plugin-versions.ts",
+    "postinstall": "node --import tsx scripts/sweep-dashboard-symlinks.ts || true",
     "prepack": "pnpm build && pnpm ui:build",
     "prepare": "command -v git >/dev/null 2>&1 && git config core.hooksPath git-hooks || exit 0",
     "protocol:check": "pnpm protocol:gen && pnpm protocol:gen:swift && pnpm protocol:gen:executive-shadow && git diff --exit-code -- dist/protocol.schema.json dist/executive-shadow.protocol.schema.json rust/argent-execd/executive-shadow.protocol.schema.json apps/macos/Sources/ArgentProtocol/GatewayModels.swift",
