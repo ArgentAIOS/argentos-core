@@ -223,6 +223,39 @@ describe("AppForge core model", () => {
     expect(coerceAppForgeRatingValue(field, "not-a-rating")).toBeNull();
   });
 
+  it("coerceAppForgeRatingValue snaps to 0.5 increments when allowHalf is enabled", () => {
+    const field = { ratingMax: 5, allowHalf: true };
+    expect(coerceAppForgeRatingValue(field, 3.5)).toBe(3.5);
+    expect(coerceAppForgeRatingValue(field, 3.74)).toBe(3.5);
+    expect(coerceAppForgeRatingValue(field, 3.76)).toBe(4);
+    expect(coerceAppForgeRatingValue(field, "4.25")).toBe(4.5);
+    expect(coerceAppForgeRatingValue(field, 5.5)).toBeNull();
+    expect(coerceAppForgeRatingValue(field, "")).toBe(0);
+    // Existing integer-only path must remain bit-identical without allowHalf.
+    expect(coerceAppForgeRatingValue({ ratingMax: 5 }, 3.5)).toBe(4);
+    expect(coerceAppForgeRatingValue({ ratingMax: 5, allowHalf: false }, 3.5)).toBe(4);
+  });
+
+  it("validates half-rating record values only when the field opts in", () => {
+    const halfFields: AppForgeField[] = [
+      { id: "score", name: "Score", type: "rating", allowHalf: true },
+      { id: "intFlame", name: "Heat", type: "rating", ratingMax: 10, ratingIcon: "flame" },
+    ];
+
+    // Half-step values flow through unchanged when allowHalf is on.
+    const ok = validateAppForgeRecordValues(halfFields, { score: 3.5, intFlame: 7 });
+    expect(ok.ok).toBe(true);
+    expect(ok.values).toEqual({ score: 3.5, intFlame: 7 });
+
+    // Quarter / arbitrary fractional input is gracefully snapped: 3.25 → 3.5
+    // when allowHalf is on, 4.5 → 5 when allowHalf is off. This mirrors the
+    // existing integer-only behavior where half input silently rounded to int,
+    // and matches the AirTable UX (type 4.7, get 4.5 — never an error toast).
+    const snapped = validateAppForgeRecordValues(halfFields, { score: 3.25, intFlame: 4.5 });
+    expect(snapped.ok).toBe(true);
+    expect(snapped.values).toEqual({ score: 3.5, intFlame: 5 });
+  });
+
   it("preserves rating metadata when projecting legacy bases", () => {
     const base = projectLegacyAppForgeBase({
       id: "app-rating",
@@ -264,6 +297,51 @@ describe("AppForge core model", () => {
     expect(base.tables[0]?.records[0]?.values.score).toBe(5);
     // Out-of-range value falls back to null per coerceAppForgeRatingValue.
     expect(base.tables[0]?.records[1]?.values.score).toBeNull();
+  });
+
+  it("round-trips allowHalf metadata + half-step values through the legacy projection", () => {
+    const base = projectLegacyAppForgeBase({
+      id: "app-half-rating",
+      name: "Reviews",
+      metadata: {
+        appForge: {
+          structured: {
+            baseId: "base-half",
+            activeTableId: "table-half",
+            tables: [
+              {
+                id: "table-half",
+                name: "Movies",
+                fields: [
+                  { id: "name", name: "Name", type: "text", required: true },
+                  {
+                    id: "score",
+                    name: "Score",
+                    type: "rating",
+                    ratingMax: 5,
+                    ratingIcon: "star",
+                    allowHalf: true,
+                  },
+                ],
+                records: [
+                  { id: "row-1", values: { name: "Movie A", score: "4.5" } },
+                  // Quarter-step input is snapped to nearest 0.5 by the coercer.
+                  { id: "row-2", values: { name: "Movie B", score: "3.74" } },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(base.tables[0]?.fields[1]).toMatchObject({
+      type: "rating",
+      ratingMax: 5,
+      ratingIcon: "star",
+      allowHalf: true,
+    });
+    expect(base.tables[0]?.records[0]?.values.score).toBe(4.5);
+    expect(base.tables[0]?.records[1]?.values.score).toBe(3.5);
   });
 
   it("returns a conflict when expected revision is stale", () => {

@@ -53,6 +53,12 @@ export type ForgeStructuredField = {
   ratingMax?: number;
   /** Glyph used to render rating cells. Defaults to `"star"`. */
   ratingIcon?: ForgeRatingIcon;
+  /**
+   * Opt-in: when true on a `rating` field, cells accept 0.5 increments (e.g.
+   * 4.5★) and render a half-filled glyph. Defaults to undefined / false so
+   * existing rating columns retain integer-only behavior.
+   */
+  allowHalf?: boolean;
 };
 
 export type ForgeStructuredRecordValue = string | number | boolean | string[] | null;
@@ -658,9 +664,11 @@ function normalizeFieldDraft(
     if (!nextField.ratingIcon || !FORGE_RATING_ICONS.includes(nextField.ratingIcon)) {
       nextField.ratingIcon = "star";
     }
+    nextField.allowHalf = nextField.allowHalf === true;
   } else {
     delete nextField.ratingMax;
     delete nextField.ratingIcon;
+    delete nextField.allowHalf;
   }
   const defaultValue = normalizeDefaultValue(
     hasDefaultValueUpdate ? updates.defaultValue : field.defaultValue,
@@ -917,6 +925,9 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
     const rawIcon = stringValue(value.ratingIcon);
     if (rawIcon && (FORGE_RATING_ICONS as readonly string[]).includes(rawIcon)) {
       field.ratingIcon = rawIcon as ForgeRatingIcon;
+    }
+    if (typeof value.allowHalf === "boolean") {
+      field.allowHalf = value.allowHalf;
     }
   }
   const defaultValue = normalizeDefaultValue(value.defaultValue, field);

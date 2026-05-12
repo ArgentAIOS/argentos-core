@@ -4496,10 +4496,43 @@ export function AppForge({
                                     ))}
                                   </select>
                                 </label>
+                                <label
+                                  data-testid="appforge-rating-allow-half"
+                                  className="col-span-2 flex items-center gap-2 rounded-lg border border-white/8 bg-black/15 px-3 py-2 text-xs text-white/65"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    data-testid="appforge-rating-allow-half-checkbox"
+                                    checked={structured.selectedField.allowHalf === true}
+                                    onChange={(event) =>
+                                      void structured.updateField(structured.selectedField!.id, {
+                                        allowHalf: event.target.checked,
+                                      })
+                                    }
+                                    className="h-3.5 w-3.5 rounded border-white/30 bg-black/25 accent-sky-400"
+                                  />
+                                  <span>
+                                    Allow half ratings
+                                    <span className="ml-1 text-[10px] text-white/35">
+                                      (e.g. 4.5★ — accepts 0.5 increments; off by default for
+                                      backward compatibility)
+                                    </span>
+                                  </span>
+                                </label>
                                 <div className="col-span-2 text-[11px] leading-relaxed text-white/34">
-                                  Rating cells store a whole number from 0 to the maximum. Click the
-                                  active glyph in the grid to clear, press a number key to jump, or
-                                  use arrow keys.
+                                  Rating cells store{" "}
+                                  {structured.selectedField.allowHalf
+                                    ? "a number in 0.5 increments"
+                                    : "a whole number"}{" "}
+                                  from 0 to the maximum. Click the active glyph in the grid to
+                                  clear, press a number key to jump, or use arrow keys.
+                                  {structured.selectedField.allowHalf ? (
+                                    <>
+                                      {" "}
+                                      With half ratings enabled, click the left half of a glyph for
+                                      X.5 and the right half for X.
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
                             )}
