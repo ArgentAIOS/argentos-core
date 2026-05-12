@@ -1,6 +1,7 @@
-import { Loader2, Upload, X } from "lucide-react";
+import type { ComponentType } from "react";
+import { Flame, Heart, Loader2, Star, ThumbsUp, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { GatewayRequestFn } from "../../hooks/useForgeStructuredData";
+import type { ForgeRatingIcon, GatewayRequestFn } from "../../hooks/useForgeStructuredData";
 
 export type AppForgeImportPreviewColumn = {
   header: string;
@@ -10,7 +11,102 @@ export type AppForgeImportPreviewColumn = {
   required?: boolean;
   options?: string[];
   matchedFieldId?: string;
+  /** Maximum value for `rating`-typed columns matched to an existing field. */
+  ratingMax?: number;
+  /** Glyph for `rating`-typed columns matched to an existing field. */
+  ratingIcon?: ForgeRatingIcon;
 };
+
+const RATING_ICON_GLYPHS: Record<ForgeRatingIcon, ComponentType<{ className?: string }>> = {
+  star: Star,
+  heart: Heart,
+  thumb: ThumbsUp,
+  flame: Flame,
+};
+
+const RATING_ICON_PALETTE: Record<ForgeRatingIcon, { active: string; idle: string }> = {
+  star: { active: "text-amber-300", idle: "text-white/22" },
+  heart: { active: "text-rose-300", idle: "text-white/22" },
+  thumb: { active: "text-sky-300", idle: "text-white/22" },
+  flame: { active: "text-orange-300", idle: "text-white/22" },
+};
+
+const RATING_MIN_MAX = 3;
+const RATING_MAX_MAX = 10;
+const RATING_DEFAULT_MAX = 5;
+
+function resolveRatingMax(candidate: number | undefined): number {
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return RATING_DEFAULT_MAX;
+  }
+  const rounded = Math.trunc(candidate);
+  if (rounded < RATING_MIN_MAX) return RATING_MIN_MAX;
+  if (rounded > RATING_MAX_MAX) return RATING_MAX_MAX;
+  return rounded;
+}
+
+function resolveRatingIcon(candidate: ForgeRatingIcon | undefined): ForgeRatingIcon {
+  return candidate && candidate in RATING_ICON_GLYPHS ? candidate : "star";
+}
+
+type RatingPreviewCellProps = {
+  rawValue: string;
+  parsedValue: unknown;
+  ratingMax: number | undefined;
+  ratingIcon: ForgeRatingIcon | undefined;
+  hasError: boolean;
+};
+
+function RatingPreviewCell({
+  rawValue,
+  parsedValue,
+  ratingMax,
+  ratingIcon,
+  hasError,
+}: RatingPreviewCellProps) {
+  const max = resolveRatingMax(ratingMax);
+  const iconKey = resolveRatingIcon(ratingIcon);
+  const Icon = RATING_ICON_GLYPHS[iconKey];
+  const palette = RATING_ICON_PALETTE[iconKey];
+
+  // If the value didn't coerce to a valid integer in [0, max], show the raw
+  // string with an out-of-range marker so the user can decide to drop/clamp.
+  if (hasError || typeof parsedValue !== "number" || !Number.isInteger(parsedValue)) {
+    const display = rawValue.trim() === "" ? "—" : rawValue;
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11px] text-amber-100"
+        data-testid="appforge-csv-import-rating-invalid"
+        title={`Out of range (0–${max})`}
+      >
+        {display}
+      </span>
+    );
+  }
+
+  const numeric = Math.max(0, Math.min(max, parsedValue));
+  const label = numeric === 0 ? "Unrated" : `${numeric} of ${max}`;
+  return (
+    <div
+      className="flex items-center gap-0.5"
+      data-testid="appforge-csv-import-rating-cell"
+      data-rating-value={numeric}
+      data-rating-max={max}
+      aria-label={label}
+      title={label}
+    >
+      {Array.from({ length: max }).map((_, index) => {
+        const filled = index < numeric;
+        return (
+          <Icon
+            key={index}
+            className={`h-3 w-3 ${filled ? `${palette.active} fill-current` : palette.idle}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 export type AppForgeImportPreviewRow = {
   rowNumber: number;
@@ -281,14 +377,36 @@ export function CsvImportDialog({
                     <tbody className="text-white/75">
                       {preview.rows.slice(0, 5).map((row) => (
                         <tr key={row.rowNumber} className="border-t border-white/[0.07]">
-                          {preview.columns.map((column) => (
-                            <td
-                              key={column.fieldId}
-                              className="max-w-[14rem] truncate px-3 py-1 align-top"
-                            >
-                              {row.raw[column.fieldId] ?? ""}
-                            </td>
-                          ))}
+                          {preview.columns.map((column) => {
+                            const rawValue = row.raw[column.fieldId] ?? "";
+                            if (column.type === "rating") {
+                              const hasError = row.errors.some(
+                                (error) => error.fieldId === column.fieldId,
+                              );
+                              return (
+                                <td
+                                  key={column.fieldId}
+                                  className="max-w-[14rem] px-3 py-1 align-top"
+                                >
+                                  <RatingPreviewCell
+                                    rawValue={rawValue}
+                                    parsedValue={row.values[column.fieldId]}
+                                    ratingMax={column.ratingMax}
+                                    ratingIcon={column.ratingIcon}
+                                    hasError={hasError}
+                                  />
+                                </td>
+                              );
+                            }
+                            return (
+                              <td
+                                key={column.fieldId}
+                                className="max-w-[14rem] truncate px-3 py-1 align-top"
+                              >
+                                {rawValue}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>

@@ -3,6 +3,7 @@ import {
   type AppForgeBase,
   type AppForgeField,
   type AppForgeFieldType,
+  type AppForgeRatingIcon,
   type AppForgeRecordValue,
   type AppForgeValidationError,
 } from "./app-forge-model.js";
@@ -23,6 +24,10 @@ export type AppForgeImportPreviewColumn = {
   required?: boolean;
   options?: string[];
   matchedFieldId?: string;
+  /** Maximum value for `rating`-typed columns matched to an existing field. */
+  ratingMax?: number;
+  /** Glyph for `rating`-typed columns matched to an existing field. */
+  ratingIcon?: AppForgeRatingIcon;
 };
 
 export type AppForgeImportPreviewRow = {
@@ -307,6 +312,7 @@ export function buildAppForgeImportPreview(
       ? { type: existingField.type, options: existingField.options }
       : inferField(header, sampleValues);
     const fieldId = existingField?.id ?? cleanId(header, `field-${index + 1}`);
+    const isRating = inferred.type === "rating" && existingField?.type === "rating";
     return {
       header,
       fieldId,
@@ -315,6 +321,8 @@ export function buildAppForgeImportPreview(
       required: existingField?.required,
       options: inferred.options,
       matchedFieldId: existingField?.id,
+      ratingMax: isRating ? existingField?.ratingMax : undefined,
+      ratingIcon: isRating ? existingField?.ratingIcon : undefined,
     };
   });
 
@@ -324,6 +332,8 @@ export function buildAppForgeImportPreview(
     type: column.type,
     required: column.required,
     options: column.options,
+    ratingMax: column.ratingMax,
+    ratingIcon: column.ratingIcon,
   }));
 
   let skippedEmptyRows = 0;
