@@ -18,10 +18,28 @@ export type ChannelHeartbeatVisibilityConfig = {
   useIndicator?: boolean;
 };
 
+/**
+ * GH #203: Deployment-level overrides for the agent-tag → icon transform
+ * applied to outbound messages on text channels (telegram, discord, signal,
+ * slack, imessage, whatsapp, msteams). Lets deployments swap out the
+ * default mood emoji for branded variants without forking core.
+ */
+export type ChannelAgentTagsConfig = {
+  /**
+   * Override individual mood→emoji entries, or supply entirely new moods.
+   * Merged on top of the built-in defaults; unsupplied moods keep their
+   * default emoji. Set a key to an empty string to suppress the default
+   * emoji for that mood (renders as neutral / no prefix).
+   */
+  moodEmojiMap?: Record<string, string>;
+};
+
 export type ChannelDefaultsConfig = {
   groupPolicy?: GroupPolicy;
   /** Default heartbeat visibility for all channels. */
   heartbeat?: ChannelHeartbeatVisibilityConfig;
+  /** Overrides for the agent-tag → icon transform (mood→emoji). */
+  agentTags?: ChannelAgentTagsConfig;
 };
 
 export type ChannelsConfig = {

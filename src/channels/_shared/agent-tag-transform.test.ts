@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transformAgentTagsForTextChannel } from "./agent-tag-transform.js";
+import { DEFAULT_MOOD_EMOJI, transformAgentTagsForTextChannel } from "./agent-tag-transform.js";
 
 describe("transformAgentTagsForTextChannel", () => {
   it("renders the canonical MOOD + TTS example from issue #198", () => {
@@ -92,5 +92,97 @@ describe("transformAgentTagsForTextChannel", () => {
   it("does not crash on null-ish input shapes", () => {
     // The function expects string but should still degrade for empty.
     expect(transformAgentTagsForTextChannel("")).toBe("");
+  });
+
+  // ---------------------------------------------------------------------
+  // GH #203: deployment-level mood→emoji overrides.
+  //
+  // Backward-compat: when no override is supplied, behavior is identical to
+  // the legacy single-arg call. With overrides, per-mood entries replace
+  // the default; unsupplied moods keep their default; empty-string entries
+  // suppress the default.
+  // ---------------------------------------------------------------------
+
+  describe("moodEmojiMap override (issue #203)", () => {
+    it("falls back to default mapping when no override is supplied", () => {
+      expect(transformAgentTagsForTextChannel("[MOOD:happy] Hi.", {})).toBe("😊\nHi.");
+    });
+
+    it("falls back to default mapping when override map is empty", () => {
+      expect(
+        transformAgentTagsForTextChannel("[MOOD:happy] Hi.", {
+          moodEmojiMap: {},
+        }),
+      ).toBe("😊\nHi.");
+    });
+
+    it("applies a per-mood override (single mood swapped, others untouched)", () => {
+      const opts = { moodEmojiMap: { happy: "🌞" } };
+      expect(transformAgentTagsForTextChannel("[MOOD:happy] Hi.", opts)).toBe("🌞\nHi.");
+      // Sad stays at default — override is a merge, not a replace.
+      expect(transformAgentTagsForTextChannel("[MOOD:sad] Hi.", opts)).toBe("😔\nHi.");
+    });
+
+    it("supports introducing new (non-default) moods via override", () => {
+      // `pumped` is not in DEFAULT_MOOD_EMOJI; override lets a deployment
+      // introduce a branded mood label.
+      expect(
+        transformAgentTagsForTextChannel("[MOOD:pumped] Let's go.", {
+          moodEmojiMap: { pumped: "🔥" },
+        }),
+      ).toBe("🔥\nLet's go.");
+    });
+
+    it("suppresses a default mood when override value is an empty string", () => {
+      expect(
+        transformAgentTagsForTextChannel("[MOOD:happy] Hi.", {
+          moodEmojiMap: { happy: "" },
+        }),
+      ).toBe("Hi.");
+    });
+
+    it("override keys are case-insensitive", () => {
+      expect(
+        transformAgentTagsForTextChannel("[MOOD:Happy] Hi.", {
+          moodEmojiMap: { HAPPY: "🌞" },
+        }),
+      ).toBe("🌞\nHi.");
+    });
+
+    it("override composes with TTS rendering unchanged", () => {
+      const input = "[MOOD:loving] [TTS:[warm] Hello back.]\nNice to hear from you.";
+      expect(
+        transformAgentTagsForTextChannel(input, {
+          moodEmojiMap: { loving: "💖" },
+        }),
+      ).toBe("💖 🗣️ warm\nHello back.\nNice to hear from you.");
+    });
+
+    it("supports full map replacement (deployment supplies a complete branded map)", () => {
+      const branded = {
+        happy: "🟢",
+        sad: "🔴",
+        loving: "💜",
+        warm: "💜",
+        thinking: "🟡",
+        curious: "🟡",
+        excited: "🟢",
+        concerned: "🟠",
+        focused: "🔵",
+        confused: "⚪",
+      };
+      expect(
+        transformAgentTagsForTextChannel("[MOOD:excited] Shipping!", {
+          moodEmojiMap: branded,
+        }),
+      ).toBe("🟢\nShipping!");
+    });
+
+    it("DEFAULT_MOOD_EMOJI exposes the built-in mapping for introspection", () => {
+      // Sanity-check that the export is wired up and matches expected shape.
+      expect(DEFAULT_MOOD_EMOJI.happy).toBe("😊");
+      expect(DEFAULT_MOOD_EMOJI.loving).toBe("❤️");
+      expect(DEFAULT_MOOD_EMOJI.neutral).toBeUndefined();
+    });
   });
 });

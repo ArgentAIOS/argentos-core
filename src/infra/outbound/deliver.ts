@@ -340,10 +340,20 @@ export async function deliverOutboundPayloads(params: {
   // remaining text channels (signal, slack, imessage, whatsapp, and the
   // msteams plugin). webchat is intentionally excluded — it renders the raw
   // structured signals natively in the dashboard UI.
+  //
+  // GH #203: deployments can override the default mood→emoji map by setting
+  // `channels.defaults.agentTags.moodEmojiMap` in argent.json. Undefined ⇒
+  // built-in defaults (no behavior change for existing deployments).
   const renderAgentTagsAsIcons = AGENT_TAG_ICON_CHANNELS.has(channel);
+  const moodEmojiMapOverride = cfg.channels?.defaults?.agentTags?.moodEmojiMap;
   const normalizedPayloads = normalizeReplyPayloadsForDelivery(payloads).map((payload) =>
     renderAgentTagsAsIcons && payload.text
-      ? { ...payload, text: transformAgentTagsForTextChannel(payload.text) }
+      ? {
+          ...payload,
+          text: transformAgentTagsForTextChannel(payload.text, {
+            moodEmojiMap: moodEmojiMapOverride,
+          }),
+        }
       : payload,
   );
   for (const payload of normalizedPayloads) {
