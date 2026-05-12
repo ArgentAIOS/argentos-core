@@ -122,7 +122,9 @@ function isPgBacked(): boolean {
 }
 
 function asDate(value: Date | string | null | undefined): Date | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
@@ -134,7 +136,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
   return value.filter((item): item is string => typeof item === "string");
 }
 
@@ -178,7 +182,9 @@ function normalizeToolGrantSnapshot(values: string[]): string[] {
   const unique = new Set<string>();
   for (const raw of values) {
     const tool = raw.trim();
-    if (!tool) continue;
+    if (!tool) {
+      continue;
+    }
     unique.add(tool);
   }
   return Array.from(unique);
@@ -216,10 +222,18 @@ function applyEventToContract(
 }
 
 async function getSql(): Promise<ReturnType<typeof postgres> | null> {
-  if (isTestEnv()) return null;
-  if (!isPgBacked()) return null;
-  if (_sql) return _sql;
-  if (_initPromise) return _initPromise;
+  if (isTestEnv()) {
+    return null;
+  }
+  if (!isPgBacked()) {
+    return null;
+  }
+  if (_sql) {
+    return _sql;
+  }
+  if (_initPromise) {
+    return _initPromise;
+  }
 
   _initPromise = (async () => {
     const connectionString = resolvePostgresUrl();
@@ -298,7 +312,9 @@ async function getSql(): Promise<ReturnType<typeof postgres> | null> {
 }
 
 function requireStoreAvailable(sql: ReturnType<typeof postgres> | null) {
-  if (sql || isTestEnv()) return;
+  if (sql || isTestEnv()) {
+    return;
+  }
   throw new Error(
     "Dispatch contracts require PostgreSQL storage (backend=postgres|dual) or test mode.",
   );
@@ -310,7 +326,9 @@ function isTerminalStatus(status: DispatchContractStatus): boolean {
 
 function clearDispatchContractMonitor(contractId: string) {
   const handles = activeContractMonitors.get(contractId);
-  if (!handles) return;
+  if (!handles) {
+    return;
+  }
   clearTimeout(handles.timeoutHandle);
   clearInterval(handles.heartbeatHandle);
   activeContractMonitors.delete(contractId);
@@ -321,7 +339,9 @@ async function autoFailContract(
   reason: string,
   payload?: Record<string, unknown>,
 ) {
-  if (monitorFailing.has(contractId)) return;
+  if (monitorFailing.has(contractId)) {
+    return;
+  }
   monitorFailing.add(contractId);
   try {
     const latest = await getDispatchContract(contractId);
@@ -370,9 +390,13 @@ export async function ensureDispatchContractMonitor(contractId: string): Promise
         clearDispatchContractMonitor(contractId);
         return;
       }
-      if (latest.status !== "heartbeat") return;
+      if (latest.status !== "heartbeat") {
+        return;
+      }
       const last = latest.lastHeartbeatAt?.getTime();
-      if (!last) return;
+      if (!last) {
+        return;
+      }
       const elapsed = Date.now() - last;
       if (elapsed > latest.heartbeatIntervalMs * 2) {
         await autoFailContract(contractId, `dispatch contract missed heartbeat for ${elapsed}ms`, {
@@ -613,7 +637,9 @@ export async function getDispatchContract(
 
   if (isTestEnv()) {
     const existing = testContracts.get(contractId);
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
     return {
       ...existing,
       toolGrantSnapshot: [...existing.toolGrantSnapshot],
@@ -648,7 +674,9 @@ export async function getDispatchContract(
     WHERE contract_id = ${contractId}
     LIMIT 1
   `;
-  if (!rows[0]) return null;
+  if (!rows[0]) {
+    return null;
+  }
   return mapContractRow(rows[0]);
 }
 
@@ -689,10 +717,15 @@ export async function listDispatchContracts(opts?: {
 
   if (isTestEnv()) {
     let values = Array.from(testContracts.values());
-    if (opts?.status) values = values.filter((item) => item.status === opts.status);
-    if (opts?.targetAgentId)
+    if (opts?.status) {
+      values = values.filter((item) => item.status === opts.status);
+    }
+    if (opts?.targetAgentId) {
       values = values.filter((item) => item.targetAgentId === opts.targetAgentId);
-    if (opts?.taskId) values = values.filter((item) => item.taskId === opts.taskId);
+    }
+    if (opts?.taskId) {
+      values = values.filter((item) => item.taskId === opts.taskId);
+    }
     values.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return values.slice(0, limit).map((item) => ({
       ...item,
@@ -735,7 +768,9 @@ export async function listDispatchContracts(opts?: {
 }
 
 export function resetDispatchContractsStoreForTests(): void {
-  if (!isTestEnv()) return;
+  if (!isTestEnv()) {
+    return;
+  }
   for (const contractId of activeContractMonitors.keys()) {
     clearDispatchContractMonitor(contractId);
   }

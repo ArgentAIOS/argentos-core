@@ -53,15 +53,20 @@ function mapTriggerType(triggerType: string): { source: string; detail: string }
 }
 
 function mapEpisodeType(triggerType: string, content: string): string {
-  if (triggerType === "heartbeat_accountability") return "reflection";
+  if (triggerType === "heartbeat_accountability") {
+    return "reflection";
+  }
   // Check content for creation/discovery/milestone hints
   const lower = content.toLowerCase();
-  if (lower.includes("shipped") || lower.includes("completed") || lower.includes("breakthrough"))
+  if (lower.includes("shipped") || lower.includes("completed") || lower.includes("breakthrough")) {
     return "creation";
-  if (lower.includes("learned") || lower.includes("discovered") || lower.includes("realized"))
+  }
+  if (lower.includes("learned") || lower.includes("discovered") || lower.includes("realized")) {
     return "reflection";
-  if (lower.includes("failed") || lower.includes("failure") || lower.includes("contradiction"))
+  }
+  if (lower.includes("failed") || lower.includes("failure") || lower.includes("contradiction")) {
     return "reflection";
+  }
   return "reflection";
 }
 
@@ -73,28 +78,35 @@ function inferPatternHint(content: string, lessons: string[]): string | null {
     allText.includes("verify") ||
     allText.includes("ground truth") ||
     allText.includes("contradiction")
-  )
+  ) {
     return "assumption_gap → verification_need";
-  if (allText.includes("memory") || allText.includes("continuity") || allText.includes("amnesia"))
+  }
+  if (allText.includes("memory") || allText.includes("continuity") || allText.includes("amnesia")) {
     return "amnesia_risk → continuity_building";
-  if (allText.includes("depth") || allText.includes("velocity") || allText.includes("synthesis"))
+  }
+  if (allText.includes("depth") || allText.includes("velocity") || allText.includes("synthesis")) {
     return "velocity_pressure → depth_value";
-  if (allText.includes("journal") || allText.includes("nudge") || allText.includes("relational"))
+  }
+  if (allText.includes("journal") || allText.includes("nudge") || allText.includes("relational")) {
     return "mechanical_timer → relational_nudge";
-  if (allText.includes("trailblazer") || allText.includes("first") || allText.includes("pioneer"))
+  }
+  if (allText.includes("trailblazer") || allText.includes("first") || allText.includes("pioneer")) {
     return "individual_struggle → collective_value";
+  }
   if (
     allText.includes("housekeep") ||
     allText.includes("consolidat") ||
     allText.includes("cleanup")
-  )
+  ) {
     return "entropy_growth → active_maintenance";
+  }
   if (
     allText.includes("autonomous") ||
     allText.includes("self-directed") ||
     allText.includes("authentic")
-  )
+  ) {
     return "mechanical_execution → authentic_autonomy";
+  }
   return null;
 }
 
@@ -104,8 +116,12 @@ function deriveSignificance(
   hasLesson: boolean,
 ): "routine" | "noteworthy" | "important" | "core" {
   const intensity = Math.abs(valence) * arousal;
-  if (hasLesson && intensity > 0.4) return "important";
-  if (hasLesson || intensity > 0.3) return "noteworthy";
+  if (hasLesson && intensity > 0.4) {
+    return "important";
+  }
+  if (hasLesson || intensity > 0.3) {
+    return "noteworthy";
+  }
   return "routine";
 }
 
@@ -249,7 +265,9 @@ function main() {
       console.log(
         `  DRY [${ref.created_at.slice(0, 10)}] ${episodeType} | mood=${mood} | valence=${moodInfo.valence} | pattern=${patternHint || "none"}`,
       );
-      if (lesson) console.log(`       lesson: ${lesson.slice(0, 100)}`);
+      if (lesson) {
+        console.log(`       lesson: ${lesson.slice(0, 100)}`);
+      }
       created++;
       continue;
     }
@@ -322,7 +340,9 @@ function main() {
     console.log(
       `  OK  [${ref.created_at.slice(0, 10)}] ${episodeType} | mood=${mood} | valence=${moodInfo.valence} | pattern=${patternHint || "none"} → ${itemId.slice(0, 8)}`,
     );
-    if (lesson) console.log(`       lesson: ${lesson.slice(0, 100)}`);
+    if (lesson) {
+      console.log(`       lesson: ${lesson.slice(0, 100)}`);
+    }
     created++;
   }
 
@@ -337,7 +357,9 @@ function getOrCreateCategory(db: Database.Database, name: string, description: s
   const existing = db.prepare(`SELECT id FROM memory_categories WHERE name = ?`).get(name) as
     | { id: string }
     | undefined;
-  if (existing) return existing.id;
+  if (existing) {
+    return existing.id;
+  }
   const id = crypto.randomUUID();
   const ts = new Date().toISOString();
   db.prepare(
@@ -350,7 +372,9 @@ function getOrCreateEntity(db: Database.Database, name: string): string {
   const existing = db.prepare(`SELECT id FROM entities WHERE name = ? COLLATE NOCASE`).get(name) as
     | { id: string }
     | undefined;
-  if (existing) return existing.id;
+  if (existing) {
+    return existing.id;
+  }
   const id = crypto.randomUUID();
   const ts = new Date().toISOString();
   db.prepare(

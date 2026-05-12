@@ -62,21 +62,35 @@ function categorizeKey(variable: string): { category: string; service: string; n
     varLower.includes("ollama")
   ) {
     let service = "Unknown";
-    if (varLower.includes("anthropic")) service = "Anthropic";
-    else if (varLower.includes("openai")) service = "OpenAI";
-    else if (varLower.includes("groq")) service = "Groq";
-    else if (varLower.includes("deepseek")) service = "DeepSeek";
-    else if (varLower.includes("codestral")) service = "Codestral";
-    else if (varLower.includes("google") || varLower.includes("gemini")) service = "Google";
-    else if (varLower.includes("huggingface")) service = "Hugging Face";
-    else if (varLower.includes("openrouter") || varLower.includes("open_router"))
+    if (varLower.includes("anthropic")) {
+      service = "Anthropic";
+    } else if (varLower.includes("openai")) {
+      service = "OpenAI";
+    } else if (varLower.includes("groq")) {
+      service = "Groq";
+    } else if (varLower.includes("deepseek")) {
+      service = "DeepSeek";
+    } else if (varLower.includes("codestral")) {
+      service = "Codestral";
+    } else if (varLower.includes("google") || varLower.includes("gemini")) {
+      service = "Google";
+    } else if (varLower.includes("huggingface")) {
+      service = "Hugging Face";
+    } else if (varLower.includes("openrouter") || varLower.includes("open_router")) {
       service = "OpenRouter";
-    else if (varLower.includes("perplexity")) service = "Perplexity";
-    else if (varLower.includes("xai")) service = "xAI";
-    else if (varLower.includes("context7")) service = "Context7";
-    else if (varLower.includes("codegpt")) service = "CodeGPT";
-    else if (varLower.includes("totalgpt")) service = "TotalGPT";
-    else if (varLower.includes("ollama")) service = "Ollama";
+    } else if (varLower.includes("perplexity")) {
+      service = "Perplexity";
+    } else if (varLower.includes("xai")) {
+      service = "xAI";
+    } else if (varLower.includes("context7")) {
+      service = "Context7";
+    } else if (varLower.includes("codegpt")) {
+      service = "CodeGPT";
+    } else if (varLower.includes("totalgpt")) {
+      service = "TotalGPT";
+    } else if (varLower.includes("ollama")) {
+      service = "Ollama";
+    }
 
     return {
       category: "LLM",
@@ -92,9 +106,13 @@ function categorizeKey(variable: string): { category: string; service: string; n
     varLower.includes("resemble")
   ) {
     let service = "Unknown";
-    if (varLower.includes("elevenlabs")) service = "ElevenLabs";
-    else if (varLower.includes("deepgram")) service = "Deepgram";
-    else if (varLower.includes("resemble")) service = "Resemble AI";
+    if (varLower.includes("elevenlabs")) {
+      service = "ElevenLabs";
+    } else if (varLower.includes("deepgram")) {
+      service = "Deepgram";
+    } else if (varLower.includes("resemble")) {
+      service = "Resemble AI";
+    }
 
     return {
       category: "TTS",
@@ -114,13 +132,21 @@ function categorizeKey(variable: string): { category: string; service: string; n
     varLower.includes("peekapoo")
   ) {
     let service = "Unknown";
-    if (varLower.includes("brave")) service = "Brave";
-    else if (varLower.includes("bing")) service = "Bing";
-    else if (varLower.includes("exa")) service = "Exa";
-    else if (varLower.includes("serpapi")) service = "SerpAPI";
-    else if (varLower.includes("serper")) service = "Serper";
-    else if (varLower.includes("scale_serp")) service = "ScaleSERP";
-    else if (varLower.includes("peekapoo")) service = "Peekapoo";
+    if (varLower.includes("brave")) {
+      service = "Brave";
+    } else if (varLower.includes("bing")) {
+      service = "Bing";
+    } else if (varLower.includes("exa")) {
+      service = "Exa";
+    } else if (varLower.includes("serpapi")) {
+      service = "SerpAPI";
+    } else if (varLower.includes("serper")) {
+      service = "Serper";
+    } else if (varLower.includes("scale_serp")) {
+      service = "ScaleSERP";
+    } else if (varLower.includes("peekapoo")) {
+      service = "Peekapoo";
+    }
 
     return {
       category: "Search",
@@ -141,13 +167,21 @@ function categorizeKey(variable: string): { category: string; service: string; n
     varLower.includes("synesthesia")
   ) {
     let service = "Unknown";
-    if (varLower.includes("piapi") || varLower.includes("kling")) service = "PiAPI/Kling";
-    else if (varLower.includes("heygen")) service = "HeyGen";
-    else if (varLower.includes("fal")) service = "FAL";
-    else if (varLower.includes("replicate")) service = "Replicate";
-    else if (varLower.includes("imgbb")) service = "ImgBB";
-    else if (varLower.includes("eight_sleep")) service = "Eight Sleep";
-    else if (varLower.includes("synesthesia")) service = "Synesthesia";
+    if (varLower.includes("piapi") || varLower.includes("kling")) {
+      service = "PiAPI/Kling";
+    } else if (varLower.includes("heygen")) {
+      service = "HeyGen";
+    } else if (varLower.includes("fal")) {
+      service = "FAL";
+    } else if (varLower.includes("replicate")) {
+      service = "Replicate";
+    } else if (varLower.includes("imgbb")) {
+      service = "ImgBB";
+    } else if (varLower.includes("eight_sleep")) {
+      service = "Eight Sleep";
+    } else if (varLower.includes("synesthesia")) {
+      service = "Synesthesia";
+    }
 
     return {
       category: "Media",
@@ -177,13 +211,21 @@ function categorizeKey(variable: string): { category: string; service: string; n
     varLower.includes("langchain")
   ) {
     let service = "Unknown";
-    if (varLower.includes("github")) service = "GitHub";
-    else if (varLower.includes("e2b")) service = "E2B";
-    else if (varLower.includes("cloudflare")) service = "Cloudflare";
-    else if (varLower.includes("ngrok")) service = "Ngrok";
-    else if (varLower.includes("netlify") || varLower.includes("netfly")) service = "Netlify";
-    else if (varLower.includes("pinecone")) service = "Pinecone";
-    else if (varLower.includes("langchain")) service = "LangChain";
+    if (varLower.includes("github")) {
+      service = "GitHub";
+    } else if (varLower.includes("e2b")) {
+      service = "E2B";
+    } else if (varLower.includes("cloudflare")) {
+      service = "Cloudflare";
+    } else if (varLower.includes("ngrok")) {
+      service = "Ngrok";
+    } else if (varLower.includes("netlify") || varLower.includes("netfly")) {
+      service = "Netlify";
+    } else if (varLower.includes("pinecone")) {
+      service = "Pinecone";
+    } else if (varLower.includes("langchain")) {
+      service = "LangChain";
+    }
 
     return {
       category: "Infrastructure",
@@ -308,8 +350,12 @@ async function main() {
   const keysToMigrate: Array<{ variable: string; value: string }> = [];
 
   for (const [variable, value] of Object.entries(envVars)) {
-    if (typeof value !== "string") continue;
-    if (existingVariables.has(variable)) continue;
+    if (typeof value !== "string") {
+      continue;
+    }
+    if (existingVariables.has(variable)) {
+      continue;
+    }
 
     keysToMigrate.push({ variable, value });
   }
@@ -326,7 +372,9 @@ async function main() {
 
   for (const key of keysToMigrate) {
     const { category } = categorizeKey(key.variable);
-    if (!byCategory[category]) byCategory[category] = [];
+    if (!byCategory[category]) {
+      byCategory[category] = [];
+    }
     byCategory[category].push(key);
   }
 

@@ -185,7 +185,9 @@ export class MiniMaxProvider implements Provider {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -193,10 +195,14 @@ export class MiniMaxProvider implements Provider {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data:")) continue;
+          if (!trimmed || !trimmed.startsWith("data:")) {
+            continue;
+          }
 
           const data = trimmed.slice(5).trim();
-          if (data === "[DONE]") continue;
+          if (data === "[DONE]") {
+            continue;
+          }
 
           let chunk: MiniMaxStreamChunk;
           try {
@@ -213,7 +219,9 @@ export class MiniMaxProvider implements Provider {
           }
 
           const choice = chunk.choices?.[0];
-          if (!choice) continue;
+          if (!choice) {
+            continue;
+          }
 
           // Handle finish reason
           if (choice.finish_reason) {
@@ -245,7 +253,9 @@ export class MiniMaxProvider implements Provider {
               } else {
                 const pending = pendingToolCalls.get(idx);
                 if (pending) {
-                  if (tc.function?.name) pending.name += tc.function.name;
+                  if (tc.function?.name) {
+                    pending.name += tc.function.name;
+                  }
                   if (tc.function?.arguments) {
                     pending.argsJson += tc.function.arguments;
                     yield { type: "tool_call_delta", delta: tc.function.arguments, partial };

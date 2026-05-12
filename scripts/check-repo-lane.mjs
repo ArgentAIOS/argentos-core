@@ -22,7 +22,9 @@ function git(args, options = {}) {
 }
 
 function normalizeRepoId(value) {
-  if (!value) return "";
+  if (!value) {
+    return "";
+  }
   let text = String(value).trim();
   text = text.replace(/^git\+/, "");
   text = text.replace(/^ssh:\/\/git@github\.com\//, "");
@@ -41,7 +43,9 @@ function localRepoName(value) {
 
 function matchesRepo(value, repo) {
   const normalized = normalizeRepoId(value);
-  if (normalized === repo) return true;
+  if (normalized === repo) {
+    return true;
+  }
   const [owner, name] = repo.split("/");
   return normalized === name || normalized === `${owner}/${name}`;
 }

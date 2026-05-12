@@ -122,7 +122,9 @@ function parseKeyPoints(raw: unknown): string[] {
 
 function clampTitle(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.length <= 98) return trimmed;
+  if (trimmed.length <= 98) {
+    return trimmed;
+  }
   return `${trimmed.slice(0, 95).trim()}...`;
 }
 
@@ -131,7 +133,9 @@ function unique(items: string[]): string[] {
   const seen = new Set<string>();
   for (const item of items) {
     const key = item.toLowerCase().trim();
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     out.push(item.trim());
   }
@@ -163,7 +167,9 @@ function buildSegments(params: {
           typeof durationRaw === "number" && Number.isFinite(durationRaw) && durationRaw > 0
             ? Math.floor(durationRaw)
             : 120;
-        if (!title) return undefined;
+        if (!title) {
+          return undefined;
+        }
         return { title, durationSec };
       })
       .filter((seg): seg is Segment => Boolean(seg));
@@ -191,7 +197,9 @@ function buildTitles(params: {
 }
 
 function normalizeHashtags(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   const tags = raw
     .filter((v) => typeof v === "string")
     .map((tag) => tag.trim().replace(/^#/, ""))
@@ -201,38 +209,54 @@ function normalizeHashtags(raw: unknown): string[] {
 }
 
 function parseLinks(raw: unknown): Link[] {
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   return raw
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return undefined;
+      if (!entry || typeof entry !== "object") {
+        return undefined;
+      }
       const rec = entry as Record<string, unknown>;
       const label = typeof rec.label === "string" ? rec.label.trim() : "";
       const url = typeof rec.url === "string" ? rec.url.trim() : "";
-      if (!label || !url) return undefined;
+      if (!label || !url) {
+        return undefined;
+      }
       return { label, url };
     })
     .filter((entry): entry is Link => Boolean(entry));
 }
 
 function parseExtraSections(raw: unknown): ExtraSection[] {
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   return raw
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return undefined;
+      if (!entry || typeof entry !== "object") {
+        return undefined;
+      }
       const rec = entry as Record<string, unknown>;
       const heading = typeof rec.heading === "string" ? rec.heading.trim() : "";
-      if (!heading) return undefined;
+      if (!heading) {
+        return undefined;
+      }
       const lines = Array.isArray(rec.lines)
         ? cleanList(rec.lines.filter((v) => typeof v === "string") as string[])
         : [];
-      if (lines.length === 0) return undefined;
+      if (lines.length === 0) {
+        return undefined;
+      }
       return { heading, lines };
     })
     .filter((entry): entry is ExtraSection => Boolean(entry));
 }
 
 function loadStyleProfile(rawPath?: string): StyleProfile {
-  if (!rawPath) return {};
+  if (!rawPath) {
+    return {};
+  }
   const resolved = path.resolve(rawPath);
   if (!fs.existsSync(resolved)) {
     throw new Error(`style_profile_path not found: ${resolved}`);
@@ -431,8 +455,12 @@ function buildCreatorLongformDescription(params: {
 
   if (params.sponsorName) {
     lines.push(`Sponsor: ${params.sponsorName}`);
-    if (params.sponsorCopy) lines.push(params.sponsorCopy.trim());
-    if (params.sponsorUrl) lines.push(params.sponsorUrl.trim());
+    if (params.sponsorCopy) {
+      lines.push(params.sponsorCopy.trim());
+    }
+    if (params.sponsorUrl) {
+      lines.push(params.sponsorUrl.trim());
+    }
     lines.push("");
   }
 

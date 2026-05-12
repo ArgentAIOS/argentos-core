@@ -31,13 +31,19 @@ function resolveBaseHashFromSnapshot(snapshot: unknown): string | undefined {
 }
 
 function isSensitiveKey(key: string): boolean {
-  if (SENSITIVE_KEY_RE.test(key)) return true;
-  if (key.toLowerCase() === "key") return true;
+  if (SENSITIVE_KEY_RE.test(key)) {
+    return true;
+  }
+  if (key.toLowerCase() === "key") {
+    return true;
+  }
   return false;
 }
 
 function redactSecrets(value: unknown, keyHint?: string): unknown {
-  if (value == null) return value;
+  if (value == null) {
+    return value;
+  }
   if (typeof value === "string") {
     return keyHint && isSensitiveKey(keyHint) ? REDACTED : value;
   }
@@ -50,7 +56,9 @@ function redactSecrets(value: unknown, keyHint?: string): unknown {
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (k === "raw") continue;
+      if (k === "raw") {
+        continue;
+      }
       if (isSensitiveKey(k)) {
         out[k] = REDACTED;
       } else {
@@ -63,11 +71,15 @@ function redactSecrets(value: unknown, keyHint?: string): unknown {
 }
 
 function sanitizeConfigGetResult(snapshot: unknown): unknown {
-  if (!snapshot || typeof snapshot !== "object") return snapshot;
+  if (!snapshot || typeof snapshot !== "object") {
+    return snapshot;
+  }
   const obj = snapshot as Record<string, unknown>;
   const safe: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (k === "raw") continue;
+    if (k === "raw") {
+      continue;
+    }
     if (k === "config") {
       safe[k] = redactSecrets(v, "config");
       continue;
@@ -95,7 +107,9 @@ function extractTextFromContent(content: unknown): string {
   }
   const parts: string[] = [];
   for (const block of content) {
-    if (!block || typeof block !== "object") continue;
+    if (!block || typeof block !== "object") {
+      continue;
+    }
     const rec = block as { type?: unknown; text?: unknown };
     if (rec.type === "text" && typeof rec.text === "string") {
       parts.push(rec.text);
@@ -105,28 +119,42 @@ function extractTextFromContent(content: unknown): string {
 }
 
 function extractLatestUserMessageText(history: unknown): string | undefined {
-  if (!history || typeof history !== "object") return undefined;
+  if (!history || typeof history !== "object") {
+    return undefined;
+  }
   const messages = (history as { messages?: unknown[] }).messages;
-  if (!Array.isArray(messages) || messages.length === 0) return undefined;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return undefined;
+  }
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const msg = messages[i];
-    if (!msg || typeof msg !== "object") continue;
+    if (!msg || typeof msg !== "object") {
+      continue;
+    }
     const role = String((msg as { role?: unknown }).role ?? "").toLowerCase();
-    if (role !== "user") continue;
+    if (role !== "user") {
+      continue;
+    }
     const content = (msg as { content?: unknown }).content;
     const text = extractTextFromContent(content).trim();
-    if (text) return text;
+    if (text) {
+      return text;
+    }
   }
   return undefined;
 }
 
 function isExplicitRestartRequest(text: string): boolean {
   const raw = text.trim();
-  if (!raw) return false;
+  if (!raw) {
+    return false;
+  }
   const normalized = raw.toLowerCase();
 
   const negative = /\b(don't|do not|stop|cancel)\b.{0,20}\brestart\b/i;
-  if (negative.test(normalized)) return false;
+  if (negative.test(normalized)) {
+    return false;
+  }
 
   // "I'm going to restart..." is narration, not a request.
   const firstPersonNarration =
@@ -182,12 +210,16 @@ function isExplicitActionRequest(text: string, action: string): boolean {
     return isExplicitRestartRequest(text);
   }
   const raw = text.trim();
-  if (!raw) return false;
+  if (!raw) {
+    return false;
+  }
   const normalized = raw.toLowerCase();
 
   const negative =
     /\b(don't|do not|stop|cancel)\b.{0,24}\b(restart|update|upgrade|config|patch|apply)\b/i;
-  if (negative.test(normalized)) return false;
+  if (negative.test(normalized)) {
+    return false;
+  }
 
   const firstPersonNarration =
     /\b(i am|i'm|i will|i'll|im|we are|we're|we will|we'll|let me)\b.{0,60}\b(restart|update|upgrade|config|patch|apply)\b/i;

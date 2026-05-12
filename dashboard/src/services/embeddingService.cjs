@@ -91,14 +91,30 @@ function fallbackTags(doc) {
   // Content-based (simple keyword matching)
   const content = (doc.title + " " + doc.content).toLowerCase();
 
-  if (content.includes("error") || content.includes("bug")) tags.push("debugging");
-  if (content.includes("api") || content.includes("endpoint")) tags.push("api");
-  if (content.includes("database") || content.includes("sql")) tags.push("database");
-  if (content.includes("test") || content.includes("spec")) tags.push("testing");
-  if (content.includes("deploy") || content.includes("production")) tags.push("deployment");
-  if (content.includes("function") || content.includes("class")) tags.push("code");
-  if (content.includes("report") || content.includes("analysis")) tags.push("report");
-  if (content.includes("documentation") || content.includes("readme")) tags.push("docs");
+  if (content.includes("error") || content.includes("bug")) {
+    tags.push("debugging");
+  }
+  if (content.includes("api") || content.includes("endpoint")) {
+    tags.push("api");
+  }
+  if (content.includes("database") || content.includes("sql")) {
+    tags.push("database");
+  }
+  if (content.includes("test") || content.includes("spec")) {
+    tags.push("testing");
+  }
+  if (content.includes("deploy") || content.includes("production")) {
+    tags.push("deployment");
+  }
+  if (content.includes("function") || content.includes("class")) {
+    tags.push("code");
+  }
+  if (content.includes("report") || content.includes("analysis")) {
+    tags.push("report");
+  }
+  if (content.includes("documentation") || content.includes("readme")) {
+    tags.push("docs");
+  }
 
   // Dedupe and limit to 5
   return [...new Set(tags)].slice(0, 5);

@@ -245,7 +245,9 @@ const PRESET_OVERRIDES_KEY = "argent-avatar-preset-overrides";
 function loadAllPresetOverrides(): Record<string, Record<string, number>> {
   try {
     const stored = localStorage.getItem(PRESET_OVERRIDES_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      return JSON.parse(stored);
+    }
   } catch {}
   return {};
 }
@@ -288,7 +290,9 @@ export interface CustomPresetSlot extends PresetDef {
 export function loadCustomPresets(): CustomPresetSlot[] {
   try {
     const stored = localStorage.getItem(CUSTOM_PRESETS_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      return JSON.parse(stored);
+    }
   } catch {}
   return [];
 }

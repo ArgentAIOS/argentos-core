@@ -20,14 +20,22 @@ interface CostStats {
 }
 
 function formatCost(cents: number): string {
-  if (cents === 0) return "$0";
-  if (cents < 100) return `$${(cents / 100).toFixed(2)}`;
+  if (cents === 0) {
+    return "$0";
+  }
+  if (cents < 100) {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
   return `$${(cents / 100).toFixed(0)}`;
 }
 
 function formatTokens(count: number): string {
-  if (count < 1000) return `${count}`;
-  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}K`;
+  if (count < 1000) {
+    return `${count}`;
+  }
+  if (count < 1_000_000) {
+    return `${(count / 1000).toFixed(1)}K`;
+  }
   return `${(count / 1_000_000).toFixed(1)}M`;
 }
 

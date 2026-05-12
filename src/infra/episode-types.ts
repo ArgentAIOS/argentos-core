@@ -230,7 +230,9 @@ export function parseEpisodeFromResponse(
   }
 
   const salvaged = salvageEpisodeFromResponse(text, context);
-  if (!salvaged) return null;
+  if (!salvaged) {
+    return null;
+  }
   return { report: salvaged, source: "salvaged_unstructured" };
 }
 
@@ -246,14 +248,20 @@ function validateAgentEpisode(
   const trigger = normalizeTrigger(raw.trigger);
   const rawTools = normalizeToolUsage(raw.tools_used, confirmedTools);
   const type = normalizeEpisodeType(raw.type, rawTools, Boolean(context.hasExternalArtifact));
-  if (!type) return null;
+  if (!type) {
+    return null;
+  }
 
   const success = typeof raw.success === "boolean" ? raw.success : undefined;
   const outcome = normalizeOutcome(raw.outcome, success, type);
-  if (!outcome) return null;
+  if (!outcome) {
+    return null;
+  }
 
   const mood = normalizeMood(raw.mood, raw.arousal);
-  if (!mood) return null;
+  if (!mood) {
+    return null;
+  }
 
   return {
     type,
@@ -402,7 +410,9 @@ function normalizeOutcome(
 ): Outcome | null {
   if (typeof raw === "string") {
     const summary = raw.trim();
-    if (!summary) return null;
+    if (!summary) {
+      return null;
+    }
     return {
       result: normalizeOutcomeResult(undefined, success, type),
       summary,
@@ -410,7 +420,9 @@ function normalizeOutcome(
   }
   if (isRecord(raw)) {
     const summary = readOptionalString(raw.summary) ?? readOptionalString(raw.impact);
-    if (!summary) return null;
+    if (!summary) {
+      return null;
+    }
     return {
       result: normalizeOutcomeResult(raw.result, success, type),
       summary,
@@ -423,7 +435,9 @@ function normalizeOutcome(
 function normalizeMood(raw: unknown, arousal: unknown): Mood | null {
   if (typeof raw === "string") {
     const state = raw.trim();
-    if (!state) return null;
+    if (!state) {
+      return null;
+    }
     return {
       state,
       energy: inferMoodEnergy(arousal),
@@ -431,7 +445,9 @@ function normalizeMood(raw: unknown, arousal: unknown): Mood | null {
   }
   if (isRecord(raw)) {
     const state = readOptionalString(raw.state);
-    if (!state) return null;
+    if (!state) {
+      return null;
+    }
     const energy = readOptionalString(raw.energy)?.toLowerCase();
     return {
       state,
@@ -446,15 +462,23 @@ function normalizeMood(raw: unknown, arousal: unknown): Mood | null {
 
 function inferMoodEnergy(arousal: unknown): Mood["energy"] {
   if (typeof arousal === "number") {
-    if (arousal >= 0.67) return "high";
-    if (arousal <= 0.25) return "low";
+    if (arousal >= 0.67) {
+      return "high";
+    }
+    if (arousal <= 0.25) {
+      return "low";
+    }
   }
   return "medium";
 }
 
 function asArray(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value === undefined || value === null) {
+    return [];
+  }
   return [value];
 }
 
@@ -465,9 +489,13 @@ function normalizeObservations(raw: unknown): Observation[] {
         const what = entry.trim();
         return what ? ({ what, significance: "medium" } satisfies Observation) : null;
       }
-      if (!isRecord(entry)) return null;
+      if (!isRecord(entry)) {
+        return null;
+      }
       const what = readOptionalString(entry.what) ?? readOptionalString(entry.summary);
-      if (!what) return null;
+      if (!what) {
+        return null;
+      }
       const significance = readOptionalString(entry.significance)?.toLowerCase();
       return {
         what,
@@ -511,12 +539,16 @@ function normalizeActions(raw: unknown): EpisodeAction[] {
             } satisfies EpisodeAction)
           : null;
       }
-      if (!isRecord(entry)) return null;
+      if (!isRecord(entry)) {
+        return null;
+      }
       const description =
         readOptionalString(entry.description) ??
         readOptionalString(entry.what) ??
         readOptionalString(entry.summary);
-      if (!description) return null;
+      if (!description) {
+        return null;
+      }
       const type = readOptionalString(entry.type)?.toLowerCase();
       return {
         type:
@@ -532,8 +564,12 @@ function normalizeActions(raw: unknown): EpisodeAction[] {
 
 function toolsMatchConfirmed(tool: string, confirmedTools: Set<string>): boolean {
   const normalized = normalizeObservedToolName(tool);
-  if (!normalized) return false;
-  if (confirmedTools.has(normalized)) return true;
+  if (!normalized) {
+    return false;
+  }
+  if (confirmedTools.has(normalized)) {
+    return true;
+  }
   if (
     (normalized === "doc_panel_update" && confirmedTools.has("doc_panel")) ||
     (normalized === "sessions_send" && confirmedTools.has("message"))
@@ -548,20 +584,26 @@ function normalizeToolUsage(raw: unknown, confirmedTools: Set<string>): ToolUsag
     .map((entry) => {
       if (typeof entry === "string") {
         const tool = normalizeObservedToolName(entry) ?? entry.trim();
-        if (!tool) return null;
+        if (!tool) {
+          return null;
+        }
         return {
           tool,
           success: confirmedTools.size > 0 ? toolsMatchConfirmed(tool, confirmedTools) : true,
         } satisfies ToolUsage;
       }
-      if (!isRecord(entry)) return null;
+      if (!isRecord(entry)) {
+        return null;
+      }
       const tool =
         normalizeObservedToolName(
           readOptionalString(entry.tool) ?? readOptionalString(entry.name) ?? "",
         ) ??
         readOptionalString(entry.tool) ??
         readOptionalString(entry.name);
-      if (!tool) return null;
+      if (!tool) {
+        return null;
+      }
       return {
         tool,
         action: readOptionalString(entry.action),
@@ -585,9 +627,13 @@ function normalizeIdentityLinks(raw: unknown): IdentityLink[] {
         const entity = entry.trim();
         return entity ? ({ entity, role: "about" } satisfies IdentityLink) : null;
       }
-      if (!isRecord(entry)) return null;
+      if (!isRecord(entry)) {
+        return null;
+      }
       const entity = readOptionalString(entry.entity) ?? readOptionalString(entry.name);
-      if (!entity) return null;
+      if (!entity) {
+        return null;
+      }
       const role = readOptionalString(entry.role)?.toLowerCase();
       return {
         entity,
@@ -607,7 +653,9 @@ function clamp(v: number, min: number, max: number): number {
 
 function normalizeObservedToolName(raw: string): string | null {
   const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    return null;
+  }
   const unqualified = trimmed.includes(".") ? trimmed.slice(trimmed.lastIndexOf(".") + 1) : trimmed;
   if (unqualified === "conemplation_history") {
     return "contemplation_history";
@@ -617,12 +665,24 @@ function normalizeObservedToolName(raw: string): string | null {
 
 function looksLikeToolName(raw: string): boolean {
   const normalized = normalizeObservedToolName(raw);
-  if (!normalized) return false;
-  if (INTERNAL_ONLY_TOOLS.has(normalized)) return true;
-  if (RESEARCH_TOOLS.has(normalized)) return true;
-  if (CREATION_TOOLS.has(normalized)) return true;
-  if (normalized === "message" || normalized === "read") return true;
-  if (!/[_.-]/.test(normalized)) return false;
+  if (!normalized) {
+    return false;
+  }
+  if (INTERNAL_ONLY_TOOLS.has(normalized)) {
+    return true;
+  }
+  if (RESEARCH_TOOLS.has(normalized)) {
+    return true;
+  }
+  if (CREATION_TOOLS.has(normalized)) {
+    return true;
+  }
+  if (normalized === "message" || normalized === "read") {
+    return true;
+  }
+  if (!/[_.-]/.test(normalized)) {
+    return false;
+  }
   return !ACTION_NAME_DENYLIST.has(normalized);
 }
 
@@ -630,7 +690,9 @@ function uniqueTools(tools: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const tool of tools) {
-    if (!tool || seen.has(tool)) continue;
+    if (!tool || seen.has(tool)) {
+      continue;
+    }
     seen.add(tool);
     result.push(tool);
   }
@@ -641,7 +703,9 @@ function extractConfirmedTools(executedTools: string[]): string[] {
   const confirmed: string[] = [];
   for (const tool of executedTools) {
     const normalized = normalizeObservedToolName(tool);
-    if (normalized) confirmed.push(normalized);
+    if (normalized) {
+      confirmed.push(normalized);
+    }
   }
   return uniqueTools(confirmed);
 }
@@ -652,14 +716,20 @@ function extractObservedTools(text: string, executedTools: string[]): string[] {
 
   for (const match of text.matchAll(FUNCTION_CALL_PATTERN)) {
     const normalized = normalizeObservedToolName(match[1] ?? "");
-    if (normalized) observed.push(normalized);
+    if (normalized) {
+      observed.push(normalized);
+    }
   }
 
   for (const match of text.matchAll(ACTION_JSON_TOOL_PATTERN)) {
     const candidate = match[1] ?? "";
-    if (!looksLikeToolName(candidate)) continue;
+    if (!looksLikeToolName(candidate)) {
+      continue;
+    }
     const normalized = normalizeObservedToolName(candidate);
-    if (normalized) observed.push(normalized);
+    if (normalized) {
+      observed.push(normalized);
+    }
   }
 
   return uniqueTools(observed);
@@ -670,11 +740,21 @@ function hasOnlyInternalTools(tools: string[]): boolean {
 }
 
 function inferEpisodeType(tools: string[], hasExternalArtifact: boolean): EpisodeType {
-  if (tools.length === 0) return "contemplation";
-  if (!hasExternalArtifact && hasOnlyInternalTools(tools)) return "rest";
-  if (tools.some((tool) => CREATION_TOOLS.has(tool))) return "creation";
-  if (tools.some((tool) => RESEARCH_TOOLS.has(tool))) return "research";
-  if (tools.includes("tasks")) return hasExternalArtifact ? "task_execution" : "rest";
+  if (tools.length === 0) {
+    return "contemplation";
+  }
+  if (!hasExternalArtifact && hasOnlyInternalTools(tools)) {
+    return "rest";
+  }
+  if (tools.some((tool) => CREATION_TOOLS.has(tool))) {
+    return "creation";
+  }
+  if (tools.some((tool) => RESEARCH_TOOLS.has(tool))) {
+    return "research";
+  }
+  if (tools.includes("tasks")) {
+    return hasExternalArtifact ? "task_execution" : "rest";
+  }
   return hasExternalArtifact ? "contemplation" : "rest";
 }
 
@@ -902,9 +982,15 @@ export function deriveSignificance(
   hasLesson: boolean,
 ): "routine" | "noteworthy" | "important" | "core" {
   const intensity = Math.abs(valence) * arousal;
-  if (hasLesson && intensity > 0.8) return "important";
-  if (hasLesson || intensity > 0.6) return "noteworthy";
-  if (intensity > 0.3) return "noteworthy";
+  if (hasLesson && intensity > 0.8) {
+    return "important";
+  }
+  if (hasLesson || intensity > 0.6) {
+    return "noteworthy";
+  }
+  if (intensity > 0.3) {
+    return "noteworthy";
+  }
   return "routine";
 }
 
@@ -950,12 +1036,18 @@ export type SisConsolidationValidationResult =
     };
 
 function coerceStringArray(raw: unknown): string[] | null {
-  if (!Array.isArray(raw)) return null;
+  if (!Array.isArray(raw)) {
+    return null;
+  }
   const out: string[] = [];
   for (const entry of raw) {
-    if (typeof entry !== "string") return null;
+    if (typeof entry !== "string") {
+      return null;
+    }
     const trimmed = entry.trim();
-    if (trimmed.length === 0) continue;
+    if (trimmed.length === 0) {
+      continue;
+    }
     out.push(trimmed);
   }
   return out;

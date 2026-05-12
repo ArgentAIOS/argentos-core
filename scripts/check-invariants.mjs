@@ -73,7 +73,9 @@ function* walk(
     return;
   }
   for (const entry of entries) {
-    if (skipNames.has(entry.name)) continue;
+    if (skipNames.has(entry.name)) {
+      continue;
+    }
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       yield* walk(full, extPattern, skipNames);
@@ -150,14 +152,17 @@ function checkInv1GatewayAuthTokenResolver() {
       if (rel.includes("/tests/") || rel.includes("/__tests__/") || rel.includes("/test/")) {
         continue;
       }
-      if (INV1_ALLOWED.has(rel)) continue;
+      if (INV1_ALLOWED.has(rel)) {
+        continue;
+      }
       const lines = readLines(file);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         // Skip comments — drift is in code, not docs
         const trimmed = line.trim();
-        if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*"))
+        if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
           continue;
+        }
         if (INV1_TOKEN_PATTERN.test(line)) {
           violations.push(
             new Violation({
@@ -219,21 +224,31 @@ function checkInv2DashboardFetchHelper() {
   const scope = join(REPO_ROOT, "dashboard", "src");
   for (const file of walk(scope, /\.(ts|tsx)$/)) {
     const rel = relPath(file);
-    if (rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) continue;
-    if (INV2_FETCH_HELPERS.has(rel)) continue;
+    if (rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) {
+      continue;
+    }
+    if (INV2_FETCH_HELPERS.has(rel)) {
+      continue;
+    }
     const lines = readLines(file);
     let firstHit = null;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
-      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
+        continue;
+      }
       if (INV2_FETCH_LITERAL_PATTERN.test(line)) {
         firstHit = { line: i + 1, snippet: trimmed };
         break;
       }
     }
-    if (!firstHit) continue;
-    if (INV2_BASELINE.has(rel)) continue;
+    if (!firstHit) {
+      continue;
+    }
+    if (INV2_BASELINE.has(rel)) {
+      continue;
+    }
     violations.push(
       new Violation({
         invariant: "INV-2",
@@ -376,7 +391,9 @@ function main() {
   }
 
   console.log("[check-invariants] Architectural invariants:");
-  for (const line of sections) console.log(line);
+  for (const line of sections) {
+    console.log(line);
+  }
 
   if (totalViolations === 0) {
     console.log(`[check-invariants] OK — ${INVARIANTS.length} invariants passed`);

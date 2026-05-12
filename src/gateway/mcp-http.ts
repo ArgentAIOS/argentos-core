@@ -73,8 +73,12 @@ export async function handleMcpHttpRequest(
   opts: McpHttpOptions,
 ): Promise<boolean> {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-  if (url.pathname !== "/mcp") return false;
-  if (!opts.enabled) return false;
+  if (url.pathname !== "/mcp") {
+    return false;
+  }
+  if (!opts.enabled) {
+    return false;
+  }
 
   // CORS headers for browser-based MCP clients
   res.setHeader("Access-Control-Allow-Origin", "*");

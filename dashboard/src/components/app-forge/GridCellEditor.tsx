@@ -772,8 +772,12 @@ function ratingMaxFor(field: Pick<ForgeStructuredField, "ratingMax">): number {
     return 5;
   }
   const rounded = Math.trunc(candidate);
-  if (rounded < 3) return 3;
-  if (rounded > 10) return 10;
+  if (rounded < 3) {
+    return 3;
+  }
+  if (rounded > 10) {
+    return 10;
+  }
   return rounded;
 }
 

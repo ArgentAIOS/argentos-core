@@ -33,7 +33,9 @@ import { DEFAULT_EMOTIONAL } from "../types/agentState";
 export function mapSISMoodToMoodName(sisMood: string): MoodName {
   const lower = sisMood.toLowerCase().trim();
   // Exact match first
-  if (MOODS[lower as MoodName]) return lower as MoodName;
+  if (MOODS[lower as MoodName]) {
+    return lower as MoodName;
+  }
   // Alias lookup
   return MOOD_ALIASES[lower] ?? "neutral";
 }
@@ -41,7 +43,9 @@ export function mapSISMoodToMoodName(sisMood: string): MoodName {
 // ── Identity Resonance ──────────────────────────────────────────────────────
 
 function calcResonance(links: IdentityLink[]): number {
-  if (!links || links.length === 0) return 0;
+  if (!links || links.length === 0) {
+    return 0;
+  }
   // More identity links with strong relevance = higher resonance
   const subjectCount = links.filter((l) => l.role === "subject").length;
   const collaboratorCount = links.filter((l) => l.role === "collaborator").length;
@@ -56,7 +60,9 @@ function calcResonance(links: IdentityLink[]): number {
 type AvatarState = "idle" | "thinking" | "working" | "success" | "error";
 
 function deriveAvatarState(activity: ActivityStateName, isSpeaking: boolean): AvatarState {
-  if (isSpeaking) return "idle"; // Live2D handles lip sync separately
+  if (isSpeaking) {
+    return "idle";
+  } // Live2D handles lip sync separately
   switch (activity) {
     case "thinking":
       return "thinking";
@@ -74,9 +80,15 @@ function deriveAvatarState(activity: ActivityStateName, isSpeaking: boolean): Av
 
 export function getTimeOfDay(): "morning" | "afternoon" | "evening" | "night" {
   const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "morning";
-  if (hour >= 12 && hour < 17) return "afternoon";
-  if (hour >= 17 && hour < 21) return "evening";
+  if (hour >= 5 && hour < 12) {
+    return "morning";
+  }
+  if (hour >= 12 && hour < 17) {
+    return "afternoon";
+  }
+  if (hour >= 17 && hour < 21) {
+    return "evening";
+  }
   return "night";
 }
 
@@ -194,7 +206,9 @@ export function useAgentState(gateway: {
 
   // Listen for aevp_episode events
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     return gateway.on("aevp_episode", (payload) => {
       const ep = payload as EpisodeEvent;
       console.log(
@@ -218,7 +232,9 @@ export function useAgentState(gateway: {
 
   // Listen for aevp_activity events
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     return gateway.on("aevp_activity", (payload) => {
       const act = payload as ActivityEvent;
       console.log(
@@ -234,7 +250,9 @@ export function useAgentState(gateway: {
 
   // Listen for aevp_presence events (agent-initiated visual expression)
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     return gateway.on("aevp_presence", (payload) => {
       const evt = payload as PresenceEvent;
 
@@ -251,7 +269,9 @@ export function useAgentState(gateway: {
         setActiveGesture(gesture);
 
         // Clear gesture after duration (decay back to baseline)
-        if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+        if (gestureTimerRef.current) {
+          clearTimeout(gestureTimerRef.current);
+        }
         gestureTimerRef.current = setTimeout(() => {
           setActiveGesture(null);
           gestureTimerRef.current = null;
@@ -284,7 +304,9 @@ export function useAgentState(gateway: {
         );
         setActiveSymbol(symbolEvt);
 
-        if (symbolTimerRef.current) clearTimeout(symbolTimerRef.current);
+        if (symbolTimerRef.current) {
+          clearTimeout(symbolTimerRef.current);
+        }
         symbolTimerRef.current = setTimeout(() => {
           setActiveSymbol(null);
           symbolTimerRef.current = null;
@@ -318,7 +340,9 @@ export function useAgentState(gateway: {
 
     setEmotional((prev) => {
       // Skip if nothing actually changed
-      if (prev.mood.state === moodState && prev.valence === params.valence) return prev;
+      if (prev.mood.state === moodState && prev.valence === params.valence) {
+        return prev;
+      }
 
       console.log(
         "[AEVP] Text mood →",

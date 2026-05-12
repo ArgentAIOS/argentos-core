@@ -196,7 +196,9 @@ class ArgentAgentSessionImpl implements AgentSession {
     this._listeners.push(listener);
     return () => {
       const idx = this._listeners.indexOf(listener);
-      if (idx >= 0) this._listeners.splice(idx, 1);
+      if (idx >= 0) {
+        this._listeners.splice(idx, 1);
+      }
     };
   }
 
@@ -218,7 +220,9 @@ class ArgentAgentSessionImpl implements AgentSession {
    * Events match Pi's AgentEvent shapes so subscribeEmbeddedPiSession works unchanged.
    */
   async prompt(text: string, options?: PromptOptions): Promise<void> {
-    if (this._disposed) throw new Error("Session disposed");
+    if (this._disposed) {
+      throw new Error("Session disposed");
+    }
     this._isStreaming = true;
     this._abortController = new AbortController();
     const signal = this._abortController.signal;
@@ -363,7 +367,9 @@ class ArgentAgentSessionImpl implements AgentSession {
               let isError = false;
 
               try {
-                if (!tool) throw new Error(`Tool ${toolCall.name as string} not found`);
+                if (!tool) {
+                  throw new Error(`Tool ${toolCall.name as string} not found`);
+                }
                 result = await tool.execute(
                   toolCall.id as string,
                   toolCall.arguments,
@@ -557,7 +563,9 @@ class ArgentAgentSessionImpl implements AgentSession {
     let addedPartial = false;
 
     for await (const event of stream) {
-      if (signal.aborted) break;
+      if (signal.aborted) {
+        break;
+      }
 
       const eventType = event.type as string;
       switch (eventType) {
@@ -650,7 +658,9 @@ class ArgentAgentSessionImpl implements AgentSession {
     setup?: (sm: ArgentSessionManager) => Promise<void>;
   }): Promise<boolean> {
     this.sessionManager.newSession({ parentSession: options?.parentSession });
-    if (options?.setup) await options.setup(this.sessionManager);
+    if (options?.setup) {
+      await options.setup(this.sessionManager);
+    }
     this.agent.replaceMessages([]);
     return true;
   }
@@ -814,7 +824,9 @@ class ArgentAgentSessionImpl implements AgentSession {
       const { promisify } = await import("util");
       const execAsync = promisify(exec);
       const result = await execAsync(command, { timeout: 120_000 });
-      if (onChunk) onChunk(result.stdout);
+      if (onChunk) {
+        onChunk(result.stdout);
+      }
       return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
     } catch (err: unknown) {
       const e = err as { stdout?: string; stderr?: string; code?: number };
@@ -921,8 +933,9 @@ class ArgentAgentSessionImpl implements AgentSession {
             : Array.isArray(msg.content)
               ? msg.content
                   .map((b: unknown) => {
-                    if (b && typeof b === "object" && "text" in b)
+                    if (b && typeof b === "object" && "text" in b) {
                       return (b as { text: string }).text;
+                    }
                     return "";
                   })
                   .join("")
@@ -936,11 +949,15 @@ class ArgentAgentSessionImpl implements AgentSession {
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
       if (m && m.role === "assistant") {
-        if (typeof m.content === "string") return m.content;
+        if (typeof m.content === "string") {
+          return m.content;
+        }
         if (Array.isArray(m.content)) {
           return m.content
             .map((b: unknown) => {
-              if (b && typeof b === "object" && "text" in b) return (b as { text: string }).text;
+              if (b && typeof b === "object" && "text" in b) {
+                return (b as { text: string }).text;
+              }
               return "";
             })
             .join("");
@@ -1072,7 +1089,9 @@ function estimateTokens(msg: AgentMessage): number {
   // every shape — the missing-content branch falls through to `return 50`,
   // matching the previous behaviour for non-LLM messages.
   const m = msg as { content?: unknown };
-  if (typeof m.content === "string") return Math.ceil(m.content.length / 4);
+  if (typeof m.content === "string") {
+    return Math.ceil(m.content.length / 4);
+  }
   if (Array.isArray(m.content)) {
     return m.content.reduce((sum: number, block: unknown) => {
       if (block && typeof block === "object" && "text" in block) {

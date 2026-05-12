@@ -431,8 +431,12 @@ export class SearchModule {
     return hits
       .filter((hit) => {
         const ts = this.normalizeTimestamp(hit.item.createdAt);
-        if (since !== null && ts < since) return false;
-        if (until !== null && ts > until) return false;
+        if (since !== null && ts < since) {
+          return false;
+        }
+        if (until !== null && ts > until) {
+          return false;
+        }
         return true;
       })
       .map((hit) => {
@@ -499,7 +503,9 @@ export class SearchModule {
    * Generate a snippet with query highlights
    */
   private generateSnippet(text: string, query: string, maxLength = 150): string {
-    if (!text) return "";
+    if (!text) {
+      return "";
+    }
 
     const lowerText = text.toLowerCase();
     const lowerQuery = query.toLowerCase();
@@ -514,8 +520,12 @@ export class SearchModule {
     const end = Math.min(text.length, index + query.length + 100);
 
     let snippet = text.slice(start, end);
-    if (start > 0) snippet = "..." + snippet;
-    if (end < text.length) snippet = snippet + "...";
+    if (start > 0) {
+      snippet = "..." + snippet;
+    }
+    if (end < text.length) {
+      snippet = snippet + "...";
+    }
 
     return snippet;
   }

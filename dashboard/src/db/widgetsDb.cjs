@@ -101,7 +101,9 @@ initSchema();
 // ============================================================================
 
 function rowToWidget(row, includeCode = false) {
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   const widget = {
     id: row.id,
@@ -206,7 +208,9 @@ function createWidget({ name, description, icon, code, creator = "ai", metadata 
 function updateWidget(id, updates) {
   // Get raw row to check file_path
   const row = db.prepare("SELECT * FROM widgets WHERE id = ? AND deleted_at IS NULL").get(id);
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   const now = Date.now();
   const sets = ["updated_at = ?"];
@@ -238,9 +242,15 @@ function updateWidget(id, updates) {
           const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
           manifest.version = (manifest.version || row.version) + 1;
           manifest.updatedAt = new Date(now).toISOString();
-          if (updates.name !== undefined) manifest.name = updates.name;
-          if (updates.icon !== undefined) manifest.icon = updates.icon || "📦";
-          if (updates.description !== undefined) manifest.description = updates.description || null;
+          if (updates.name !== undefined) {
+            manifest.name = updates.name;
+          }
+          if (updates.icon !== undefined) {
+            manifest.icon = updates.icon || "📦";
+          }
+          if (updates.description !== undefined) {
+            manifest.description = updates.description || null;
+          }
           fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
         } catch (_) {
           /* manifest update is best-effort */
@@ -321,7 +331,9 @@ function getLayout() {
 
 function getSlot(position) {
   const row = db.prepare("SELECT * FROM widget_slots WHERE position = ?").get(position);
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
   return { position: row.position, widgetId: row.widget_id };
 }
 
@@ -340,7 +352,9 @@ function migrateInlineWidgetsToFilesystem() {
     )
     .all();
 
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) {
+    return 0;
+  }
 
   let migrated = 0;
   for (const row of rows) {

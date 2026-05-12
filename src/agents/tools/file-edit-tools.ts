@@ -152,7 +152,9 @@ function createEditRegexExecute(options: FileEditOptions) {
     let match: RegExpExecArray | null;
     while ((match = countRegex.exec(original)) !== null) {
       matches.push(match[0]);
-      if (!flags.includes("g")) break;
+      if (!flags.includes("g")) {
+        break;
+      }
     }
 
     const result = original.replace(regex, replacement);

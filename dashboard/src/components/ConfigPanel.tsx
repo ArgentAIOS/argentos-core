@@ -1911,7 +1911,9 @@ function uniqueNonEmptyStrings(values: string[]): string[] {
   const seen = new Set<string>();
   for (const raw of values) {
     const value = raw.trim();
-    if (!value || seen.has(value)) continue;
+    if (!value || seen.has(value)) {
+      continue;
+    }
     seen.add(value);
     out.push(value);
   }
@@ -1935,7 +1937,9 @@ function readString(value: unknown, fallback = ""): string {
 }
 
 function readStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
   return uniqueNonEmptyStrings(value.map((entry) => String(entry)));
 }
 
@@ -1944,12 +1948,16 @@ function readBoolean(value: unknown, fallback = false): boolean {
 }
 
 function readPositiveInteger(value: unknown, fallback: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
   return Math.max(1, Math.floor(value));
 }
 
 function readBoundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
   return Math.max(min, Math.min(max, value));
 }
 
@@ -2025,25 +2033,45 @@ function intentPolicyEditorDraftToRecord(
       ),
     },
   };
-  if (draft.version) record.version = draft.version;
-  if (draft.owner) record.owner = draft.owner;
-  if (draft.objective) record.objective = draft.objective;
+  if (draft.version) {
+    record.version = draft.version;
+  }
+  if (draft.owner) {
+    record.owner = draft.owner;
+  }
+  if (draft.objective) {
+    record.objective = draft.objective;
+  }
   const tradeoffHierarchy = uniqueNonEmptyStrings(draft.tradeoffHierarchy || []);
   const neverDo = uniqueNonEmptyStrings(draft.neverDo || []);
   const allowedActions = uniqueNonEmptyStrings(draft.allowedActions || []);
   const requiresHumanApproval = uniqueNonEmptyStrings(draft.requiresHumanApproval || []);
-  if (tradeoffHierarchy.length > 0) record.tradeoffHierarchy = tradeoffHierarchy;
-  if (neverDo.length > 0) record.neverDo = neverDo;
-  if (allowedActions.length > 0) record.allowedActions = allowedActions;
-  if (requiresHumanApproval.length > 0) record.requiresHumanApproval = requiresHumanApproval;
+  if (tradeoffHierarchy.length > 0) {
+    record.tradeoffHierarchy = tradeoffHierarchy;
+  }
+  if (neverDo.length > 0) {
+    record.neverDo = neverDo;
+  }
+  if (allowedActions.length > 0) {
+    record.allowedActions = allowedActions;
+  }
+  if (requiresHumanApproval.length > 0) {
+    record.requiresHumanApproval = requiresHumanApproval;
+  }
   const escalationRecord = record.escalation as Record<string, unknown>;
   if (!escalationRecord.customerTiersAlwaysEscalate) {
     delete escalationRecord.customerTiersAlwaysEscalate;
   }
   if (options?.includeAgentFields) {
-    if (draft.departmentId) record.departmentId = draft.departmentId;
-    if (draft.role) record.role = draft.role;
-    if (draft.parentGlobalVersion) record.parentGlobalVersion = draft.parentGlobalVersion;
+    if (draft.departmentId) {
+      record.departmentId = draft.departmentId;
+    }
+    if (draft.role) {
+      record.role = draft.role;
+    }
+    if (draft.parentGlobalVersion) {
+      record.parentGlobalVersion = draft.parentGlobalVersion;
+    }
     if (draft.parentDepartmentVersion) {
       record.parentDepartmentVersion = draft.parentDepartmentVersion;
     }
@@ -2068,7 +2096,9 @@ function safeParseIntentMapJson(value: string): {
 
 function nextAvailableIntentMapKey(map: Record<string, unknown>, base: string): string {
   const normalizedBase = base.trim() || "item";
-  if (!Object.hasOwn(map, normalizedBase)) return normalizedBase;
+  if (!Object.hasOwn(map, normalizedBase)) {
+    return normalizedBase;
+  }
   let index = 2;
   while (Object.hasOwn(map, `${normalizedBase}-${index}`)) {
     index += 1;
@@ -2132,7 +2162,9 @@ function mergeMemorySettingsState(
 
 function formatTimeRemaining(timestampMs: number): string {
   const remaining = timestampMs - Date.now();
-  if (remaining <= 0) return "Ready";
+  if (remaining <= 0) {
+    return "Ready";
+  }
 
   const hours = Math.floor(remaining / (1000 * 60 * 60));
   const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
@@ -2153,8 +2185,12 @@ function formatCooldownExpiry(timestampMs: number): string {
 
   const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
-  if (isToday) return `Today at ${timeStr}`;
-  if (isTomorrow) return `Tomorrow at ${timeStr}`;
+  if (isToday) {
+    return `Today at ${timeStr}`;
+  }
+  if (isTomorrow) {
+    return `Tomorrow at ${timeStr}`;
+  }
   return `${date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} at ${timeStr}`;
 }
 
@@ -2696,7 +2732,9 @@ export function ConfigPanel({
   const gateway = useGateway();
 
   useEffect(() => {
-    if (!isOpen || !requestedTab) return;
+    if (!isOpen || !requestedTab) {
+      return;
+    }
     setActiveTab(requestedTab);
     onRequestedTabHandled?.();
   }, [isOpen, requestedTab, onRequestedTabHandled]);
@@ -3410,7 +3448,9 @@ export function ConfigPanel({
   );
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentTargetId, setAgentTargetId] = useState(() => {
-    if (typeof window === "undefined") return AGENT_SETTINGS_DEFAULT_TARGET;
+    if (typeof window === "undefined") {
+      return AGENT_SETTINGS_DEFAULT_TARGET;
+    }
     const saved = window.localStorage.getItem(AGENT_SETTINGS_TARGET_STORAGE_KEY);
     return saved && saved.trim() ? saved.trim() : AGENT_SETTINGS_DEFAULT_TARGET;
   });
@@ -3443,8 +3483,12 @@ export function ConfigPanel({
   } | null>(null);
   const [hasExecutionWorkerOverride, setHasExecutionWorkerOverride] = useState(false);
   useEffect(() => {
-    if (!isPublicCoreSurface) return;
-    if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) return;
+    if (!isPublicCoreSurface) {
+      return;
+    }
+    if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) {
+      return;
+    }
     setAgentTargetId(AGENT_SETTINGS_DEFAULT_TARGET);
   }, [agentTargetId, isPublicCoreSurface]);
   const [workerRuntime, setWorkerRuntime] = useState<ExecutionWorkerRuntimeStatus | null>(null);
@@ -3780,7 +3824,9 @@ export function ConfigPanel({
     intentTargetAgentId === AGENT_SETTINGS_DEFAULT_TARGET ? defaultAgentId : intentTargetAgentId;
 
   useEffect(() => {
-    if (intentTargetAgentId === AGENT_SETTINGS_DEFAULT_TARGET) return;
+    if (intentTargetAgentId === AGENT_SETTINGS_DEFAULT_TARGET) {
+      return;
+    }
     const knownAgent = agentOptions.some((entry) => entry.id === intentTargetAgentId);
     if (!knownAgent) {
       setIntentTargetAgentId(AGENT_SETTINGS_DEFAULT_TARGET);
@@ -3788,12 +3834,16 @@ export function ConfigPanel({
   }, [agentOptions, intentTargetAgentId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
     window.localStorage.setItem(AGENT_SETTINGS_TARGET_STORAGE_KEY, agentTargetId);
   }, [agentTargetId]);
 
   useEffect(() => {
-    if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) return;
+    if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) {
+      return;
+    }
     const knownAgent = agentOptions.some((entry) => entry.id === agentTargetId);
     if (!knownAgent) {
       setAgentTargetId(AGENT_SETTINGS_DEFAULT_TARGET);
@@ -3916,7 +3966,9 @@ export function ConfigPanel({
               ? agentsPayload.agents
                   .map((row) => {
                     const id = typeof row?.id === "string" ? row.id.trim() : "";
-                    if (!id) return null;
+                    if (!id) {
+                      return null;
+                    }
                     const label =
                       typeof row?.name === "string" && row.name.trim() ? row.name.trim() : id;
                     return { id, label };
@@ -3971,9 +4023,13 @@ export function ConfigPanel({
         const options = Array.isArray(data.availableAgents)
           ? data.availableAgents
               .map((row) => {
-                if (!row || typeof row !== "object") return null;
+                if (!row || typeof row !== "object") {
+                  return null;
+                }
                 const id = typeof row.id === "string" ? row.id.trim() : "";
-                if (!id) return null;
+                if (!id) {
+                  return null;
+                }
                 const label = typeof row.label === "string" && row.label.trim() ? row.label : id;
                 return { id, label };
               })
@@ -3996,7 +4052,9 @@ export function ConfigPanel({
         setKnowledgeActorAgentId((prev) => prev || defaultAgent);
         setKnowledgeGrantAgentId((prev) => prev || resolvedTarget || defaultAgent);
         setKnowledgeGrantCollection((prev) => {
-          if (prev.trim()) return prev;
+          if (prev.trim()) {
+            return prev;
+          }
           return collections[0]?.collection || "";
         });
       } catch (err) {
@@ -4107,7 +4165,9 @@ export function ConfigPanel({
           ? agentsPayload.agents
               .map((row) => {
                 const id = typeof row?.id === "string" ? row.id.trim() : "";
-                if (!id) return null;
+                if (!id) {
+                  return null;
+                }
                 const label =
                   typeof row?.name === "string" && row.name.trim() ? row.name.trim() : id;
                 return { id, label };
@@ -4118,7 +4178,9 @@ export function ConfigPanel({
           const seen = new Set(options.map((row) => row.id));
           for (const member of familyPayload.members) {
             const id = typeof member?.id === "string" ? member.id.trim() : "";
-            if (!id || seen.has(id)) continue;
+            if (!id || seen.has(id)) {
+              continue;
+            }
             const name =
               typeof member?.name === "string" && member.name.trim() ? member.name.trim() : id;
             const team =
@@ -4324,7 +4386,9 @@ export function ConfigPanel({
   ]);
 
   const loadExecutionWorkerRuntime = useCallback(async () => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest) {
+      return;
+    }
     setWorkerRuntimeLoading(true);
     try {
       const status = await gatewayRequest<ExecutionWorkerRuntimeStatus>("execution.worker.status");
@@ -4337,7 +4401,9 @@ export function ConfigPanel({
   }, [gatewayRequest]);
 
   const loadJobsData = useCallback(async () => {
-    if (!gatewayRequest || !showAgentJobsControls) return;
+    if (!gatewayRequest || !showAgentJobsControls) {
+      return;
+    }
     setJobsLoading(true);
     try {
       const [overview, templatesPayload, assignmentsPayload, runsPayload] = await Promise.all([
@@ -4365,7 +4431,9 @@ export function ConfigPanel({
   }, [gatewayRequest, showAgentJobsControls]);
 
   const createJobTemplate = useCallback(async () => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest) {
+      return;
+    }
     const name = jobTemplateName.trim();
     const rolePrompt = jobRolePrompt.trim();
     if (!name || !rolePrompt) {
@@ -4392,7 +4460,9 @@ export function ConfigPanel({
   }, [gatewayRequest, jobTemplateMode, jobTemplateName, jobRolePrompt, loadJobsData]);
 
   const createJobAssignment = useCallback(async () => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest) {
+      return;
+    }
     if (!jobAssignmentTemplateId.trim() || !jobAssignmentAgentId.trim()) {
       setJobsMessage({ type: "error", text: "Template and agent are required for assignment." });
       return;
@@ -4444,7 +4514,9 @@ export function ConfigPanel({
 
   const setAssignmentEnabled = useCallback(
     async (assignmentId: string, enabled: boolean) => {
-      if (!gatewayRequest) return;
+      if (!gatewayRequest) {
+        return;
+      }
       try {
         await gatewayRequest("jobs.assignments.update", { assignmentId, enabled });
         await loadJobsData();
@@ -4503,7 +4575,9 @@ export function ConfigPanel({
 
   // Fetch agent settings when Agent tab is active
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent") return;
+    if (!isOpen || activeTab !== "agent") {
+      return;
+    }
 
     let cancelled = false;
     const loadAgentSettings = async () => {
@@ -4538,7 +4612,9 @@ export function ConfigPanel({
               },
             ).catch(() => null),
           ]);
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         if (agentData) {
           setAgentSettings(agentData);
@@ -4554,12 +4630,16 @@ export function ConfigPanel({
             Array.isArray(agentData.availableAgents)
               ? agentData.availableAgents
                   .map((row: unknown) => {
-                    if (!row || typeof row !== "object") return null;
+                    if (!row || typeof row !== "object") {
+                      return null;
+                    }
                     const id =
                       typeof (row as { id?: unknown }).id === "string"
                         ? (row as { id: string }).id.trim()
                         : "";
-                    if (!id) return null;
+                    if (!id) {
+                      return null;
+                    }
                     const label =
                       typeof (row as { label?: unknown }).label === "string"
                         ? (row as { label: string }).label.trim()
@@ -4703,7 +4783,9 @@ export function ConfigPanel({
         const keyProviders = Array.isArray(serviceKeyData?.keys)
           ? serviceKeyData.keys
               .flatMap((key: unknown) => {
-                if (!key || typeof key !== "object") return [];
+                if (!key || typeof key !== "object") {
+                  return [];
+                }
                 const variable =
                   typeof (key as { variable?: unknown }).variable === "string"
                     ? (key as { variable: string }).variable.trim()
@@ -4712,7 +4794,9 @@ export function ConfigPanel({
                   typeof (key as { enabled?: unknown }).enabled === "boolean"
                     ? (key as { enabled: boolean }).enabled
                     : true;
-                if (!variable || !enabled) return [];
+                if (!variable || !enabled) {
+                  return [];
+                }
                 return serviceKeyProviderMap[variable] || [];
               })
               .filter((provider: string) => provider.length > 0)
@@ -4724,8 +4808,12 @@ export function ConfigPanel({
         setLocalModelRuntimes(normalizeLocalModelRuntimes(modelsData?.localRuntimes));
 
         const combinedProviders = new Set<string>();
-        for (const provider of authProviders) combinedProviders.add(provider);
-        for (const provider of keyProviders) combinedProviders.add(provider);
+        for (const provider of authProviders) {
+          combinedProviders.add(provider);
+        }
+        for (const provider of keyProviders) {
+          combinedProviders.add(provider);
+        }
         if (Array.isArray(modelsData?.providers)) {
           for (const provider of modelsData.providers) {
             if (typeof provider === "string" && provider.trim()) {
@@ -4756,17 +4844,23 @@ export function ConfigPanel({
   }, [isOpen, activeTab, agentTargetId]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !showAgentMemoryStatusControls) return;
+    if (!isOpen || activeTab !== "agent" || !showAgentMemoryStatusControls) {
+      return;
+    }
     void loadMemoryV3Status();
   }, [isOpen, activeTab, loadMemoryV3Status, showAgentMemoryStatusControls]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !canEditRawAgentConfig) return;
+    if (!isOpen || activeTab !== "agent" || !canEditRawAgentConfig) {
+      return;
+    }
     void loadRawAgentConfig();
   }, [isOpen, activeTab, canEditRawAgentConfig, loadRawAgentConfig]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "intent") return;
+    if (!isOpen || activeTab !== "intent") {
+      return;
+    }
     let cancelled = false;
     setIntentLoading(true);
     void fetchJsonWithRetry<{ intent?: unknown }>("/api/settings/intent", {
@@ -4774,7 +4868,9 @@ export function ConfigPanel({
       retries: 1,
     })
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         const normalized = coerceIntentSettings(data?.intent ?? {});
         setIntentSettings(normalized);
         setIntentDraft(normalized);
@@ -4805,10 +4901,14 @@ export function ConfigPanel({
       { timeoutMs: 0, retries: 1 },
     )
       .then((data) => {
-        if (!cancelled) setIntentSimReportStatus(data);
+        if (!cancelled) {
+          setIntentSimReportStatus(data);
+        }
       })
       .catch(() => {
-        if (!cancelled) setIntentSimReportStatus(null);
+        if (!cancelled) {
+          setIntentSimReportStatus(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -4816,32 +4916,42 @@ export function ConfigPanel({
   }, [isOpen, activeTab, coerceIntentSettings, runtimeIntentTargetAgentId]);
 
   useEffect(() => {
-    if (!isOpen || (activeTab !== "intent" && activeTab !== "knowledge")) return;
+    if (!isOpen || (activeTab !== "intent" && activeTab !== "knowledge")) {
+      return;
+    }
     void loadKnowledgeCollections();
   }, [isOpen, activeTab, loadKnowledgeCollections]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "capabilities") return;
+    if (!isOpen || activeTab !== "capabilities") {
+      return;
+    }
     void loadCapabilities(capabilitiesAgentId || defaultAgentId);
     // Intentionally only refresh on tab/open transitions; manual refresh is user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeTab]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "persona") return;
+    if (!isOpen || activeTab !== "persona") {
+      return;
+    }
     void loadAgentProfile(personaAgentId || defaultAgentId);
     // Intentionally only refresh on tab/open transitions and target changes.
   }, [isOpen, activeTab, loadAgentProfile, personaAgentId, defaultAgentId]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "knowledge") return;
+    if (!isOpen || activeTab !== "knowledge") {
+      return;
+    }
     void Promise.all([loadKnowledgeStats(), loadKnowledgeLibrary()]);
     // Intentionally only refresh on tab/open transitions; filter-driven reloads are manual.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeTab]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentExecutionControls) return;
+    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentExecutionControls) {
+      return;
+    }
     void loadExecutionWorkerRuntime();
     const timer = setInterval(() => {
       void loadExecutionWorkerRuntime();
@@ -4857,7 +4967,9 @@ export function ConfigPanel({
   ]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentJobsControls) return;
+    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentJobsControls) {
+      return;
+    }
     void loadJobsData();
     const timer = setInterval(() => {
       void loadJobsData();
@@ -4892,10 +5004,14 @@ export function ConfigPanel({
     models: Array<{ id: string; ref: string; label: string }>;
   };
   const normalizeLocalModelRuntimes = (runtimes: unknown): LocalModelRuntime[] => {
-    if (!Array.isArray(runtimes)) return [];
+    if (!Array.isArray(runtimes)) {
+      return [];
+    }
     return runtimes
       .map((runtime: unknown): LocalModelRuntime | null => {
-        if (!runtime || typeof runtime !== "object") return null;
+        if (!runtime || typeof runtime !== "object") {
+          return null;
+        }
         const provider =
           typeof (runtime as { provider?: unknown }).provider === "string"
             ? (runtime as { provider: string }).provider.trim().toLowerCase()
@@ -4904,7 +5020,9 @@ export function ConfigPanel({
           typeof (runtime as { label?: unknown }).label === "string"
             ? (runtime as { label: string }).label.trim()
             : provider;
-        if (!provider || !label) return null;
+        if (!provider || !label) {
+          return null;
+        }
         return {
           provider,
           label,
@@ -4916,7 +5034,9 @@ export function ConfigPanel({
           models: Array.isArray((runtime as { models?: unknown[] }).models)
             ? (runtime as { models: unknown[] }).models
                 .map((model: unknown) => {
-                  if (!model || typeof model !== "object") return null;
+                  if (!model || typeof model !== "object") {
+                    return null;
+                  }
                   const id =
                     typeof (model as { id?: unknown }).id === "string"
                       ? (model as { id: string }).id.trim()
@@ -4929,7 +5049,9 @@ export function ConfigPanel({
                     typeof (model as { label?: unknown }).label === "string"
                       ? (model as { label: string }).label.trim()
                       : ref || id;
-                  if (!id || !ref || !itemLabel) return null;
+                  if (!id || !ref || !itemLabel) {
+                    return null;
+                  }
                   return { id, ref, label: itemLabel };
                 })
                 .filter(
@@ -4947,7 +5069,9 @@ export function ConfigPanel({
     section: "kernel" | "contemplation" | "heartbeat" | "nudges" | "sis" | "executionWorker",
     patch: Record<string, boolean | string | number>,
   ) => {
-    if (!agentSettings) return;
+    if (!agentSettings) {
+      return;
+    }
     const shouldTargetAgent =
       section === "executionWorker" && agentTargetId !== AGENT_SETTINGS_DEFAULT_TARGET;
     const endpoint = shouldTargetAgent
@@ -4963,7 +5087,9 @@ export function ConfigPanel({
         throw new Error(`HTTP ${response.status}`);
       }
       setAgentSettings((prev) => {
-        if (!prev) return prev;
+        if (!prev) {
+          return prev;
+        }
         return {
           ...prev,
           [section]: { ...(prev[section] as object), ...patch },
@@ -5024,7 +5150,9 @@ export function ConfigPanel({
   };
 
   const clearExecutionWorkerOverride = async () => {
-    if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) return;
+    if (agentTargetId === AGENT_SETTINGS_DEFAULT_TARGET) {
+      return;
+    }
     try {
       const response = await fetchLocalApi(
         `/api/settings/agent?agentId=${encodeURIComponent(agentTargetId)}`,
@@ -5064,7 +5192,9 @@ export function ConfigPanel({
     action: "pause" | "resume",
     scope: "agent" | "global",
   ) => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest) {
+      return;
+    }
     setWorkerRuntimeAction(`${action}:${scope}`);
     try {
       await gatewayRequest(
@@ -5080,7 +5210,9 @@ export function ConfigPanel({
   };
 
   const sendWorkerRuntimeReset = async (scope: "agent" | "global") => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest) {
+      return;
+    }
     setWorkerRuntimeAction(`reset:${scope}`);
     try {
       await gatewayRequest(
@@ -5096,7 +5228,9 @@ export function ConfigPanel({
   };
 
   const playWorker = async (scope: "agent" | "global") => {
-    if (!gatewayRequest || !agentSettings) return;
+    if (!gatewayRequest || !agentSettings) {
+      return;
+    }
     setWorkerRuntimeAction(`play:${scope}`);
     try {
       if (scope === "agent" && !agentSettings.executionWorker?.enabled) {
@@ -5123,7 +5257,9 @@ export function ConfigPanel({
   };
 
   const stopWorker = async (scope: "agent" | "global") => {
-    if (!gatewayRequest || !agentSettings) return;
+    if (!gatewayRequest || !agentSettings) {
+      return;
+    }
     setWorkerRuntimeAction(`stop:${scope}`);
     try {
       if (scope === "agent") {
@@ -5152,7 +5288,9 @@ export function ConfigPanel({
     thinkLevel?: string;
     timeoutMs?: number;
   }) => {
-    if (!agentSettings) return;
+    if (!agentSettings) {
+      return;
+    }
     const currentProvider = agentSettings.memory?.memu?.llm?.provider;
     const currentModel = agentSettings.memory?.memu?.llm?.model;
     const nextProvider = patch.provider ?? currentProvider;
@@ -5171,7 +5309,9 @@ export function ConfigPanel({
         body: JSON.stringify({ memory: { memu: { llm: patch } } }),
       });
       setAgentSettings((prev) => {
-        if (!prev) return prev;
+        if (!prev) {
+          return prev;
+        }
         return {
           ...prev,
           memory: mergeMemorySettingsState(prev.memory, {
@@ -5334,7 +5474,9 @@ export function ConfigPanel({
             : `HTTP ${response.status} while bootstrapping vault`,
         );
       }
-      if (payload.status) setMemoryV3Status(payload.status);
+      if (payload.status) {
+        setMemoryV3Status(payload.status);
+      }
       if (payload.boundToConfig) {
         setVaultPathDraft(payload.path || "");
       }
@@ -5378,7 +5520,9 @@ export function ConfigPanel({
             : `HTTP ${response.status} while choosing vault folder`,
         );
       }
-      if (payload.status) setMemoryV3Status(payload.status);
+      if (payload.status) {
+        setMemoryV3Status(payload.status);
+      }
       setVaultPathDraft(payload.path || "");
       setAgentSettings((prev) =>
         prev
@@ -5564,7 +5708,9 @@ export function ConfigPanel({
   const applyIntentIndustryPack = useCallback(
     (packId: string) => {
       const pack = INTENT_INDUSTRY_PACKS.find((entry) => entry.id === packId);
-      if (!pack) return;
+      if (!pack) {
+        return;
+      }
       updateIntentDepartmentsMap((current) => {
         const next = { ...current };
         for (const department of pack.departments) {
@@ -5735,7 +5881,9 @@ export function ConfigPanel({
 
   const saveCapabilitiesToolGovernance = useCallback(async () => {
     const targetAgentId = capabilitiesAgentId.trim() || defaultAgentId.trim() || "main";
-    if (!targetAgentId) return;
+    if (!targetAgentId) {
+      return;
+    }
     try {
       setCapabilitiesSaving(true);
       setCapabilitiesMessage(null);
@@ -5791,7 +5939,9 @@ export function ConfigPanel({
 
   const saveCapabilitiesSkillMapping = useCallback(async () => {
     const targetAgentId = capabilitiesAgentId.trim() || defaultAgentId.trim() || "main";
-    if (!targetAgentId) return;
+    if (!targetAgentId) {
+      return;
+    }
     try {
       setCapabilitiesSaving(true);
       setCapabilitiesMessage(null);
@@ -5946,7 +6096,9 @@ export function ConfigPanel({
     } finally {
       setIntentPreviewing(false);
       setIntentSimulationMessage((prev) => {
-        if (prev?.text.includes("Generating preview")) return null;
+        if (prev?.text.includes("Generating preview")) {
+          return null;
+        }
         return prev;
       });
     }
@@ -6031,7 +6183,9 @@ export function ConfigPanel({
   };
 
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     const unsubscribe = gateway.on("intent.simulation", (payload: any) => {
       // payload: { agentId, status: "starting"|"running"|"complete"|"error", message?, report?, error? }
       if (payload.status === "error") {
@@ -6116,7 +6270,9 @@ export function ConfigPanel({
         }
       }
 
-      if (!granted) throw new Error("Knowledge grant failed");
+      if (!granted) {
+        throw new Error("Knowledge grant failed");
+      }
 
       setKnowledgeMessage({
         type: "success",
@@ -6135,7 +6291,9 @@ export function ConfigPanel({
   };
 
   const deleteKnowledgeRow = async (id: string) => {
-    if (!id || knowledgeLibraryDeleteBusy) return;
+    if (!id || knowledgeLibraryDeleteBusy) {
+      return;
+    }
     setKnowledgeLibraryDeleteBusy(id);
     try {
       if (gatewayRequest) {
@@ -6159,7 +6317,9 @@ export function ConfigPanel({
   };
 
   const reindexKnowledgeLibrary = async () => {
-    if (knowledgeLibraryReindexing) return;
+    if (knowledgeLibraryReindexing) {
+      return;
+    }
     setKnowledgeLibraryReindexing(true);
     try {
       if (!gatewayRequest) {
@@ -6214,7 +6374,9 @@ export function ConfigPanel({
               retries: 1,
             },
           );
-          if (cancelled) return;
+          if (cancelled) {
+            return;
+          }
           setServiceKeys((data.keys as ServiceKey[]) || []);
           setCatalog((data.catalog as CatalogEntry[]) || []);
         } catch (err) {
@@ -6338,7 +6500,9 @@ export function ConfigPanel({
     const model = String(value || "")
       .trim()
       .toLowerCase();
-    if (!model) return false;
+    if (!model) {
+      return false;
+    }
     return (
       model.startsWith("nomic-embed") ||
       model.startsWith("text-embedding-") ||
@@ -6358,7 +6522,9 @@ export function ConfigPanel({
     model: string | undefined,
   ): string | null => {
     const normalizedModel = String(model || "").trim();
-    if (!normalizedModel) return null;
+    if (!normalizedModel) {
+      return null;
+    }
     if (looksLikeEmbeddingOnlyModel(normalizedModel)) {
       const fullRef = provider ? `${provider}/${normalizedModel}` : normalizedModel;
       return `MemU cannot use embedding-only model "${fullRef}". ${memuReplacementGuidance}`;
@@ -6427,24 +6593,34 @@ export function ConfigPanel({
 
   const ensureProviderModelsLoaded = useCallback(async (provider: string) => {
     const normalizedProvider = String(provider || "").trim();
-    if (!normalizedProvider) return;
-    if (providerModelsLoadingRef.current.has(normalizedProvider)) return;
+    if (!normalizedProvider) {
+      return;
+    }
+    if (providerModelsLoadingRef.current.has(normalizedProvider)) {
+      return;
+    }
     providerModelsLoadingRef.current.add(normalizedProvider);
     try {
       const resp = await fetchLocalApi(
         `/api/settings/provider-models?provider=${encodeURIComponent(normalizedProvider)}&limit=300`,
       );
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        return;
+      }
       const data = await resp.json();
       const rows = Array.isArray(data?.models)
         ? data.models
             .map((entry: unknown) => {
-              if (!entry || typeof entry !== "object") return null;
+              if (!entry || typeof entry !== "object") {
+                return null;
+              }
               const model =
                 typeof (entry as { model?: unknown }).model === "string"
                   ? (entry as { model: string }).model
                   : "";
-              if (!model) return null;
+              if (!model) {
+                return null;
+              }
               const label =
                 typeof (entry as { label?: unknown }).label === "string"
                   ? (entry as { label: string }).label
@@ -6493,7 +6669,9 @@ export function ConfigPanel({
     reasoning?: boolean;
   }> => {
     const normalizedProvider = String(provider || "").trim();
-    if (!normalizedProvider) return [];
+    if (!normalizedProvider) {
+      return [];
+    }
     if (Object.prototype.hasOwnProperty.call(providerModelsCache, normalizedProvider)) {
       const cached = providerModelsCache[normalizedProvider];
       return Array.isArray(cached) ? cached : [];
@@ -6515,7 +6693,9 @@ export function ConfigPanel({
   const isReasoningCapableModel = (provider: string, model: string): boolean => {
     const normalizedProvider = String(provider || "").trim();
     const normalizedModel = String(model || "").trim();
-    if (!normalizedProvider || !normalizedModel) return false;
+    if (!normalizedProvider || !normalizedModel) {
+      return false;
+    }
     // Prefer the cached provider-models response (carries the pi-catalog flag).
     const cachedRows = providerModelsCache[normalizedProvider];
     if (Array.isArray(cachedRows)) {
@@ -6594,10 +6774,14 @@ export function ConfigPanel({
     label?: string;
   }): string => {
     const ref = String(selection?.ref || "").trim();
-    if (ref) return ref;
+    if (ref) {
+      return ref;
+    }
     const provider = String(selection?.provider || "").trim();
     const model = String(selection?.model || "").trim();
-    if (provider && model) return `${provider}/${model}`;
+    if (provider && model) {
+      return `${provider}/${model}`;
+    }
     return selection?.label ? String(selection.label) : "";
   };
 
@@ -6619,7 +6803,9 @@ export function ConfigPanel({
     const rows: Array<{ ref: string; label: string; provider: string; model: string }> = [];
     const push = (ref: string, label?: string) => {
       const parsed = parseModelRef(ref);
-      if (!parsed || seen.has(ref)) return;
+      if (!parsed || seen.has(ref)) {
+        return;
+      }
       seen.add(ref);
       rows.push({
         ref,
@@ -6735,7 +6921,9 @@ export function ConfigPanel({
       lane: BackgroundModelLane,
       patch: { provider?: string; model?: string; fallback?: string },
     ) => {
-      if (!agentSettings) return;
+      if (!agentSettings) {
+        return;
+      }
       const current = normalizeLaneSelection(agentSettings.backgroundModels?.[lane]);
       const nextProvider =
         patch.provider !== undefined ? String(patch.provider || "").trim() : current.provider;
@@ -6774,7 +6962,9 @@ export function ConfigPanel({
       });
 
       setAgentSettings((prev) => {
-        if (!prev) return prev;
+        if (!prev) {
+          return prev;
+        }
         return {
           ...prev,
           backgroundModels: {
@@ -6796,7 +6986,9 @@ export function ConfigPanel({
 
   // Fetch model config when Models tab is active
   useEffect(() => {
-    if (!isOpen || activeTab !== "models") return;
+    if (!isOpen || activeTab !== "models") {
+      return;
+    }
 
     let cancelled = false;
     const loadModels = async () => {
@@ -6806,7 +6998,9 @@ export function ConfigPanel({
           timeoutMs: 0,
           retries: 1,
         });
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setModelConfig(data);
         setRouterEnabled(!!data.modelRouter?.enabled);
         const primaryRef = parseModelRef(String(data?.model?.primary || ""));
@@ -6835,7 +7029,9 @@ export function ConfigPanel({
 
   // Fetch auth profiles + diagnostics when Auth Profiles tab is active
   const fetchDiagnostics = useCallback(() => {
-    if (authDiagnosticsInFlightRef.current) return;
+    if (authDiagnosticsInFlightRef.current) {
+      return;
+    }
     authDiagnosticsInFlightRef.current = true;
     fetchJsonWithRetry<any>("/api/settings/auth-diagnostics", { timeoutMs: 0, retries: 1 })
       .then((data) => setAuthDiagnostics(data))
@@ -6867,7 +7063,9 @@ export function ConfigPanel({
   }, []);
 
   const openEditAuthProfile = useCallback(async (profile: any) => {
-    if (!profile || profile.type === "oauth") return;
+    if (!profile || profile.type === "oauth") {
+      return;
+    }
     setEditingAuthProfile(profile);
     setEditingAuthProfileToken("");
     setEditingAuthProfileLoadError(null);
@@ -6897,7 +7095,9 @@ export function ConfigPanel({
   }, []);
 
   const saveEditedAuthProfile = useCallback(async () => {
-    if (!editingAuthProfile || !editingAuthProfileToken.trim() || editingAuthProfileSaving) return;
+    if (!editingAuthProfile || !editingAuthProfileToken.trim() || editingAuthProfileSaving) {
+      return;
+    }
     setEditingAuthProfileSaving(true);
     setAuthMessage(null);
     try {
@@ -6946,7 +7146,9 @@ export function ConfigPanel({
   ]);
 
   const startOpenAICodexOauth = useCallback(async () => {
-    if (openAICodexOauthBusy) return;
+    if (openAICodexOauthBusy) {
+      return;
+    }
     setOpenAICodexOauthBusy(true);
     setAuthMessage(null);
     try {
@@ -7013,7 +7215,9 @@ export function ConfigPanel({
   }, [fetchDiagnostics, openAICodexOauthBusy, refreshAuthProfiles]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "authprofiles") return;
+    if (!isOpen || activeTab !== "authprofiles") {
+      return;
+    }
 
     let cancelled = false;
     const loadAuthProfiles = async () => {
@@ -7023,7 +7227,9 @@ export function ConfigPanel({
           timeoutMs: 0,
           retries: 1,
         });
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setAuthProfiles(data.profiles || []);
         setAuthLastGood(data.lastGood || {});
         setAuthProviderOptions(
@@ -7051,17 +7257,23 @@ export function ConfigPanel({
 
   // Auto-refresh diagnostics every 30s while auth tab is active
   useEffect(() => {
-    if (!isOpen || activeTab !== "authprofiles") return;
+    if (!isOpen || activeTab !== "authprofiles") {
+      return;
+    }
     const interval = setInterval(fetchDiagnostics, 30_000 * loadProfilePollingMultiplier);
     return () => clearInterval(interval);
   }, [isOpen, activeTab, fetchDiagnostics, loadProfilePollingMultiplier]);
 
   // Countdown ticker — update cooldownRemaining every 10s
   useEffect(() => {
-    if (!isOpen || activeTab !== "authprofiles" || !authDiagnostics) return;
+    if (!isOpen || activeTab !== "authprofiles" || !authDiagnostics) {
+      return;
+    }
     const hasActiveCooldowns =
       authDiagnostics.summary?.inCooldown > 0 || authDiagnostics.summary?.disabled > 0;
-    if (!hasActiveCooldowns) return;
+    if (!hasActiveCooldowns) {
+      return;
+    }
     const interval = setInterval(fetchDiagnostics, 10_000 * loadProfilePollingMultiplier);
     return () => clearInterval(interval);
   }, [isOpen, activeTab, authDiagnostics, fetchDiagnostics, loadProfilePollingMultiplier]);
@@ -7084,7 +7296,9 @@ export function ConfigPanel({
 
   // Fetch channels when Channels tab is active
   useEffect(() => {
-    if (!isOpen || activeTab !== "channels") return;
+    if (!isOpen || activeTab !== "channels") {
+      return;
+    }
 
     let cancelled = false;
     const loadChannels = async () => {
@@ -7094,7 +7308,9 @@ export function ConfigPanel({
           timeoutMs: 0,
           retries: 1,
         });
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setChannelList(data.channels || []);
       } catch (err) {
         if (!cancelled) {
@@ -7203,7 +7419,9 @@ export function ConfigPanel({
     if (isOpen && activeTab === "observability") {
       const loadObservabilityData = () => {
         const isInitial = !observabilityData.health;
-        if (isInitial) setObservabilityLoading(true);
+        if (isInitial) {
+          setObservabilityLoading(true);
+        }
 
         const routingPromise = gatewayRequest
           ? gatewayRequest<{
@@ -7247,7 +7465,9 @@ export function ConfigPanel({
           })
           .catch((err) => console.error("[Config] Observability load failed:", err))
           .finally(() => {
-            if (isInitial) setObservabilityLoading(false);
+            if (isInitial) {
+              setObservabilityLoading(false);
+            }
           });
       };
 
@@ -7300,7 +7520,9 @@ export function ConfigPanel({
 
   // SSE for real-time pairing events
   useEffect(() => {
-    if (!isOpen || activeTab !== "devices") return;
+    if (!isOpen || activeTab !== "devices") {
+      return;
+    }
     const es = new EventSource("/api/devices/events");
     es.onmessage = (ev) => {
       try {
@@ -7332,7 +7554,9 @@ export function ConfigPanel({
 
   // Pairing countdown timer
   useEffect(() => {
-    if (!pairingPayload) return;
+    if (!pairingPayload) {
+      return;
+    }
     const update = () => {
       const remaining = Math.max(0, Math.floor((pairingPayload.expiresAt - Date.now()) / 1000));
       setPairingCountdown(remaining);
@@ -7386,7 +7610,9 @@ export function ConfigPanel({
   }, [config]);
 
   const addDictionaryEntry = () => {
-    if (!newTerm.trim() || !newReplacement.trim()) return;
+    if (!newTerm.trim() || !newReplacement.trim()) {
+      return;
+    }
     const entry: DictionaryEntry = {
       id: `dict-${Date.now()}`,
       term: newTerm.trim(),
@@ -7500,7 +7726,9 @@ export function ConfigPanel({
   const normalizeUiReasoningEffort = (
     raw: unknown,
   ): "minimal" | "low" | "medium" | "high" | undefined => {
-    if (typeof raw !== "string") return undefined;
+    if (typeof raw !== "string") {
+      return undefined;
+    }
     const normalized = raw.trim().toLowerCase();
     return (tierReasoningEffortOptions as readonly string[]).includes(normalized)
       ? (normalized as "minimal" | "low" | "medium" | "high")
@@ -7663,7 +7891,9 @@ export function ConfigPanel({
 
   const filteredNavSections = useMemo(() => {
     const bySurface = filterConfigNavSections(navSections, surfaceProfile);
-    if (advancedMode) return bySurface;
+    if (advancedMode) {
+      return bySurface;
+    }
     // Default (non-advanced) view: keep only tabs flagged defaultView, and
     // drop sections that become empty after filtering.
     return bySurface
@@ -7684,7 +7914,9 @@ export function ConfigPanel({
     const visibleIds = new Set(filteredNavSections.flatMap((s) => s.items).map((t) => t.id));
     if (!visibleIds.has(activeTab)) {
       const firstVisible = filteredNavSections[0]?.items[0]?.id;
-      if (firstVisible) setActiveTab(firstVisible);
+      if (firstVisible) {
+        setActiveTab(firstVisible);
+      }
     }
   }, [activeTab, surfaceProfile, filteredNavSections]);
 
@@ -8753,7 +8985,9 @@ export function ConfigPanel({
                               onClick={async () => {
                                 const variable =
                                   addVariable === "__custom__" ? addCustomVariable : addVariable;
-                                if (!variable || !addValue.trim()) return;
+                                if (!variable || !addValue.trim()) {
+                                  return;
+                                }
                                 setApiKeyLoading(true);
                                 setApiKeyMessage(null);
                                 try {
@@ -8827,7 +9061,9 @@ export function ConfigPanel({
                         const grouped = serviceKeys.reduce(
                           (acc, k) => {
                             const cat = k.category || "Other";
-                            if (!acc[cat]) acc[cat] = [];
+                            if (!acc[cat]) {
+                              acc[cat] = [];
+                            }
                             acc[cat].push(k);
                             return acc;
                           },
@@ -8907,7 +9143,9 @@ export function ConfigPanel({
                                             </button>
                                             <button
                                               onClick={async () => {
-                                                if (!editValue.trim()) return;
+                                                if (!editValue.trim()) {
+                                                  return;
+                                                }
                                                 await fetchLocalApi(
                                                   `/api/settings/service-keys/${k.id}`,
                                                   {
@@ -9357,9 +9595,13 @@ export function ConfigPanel({
                             <button
                               onClick={() => {
                                 const el = document.getElementById("model-config-guide");
-                                if (el) el.classList.toggle("hidden");
+                                if (el) {
+                                  el.classList.toggle("hidden");
+                                }
                                 const chevron = document.getElementById("model-guide-chevron");
-                                if (chevron) chevron.classList.toggle("rotate-180");
+                                if (chevron) {
+                                  chevron.classList.toggle("rotate-180");
+                                }
                               }}
                               className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-all"
                             >
@@ -10579,7 +10821,9 @@ export function ConfigPanel({
                                 <div className="flex items-center gap-2 pt-1">
                                   <button
                                     onClick={async () => {
-                                      if (!newMProfileName) return;
+                                      if (!newMProfileName) {
+                                        return;
+                                      }
                                       const contemplationFallbacks = parseFallbackList(
                                         newMProfileContemplationFallbacks,
                                       );
@@ -10955,7 +11199,9 @@ export function ConfigPanel({
                           </button>
                           <button
                             onClick={async () => {
-                              if (!newProfileName.trim() || !newProfileToken.trim()) return;
+                              if (!newProfileName.trim() || !newProfileToken.trim()) {
+                                return;
+                              }
                               try {
                                 const controller = new AbortController();
                                 const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -11219,7 +11465,9 @@ export function ConfigPanel({
                                   onClick={async (e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    if (isActive) return; // Already active
+                                    if (isActive) {
+                                      return;
+                                    } // Already active
 
                                     console.log(`[Auth] Clicked Set Active for: ${p.key}`);
                                     try {
@@ -11654,7 +11902,9 @@ export function ConfigPanel({
                           </button>
                           <button
                             onClick={async () => {
-                              if (!newChannelToken.trim()) return;
+                              if (!newChannelToken.trim()) {
+                                return;
+                              }
                               try {
                                 const resp = await fetchLocalApi("/api/settings/channels", {
                                   method: "POST",
@@ -11814,7 +12064,9 @@ export function ConfigPanel({
                               {/* Delete */}
                               <button
                                 onClick={async () => {
-                                  if (!confirm(`Delete channel "${ch.id}"?`)) return;
+                                  if (!confirm(`Delete channel "${ch.id}"?`)) {
+                                    return;
+                                  }
                                   try {
                                     await fetchLocalApi(`/api/settings/channels/${ch.id}`, {
                                       method: "DELETE",
@@ -13234,7 +13486,9 @@ export function ConfigPanel({
                                     onChange={(e) => {
                                       const next = e.target
                                         .value as keyof typeof EXECUTION_WORKER_PRESETS;
-                                      if (!next || !EXECUTION_WORKER_PRESETS[next]) return;
+                                      if (!next || !EXECUTION_WORKER_PRESETS[next]) {
+                                        return;
+                                      }
                                       void patchAgentSetting(
                                         "executionWorker",
                                         EXECUTION_WORKER_PRESETS[next].patch,
@@ -13407,7 +13661,9 @@ export function ConfigPanel({
                                       value={agentSettings.executionWorker?.sessionMainKey || ""}
                                       onChange={(e) =>
                                         setAgentSettings((prev) => {
-                                          if (!prev) return prev;
+                                          if (!prev) {
+                                            return prev;
+                                          }
                                           return {
                                             ...prev,
                                             executionWorker: {
@@ -13965,9 +14221,13 @@ export function ConfigPanel({
                               <button
                                 onClick={() => {
                                   const el = document.getElementById("memu-config-guide");
-                                  if (el) el.classList.toggle("hidden");
+                                  if (el) {
+                                    el.classList.toggle("hidden");
+                                  }
                                   const chevron = document.getElementById("memu-guide-chevron");
-                                  if (chevron) chevron.classList.toggle("rotate-180");
+                                  if (chevron) {
+                                    chevron.classList.toggle("rotate-180");
+                                  }
                                 }}
                                 className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5 transition-all"
                               >
@@ -14230,7 +14490,9 @@ export function ConfigPanel({
                               const suggestedRef = formatRecommendationRef(
                                 recommendation?.suggested,
                               );
-                              if (!suggestedRef) return null;
+                              if (!suggestedRef) {
+                                return null;
+                              }
                               return (
                                 <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-3 text-xs space-y-2">
                                   <div className="flex items-center justify-between gap-3">
@@ -16064,7 +16326,9 @@ export function ConfigPanel({
                                           value={selection.fallback}
                                           onChange={(e) =>
                                             setAgentSettings((prev) => {
-                                              if (!prev) return prev;
+                                              if (!prev) {
+                                                return prev;
+                                              }
                                               return {
                                                 ...prev,
                                                 backgroundModels: {
@@ -17052,7 +17316,9 @@ export function ConfigPanel({
                                         onChange={(e) => {
                                           const checked = e.target.checked;
                                           setKnowledgeGrantCanWrite(checked);
-                                          if (checked) setKnowledgeGrantCanRead(true);
+                                          if (checked) {
+                                            setKnowledgeGrantCanRead(true);
+                                          }
                                         }}
                                         disabled={knowledgeGrantIsOwner}
                                         className="accent-purple-500"
@@ -17416,7 +17682,9 @@ export function ConfigPanel({
                                         value={intentDraft.global.escalation.sentimentThreshold}
                                         onChange={(e) => {
                                           const next = Number(e.target.value);
-                                          if (!Number.isFinite(next)) return;
+                                          if (!Number.isFinite(next)) {
+                                            return;
+                                          }
                                           setIntentDraft((prev) =>
                                             prev
                                               ? {
@@ -17448,7 +17716,9 @@ export function ConfigPanel({
                                         }
                                         onChange={(e) => {
                                           const next = Number(e.target.value);
-                                          if (!Number.isFinite(next)) return;
+                                          if (!Number.isFinite(next)) {
+                                            return;
+                                          }
                                           setIntentDraft((prev) =>
                                             prev
                                               ? {
@@ -17480,7 +17750,9 @@ export function ConfigPanel({
                                         }
                                         onChange={(e) => {
                                           const next = Number(e.target.value);
-                                          if (!Number.isFinite(next)) return;
+                                          if (!Number.isFinite(next)) {
+                                            return;
+                                          }
                                           setIntentDraft((prev) =>
                                             prev
                                               ? {
@@ -17642,7 +17914,9 @@ export function ConfigPanel({
                                         value={intentDraft.simulationGate.minPassRate}
                                         onChange={(e) => {
                                           const next = Number(e.target.value);
-                                          if (!Number.isFinite(next)) return;
+                                          if (!Number.isFinite(next)) {
+                                            return;
+                                          }
                                           setIntentDraft((prev) =>
                                             prev
                                               ? {
@@ -18218,7 +18492,9 @@ export function ConfigPanel({
                                               "main",
                                             ]);
                                             for (const agentId of detected) {
-                                              if (Object.hasOwn(next, agentId)) continue;
+                                              if (Object.hasOwn(next, agentId)) {
+                                                continue;
+                                              }
                                               next[agentId] = intentPolicyEditorDraftToRecord(
                                                 normalizeIntentPolicyEditorDraft({
                                                   departmentId: inferIntentDepartmentId(agentId),
@@ -18671,7 +18947,9 @@ export function ConfigPanel({
                                 <div className="flex items-center justify-end gap-2">
                                   <button
                                     onClick={() => {
-                                      if (!intentSettings) return;
+                                      if (!intentSettings) {
+                                        return;
+                                      }
                                       const reset = coerceIntentSettings(intentSettings);
                                       setIntentDraft(reset);
                                       setIntentDepartmentsJson(
@@ -18830,7 +19108,9 @@ export function ConfigPanel({
                                 )?.value,
                               );
 
-                              if (!id || !label || !prompt) return;
+                              if (!id || !label || !prompt) {
+                                return;
+                              }
 
                               const resp = await fetchLocalApi("/api/settings/nudges", {
                                 method: "POST",
@@ -19109,8 +19389,9 @@ export function ConfigPanel({
                                       !confirm(
                                         "Regenerate and reinstall the local gateway auth token? Connected clients will need the new token.",
                                       )
-                                    )
+                                    ) {
                                       return;
+                                    }
                                     try {
                                       const resp = await fetchLocalApi(
                                         "/api/settings/gateway/regenerate-token",
@@ -19767,7 +20048,9 @@ export function ConfigPanel({
                                         { method: "POST" },
                                       );
                                       const data = await resp.json();
-                                      if (!resp.ok) throw new Error(data.error || data.details);
+                                      if (!resp.ok) {
+                                        throw new Error(data.error || data.details);
+                                      }
                                       setDatabaseMessage({
                                         type: "success",
                                         text: `PostgreSQL ${action} requested`,
@@ -19839,7 +20122,9 @@ export function ConfigPanel({
                                         { method: "POST" },
                                       );
                                       const data = await resp.json();
-                                      if (!resp.ok) throw new Error(data.error || data.details);
+                                      if (!resp.ok) {
+                                        throw new Error(data.error || data.details);
+                                      }
                                       setDatabaseMessage({
                                         type: "success",
                                         text: `Redis ${action} requested`,
@@ -19887,7 +20172,9 @@ export function ConfigPanel({
                                     },
                                   );
                                   const data = await resp.json();
-                                  if (!resp.ok) throw new Error(data.error || data.details);
+                                  if (!resp.ok) {
+                                    throw new Error(data.error || data.details);
+                                  }
                                   setDatabaseMessage({
                                     type: "success",
                                     text: `Database backup created: ${data.filename}`,
@@ -19924,7 +20211,9 @@ export function ConfigPanel({
                                     },
                                   );
                                   const data = await resp.json();
-                                  if (!resp.ok) throw new Error(data.error || data.details);
+                                  if (!resp.ok) {
+                                    throw new Error(data.error || data.details);
+                                  }
                                   setDatabaseMessage({
                                     type: "success",
                                     text: `Installed database backup schedule: ${data.schedule}`,
@@ -20113,7 +20402,9 @@ export function ConfigPanel({
                                 max={100}
                                 value={Math.round((visualIdentity?.personality[key] ?? 0.5) * 100)}
                                 onChange={(e) => {
-                                  if (!visualIdentity) return;
+                                  if (!visualIdentity) {
+                                    return;
+                                  }
                                   const newPersonality = {
                                     ...visualIdentity.personality,
                                     [key]: Number(e.target.value) / 100,
@@ -20168,7 +20459,9 @@ export function ConfigPanel({
                         </div>
                         <button
                           onClick={() => {
-                            if (!accessibilityConfig) return;
+                            if (!accessibilityConfig) {
+                              return;
+                            }
                             onAccessibilityChange?.({
                               ...accessibilityConfig,
                               reducedMotion: !accessibilityConfig.reducedMotion,
@@ -20198,7 +20491,9 @@ export function ConfigPanel({
                         </div>
                         <button
                           onClick={() => {
-                            if (!accessibilityConfig) return;
+                            if (!accessibilityConfig) {
+                              return;
+                            }
                             onAccessibilityChange?.({
                               ...accessibilityConfig,
                               tonalPresence: {
@@ -20808,7 +21103,9 @@ export function ConfigPanel({
                                     <button
                                       disabled={i <= 1}
                                       onClick={() => {
-                                        if (i <= 1) return;
+                                        if (i <= 1) {
+                                          return;
+                                        }
                                         const next = [...order];
                                         [next[i - 1], next[i]] = [next[i], next[i - 1]];
                                         setVoiceSettings((prev) =>
@@ -20823,7 +21120,9 @@ export function ConfigPanel({
                                     <button
                                       disabled={i === 0 || i === order.length - 1}
                                       onClick={() => {
-                                        if (i === 0 || i === order.length - 1) return;
+                                        if (i === 0 || i === order.length - 1) {
+                                          return;
+                                        }
                                         const next = [...order];
                                         [next[i], next[i + 1]] = [next[i + 1], next[i]];
                                         setVoiceSettings((prev) =>
@@ -20854,7 +21153,9 @@ export function ConfigPanel({
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify(voiceSettings),
                               });
-                              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                              if (!res.ok) {
+                                throw new Error(`HTTP ${res.status}`);
+                              }
                               setVoiceMessage({ type: "success", text: "Voice settings saved" });
                               setTimeout(() => setVoiceMessage(null), 3000);
                             } catch (err) {
@@ -21147,7 +21448,9 @@ export function ConfigPanel({
                                 onChange={(e) => {
                                   const checked = e.target.checked;
                                   setKnowledgeGrantCanWrite(checked);
-                                  if (checked) setKnowledgeGrantCanRead(true);
+                                  if (checked) {
+                                    setKnowledgeGrantCanRead(true);
+                                  }
                                 }}
                                 disabled={knowledgeGrantIsOwner}
                                 className="accent-purple-500"
@@ -21779,7 +22082,9 @@ export function ConfigPanel({
                           <div className="bg-gray-900/80 rounded-lg p-3 font-mono text-xs max-h-96 overflow-y-auto space-y-1">
                             {observabilityData.logs?.lines
                               ?.filter((line) => {
-                                if (!logFilter && logSeverityFilter === "all") return true;
+                                if (!logFilter && logSeverityFilter === "all") {
+                                  return true;
+                                }
                                 const lowerLine = line.toLowerCase();
                                 const matchesSearch =
                                   !logFilter || lowerLine.includes(logFilter.toLowerCase());
@@ -21865,7 +22170,9 @@ export function ConfigPanel({
                                   const r = await fetchLocalApi("/api/devices/pair", {
                                     method: "POST",
                                   });
-                                  if (!r.ok) throw new Error("Failed to generate pairing code");
+                                  if (!r.ok) {
+                                    throw new Error("Failed to generate pairing code");
+                                  }
                                   const payload = await r.json();
                                   setPairingPayload(payload);
                                 } catch (err: any) {

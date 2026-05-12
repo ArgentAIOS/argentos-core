@@ -45,7 +45,9 @@ const serviceTracker: TrackerMap = {};
 
 function upsertTracker(service: CriticalServiceName): ServiceTrackerState {
   const existing = serviceTracker[service];
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const created: ServiceTrackerState = { lastSuccessAt: null };
   serviceTracker[service] = created;
   return created;

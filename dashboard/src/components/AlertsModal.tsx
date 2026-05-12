@@ -60,7 +60,9 @@ export function AlertsModal({
   const unreadCount = alerts.filter((a) => !a.read).length;
   const sortedAlerts = [...alerts].sort((a, b) => {
     // Unread first, then by timestamp
-    if (a.read !== b.read) return a.read ? 1 : -1;
+    if (a.read !== b.read) {
+      return a.read ? 1 : -1;
+    }
     return b.timestamp.getTime() - a.timestamp.getTime();
   });
 
@@ -71,10 +73,18 @@ export function AlertsModal({
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffMins < 1) {
+      return "Just now";
+    }
+    if (diffMins < 60) {
+      return `${diffMins}m ago`;
+    }
+    if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    }
+    if (diffDays < 7) {
+      return `${diffDays}d ago`;
+    }
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 

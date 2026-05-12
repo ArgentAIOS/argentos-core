@@ -290,7 +290,9 @@ export class ArgentSettingsManager {
   }
 
   setCompactionEnabled(enabled: boolean): void {
-    if (!this.globalSettings.compaction) this.globalSettings.compaction = {};
+    if (!this.globalSettings.compaction) {
+      this.globalSettings.compaction = {};
+    }
     this.globalSettings.compaction.enabled = enabled;
     this._saveGlobal();
   }
@@ -332,7 +334,9 @@ export class ArgentSettingsManager {
   }
 
   setRetryEnabled(enabled: boolean): void {
-    if (!this.globalSettings.retry) this.globalSettings.retry = {};
+    if (!this.globalSettings.retry) {
+      this.globalSettings.retry = {};
+    }
     this.globalSettings.retry.enabled = enabled;
     this._saveGlobal();
   }
@@ -368,7 +372,9 @@ export class ArgentSettingsManager {
     return this.merged().terminal?.showImages ?? true;
   }
   setShowImages(show: boolean): void {
-    if (!this.globalSettings.terminal) this.globalSettings.terminal = {};
+    if (!this.globalSettings.terminal) {
+      this.globalSettings.terminal = {};
+    }
     this.globalSettings.terminal.showImages = show;
     this._saveGlobal();
   }
@@ -377,7 +383,9 @@ export class ArgentSettingsManager {
     return this.merged().terminal?.clearOnShrink ?? false;
   }
   setClearOnShrink(enabled: boolean): void {
-    if (!this.globalSettings.terminal) this.globalSettings.terminal = {};
+    if (!this.globalSettings.terminal) {
+      this.globalSettings.terminal = {};
+    }
     this.globalSettings.terminal.clearOnShrink = enabled;
     this._saveGlobal();
   }
@@ -510,7 +518,9 @@ export class ArgentSettingsManager {
     return this.merged().images?.autoResize ?? true;
   }
   setImageAutoResize(enabled: boolean): void {
-    if (!this.globalSettings.images) this.globalSettings.images = {};
+    if (!this.globalSettings.images) {
+      this.globalSettings.images = {};
+    }
     this.globalSettings.images.autoResize = enabled;
     this._saveGlobal();
   }
@@ -519,7 +529,9 @@ export class ArgentSettingsManager {
     return this.merged().images?.blocked ?? false;
   }
   setBlockImages(blocked: boolean): void {
-    if (!this.globalSettings.images) this.globalSettings.images = {};
+    if (!this.globalSettings.images) {
+      this.globalSettings.images = {};
+    }
     this.globalSettings.images.blocked = blocked;
     this._saveGlobal();
   }
@@ -588,11 +600,17 @@ export class ArgentSettingsManager {
 // ============================================================================
 
 function loadJson(path: string): Settings {
-  if (!path) return {};
+  if (!path) {
+    return {};
+  }
   try {
-    if (!existsSync(path)) return {};
+    if (!existsSync(path)) {
+      return {};
+    }
     const raw = readFileSync(path, "utf-8").trim();
-    if (!raw) return {};
+    if (!raw) {
+      return {};
+    }
     return JSON.parse(raw) as Settings;
   } catch {
     return {};
@@ -600,7 +618,9 @@ function loadJson(path: string): Settings {
 }
 
 function saveJson(path: string, data: Settings): void {
-  if (!path) return;
+  if (!path) {
+    return;
+  }
   try {
     const dir = resolve(path, "..");
     mkdirSync(dir, { recursive: true });
@@ -614,7 +634,9 @@ function deepMerge<T extends object>(base: T, override: Partial<T>): T {
   const result = { ...base } as T;
   for (const key of Object.keys(override) as (keyof T)[]) {
     const val = override[key];
-    if (val === undefined) continue;
+    if (val === undefined) {
+      continue;
+    }
     const current = result[key];
     if (
       val !== null &&

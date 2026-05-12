@@ -11,9 +11,13 @@ function loadDotenv(): Record<string, string> {
     const vars: Record<string, string> = {};
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
       const eq = trimmed.indexOf("=");
-      if (eq > 0) vars[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+      if (eq > 0) {
+        vars[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+      }
     }
     return vars;
   } catch {

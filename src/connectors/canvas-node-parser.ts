@@ -247,7 +247,9 @@ function normalizeOptions(raw: unknown[]): FieldOption[] {
     .map((o) => {
       const opt = obj(o);
       const value = str(opt.value);
-      if (!value) return null;
+      if (!value) {
+        return null;
+      }
       return {
         value,
         label: str(opt.label) || value,
@@ -289,13 +291,19 @@ function resolveRenderAs(
   }
 
   // type=options_group is a container, not a widget
-  if (type === "options_group") return "text";
+  if (type === "options_group") {
+    return "text";
+  }
 
   // Heuristic: has options array → select
-  if (Array.isArray(raw.options) && raw.options.length > 0) return "select";
+  if (Array.isArray(raw.options) && raw.options.length > 0) {
+    return "select";
+  }
 
   // Heuristic: has pickerHint → select (will wire to DynamicPicker)
-  if (typeof raw.pickerHint === "string") return "select";
+  if (typeof raw.pickerHint === "string") {
+    return "select";
+  }
 
   // Heuristic: field name patterns
   const id = str(raw.id).toLowerCase();
@@ -306,20 +314,32 @@ function resolveRenderAs(
     id.includes("scheduled_at") ||
     id.endsWith("_time") ||
     id.endsWith("_at")
-  )
+  ) {
     return "datetime";
-  if (id.includes("json") || id.includes("payload") || id.includes("body_json")) return "json";
-  if (id.includes("enabled") || id.includes("active") || id === "dry_run") return "boolean";
-  if (id.includes("count") || id.includes("limit") || id.includes("amount") || id.includes("max_"))
+  }
+  if (id.includes("json") || id.includes("payload") || id.includes("body_json")) {
+    return "json";
+  }
+  if (id.includes("enabled") || id.includes("active") || id === "dry_run") {
+    return "boolean";
+  }
+  if (
+    id.includes("count") ||
+    id.includes("limit") ||
+    id.includes("amount") ||
+    id.includes("max_")
+  ) {
     return "number";
+  }
   if (
     id.includes("message") ||
     id.includes("body") ||
     id.includes("note") ||
     id.includes("description") ||
     id.includes("content")
-  )
+  ) {
     return "richtext";
+  }
 
   return "text";
 }
@@ -338,7 +358,9 @@ function resolveValueType(
     default:
       break;
   }
-  if (type === "datetime" || type === "date") return "datetime";
+  if (type === "datetime" || type === "date") {
+    return "datetime";
+  }
   return "string";
 }
 
@@ -360,10 +382,14 @@ function normalizeOperations(
     .map((cmd) => {
       const c = obj(cmd);
       const id = str(c.id);
-      if (!id) return null;
+      if (!id) {
+        return null;
+      }
 
       // Filter to worker-visible actions if the manifest specifies them
-      if (visibleSet.size > 0 && !visibleSet.has(id)) return null;
+      if (visibleSet.size > 0 && !visibleSet.has(id)) {
+        return null;
+      }
 
       const resource = str(c.resource) || inferResource(id);
       const actionClass = str(c.action_class) || inferActionClassFromId(id);
@@ -432,11 +458,17 @@ function resolveOperationType(
   }
 
   // Explicit action_class from manifest
-  if (actionClass === "read") return "read";
-  if (actionClass === "write" || actionClass === "destructive") return "write";
+  if (actionClass === "read") {
+    return "read";
+  }
+  if (actionClass === "write" || actionClass === "destructive") {
+    return "write";
+  }
 
   // Rule 1: required_mode != "readonly" → write candidate
-  if (requiredMode && requiredMode !== "readonly") return "write";
+  if (requiredMode && requiredMode !== "readonly") {
+    return "write";
+  }
 
   // Keyword inference (spec §3)
   const readKeywords = [
@@ -471,8 +503,12 @@ function resolveOperationType(
   const parts = lower.split(".");
   const action = parts[parts.length - 1];
 
-  if (readKeywords.some((k) => action.includes(k))) return "read";
-  if (writeKeywords.some((k) => action.includes(k))) return "write";
+  if (readKeywords.some((k) => action.includes(k))) {
+    return "read";
+  }
+  if (writeKeywords.some((k) => action.includes(k))) {
+    return "write";
+  }
 
   // Default to read (safe)
   return "read";
@@ -483,7 +519,9 @@ function resolveSideEffect(
   id: string,
   operationType: ConnectorOperationDefinition["operationType"],
 ): ConnectorOperationDefinition["sideEffectLevel"] {
-  if (operationType === "read" || operationType === "meta") return "none";
+  if (operationType === "read" || operationType === "meta") {
+    return "none";
+  }
 
   const lower = id.toLowerCase();
 
@@ -608,7 +646,9 @@ function normalizeEvents(rawEvents: unknown[]): ConnectorEventDefinition[] {
     .map((e) => {
       const ev = obj(e);
       const id = str(ev.id);
-      if (!id) return null;
+      if (!id) {
+        return null;
+      }
       return {
         id,
         resource: str(ev.resource) || inferResource(id),
@@ -711,7 +751,9 @@ function str(val: unknown): string {
 }
 
 function strArr(val: unknown): string[] {
-  if (!Array.isArray(val)) return [];
+  if (!Array.isArray(val)) {
+    return [];
+  }
   return val.filter((v): v is string => typeof v === "string").map((v) => v.trim());
 }
 
@@ -748,10 +790,14 @@ function inferActionClassFromId(commandId: string): string {
   ];
 
   for (const p of readPatterns) {
-    if (lower.includes(p)) return "read";
+    if (lower.includes(p)) {
+      return "read";
+    }
   }
   for (const p of writePatterns) {
-    if (lower.includes(p)) return "write";
+    if (lower.includes(p)) {
+      return "write";
+    }
   }
   return "";
 }

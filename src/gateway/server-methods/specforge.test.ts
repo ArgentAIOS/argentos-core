@@ -35,7 +35,9 @@ describe("specforge gateway handlers", () => {
   describe("specforge.suggest", () => {
     it("should return an error if field is missing", async () => {
       const handler = specforgeHandlers["specforge.suggest"];
-      if (!handler) throw new Error("Handler not found");
+      if (!handler) {
+        throw new Error("Handler not found");
+      }
 
       await handler({ params: {}, respond } as any);
 
@@ -48,7 +50,9 @@ describe("specforge gateway handlers", () => {
 
     it("should call completeSimple and return suggestion", async () => {
       const handler = specforgeHandlers["specforge.suggest"];
-      if (!handler) throw new Error("Handler not found");
+      if (!handler) {
+        throw new Error("Handler not found");
+      }
 
       const { routeModel } = await import("../../models/router.js");
       const { getModel, completeSimple } = await import("../../agent-core/ai.js");
@@ -81,7 +85,9 @@ describe("specforge gateway handlers", () => {
   describe("specforge.kickoff", () => {
     it("should return an error if title is missing", async () => {
       const handler = specforgeHandlers["specforge.kickoff"];
-      if (!handler) throw new Error("Handler not found");
+      if (!handler) {
+        throw new Error("Handler not found");
+      }
 
       await handler({ params: { data: {} }, respond } as any);
 
@@ -94,7 +100,9 @@ describe("specforge gateway handlers", () => {
 
     it("should trigger kickoff and return result", async () => {
       const handler = specforgeHandlers["specforge.kickoff"];
-      if (!handler) throw new Error("Handler not found");
+      if (!handler) {
+        throw new Error("Handler not found");
+      }
 
       await handler({
         params: { data: { title: "New Project", problem: "Issue" }, sessionKey: "test-session" },

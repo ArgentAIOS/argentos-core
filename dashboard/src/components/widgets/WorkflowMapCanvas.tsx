@@ -364,22 +364,42 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 /** Filter out non-operational agents (think tank, test, system internals) */
 function isOperationalAgent(a: { id: string; role?: string; name?: string }): boolean {
-  if (EXCLUDED_AGENT_IDS.has(a.id.toLowerCase())) return false;
-  if (a.id.startsWith("test-")) return false;
-  if (UUID_RE.test(a.id)) return false;
-  if (a.role === "think_tank_panelist") return false;
-  if (!a.role) return false;
+  if (EXCLUDED_AGENT_IDS.has(a.id.toLowerCase())) {
+    return false;
+  }
+  if (a.id.startsWith("test-")) {
+    return false;
+  }
+  if (UUID_RE.test(a.id)) {
+    return false;
+  }
+  if (a.role === "think_tank_panelist") {
+    return false;
+  }
+  if (!a.role) {
+    return false;
+  }
   return true;
 }
 
 /** Normalize team names — merge variants into clean clusters */
 function normalizeTeam(team: string): string {
   const t = team.toLowerCase().trim();
-  if (t === "unassigned" || t === "think-tank" || t === "") return "__skip__";
-  if (t.includes("support") || t === "msp team" || t === "msp-team") return "support";
-  if (t.includes("office")) return "office";
-  if (t === "dev-team" || t === "development") return "dev-team";
-  if (t === "marketing-team" || t === "marketing") return "marketing";
+  if (t === "unassigned" || t === "think-tank" || t === "") {
+    return "__skip__";
+  }
+  if (t.includes("support") || t === "msp team" || t === "msp-team") {
+    return "support";
+  }
+  if (t.includes("office")) {
+    return "office";
+  }
+  if (t === "dev-team" || t === "development") {
+    return "dev-team";
+  }
+  if (t === "marketing-team" || t === "marketing") {
+    return "marketing";
+  }
   return team;
 }
 
@@ -412,10 +432,14 @@ export function WorkflowMapCanvas({
 
   // Use initial data from props when available (avoids cross-origin fetch in Swift wrapper)
   useEffect(() => {
-    if (initialProviders && initialProviders.length > 0) setProviders(initialProviders);
+    if (initialProviders && initialProviders.length > 0) {
+      setProviders(initialProviders);
+    }
   }, [initialProviders]);
   useEffect(() => {
-    if (initialAgents && initialAgents.length > 0) setAgents(initialAgents);
+    if (initialAgents && initialAgents.length > 0) {
+      setAgents(initialAgents);
+    }
   }, [initialAgents]);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
 
@@ -424,8 +448,12 @@ export function WorkflowMapCanvas({
     (acc, a) => {
       const rawTeam = (a as AgentNode & { team?: string }).team || "unassigned";
       const team = normalizeTeam(rawTeam);
-      if (team === "__skip__") return acc;
-      if (!acc[team]) acc[team] = [];
+      if (team === "__skip__") {
+        return acc;
+      }
+      if (!acc[team]) {
+        acc[team] = [];
+      }
       acc[team].push(a);
       return acc;
     },
@@ -441,8 +469,12 @@ export function WorkflowMapCanvas({
 
   // Load providers via gateway WebSocket RPC (works in Swift wrapper — no cross-origin issues)
   useEffect(() => {
-    if (!gatewayRequest) return;
-    if (initialProviders && initialProviders.length > 0) return;
+    if (!gatewayRequest) {
+      return;
+    }
+    if (initialProviders && initialProviders.length > 0) {
+      return;
+    }
     const load = async () => {
       try {
         const snapshot = (await gatewayRequest("config.get", {})) as Record<string, unknown>;
@@ -471,14 +503,18 @@ export function WorkflowMapCanvas({
           for (const tier of Object.values(
             activeRouterProfile.tiers as Record<string, Record<string, unknown>>,
           )) {
-            if (tier?.provider) activeProviderIds.add(String(tier.provider).toLowerCase());
+            if (tier?.provider) {
+              activeProviderIds.add(String(tier.provider).toLowerCase());
+            }
           }
         }
         if (activeRouterProfile?.sessionOverrides) {
           for (const ov of Object.values(
             activeRouterProfile.sessionOverrides as Record<string, Record<string, unknown>>,
           )) {
-            if (ov?.provider) activeProviderIds.add(String(ov.provider).toLowerCase());
+            if (ov?.provider) {
+              activeProviderIds.add(String(ov.provider).toLowerCase());
+            }
           }
         }
 
@@ -492,7 +528,9 @@ export function WorkflowMapCanvas({
           const providerId = (
             typeof profile.provider === "string" ? profile.provider : profileKey.split(":")[0]
           ).toLowerCase();
-          if (TOOLING_ONLY.has(providerId)) continue;
+          if (TOOLING_ONLY.has(providerId)) {
+            continue;
+          }
           if (!providerMap.has(providerId)) {
             providerMap.set(providerId, {
               id: providerId,
@@ -522,8 +560,12 @@ export function WorkflowMapCanvas({
         if (provList.length > 0) {
           // Sort: active first, then alphabetical
           provList.sort((a, b) => {
-            if (a.status === "active" && b.status !== "active") return -1;
-            if (b.status === "active" && a.status !== "active") return 1;
+            if (a.status === "active" && b.status !== "active") {
+              return -1;
+            }
+            if (b.status === "active" && a.status !== "active") {
+              return 1;
+            }
             return a.name.localeCompare(b.name);
           });
           setProviders(
@@ -553,8 +595,12 @@ export function WorkflowMapCanvas({
 
   // Load family agents via gateway WebSocket RPC (family.members has roles + teams)
   useEffect(() => {
-    if (!gatewayRequest) return;
-    if (initialAgents && initialAgents.length > 0) return;
+    if (!gatewayRequest) {
+      return;
+    }
+    if (initialAgents && initialAgents.length > 0) {
+      return;
+    }
     const agentColors = [
       "#00FFD1",
       "#76ff03",
@@ -622,9 +668,13 @@ export function WorkflowMapCanvas({
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -645,7 +695,9 @@ export function WorkflowMapCanvas({
     ctx.fillRect(0, 0, w, h);
 
     // Stars
-    if (starsRef.current.length === 0) starsRef.current = makeStars(150, w, h);
+    if (starsRef.current.length === 0) {
+      starsRef.current = makeStars(150, w, h);
+    }
     for (const s of starsRef.current) {
       const a = s.brightness * (Math.sin(now * s.speed + s.offset) * 0.3 + 0.7);
       ctx.fillStyle = `rgba(255,255,255,${a})`;
@@ -1043,7 +1095,9 @@ export function WorkflowMapCanvas({
   // Animation loop
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     const resize = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
       if (rect) {
@@ -1058,10 +1112,14 @@ export function WorkflowMapCanvas({
     };
     resize();
     const ro = new ResizeObserver(resize);
-    if (canvas.parentElement) ro.observe(canvas.parentElement);
+    if (canvas.parentElement) {
+      ro.observe(canvas.parentElement);
+    }
     let running = true;
     const loop = () => {
-      if (!running) return;
+      if (!running) {
+        return;
+      }
       timeRef.current = performance.now();
       draw();
       animRef.current = requestAnimationFrame(loop);

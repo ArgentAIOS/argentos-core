@@ -183,7 +183,9 @@ export class StreamAdapter implements AssistantMessageEventStream {
   }
 
   async result(): Promise<AssistantMessage> {
-    if (this.finalMessage) return this.finalMessage;
+    if (this.finalMessage) {
+      return this.finalMessage;
+    }
 
     // If result() is called before iteration, consume the stream
     for await (const _ of this) {
@@ -538,13 +540,17 @@ export class ProviderRegistry {
     const override = this.modelOverrides.get(modelId);
     if (override) {
       const provider = this.providers.get(override)?.provider;
-      if (provider) return provider;
+      if (provider) {
+        return provider;
+      }
     }
 
     // Use provider hint
     if (providerHint) {
       const provider = this.providers.get(providerHint)?.provider;
-      if (provider) return provider;
+      if (provider) {
+        return provider;
+      }
     }
 
     return undefined;

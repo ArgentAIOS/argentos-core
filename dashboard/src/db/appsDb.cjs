@@ -91,7 +91,9 @@ initSchema();
 // ============================================================================
 
 function rowToApp(row, includeCode = false) {
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   const app = {
     id: row.id,
@@ -173,7 +175,9 @@ function createApp({ name, description, icon, code, creator = "ai", metadata }) 
 // Update an app
 function updateApp(id, updates) {
   const existing = getApp(id);
-  if (!existing) return null;
+  if (!existing) {
+    return null;
+  }
 
   const now = Date.now();
   const sets = ["updated_at = ?"];
@@ -236,7 +240,9 @@ function recordOpen(id) {
 // Toggle pin status
 function pinApp(id) {
   const app = getApp(id);
-  if (!app) return null;
+  if (!app) {
+    return null;
+  }
 
   const newPinned = app.pinned ? 0 : 1;
   const now = Date.now();

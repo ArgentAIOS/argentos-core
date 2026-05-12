@@ -19,9 +19,15 @@ let _adapter: StorageAdapter | null = null;
 let _pgMemory: MemoryAdapter | null = null;
 
 function shouldFailClosedStorage(config: StorageConfig): boolean {
-  if (process.env.ARGENT_STORAGE_FAIL_OPEN === "1") return false;
-  if (process.env.ARGENT_STORAGE_FAIL_CLOSED === "1") return true;
-  if (config.backend === "postgres") return true;
+  if (process.env.ARGENT_STORAGE_FAIL_OPEN === "1") {
+    return false;
+  }
+  if (process.env.ARGENT_STORAGE_FAIL_CLOSED === "1") {
+    return true;
+  }
+  if (config.backend === "postgres") {
+    return true;
+  }
   return config.backend === "dual" && config.readFrom === "postgres";
 }
 
@@ -45,7 +51,9 @@ async function loadPgAdapterModule(): Promise<PgAdapterModule> {
 export async function getStorageAdapter(
   overrideConfig?: Partial<StorageConfig>,
 ): Promise<StorageAdapter> {
-  if (_adapter?.isReady()) return _adapter;
+  if (_adapter?.isReady()) {
+    return _adapter;
+  }
 
   const config = resolveStorageConfig(overrideConfig ?? loadStorageConfigFromFile());
 

@@ -1073,7 +1073,9 @@ async function main() {
     console.log(`  Created: ${created} | Skipped (dedup): ${skipped}`);
   }
 
-  if (pgSql) await pgSql.end();
+  if (pgSql) {
+    await pgSql.end();
+  }
   console.log(`\nDone. Three-layer architecture populated.`);
 }
 

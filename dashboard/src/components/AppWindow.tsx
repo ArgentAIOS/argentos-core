@@ -38,7 +38,9 @@ export function AppWindow({
   // Drag handlers
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
-      if ((e.target as HTMLElement).closest("button")) return;
+      if ((e.target as HTMLElement).closest("button")) {
+        return;
+      }
       e.preventDefault();
       setIsDragging(true);
       dragOffset.current = {
@@ -53,7 +55,9 @@ export function AppWindow({
 
   const handleDragMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isDragging) return;
+      if (!isDragging) {
+        return;
+      }
       const newX = e.clientX - dragOffset.current.x;
       const newY = Math.max(0, e.clientY - dragOffset.current.y);
       onMove(windowState.appId, newX, newY);
@@ -85,7 +89,9 @@ export function AppWindow({
 
   const handleResizeMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isResizing) return;
+      if (!isResizing) {
+        return;
+      }
       const dx = e.clientX - resizeStart.current.x;
       const dy = e.clientY - resizeStart.current.y;
       const newWidth = Math.max(MIN_WIDTH, resizeStart.current.width + dx);
@@ -110,7 +116,9 @@ export function AppWindow({
         zIndex: windowState.zIndex,
       };
 
-  if (windowState.minimized) return null;
+  if (windowState.minimized) {
+    return null;
+  }
 
   return (
     <AnimatePresence>

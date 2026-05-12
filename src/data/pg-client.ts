@@ -18,7 +18,9 @@ let _sql: ReturnType<typeof postgres> | null = null;
  * postgres.js handles connection pooling internally with lazy connections.
  */
 export function getPgClient(config: PostgresConfig): ReturnType<typeof postgres> {
-  if (_sql) return _sql;
+  if (_sql) {
+    return _sql;
+  }
 
   // ArgentOS uses port 5433 (not default 5432) to avoid conflicts
   _sql = postgres(config.connectionString, {

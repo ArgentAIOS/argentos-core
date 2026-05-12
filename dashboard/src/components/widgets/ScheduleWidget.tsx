@@ -52,8 +52,12 @@ interface CronJob {
 const SYSTEM_PAYLOAD_KINDS = new Set(["nudge", "vipEmailScan", "slackSignalScan", "systemEvent"]);
 
 function isSystemJob(job: CronJob): boolean {
-  if (SYSTEM_PAYLOAD_KINDS.has(job.payload.kind)) return true;
-  if (!job.agentId) return true;
+  if (SYSTEM_PAYLOAD_KINDS.has(job.payload.kind)) {
+    return true;
+  }
+  if (!job.agentId) {
+    return true;
+  }
   return false;
 }
 
@@ -90,9 +94,13 @@ function agentColor(id: string): string {
 function formatSchedule(schedule: CronSchedule): string {
   if (schedule.kind === "every" && schedule.everyMs) {
     const mins = schedule.everyMs / 60000;
-    if (mins < 60) return `Every ${mins}m`;
+    if (mins < 60) {
+      return `Every ${mins}m`;
+    }
     const hrs = mins / 60;
-    if (hrs < 24) return hrs === Math.floor(hrs) ? `Every ${hrs}h` : `Every ${hrs.toFixed(1)}h`;
+    if (hrs < 24) {
+      return hrs === Math.floor(hrs) ? `Every ${hrs}h` : `Every ${hrs.toFixed(1)}h`;
+    }
     const days = hrs / 24;
     return days === Math.floor(days) ? `Every ${days}d` : `Every ${days.toFixed(1)}d`;
   }
@@ -108,7 +116,9 @@ function formatSchedule(schedule: CronSchedule): string {
 /** Best-effort human-readable cron. Falls back to raw expression. */
 function humanizeCron(expr: string): string {
   const parts = expr.trim().split(/\s+/);
-  if (parts.length < 5) return expr;
+  if (parts.length < 5) {
+    return expr;
+  }
   const [min, hour, dom, mon, dow] = parts;
 
   // Daily at HH:MM
@@ -138,19 +148,35 @@ function humanizeCron(expr: string): string {
 
 function timeAgo(ms: number): string {
   const delta = Date.now() - ms;
-  if (delta < 0) return "just now";
-  if (delta < 60000) return "just now";
-  if (delta < 3600000) return `${Math.floor(delta / 60000)}m ago`;
-  if (delta < 86400000) return `${Math.floor(delta / 3600000)}h ago`;
+  if (delta < 0) {
+    return "just now";
+  }
+  if (delta < 60000) {
+    return "just now";
+  }
+  if (delta < 3600000) {
+    return `${Math.floor(delta / 60000)}m ago`;
+  }
+  if (delta < 86400000) {
+    return `${Math.floor(delta / 3600000)}h ago`;
+  }
   return `${Math.floor(delta / 86400000)}d ago`;
 }
 
 function timeUntil(ms: number): string {
   const delta = ms - Date.now();
-  if (delta < 0) return "overdue";
-  if (delta < 60000) return "< 1m";
-  if (delta < 3600000) return `in ${Math.floor(delta / 60000)}m`;
-  if (delta < 86400000) return `in ${Math.floor(delta / 3600000)}h`;
+  if (delta < 0) {
+    return "overdue";
+  }
+  if (delta < 60000) {
+    return "< 1m";
+  }
+  if (delta < 3600000) {
+    return `in ${Math.floor(delta / 60000)}m`;
+  }
+  if (delta < 86400000) {
+    return `in ${Math.floor(delta / 3600000)}h`;
+  }
   return `in ${Math.floor(delta / 86400000)}d`;
 }
 
@@ -345,7 +371,9 @@ export function ScheduleWidget() {
   }, [request]);
 
   const fetchData = useCallback(async () => {
-    if (!connected) return;
+    if (!connected) {
+      return;
+    }
     try {
       const [cronRes, members] = await Promise.all([
         request<{ jobs: CronJob[] }>("cron.list"),
@@ -355,14 +383,18 @@ export function ScheduleWidget() {
       const allJobs: CronJob[] = cronRes?.jobs ?? [];
       // Sort: enabled first, then by name
       allJobs.sort((a, b) => {
-        if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+        if (a.enabled !== b.enabled) {
+          return a.enabled ? -1 : 1;
+        }
         return a.name.localeCompare(b.name);
       });
 
       setJobs(allJobs);
 
       const map = new Map<string, FamilyMember>();
-      for (const m of members) map.set(m.id, m);
+      for (const m of members) {
+        map.set(m.id, m);
+      }
       setMemberMap(map);
 
       setError(null);
@@ -375,7 +407,9 @@ export function ScheduleWidget() {
 
   const handleRunNow = useCallback(
     async (jobId: string) => {
-      if (!connected) return;
+      if (!connected) {
+        return;
+      }
       setRunningTrigger(jobId);
       try {
         await request("cron.run", { jobId, mode: "force" });
@@ -409,7 +443,9 @@ export function ScheduleWidget() {
     cronIntervalRef.current = setInterval(fetchData, 10_000);
 
     return () => {
-      if (cronIntervalRef.current) clearInterval(cronIntervalRef.current);
+      if (cronIntervalRef.current) {
+        clearInterval(cronIntervalRef.current);
+      }
     };
   }, [connected, fetchData]);
 
@@ -421,7 +457,9 @@ export function ScheduleWidget() {
   // ── Resolve agent name ────────────────────────────────────────
 
   function resolveAgentName(job: CronJob): string | null {
-    if (!job.agentId) return null;
+    if (!job.agentId) {
+      return null;
+    }
     const member = memberMap.get(job.agentId);
     return member?.name ?? job.agentId;
   }

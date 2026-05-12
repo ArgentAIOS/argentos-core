@@ -54,7 +54,9 @@ export function shouldRunDiscoveryPhase(params: { config?: ArgentConfig; episode
 type DiscoveryTopic = { summary: string; ts: number };
 
 function toTimestamp(value: string | null | undefined): number {
-  if (!value) return 0;
+  if (!value) {
+    return 0;
+  }
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -73,11 +75,17 @@ function pickDiscoveryTopics(params: {
 
   for (const item of params.items) {
     const summary = typeof item.summary === "string" ? item.summary.trim() : "";
-    if (summary.length < 12) continue;
+    if (summary.length < 12) {
+      continue;
+    }
     const ts = Math.max(toTimestamp(item.happenedAt), toTimestamp(item.createdAt));
-    if (ts < cutoff) continue;
+    if (ts < cutoff) {
+      continue;
+    }
     const key = summary.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     topics.push({ summary, ts });
   }
@@ -202,7 +210,9 @@ export async function runDiscoveryPhase(params: {
       const discoverySummary = `Vault discovery: ${topic.summary} -> ${hit.summary}`;
       // Prevent duplicate discovery spam on repeated cycles.
       const duplicate = await hasDiscoveryDuplicate(params.memory, discoverySummary);
-      if (duplicate) continue;
+      if (duplicate) {
+        continue;
+      }
 
       try {
         await params.memory.createItem({

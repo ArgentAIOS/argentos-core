@@ -251,7 +251,9 @@ export function resolveApproval(
 ): boolean {
   const key = `${runId}:${nodeId}`;
   const entry = pendingApprovals.get(key);
-  if (!entry) return false;
+  if (!entry) {
+    return false;
+  }
   entry.resolve(approved, reason);
   pendingApprovals.delete(key);
   return true;
@@ -528,7 +530,9 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
 
         // Block execution until resolved
         const decision = await waitForApprovalDecision(approvalEntry.promise, params);
-        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
         if (decision.cancelled) {
           pendingApprovals.delete(`${runId}:${node.id}`);
         }
@@ -1104,9 +1108,13 @@ async function executeAgentNode(
     const nodeMap = new Map(workflow.nodes.map((n) => [n.id, n]));
 
     for (const edge of workflow.edges) {
-      if (edge.target !== node.id) continue;
+      if (edge.target !== node.id) {
+        continue;
+      }
       const sourceNode = nodeMap.get(edge.source);
-      if (!sourceNode) continue;
+      if (!sourceNode) {
+        continue;
+      }
 
       // Model sub-port
       if (edge.targetHandle === "model" && sourceNode.kind === "gate") {
@@ -2083,7 +2091,9 @@ async function executeAction(
           n: 1,
           response_format: "url",
         };
-        if (size) body.size = size;
+        if (size) {
+          body.size = size;
+        }
         const res = await fetch("https://api.openai.com/v1/images/generations", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -2760,7 +2770,9 @@ async function executeGate(
           maxReached,
           conditionMet,
         });
-        if (context.variables) context.variables[loopKey] = 0;
+        if (context.variables) {
+          context.variables[loopKey] = 0;
+        }
         return {
           items: [
             {
@@ -2783,7 +2795,9 @@ async function executeGate(
         iteration: currentIteration + 1,
         maxIterations,
       });
-      if (context.variables) context.variables[loopKey] = currentIteration + 1;
+      if (context.variables) {
+        context.variables[loopKey] = currentIteration + 1;
+      }
       return {
         items: [
           {
@@ -3177,7 +3191,9 @@ export function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): W
   // Start with nodes that have no incoming edges
   const queue: string[] = [];
   for (const [id, degree] of inDegree) {
-    if (degree === 0) queue.push(id);
+    if (degree === 0) {
+      queue.push(id);
+    }
   }
 
   const sorted: WorkflowNode[] = [];
@@ -3185,7 +3201,9 @@ export function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): W
   while (queue.length > 0) {
     const id = queue.shift()!;
     const node = nodeMap.get(id);
-    if (!node) continue;
+    if (!node) {
+      continue;
+    }
 
     sorted.push(node);
 
@@ -3332,7 +3350,9 @@ async function retryStep(
 function resolveModelFromTier(
   tierHint?: ModelTier | string,
 ): { provider: string; model: string } | undefined {
-  if (!tierHint) return undefined;
+  if (!tierHint) {
+    return undefined;
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { routeModel } = require("../models/router.js") as {
@@ -3630,11 +3650,15 @@ function findJoinForParallel(
 
   while (queue.length > 0) {
     const id = queue.shift()!;
-    if (visited.has(id)) continue;
+    if (visited.has(id)) {
+      continue;
+    }
     visited.add(id);
 
     const node = nodeMap.get(id);
-    if (!node) continue;
+    if (!node) {
+      continue;
+    }
 
     if (node.kind === "gate" && node.config.gateType === "join") {
       return node;
@@ -3664,10 +3688,14 @@ function getNodesInBranch(
   const visited = new Set<string>();
 
   const dfs = (id: string) => {
-    if (visited.has(id) || id === joinNodeId) return;
+    if (visited.has(id) || id === joinNodeId) {
+      return;
+    }
     visited.add(id);
     const node = nodeMap.get(id);
-    if (!node) return;
+    if (!node) {
+      return;
+    }
     result.push(node);
 
     for (const edge of workflow.edges) {
@@ -3694,7 +3722,9 @@ function collectReachableNodes(
 ): void {
   const visited = new Set<string>();
   const dfs = (id: string) => {
-    if (visited.has(id) || id === originGateId) return;
+    if (visited.has(id) || id === originGateId) {
+      return;
+    }
     visited.add(id);
     skipSet.add(id);
     for (const edge of workflow.edges) {
@@ -3717,10 +3747,14 @@ function buildParallelSkipSets(
   joinIds: Set<string>,
 ): void {
   for (const node of workflow.nodes) {
-    if (node.kind !== "gate" || node.config.gateType !== "parallel") continue;
+    if (node.kind !== "gate" || node.config.gateType !== "parallel") {
+      continue;
+    }
 
     const joinNode = findJoinForParallel(node.id, workflow);
-    if (!joinNode) continue;
+    if (!joinNode) {
+      continue;
+    }
 
     joinIds.add(joinNode.id);
 
@@ -3810,7 +3844,9 @@ async function executeBranch(
 
     items.push(...stepResult.items);
 
-    if (failed) break;
+    if (failed) {
+      break;
+    }
   }
 
   return { items, failed };
@@ -3997,8 +4033,12 @@ function structuredMerge(
   for (const branch of branchOutputs) {
     for (const item of branch.items) {
       Object.assign(mergedJson, item.json);
-      if (item.text) texts.push(item.text);
-      if (item.artifacts) allArtifacts.push(...item.artifacts);
+      if (item.text) {
+        texts.push(item.text);
+      }
+      if (item.artifacts) {
+        allArtifacts.push(...item.artifacts);
+      }
     }
   }
 
@@ -4154,9 +4194,13 @@ function getNodeLabel(node: WorkflowNode): string {
  * Get the last step's output as a flat JSON object for condition evaluation.
  */
 function getLastOutput(context: PipelineContext): Record<string, unknown> {
-  if (context.history.length === 0) return {};
+  if (context.history.length === 0) {
+    return {};
+  }
   const lastStep = context.history[context.history.length - 1];
-  if (lastStep.output.items.length === 0) return {};
+  if (lastStep.output.items.length === 0) {
+    return {};
+  }
   const item = lastStep.output.items[0];
   return {
     ...item.json,
@@ -4175,7 +4219,9 @@ function resolveFieldPath(data: Record<string, unknown>, path: string): unknown 
   const parts = path.split(".");
   let current: unknown = data;
   for (const part of parts) {
-    if (current == null || typeof current !== "object") return undefined;
+    if (current == null || typeof current !== "object") {
+      return undefined;
+    }
     current = (current as Record<string, unknown>)[part];
   }
   return current;
@@ -4205,8 +4251,12 @@ function resolveTemplate(template: string, context: PipelineContext): string {
       if (step && step.output.items.length > 0) {
         const hasOutputPrefix = parts[2] === "output";
         const field = parts.slice(hasOutputPrefix ? 3 : 2).join(".");
-        if (field === "text") return step.output.items[0].text ?? "";
-        if (field === "json") return JSON.stringify(step.output.items[0].json ?? {});
+        if (field === "text") {
+          return step.output.items[0].text ?? "";
+        }
+        if (field === "json") {
+          return JSON.stringify(step.output.items[0].json ?? {});
+        }
         // Allow steps.X.output.json.field — strip leading "json." prefix
         const jsonField = field.startsWith("json.") ? field.slice(5) : field;
         const val = resolveFieldPath(step.output.items[0].json, jsonField);
@@ -4238,7 +4288,9 @@ function resolveTemplate(template: string, context: PipelineContext): string {
 
     // Fallback: check bare variables (backward compat with Sprint 2 usage)
     const fromVars = resolveFieldPath(context.variables as Record<string, unknown>, path);
-    if (fromVars !== undefined) return stringifyWorkflowValue(fromVars);
+    if (fromVars !== undefined) {
+      return stringifyWorkflowValue(fromVars);
+    }
 
     return "";
   });
@@ -4249,8 +4301,12 @@ function getErrorConfig(
   workflow: WorkflowDefinition,
 ): { strategy: string; maxRetries?: number; retryBackoffMs?: number; retryJitterPct?: number } {
   // Check node-level error config
-  if (node.kind === "agent" && node.config.onError) return node.config.onError;
-  if (node.kind === "action" && node.config.onError) return node.config.onError;
+  if (node.kind === "agent" && node.config.onError) {
+    return node.config.onError;
+  }
+  if (node.kind === "action" && node.config.onError) {
+    return node.config.onError;
+  }
   // Fall back to workflow default
   return workflow.defaultOnError;
 }

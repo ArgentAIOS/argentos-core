@@ -21,10 +21,16 @@ describe("heygen_video", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.HEYGEN_API_KEY;
-    else process.env.HEYGEN_API_KEY = originalKey;
-    if (originalDefaultAvatar === undefined) delete process.env.HEYGEN_DEFAULT_AVATAR_ID;
-    else process.env.HEYGEN_DEFAULT_AVATAR_ID = originalDefaultAvatar;
+    if (originalKey === undefined) {
+      delete process.env.HEYGEN_API_KEY;
+    } else {
+      process.env.HEYGEN_API_KEY = originalKey;
+    }
+    if (originalDefaultAvatar === undefined) {
+      delete process.env.HEYGEN_DEFAULT_AVATAR_ID;
+    } else {
+      process.env.HEYGEN_DEFAULT_AVATAR_ID = originalDefaultAvatar;
+    }
     vi.restoreAllMocks();
   });
 

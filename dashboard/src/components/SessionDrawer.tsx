@@ -41,30 +41,50 @@ interface SessionDrawerProps {
 }
 
 function formatTimeAgo(timestamp?: number): string {
-  if (!timestamp) return "";
+  if (!timestamp) {
+    return "";
+  }
   const now = Date.now();
   const diff = now - timestamp;
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) {
+    return `${days}d ago`;
+  }
   return new Date(timestamp).toLocaleDateString();
 }
 
 function getSessionTitle(session: SessionEntry): string {
-  if (session.label) return session.label;
-  if (session.displayName) return session.displayName;
-  if (session.subject) return session.subject;
+  if (session.label) {
+    return session.label;
+  }
+  if (session.displayName) {
+    return session.displayName;
+  }
+  if (session.subject) {
+    return session.subject;
+  }
   if (session.lastMessage) {
     const text = session.lastMessage.replace(/\[.*?\]/g, "").trim();
-    if (text.length > 50) return text.substring(0, 47) + "...";
+    if (text.length > 50) {
+      return text.substring(0, 47) + "...";
+    }
     return text || "Untitled chat";
   }
   const parts = session.key.split(":");
-  if (parts.length > 1) return parts.slice(1).join(":");
+  if (parts.length > 1) {
+    return parts.slice(1).join(":");
+  }
   return "Untitled chat";
 }
 
@@ -97,7 +117,9 @@ export function SessionDrawer({
 
   // Debounced transcript search
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
 
     if (!search.trim() || search.trim().length < 2 || !onSearchTranscripts) {
       setTranscriptHits([]);
@@ -118,7 +140,9 @@ export function SessionDrawer({
     }, 400);
 
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
     };
   }, [search, onSearchTranscripts]);
 
@@ -172,7 +196,9 @@ export function SessionDrawer({
     groupedHits.set(hit.sessionKey, group);
   }
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <>
@@ -390,13 +416,17 @@ export function SessionDrawer({
 
 /** Highlight the search query within a snippet */
 function HighlightSnippet({ text, query }: { text: string; query: string }) {
-  if (!query.trim()) return <>{text}</>;
+  if (!query.trim()) {
+    return <>{text}</>;
+  }
 
   const lowerText = text.toLowerCase();
   const lowerQuery = query.toLowerCase();
   const idx = lowerText.indexOf(lowerQuery);
 
-  if (idx === -1) return <>{text}</>;
+  if (idx === -1) {
+    return <>{text}</>;
+  }
 
   return (
     <>

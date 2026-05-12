@@ -48,10 +48,14 @@ export function useIdleNudge({
       clearTimeout(timerRef.current);
     }
 
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
 
     timerRef.current = setTimeout(() => {
-      if (!enabledRef.current) return;
+      if (!enabledRef.current) {
+        return;
+      }
 
       const now = Date.now();
       const timeSinceLastNudge = now - lastNudgeRef.current;
@@ -76,10 +80,14 @@ export function useIdleNudge({
   const fireNudge = useCallback(() => {
     // Always check latest enabled state — user may have toggled off
     // after the timer was scheduled
-    if (!enabledRef.current) return;
+    if (!enabledRef.current) {
+      return;
+    }
 
     const activity = pickNudgeActivity(recentActivitiesRef.current, nudgesRef.current);
-    if (!activity) return;
+    if (!activity) {
+      return;
+    }
 
     lastNudgeRef.current = Date.now();
     recentActivitiesRef.current.set(activity.id, Date.now());
@@ -97,7 +105,9 @@ export function useIdleNudge({
 
   useEffect(() => {
     if (!enabled) {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
       return;
     }
 
@@ -112,7 +122,9 @@ export function useIdleNudge({
 
     return () => {
       events.forEach((event) => window.removeEventListener(event, handleActivity));
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
     };
   }, [enabled, resetTimer]);
 }

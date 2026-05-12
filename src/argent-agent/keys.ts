@@ -126,7 +126,9 @@ export class KeyManager {
     // If variable specified, try that first
     if (mapping.variable) {
       const key = await this.getKey(mapping.variable);
-      if (key) return key;
+      if (key) {
+        return key;
+      }
     }
 
     // Otherwise get first key for service

@@ -69,7 +69,9 @@ describe("vision fallback", () => {
     });
 
     const first = result[0];
-    if (!first) throw new Error("missing result");
+    if (!first) {
+      throw new Error("missing result");
+    }
     expect(messagesHaveInlineImages(result as unknown[])).toBe(false);
     expect(first.content.some((b) => b.type === "image")).toBe(false);
     expect(first.content.some((b) => (b.text ?? "").includes("vision not available"))).toBe(true);
@@ -98,7 +100,9 @@ describe("vision fallback", () => {
 
     expect(minimaxUnderstandImage).toHaveBeenCalledTimes(1);
     const first = result[0];
-    if (!first) throw new Error("missing result");
+    if (!first) {
+      throw new Error("missing result");
+    }
     const texts = first.content.filter((b) => b.type === "text").map((b) => b.text ?? "");
     expect(texts.some((text) => text.includes("[Image:"))).toBe(true);
     expect(texts.some((text) => text.includes("skipped to keep response fast"))).toBe(true);

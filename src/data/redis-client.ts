@@ -18,7 +18,9 @@ let _redis: Redis | null = null;
  * ioredis handles reconnection automatically.
  */
 export function getRedisClient(config: RedisConfig): Redis {
-  if (_redis) return _redis;
+  if (_redis) {
+    return _redis;
+  }
 
   // ArgentOS uses port 6380 (not default 6379) to avoid conflicts
   _redis = new Redis({
@@ -87,7 +89,9 @@ export async function setAgentState(
   const key = `${AGENT_STATE_PREFIX}${agentId}`;
   const flat: Record<string, string> = {};
   for (const [k, v] of Object.entries(state)) {
-    if (v !== undefined && v !== null) flat[k] = String(v);
+    if (v !== undefined && v !== null) {
+      flat[k] = String(v);
+    }
   }
   if (Object.keys(flat).length > 0) {
     await redis.hmset(key, flat);
@@ -98,7 +102,9 @@ export async function setAgentState(
 export async function getAgentState(redis: Redis, agentId: string): Promise<AgentState | null> {
   const key = `${AGENT_STATE_PREFIX}${agentId}`;
   const data = await redis.hgetall(key);
-  if (!data || Object.keys(data).length === 0) return null;
+  if (!data || Object.keys(data).length === 0) {
+    return null;
+  }
   return {
     status: (data.status as AgentState["status"]) ?? "offline",
     lastActivity: data.lastActivity ?? "",
@@ -187,7 +193,9 @@ export async function readFamilyMessages(
     ">",
   );
 
-  if (!results) return [];
+  if (!results) {
+    return [];
+  }
 
   const messages: Array<{ id: string; message: StreamMessage }> = [];
   for (const [, entries] of results) {
@@ -217,7 +225,9 @@ export async function ackFamilyMessages(
   agentId: string,
   messageIds: string[],
 ): Promise<number> {
-  if (messageIds.length === 0) return 0;
+  if (messageIds.length === 0) {
+    return 0;
+  }
   const groupName = `agent:${agentId}`;
   return redis.xack(FAMILY_STREAM, groupName, ...messageIds);
 }

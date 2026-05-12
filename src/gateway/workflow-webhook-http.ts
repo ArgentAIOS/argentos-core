@@ -49,11 +49,15 @@ function verifyHmacSignature(
   secret: string,
   signatureHeader: string | undefined,
 ): boolean {
-  if (!signatureHeader) return false;
+  if (!signatureHeader) {
+    return false;
+  }
   // Support both "sha256=<hex>" and raw hex formats
   const raw = signatureHeader.startsWith("sha256=") ? signatureHeader.slice(7) : signatureHeader;
   const expected = createHmac("sha256", secret).update(body).digest("hex");
-  if (raw.length !== expected.length) return false;
+  if (raw.length !== expected.length) {
+    return false;
+  }
   return timingSafeEqual(Buffer.from(raw, "hex"), Buffer.from(expected, "hex"));
 }
 
@@ -61,12 +65,16 @@ function extractPayloadFilter(
   payload: Record<string, unknown>,
   jsonPath: string | undefined,
 ): Record<string, unknown> {
-  if (!jsonPath) return payload;
+  if (!jsonPath) {
+    return payload;
+  }
   // Simple dot-path extraction (e.g. "data.attributes")
   const parts = jsonPath.replace(/^\$\.?/, "").split(".");
   let current: unknown = payload;
   for (const part of parts) {
-    if (!part) continue;
+    if (!part) {
+      continue;
+    }
     if (current && typeof current === "object" && !Array.isArray(current)) {
       current = (current as Record<string, unknown>)[part];
     } else {
@@ -93,7 +101,9 @@ export function createWorkflowWebhookHandler(
 ): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
   return async (req, res) => {
     const url = req.url ?? "";
-    if (!url.startsWith(WF_HOOK_PREFIX)) return false;
+    if (!url.startsWith(WF_HOOK_PREFIX)) {
+      return false;
+    }
 
     // Extract workflow ID from path
     const afterPrefix = url.slice(WF_HOOK_PREFIX.length).split("?")[0];

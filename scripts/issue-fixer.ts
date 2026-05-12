@@ -54,7 +54,9 @@ function log(msg: string) {
 }
 
 function debug(msg: string) {
-  if (VERBOSE) log(`[debug] ${msg}`);
+  if (VERBOSE) {
+    log(`[debug] ${msg}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +244,9 @@ async function main() {
   try {
     await mainInner();
   } finally {
-    if (!DRY_RUN) releaseLock();
+    if (!DRY_RUN) {
+      releaseLock();
+    }
   }
 }
 

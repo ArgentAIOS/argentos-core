@@ -63,13 +63,17 @@ const PARAM_MAX_TOTAL_LEN = 600;
  * Redacts likely secrets and truncates long values.
  */
 function summarizeToolParams(toolName: string, params: unknown): string {
-  if (!params || typeof params !== "object") return "";
+  if (!params || typeof params !== "object") {
+    return "";
+  }
   try {
     const obj = params as Record<string, unknown>;
     const parts: string[] = [];
     let totalLen = 0;
     for (const [key, value] of Object.entries(obj)) {
-      if (value === undefined || value === null) continue;
+      if (value === undefined || value === null) {
+        continue;
+      }
       let display: string;
       if (REDACT_KEYS.has(key.toLowerCase())) {
         display = "***";

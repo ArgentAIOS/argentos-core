@@ -50,7 +50,9 @@ export function createMemoryGraphTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Graph",
@@ -88,7 +90,9 @@ export function createMemoryGraphTool(options: {
         // Sort by significance DESC, then created_at DESC
         directItems.sort((a, b) => {
           const sigDiff = (SIG_ORDER[b.significance] ?? 1) - (SIG_ORDER[a.significance] ?? 1);
-          if (sigDiff !== 0) return sigDiff;
+          if (sigDiff !== 0) {
+            return sigDiff;
+          }
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
@@ -102,7 +106,9 @@ export function createMemoryGraphTool(options: {
         for (const item of directItems) {
           const linkedEntities = await memory.getItemEntities(item.id);
           for (const e of linkedEntities) {
-            if (e.id === rootEntity.id) continue;
+            if (e.id === rootEntity.id) {
+              continue;
+            }
             const existing = connectedEntities.get(e.id);
             if (existing) {
               existing.sharedCount++;
@@ -152,7 +158,9 @@ export function createMemoryGraphTool(options: {
           const toExplore = connectedSorted.slice(0, 5);
           for (const connected of toExplore) {
             const connEntity = await memory.findEntityByName(connected.name);
-            if (!connEntity) continue;
+            if (!connEntity) {
+              continue;
+            }
 
             const connItems = await memory.getEntityItems(connEntity.id, Math.min(limit, 10));
             // Filter out items we already have
@@ -164,7 +172,9 @@ export function createMemoryGraphTool(options: {
             if (newItems.length > 0) {
               newItems.sort((a, b) => {
                 const sigDiff = (SIG_ORDER[b.significance] ?? 1) - (SIG_ORDER[a.significance] ?? 1);
-                if (sigDiff !== 0) return sigDiff;
+                if (sigDiff !== 0) {
+                  return sigDiff;
+                }
                 return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
               });
 
@@ -188,10 +198,15 @@ export function createMemoryGraphTool(options: {
 
         if (rootEntity.entityType || rootEntity.relationship) {
           const parts: string[] = [];
-          if (rootEntity.entityType) parts.push(`Type: ${rootEntity.entityType}`);
-          if (rootEntity.relationship) parts.push(`Relationship: ${rootEntity.relationship}`);
-          if (rootEntity.bondStrength > 0)
+          if (rootEntity.entityType) {
+            parts.push(`Type: ${rootEntity.entityType}`);
+          }
+          if (rootEntity.relationship) {
+            parts.push(`Relationship: ${rootEntity.relationship}`);
+          }
+          if (rootEntity.bondStrength > 0) {
             parts.push(`Bond: ${(rootEntity.bondStrength * 100).toFixed(0)}%`);
+          }
           text += `${parts.join(" | ")}\n\n`;
         }
 

@@ -71,7 +71,9 @@ export class Session {
    */
   async compact(config: CompactionConfig): Promise<boolean> {
     const result = await compactMessages(this.activeMessages, config);
-    if (!result.compacted) return false;
+    if (!result.compacted) {
+      return false;
+    }
 
     // Store a compaction entry with the summary
     const entry: SessionEntry = {

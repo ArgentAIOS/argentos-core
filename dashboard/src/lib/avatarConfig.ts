@@ -97,7 +97,9 @@ const ZOOM_PREF_KEY = "argent-avatar-default-zoom";
 export function loadDefaultZoom(): ZoomPreset {
   try {
     const stored = localStorage.getItem(ZOOM_PREF_KEY);
-    if (stored === "face" || stored === "portrait" || stored === "full") return stored;
+    if (stored === "face" || stored === "portrait" || stored === "full") {
+      return stored;
+    }
   } catch {}
   return "full";
 }
@@ -147,8 +149,12 @@ export function saveTimePresets(config: TimePresetConfig) {
 export function getPresetForCurrentTime(): string {
   const hour = new Date().getHours();
   const tp = loadTimePresets();
-  if (hour >= 5 && hour < 17) return tp.morning;
-  if (hour >= 17 && hour < 22) return tp.evening;
+  if (hour >= 5 && hour < 17) {
+    return tp.morning;
+  }
+  if (hour >= 17 && hour < 22) {
+    return tp.evening;
+  }
   return tp.night;
 }
 
@@ -167,7 +173,9 @@ const DEFAULT_BUBBLE: BubbleConfig = { offsetX: 0, offsetY: 630, scale: 0.208 };
 export function loadBubbleConfig(): BubbleConfig {
   try {
     const stored = localStorage.getItem(BUBBLE_CONFIG_KEY);
-    if (stored) return { ...DEFAULT_BUBBLE, ...JSON.parse(stored) };
+    if (stored) {
+      return { ...DEFAULT_BUBBLE, ...JSON.parse(stored) };
+    }
   } catch {}
   return { ...DEFAULT_BUBBLE };
 }
@@ -181,7 +189,9 @@ export function saveBubbleConfig(config: BubbleConfig) {
 // ── Apply config to Live2D core model ────────────────────────────
 
 export function applyConfig(coreModel: any, config: AvatarConfig) {
-  if (!coreModel?.setParameterValueById) return;
+  if (!coreModel?.setParameterValueById) {
+    return;
+  }
   for (const [paramId, value] of Object.entries(config.parameters)) {
     try {
       coreModel.setParameterValueById(paramId, value);

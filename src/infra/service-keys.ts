@@ -80,7 +80,9 @@ export function invalidateServiceKeyCache(): void {
 
 export function saveServiceKeys(store: ServiceKeysFile): void {
   const dir = path.dirname(SERVICE_KEYS_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(SERVICE_KEYS_PATH, JSON.stringify(store, null, 2), "utf-8");
   fs.chmodSync(SERVICE_KEYS_PATH, 0o600);
   invalidateServiceKeyCache();
@@ -126,7 +128,9 @@ function resolveAgentContextFromConfig(
   cfg: ArgentConfig | undefined,
   actorId: string | undefined,
 ): { role?: string; team?: string } {
-  if (!cfg || !actorId) return {};
+  if (!cfg || !actorId) {
+    return {};
+  }
   const list = Array.isArray((cfg as any)?.agents?.list) ? ((cfg as any).agents.list as any[]) : [];
   const entry = list.find(
     (item) =>
@@ -134,7 +138,9 @@ function resolveAgentContextFromConfig(
         .trim()
         .toLowerCase() === actorId.toLowerCase(),
   );
-  if (!entry || typeof entry !== "object") return {};
+  if (!entry || typeof entry !== "object") {
+    return {};
+  }
   const role =
     typeof entry.role === "string" && entry.role.trim().length > 0 ? entry.role.trim() : undefined;
   const team =
@@ -153,11 +159,17 @@ function normalizeContext(
   const sessionKey = ctx?.sessionKey ?? process.env.ARGENT_SESSION_KEY ?? undefined;
   const sessionDerivedAgent = (() => {
     const raw = String(sessionKey ?? "");
-    if (!raw) return undefined;
+    if (!raw) {
+      return undefined;
+    }
     // session key formats include: "agent:<id>:...", "<id>:..." and "main"
     const match = raw.match(/^agent:([^:]+):/i);
-    if (match?.[1]) return match[1];
-    if (raw.includes(":")) return raw.split(":")[0]?.trim() || undefined;
+    if (match?.[1]) {
+      return match[1];
+    }
+    if (raw.includes(":")) {
+      return raw.split(":")[0]?.trim() || undefined;
+    }
     return raw.trim() || undefined;
   })();
   const actorId = ctx?.actorId ?? process.env.ARGENT_AGENT_ID ?? sessionDerivedAgent ?? undefined;
@@ -182,7 +194,9 @@ function hasScopedAccessPolicy(entry: ServiceKeyEntry): boolean {
 }
 
 function includesNormalized(list: string[] | undefined, value: string | undefined): boolean {
-  if (!Array.isArray(list) || list.length === 0 || !value) return false;
+  if (!Array.isArray(list) || list.length === 0 || !value) {
+    return false;
+  }
   const normalized = value.trim().toLowerCase();
   return list.some(
     (item) =>
@@ -358,7 +372,9 @@ export function seedServiceKey(opts: {
 }): boolean {
   const store = readServiceKeys();
   const existing = store.keys.find((k) => k.variable === opts.variable);
-  if (existing) return false; // Already exists
+  if (existing) {
+    return false;
+  } // Already exists
 
   const entry: ServiceKeyEntry = {
     id: `sk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -421,8 +437,12 @@ export function upsertServiceKey(opts: {
     // Update existing org-sync or untagged key
     existing.value = encryptSecret(opts.value);
     existing.name = opts.name ?? existing.name;
-    if (opts.service !== undefined) existing.service = opts.service;
-    if (opts.category !== undefined) existing.category = opts.category;
+    if (opts.service !== undefined) {
+      existing.service = opts.service;
+    }
+    if (opts.category !== undefined) {
+      existing.category = opts.category;
+    }
     existing.source = opts.source ?? "org-sync";
     existing.enabled = true;
   } else {
@@ -482,14 +502,20 @@ export function bulkUpsertServiceKeys(
 }
 
 function normalizeUnique(values: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(values)) return undefined;
+  if (!Array.isArray(values)) {
+    return undefined;
+  }
   const out: string[] = [];
   const seen = new Set<string>();
   for (const value of values) {
     const normalized = String(value ?? "").trim();
-    if (!normalized) continue;
+    if (!normalized) {
+      continue;
+    }
     const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     out.push(normalized);
   }
@@ -539,11 +565,18 @@ export function updateServiceKeyPolicyByVariable(params: {
   const previousTeams = normalizeUnique(entry.allowedTeams) ?? [];
   const previousDenyAll = entry.denyAll === true;
 
-  if (params.allowedRoles !== undefined) entry.allowedRoles = normalizeUnique(params.allowedRoles);
-  if (params.allowedAgents !== undefined)
+  if (params.allowedRoles !== undefined) {
+    entry.allowedRoles = normalizeUnique(params.allowedRoles);
+  }
+  if (params.allowedAgents !== undefined) {
     entry.allowedAgents = normalizeUnique(params.allowedAgents);
-  if (params.allowedTeams !== undefined) entry.allowedTeams = normalizeUnique(params.allowedTeams);
-  if (params.denyAll !== undefined) entry.denyAll = params.denyAll === true;
+  }
+  if (params.allowedTeams !== undefined) {
+    entry.allowedTeams = normalizeUnique(params.allowedTeams);
+  }
+  if (params.denyAll !== undefined) {
+    entry.denyAll = params.denyAll === true;
+  }
 
   entry.updatedAt = new Date().toISOString();
   saveServiceKeys(store);
@@ -599,7 +632,9 @@ export function grantServiceKeyAccess(params: {
 
   const store = readServiceKeys();
   const entry = store.keys.find((key) => key.variable === params.variable);
-  if (!entry) return { updated: false, reason: `No key found for variable ${params.variable}` };
+  if (!entry) {
+    return { updated: false, reason: `No key found for variable ${params.variable}` };
+  }
 
   const nextRoles = normalizeUnique([...(entry.allowedRoles ?? []), ...(role ? [role] : [])]);
   const nextAgents = normalizeUnique([...(entry.allowedAgents ?? []), ...(agent ? [agent] : [])]);
@@ -653,7 +688,9 @@ export function revokeServiceKeyAccess(params: {
 
   const store = readServiceKeys();
   const entry = store.keys.find((key) => key.variable === params.variable);
-  if (!entry) return { updated: false, reason: `No key found for variable ${params.variable}` };
+  if (!entry) {
+    return { updated: false, reason: `No key found for variable ${params.variable}` };
+  }
 
   const nextRoles = (entry.allowedRoles ?? []).filter(
     (value) => value.trim().toLowerCase() !== role,

@@ -50,10 +50,14 @@ function existsRel(rel) {
 
 function discoverTestsForFile(file) {
   if (isTestFile(file)) {
-    if (existsRel(file)) return [file];
+    if (existsRel(file)) {
+      return [file];
+    }
     return [];
   }
-  if (!isSourceFile(file)) return [];
+  if (!isSourceFile(file)) {
+    return [];
+  }
   const ext = path.extname(file); // .ts or .tsx
   const base = file.slice(0, -ext.length);
   const candidates = [`${base}.test.ts`, `${base}.test.tsx`];
@@ -76,7 +80,9 @@ function main() {
   }
 
   console.log(`test:slice -> running ${tests.length} test file(s):`);
-  for (const t of tests) console.log(`  ${t}`);
+  for (const t of tests) {
+    console.log(`  ${t}`);
+  }
 
   const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   const result = spawnSync(pnpm, ["exec", "vitest", "run", ...tests], {

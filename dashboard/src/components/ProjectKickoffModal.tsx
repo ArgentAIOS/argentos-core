@@ -48,9 +48,13 @@ export function ProjectKickoffModal({ isOpen, onClose }: ProjectKickoffModalProp
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -74,7 +78,9 @@ export function ProjectKickoffModal({ isOpen, onClose }: ProjectKickoffModalProp
   };
 
   const handleSubmit = async () => {
-    if (!formData.title.trim()) return;
+    if (!formData.title.trim()) {
+      return;
+    }
     setIsSubmitting(true);
     try {
       await request("specforge.kickoff", { data: formData });

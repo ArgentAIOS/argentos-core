@@ -47,7 +47,9 @@ let ensurePgAuditTablePromise: Promise<boolean> | null = null;
 
 export function hashSecretValue(value: string | undefined): string | undefined {
   const normalized = typeof value === "string" ? value.trim() : "";
-  if (!normalized) return undefined;
+  if (!normalized) {
+    return undefined;
+  }
   return crypto.createHash("sha256").update(normalized, "utf8").digest("hex");
 }
 
@@ -70,14 +72,18 @@ export function recordSecretAudit(input: Omit<SecretAuditRecord, "id" | "timesta
 
 export async function querySecretAudit(query: SecretAuditQuery = {}): Promise<SecretAuditRecord[]> {
   const fromPg = await queryAuditFromPg(query);
-  if (fromPg.length > 0) return fromPg;
+  if (fromPg.length > 0) {
+    return fromPg;
+  }
   return queryAuditFromFile(query);
 }
 
 function appendLocalAudit(entry: SecretAuditRecord): void {
   try {
     const dir = path.dirname(AUDIT_LOG_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.appendFileSync(AUDIT_LOG_PATH, `${JSON.stringify(entry)}\n`, "utf8");
     try {
       fs.chmodSync(AUDIT_LOG_PATH, 0o600);
@@ -93,9 +99,13 @@ function appendLocalAudit(entry: SecretAuditRecord): void {
 
 async function appendPgAudit(entry: SecretAuditRecord): Promise<void> {
   const sql = await getPgClientIfEnabled();
-  if (!sql) return;
+  if (!sql) {
+    return;
+  }
   const ensured = await ensurePgAuditTable(sql);
-  if (!ensured) return;
+  if (!ensured) {
+    return;
+  }
   await sql`
     INSERT INTO argent_secret_audit (
       id, timestamp, actor_id, actor_role, actor_team, action,
@@ -125,9 +135,13 @@ async function appendPgAudit(entry: SecretAuditRecord): Promise<void> {
 async function queryAuditFromPg(query: SecretAuditQuery): Promise<SecretAuditRecord[]> {
   try {
     const sql = await getPgClientIfEnabled();
-    if (!sql) return [];
+    if (!sql) {
+      return [];
+    }
     const ensured = await ensurePgAuditTable(sql);
-    if (!ensured) return [];
+    if (!ensured) {
+      return [];
+    }
     const limit = Math.min(Math.max(query.limit ?? 100, 1), 1000);
     const rows = await sql<
       Array<{
@@ -188,7 +202,9 @@ async function queryAuditFromPg(query: SecretAuditQuery): Promise<SecretAuditRec
 
 function queryAuditFromFile(query: SecretAuditQuery): SecretAuditRecord[] {
   try {
-    if (!fs.existsSync(AUDIT_LOG_PATH)) return [];
+    if (!fs.existsSync(AUDIT_LOG_PATH)) {
+      return [];
+    }
     const lines = fs
       .readFileSync(AUDIT_LOG_PATH, "utf8")
       .split("\n")
@@ -213,10 +229,18 @@ function queryAuditFromFile(query: SecretAuditQuery): SecretAuditRecord[] {
 }
 
 function matchAuditQuery(row: SecretAuditRecord, query: SecretAuditQuery): boolean {
-  if (query.secretVariable && row.secretVariable !== query.secretVariable) return false;
-  if (query.actorId && row.actorId !== query.actorId) return false;
-  if (query.result && row.result !== query.result) return false;
-  if (query.action && row.action !== query.action) return false;
+  if (query.secretVariable && row.secretVariable !== query.secretVariable) {
+    return false;
+  }
+  if (query.actorId && row.actorId !== query.actorId) {
+    return false;
+  }
+  if (query.result && row.result !== query.result) {
+    return false;
+  }
+  if (query.action && row.action !== query.action) {
+    return false;
+  }
   return true;
 }
 
@@ -266,7 +290,9 @@ async function getPgClientIfEnabled(): Promise<any | null> {
     const { isPostgresEnabled } = await import("../data/storage-config.js");
     const { resolveRuntimeStorageConfig } = await import("../data/storage-resolver.js");
     const cfg = resolveRuntimeStorageConfig();
-    if (!isPostgresEnabled(cfg) || !cfg.postgres) return null;
+    if (!isPostgresEnabled(cfg) || !cfg.postgres) {
+      return null;
+    }
     const { getPgClient } = await import("../data/pg-client.js");
     return getPgClient(cfg.postgres);
   } catch {

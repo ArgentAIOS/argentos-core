@@ -62,7 +62,9 @@ function makeFetchStub(handlers) {
     const u = String(url);
     for (const [pattern, response] of Object.entries(handlers)) {
       if (u.includes(pattern)) {
-        if (response instanceof Error) throw response;
+        if (response instanceof Error) {
+          throw response;
+        }
         return response;
       }
     }
@@ -376,11 +378,15 @@ describe("buildBackgroundModelRecommendations (Bug 3: suggestion filter)", () =>
         })),
       },
     ];
-    for (const id of liveLmStudio)
+    for (const id of liveLmStudio) {
       models.push({ id: `lmstudio/${id}`, alias: null, params: { liveRuntime: "lmstudio" } });
-    for (const id of liveOllama)
+    }
+    for (const id of liveOllama) {
       models.push({ id: `ollama/${id}`, alias: null, params: { liveRuntime: "ollama" } });
-    for (const id of configuredOnly) models.push({ id, alias: null, params: null });
+    }
+    for (const id of configuredOnly) {
+      models.push({ id, alias: null, params: null });
+    }
     return { models, providers: [], localRuntimes };
   }
 
@@ -445,7 +451,9 @@ describe("buildBackgroundModelRecommendations (Bug 3: suggestion filter)", () =>
     const recs = api.buildBackgroundModelRecommendations(config, catalog);
     for (const laneName of ["contemplation", "sis", "heartbeat", "executionWorker"]) {
       const ref = recs.lanes[laneName].suggested.ref;
-      if (!ref) continue;
+      if (!ref) {
+        continue;
+      }
       assert.ok(
         !ref.startsWith("ollama/"),
         `lane ${laneName} should not suggest Ollama when daemon is down (got ${ref})`,

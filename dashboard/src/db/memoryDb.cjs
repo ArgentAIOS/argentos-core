@@ -14,7 +14,9 @@ const DB_PATH = path.join(process.env.HOME, ".argentos", "memory.db");
 let db = null;
 
 function getDb() {
-  if (db) return db;
+  if (db) {
+    return db;
+  }
   if (!fs.existsSync(DB_PATH)) {
     throw new Error(`MemU database not found at ${DB_PATH}`);
   }
@@ -164,7 +166,9 @@ function searchItems(query, opts = {}) {
 function getItem(id) {
   const d = getDb();
   const item = d.prepare("SELECT * FROM memory_items WHERE id = ?").get(id);
-  if (!item) return null;
+  if (!item) {
+    return null;
+  }
 
   // Strip embedding BLOB from response (it's large and not useful in UI)
   delete item.embedding;
@@ -249,7 +253,9 @@ function listEntities(opts = {}) {
 function getEntity(id) {
   const d = getDb();
   const entity = d.prepare("SELECT * FROM entities WHERE id = ?").get(id);
-  if (!entity) return null;
+  if (!entity) {
+    return null;
+  }
 
   delete entity.embedding;
 
@@ -300,7 +306,9 @@ function listCategories(opts = {}) {
 function getCategory(id) {
   const d = getDb();
   const category = d.prepare("SELECT * FROM memory_categories WHERE id = ?").get(id);
-  if (!category) return null;
+  if (!category) {
+    return null;
+  }
 
   delete category.embedding;
 
@@ -392,8 +400,12 @@ function normalizeFtsQuery(query) {
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
     .filter((t) => t.length >= 2);
-  if (tokens.length === 0) return query;
-  if (tokens.length === 1) return tokens[0];
+  if (tokens.length === 0) {
+    return query;
+  }
+  if (tokens.length === 1) {
+    return tokens[0];
+  }
   return tokens.join(" OR ");
 }
 

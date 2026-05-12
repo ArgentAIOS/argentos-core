@@ -107,7 +107,9 @@ const columnBorderColors: Record<ColumnId, string> = {
 
 function isArchivedProject(project: Project): boolean {
   const metadata = project.metadata;
-  if (!metadata || typeof metadata !== "object") return false;
+  if (!metadata || typeof metadata !== "object") {
+    return false;
+  }
   const archivedAt = (metadata as Record<string, unknown>).archivedAt;
   return typeof archivedAt === "string" && archivedAt.trim().length > 0;
 }
@@ -154,14 +156,18 @@ function AssigneeAvatar({
 
 function PriorityDot({ priority }: { priority?: string | null }) {
   const match = PRIORITIES.find((p) => p.id === priority);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return (
     <div className={`w-2 h-2 rounded-full ${match.color} flex-shrink-0`} title={match.label} />
   );
 }
 
 function dueDateInputValue(value?: Date): string {
-  if (!value || Number.isNaN(value.getTime())) return "";
+  if (!value || Number.isNaN(value.getTime())) {
+    return "";
+  }
   const year = value.getFullYear();
   const month = `${value.getMonth() + 1}`.padStart(2, "0");
   const day = `${value.getDate()}`.padStart(2, "0");
@@ -182,14 +188,20 @@ function diffInDays(start: Date, end: Date): number {
 
 function parseDueDateInput(value: string): Date | undefined {
   const trimmed = value.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   const parsed = new Date(`${trimmed}T23:59:59`);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 function isOverdueTask(task: { dueAt?: Date; status?: TaskStatus | string }): boolean {
-  if (!task.dueAt) return false;
-  if (task.status === "completed") return false;
+  if (!task.dueAt) {
+    return false;
+  }
+  if (task.status === "completed") {
+    return false;
+  }
   return startOfDay(task.dueAt).getTime() < startOfDay(new Date()).getTime();
 }
 
@@ -215,15 +227,21 @@ function normalizeTaskMetadata(task: {
 
 function parseTaskComments(task: { metadata?: Record<string, unknown> }): TaskCommentRecord[] {
   const raw = normalizeTaskMetadata(task).comments;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   return raw
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
       const body =
         typeof (entry as { body?: unknown }).body === "string"
           ? (entry as { body: string }).body.trim()
           : "";
-      if (!body) return null;
+      if (!body) {
+        return null;
+      }
       const createdAt =
         typeof (entry as { createdAt?: unknown }).createdAt === "string"
           ? (entry as { createdAt: string }).createdAt
@@ -245,15 +263,21 @@ function parseTaskComments(task: { metadata?: Record<string, unknown> }): TaskCo
 
 function parseTaskActivity(task: { metadata?: Record<string, unknown> }): TaskActivityRecord[] {
   const raw = normalizeTaskMetadata(task).activity;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   return raw
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
       const text =
         typeof (entry as { text?: unknown }).text === "string"
           ? (entry as { text: string }).text.trim()
           : "";
-      if (!text) return null;
+      if (!text) {
+        return null;
+      }
       const at =
         typeof (entry as { at?: unknown }).at === "string"
           ? (entry as { at: string }).at
@@ -320,7 +344,9 @@ function withRecordedTaskChanges(previous: BoardTask, next: BoardTask): BoardTas
     );
   }
 
-  if (newEntries.length === 0) return next;
+  if (newEntries.length === 0) {
+    return next;
+  }
 
   const metadata = normalizeTaskMetadata(next);
   return {
@@ -755,7 +781,9 @@ function OverviewView({
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
   const dueSoon = tasks.filter((task) => {
-    if (!task.dueAt || task.status === "completed") return false;
+    if (!task.dueAt || task.status === "completed") {
+      return false;
+    }
     const delta = startOfDay(task.dueAt).getTime() - startOfDay(new Date()).getTime();
     return delta >= 0 && delta <= 7 * DAY_MS;
   }).length;
@@ -779,8 +807,12 @@ function OverviewView({
       const key = task.assignee || "unassigned";
       const current = map.get(key) || { total: 0, active: 0, done: 0 };
       current.total += 1;
-      if (task.status === "completed") current.done += 1;
-      if (task.status === "in-progress" || task.status === "in_progress") current.active += 1;
+      if (task.status === "completed") {
+        current.done += 1;
+      }
+      if (task.status === "in-progress" || task.status === "in_progress") {
+        current.active += 1;
+      }
       map.set(key, current);
       return map;
     }, new Map<string, { total: number; active: number; done: number }>()),
@@ -920,7 +952,9 @@ function OverviewView({
                     key={comment.id}
                     onClick={() => {
                       const target = tasks.find((task) => task.id === comment.taskId);
-                      if (target) onTaskClick(target);
+                      if (target) {
+                        onTaskClick(target);
+                      }
                     }}
                     className="w-full text-left rounded-lg bg-black/20 border border-white/5 px-3 py-2 hover:bg-black/30 transition-colors"
                   >
@@ -944,7 +978,9 @@ function OverviewView({
                 key={entry.id}
                 onClick={() => {
                   const target = tasks.find((task) => task.id === entry.taskId);
-                  if (target) onTaskClick(target);
+                  if (target) {
+                    onTaskClick(target);
+                  }
                 }}
                 className="w-full text-left rounded-lg bg-black/20 border border-white/5 px-3 py-2 hover:bg-black/30 transition-colors"
               >
@@ -1000,8 +1036,12 @@ function AddTaskForm({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) handleSubmit();
-          if (e.key === "Escape") onCancel();
+          if (e.key === "Enter" && !e.shiftKey) {
+            handleSubmit();
+          }
+          if (e.key === "Escape") {
+            onCancel();
+          }
         }}
         placeholder="Task title..."
         className="w-full bg-transparent text-white text-sm placeholder-white/30 focus:outline-none"
@@ -1125,7 +1165,9 @@ function TaskDetailPanel({
 
   const handleAddComment = () => {
     const body = commentDraft.trim();
-    if (!body) return;
+    if (!body) {
+      return;
+    }
     const createdAt = new Date().toISOString();
     const comment: TaskCommentRecord = {
       id: `${createdAt}:${Math.random().toString(36).slice(2, 8)}`,
@@ -1186,7 +1228,9 @@ function TaskDetailPanel({
             onChange={(e) => setTitle(e.target.value)}
             onBlur={handleTitleSave}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleTitleSave();
+              if (e.key === "Enter") {
+                handleTitleSave();
+              }
               if (e.key === "Escape") {
                 setTitle(task.title);
                 setEditingTitle(false);
@@ -1503,18 +1547,22 @@ function FilterBar({
   projects: Project[];
 }) {
   const visibleProjects = projects.filter((project) => {
-    if (projectStateFilter === "archived") return isArchivedProject(project);
-    if (projectStateFilter === "done")
+    if (projectStateFilter === "archived") {
+      return isArchivedProject(project);
+    }
+    if (projectStateFilter === "done") {
       return (
         !isArchivedProject(project) &&
         project.taskCount > 0 &&
         project.completedCount === project.taskCount
       );
-    if (projectStateFilter === "active")
+    }
+    if (projectStateFilter === "active") {
       return (
         !isArchivedProject(project) &&
         (project.taskCount === 0 || project.completedCount < project.taskCount)
       );
+    }
     return true;
   });
 
@@ -1628,7 +1676,9 @@ export function ProjectBoard({
   );
 
   useEffect(() => {
-    if (!selectedProject) return;
+    if (!selectedProject) {
+      return;
+    }
     setProjectStateFilter(isArchivedProject(selectedProject) ? "archived" : "all");
   }, [selectedProject]);
 
@@ -1637,7 +1687,9 @@ export function ProjectBoard({
     const loadAssignees = async () => {
       try {
         const response = await fetchLocalApi("/api/workflow-map/agents");
-        if (!response.ok) return;
+        if (!response.ok) {
+          return;
+        }
         const data = await response.json();
         const defaultId =
           typeof data.defaultId === "string" && data.defaultId.trim()
@@ -1657,7 +1709,9 @@ export function ProjectBoard({
                     .toUpperCase() || "?",
               }))
           : [];
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         const merged: AssigneeOption[] = [
           { id: "jason", label: "Operator", color: "bg-blue-500", letter: "O" },
           {
@@ -1700,7 +1754,9 @@ export function ProjectBoard({
           throw new Error(`Project fetch failed: ${response.status}`);
         }
         const data = await response.json();
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         const nextTasks = Array.isArray(data.tasks)
           ? data.tasks.map((task: any) => ({
               ...task,
@@ -1712,7 +1768,9 @@ export function ProjectBoard({
           : [];
         setSelectedProjectTasks(nextTasks as BoardTask[]);
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         console.error("[ProjectBoard] Failed to load selected project tasks:", error);
         setSelectedProjectTasks([]);
       }
@@ -1737,16 +1795,24 @@ export function ProjectBoard({
     return boardTasks.filter((t) => {
       // When a project is selected, show that project's child tasks on the board.
       if (activeProjectId) {
-        if (t.type === "project") return false;
-        if (t.parentTaskId !== activeProjectId) return false;
+        if (t.type === "project") {
+          return false;
+        }
+        if (t.parentTaskId !== activeProjectId) {
+          return false;
+        }
       } else {
         // Default board view excludes project parents and child tasks.
-        if (t.parentTaskId || t.type === "project") return false;
+        if (t.parentTaskId || t.type === "project") {
+          return false;
+        }
       }
 
       if (assigneeFilter !== "all") {
         if (assigneeFilter === "unassigned") {
-          if (t.assignee) return false;
+          if (t.assignee) {
+            return false;
+          }
         } else if (t.assignee !== assigneeFilter) {
           return false;
         }
@@ -1789,7 +1855,9 @@ export function ProjectBoard({
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const task = filteredTasks.find((t) => t.id === event.active.id);
-      if (task) setDragActiveTask(task);
+      if (task) {
+        setDragActiveTask(task);
+      }
     },
     [filteredTasks],
   );
@@ -1798,11 +1866,15 @@ export function ProjectBoard({
     (event: DragEndEvent) => {
       setDragActiveTask(null);
       const { active, over } = event;
-      if (!over) return;
+      if (!over) {
+        return;
+      }
 
       const taskId = active.id as string;
       const task = filteredTasks.find((t) => t.id === taskId);
-      if (!task) return;
+      if (!task) {
+        return;
+      }
 
       // Determine which column the task was dropped into
       // over.id could be another task's id or a column droppable
@@ -1815,22 +1887,32 @@ export function ProjectBoard({
       // Check if dropped on another task - find that task's column
       const overTask = targetColumn ? null : filteredTasks.find((t) => t.id === over.id);
       if (overTask && !targetColumn) {
-        if (overTask.status === "completed") targetColumn = "done";
-        else if (overTask.status === "in-progress" || overTask.status === "in_progress")
+        if (overTask.status === "completed") {
+          targetColumn = "done";
+        } else if (overTask.status === "in-progress" || overTask.status === "in_progress") {
           targetColumn = "active";
-        else targetColumn = "pending";
+        } else {
+          targetColumn = "pending";
+        }
       }
 
-      if (!targetColumn) return;
+      if (!targetColumn) {
+        return;
+      }
 
       // Determine current column
       let currentColumn: ColumnId;
-      if (task.status === "completed") currentColumn = "done";
-      else if (task.status === "in-progress" || task.status === "in_progress")
+      if (task.status === "completed") {
+        currentColumn = "done";
+      } else if (task.status === "in-progress" || task.status === "in_progress") {
         currentColumn = "active";
-      else currentColumn = "pending";
+      } else {
+        currentColumn = "pending";
+      }
 
-      if (currentColumn === targetColumn) return;
+      if (currentColumn === targetColumn) {
+        return;
+      }
 
       // Move task between columns
       if (targetColumn === "active") {

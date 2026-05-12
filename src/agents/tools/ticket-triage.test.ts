@@ -210,7 +210,9 @@ describe("Category Classification", () => {
     let correct = 0;
     for (const ticket of REAL_TICKETS) {
       const result = triageTicket(ticket.input);
-      if (result.category === ticket.expected.category) correct++;
+      if (result.category === ticket.expected.category) {
+        correct++;
+      }
     }
     const accuracy = correct / REAL_TICKETS.length;
     expect(accuracy).toBeGreaterThanOrEqual(0.9);

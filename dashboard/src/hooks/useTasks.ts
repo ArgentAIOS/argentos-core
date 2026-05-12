@@ -57,14 +57,18 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
 
   const isWorkerLaneTask = useCallback((task: Task | Project) => {
     const source = (task as Task).source;
-    if (source === "job") return true;
+    if (source === "job") {
+      return true;
+    }
     const metadata = (task as Task & { metadata?: Record<string, unknown> }).metadata;
     return Boolean(metadata && typeof metadata === "object" && metadata.jobAssignmentId);
   }, []);
 
   const filterByLane = useCallback(
     <T extends Task | Project>(items: T[]): T[] => {
-      if (!workerOnly) return items;
+      if (!workerOnly) {
+        return items;
+      }
       return items.filter((item) => isWorkerLaneTask(item));
     },
     [isWorkerLaneTask, workerOnly],
@@ -80,10 +84,14 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         timeout = setTimeout(() => controller?.abort(), 8_000);
         const params = new URLSearchParams();
         params.set("includeArchived", "true");
-        if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+        if (includeWorkerTasks) {
+          params.set("includeWorkerTasks", "true");
+        }
         const url = `${API_BASE}/projects${params.size > 0 ? `?${params.toString()}` : ""}`;
         const res = await fetchLocalApi(url, { signal: activeSignal }, 8_000);
-        if (!res.ok) return;
+        if (!res.ok) {
+          return;
+        }
         const data = await res.json();
         setProjects(filterByLane(data.projects || []));
       } catch (err) {
@@ -110,10 +118,14 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
       const params = new URLSearchParams();
-      if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+      if (includeWorkerTasks) {
+        params.set("includeWorkerTasks", "true");
+      }
       const url = `${API_BASE}/tasks${params.size > 0 ? `?${params.toString()}` : ""}`;
       const res = await fetchLocalApi(url, { signal: controller.signal }, 10_000);
-      if (!res.ok) throw new Error("Failed to fetch tasks");
+      if (!res.ok) {
+        throw new Error("Failed to fetch tasks");
+      }
       const data = await res.json();
       // Convert date strings back to Date objects
       const tasksWithDates = data.tasks.map((t: any) => ({
@@ -205,7 +217,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title, type, schedule, details, assignee, metadata }),
         });
-        if (!res.ok) throw new Error("Failed to create task");
+        if (!res.ok) {
+          throw new Error("Failed to create task");
+        }
         const data = await res.json();
         const newTask = {
           ...data.task,
@@ -239,7 +253,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title, details, priority }),
         });
-        if (!res.ok) throw new Error("Failed to create project task");
+        if (!res.ok) {
+          throw new Error("Failed to create project task");
+        }
         const data = await res.json();
         const newTask = {
           ...data.task,
@@ -269,7 +285,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updates),
         });
-        if (!res.ok) throw new Error("Failed to update task");
+        if (!res.ok) {
+          throw new Error("Failed to update task");
+        }
         const data = await res.json();
         const updatedTask = {
           ...data.task,
@@ -280,8 +298,12 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         };
         setTasks((prev) =>
           prev.flatMap((t) => {
-            if (t.id !== taskId) return [t];
-            if (workerOnly && !isWorkerLaneTask(updatedTask)) return [];
+            if (t.id !== taskId) {
+              return [t];
+            }
+            if (workerOnly && !isWorkerLaneTask(updatedTask)) {
+              return [];
+            }
             return [updatedTask];
           }),
         );
@@ -301,7 +323,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       const res = await fetchLocalApi(`${API_BASE}/tasks/${taskId}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Failed to delete task");
+      if (!res.ok) {
+        throw new Error("Failed to delete task");
+      }
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
       return true;
     } catch (err) {
@@ -317,7 +341,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       const res = await fetchLocalApi(`${API_BASE}/projects/${projectId}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Failed to delete project");
+      if (!res.ok) {
+        throw new Error("Failed to delete project");
+      }
       setTasks((prev) => prev.filter((t) => t.id !== projectId && t.parentTaskId !== projectId));
       setProjects((prev) => prev.filter((p) => p.id !== projectId));
       return true;
@@ -336,7 +362,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ archived }),
         });
-        if (!res.ok) throw new Error("Failed to update project archive state");
+        if (!res.ok) {
+          throw new Error("Failed to update project archive state");
+        }
         const data = await res.json();
         const updatedProject = data.project;
         if (updatedProject) {
@@ -362,7 +390,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       const res = await fetchLocalApi(`${API_BASE}/tasks/${taskId}/start`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error("Failed to start task");
+      if (!res.ok) {
+        throw new Error("Failed to start task");
+      }
       const data = await res.json();
       const updatedTask = {
         ...data.task,
@@ -385,7 +415,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       const res = await fetchLocalApi(`${API_BASE}/tasks/${taskId}/complete`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error("Failed to complete task");
+      if (!res.ok) {
+        throw new Error("Failed to complete task");
+      }
       const data = await res.json();
       const updatedTask = {
         ...data.task,
@@ -408,10 +440,14 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     async (title: string): Promise<Task | null> => {
       try {
         const params = new URLSearchParams();
-        if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+        if (includeWorkerTasks) {
+          params.set("includeWorkerTasks", "true");
+        }
         const url = `${API_BASE}/tasks${params.size > 0 ? `?${params.toString()}` : ""}`;
         const res = await fetchLocalApi(url);
-        if (!res.ok) return null;
+        if (!res.ok) {
+          return null;
+        }
         const data = await res.json();
         const freshTasks: Task[] = filterByLane(data.tasks || []);
         const task = freshTasks.find((t) => t.title === title && t.status === "pending");
@@ -432,10 +468,14 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     async (title: string): Promise<Task | null> => {
       try {
         const params = new URLSearchParams();
-        if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+        if (includeWorkerTasks) {
+          params.set("includeWorkerTasks", "true");
+        }
         const url = `${API_BASE}/tasks${params.size > 0 ? `?${params.toString()}` : ""}`;
         const res = await fetchLocalApi(url);
-        if (!res.ok) return null;
+        if (!res.ok) {
+          return null;
+        }
         const data = await res.json();
         const freshTasks: Task[] = filterByLane(data.tasks || []);
         const task = freshTasks.find((t) => t.title === title && t.status !== "completed");

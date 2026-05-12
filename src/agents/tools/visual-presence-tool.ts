@@ -148,11 +148,21 @@ Examples:
           type: "set_identity",
           timestamp: Date.now(),
         };
-        if (preset) payload.preset = preset;
-        if (warmth !== undefined) payload.warmth = warmth;
-        if (energy !== undefined) payload.energy = energy;
-        if (formality !== undefined) payload.formality = formality;
-        if (openness !== undefined) payload.openness = openness;
+        if (preset) {
+          payload.preset = preset;
+        }
+        if (warmth !== undefined) {
+          payload.warmth = warmth;
+        }
+        if (energy !== undefined) {
+          payload.energy = energy;
+        }
+        if (formality !== undefined) {
+          payload.formality = formality;
+        }
+        if (openness !== undefined) {
+          payload.openness = openness;
+        }
 
         await callGatewayTool(
           "aevp.presence",

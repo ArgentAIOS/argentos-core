@@ -29,10 +29,16 @@ const ones = [
 const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 
 function numberToWords(num: number): string {
-  if (num === 0) return "zero";
-  if (num < 0) return "negative " + numberToWords(Math.abs(num));
+  if (num === 0) {
+    return "zero";
+  }
+  if (num < 0) {
+    return "negative " + numberToWords(Math.abs(num));
+  }
 
-  if (num < 20) return ones[num];
+  if (num < 20) {
+    return ones[num];
+  }
   if (num < 100) {
     return tens[Math.floor(num / 10)] + (num % 10 ? " " + ones[num % 10] : "");
   }
@@ -63,8 +69,12 @@ function numberToWords(num: number): string {
 }
 
 function centsToWords(cents: number): string {
-  if (cents === 0) return "";
-  if (cents < 20) return ones[cents];
+  if (cents === 0) {
+    return "";
+  }
+  if (cents < 20) {
+    return ones[cents];
+  }
   return tens[Math.floor(cents / 10)] + (cents % 10 ? " " + ones[cents % 10] : "");
 }
 
@@ -124,7 +134,9 @@ function convertNumbers(text: string): string {
 
   return text.replace(numberRegex, (match, num) => {
     // Skip if it looks like a year (4 digits, 19xx or 20xx)
-    if (/^(19|20)\d{2}$/.test(num)) return match;
+    if (/^(19|20)\d{2}$/.test(num)) {
+      return match;
+    }
 
     const cleanNum = num.replace(/,/g, "");
 

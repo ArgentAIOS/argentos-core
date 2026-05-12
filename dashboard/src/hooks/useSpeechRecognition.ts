@@ -166,7 +166,9 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) 
       "audio/ogg;codecs=opus",
     ];
     for (const mime of candidates) {
-      if (MediaRecorder.isTypeSupported(mime)) return mime;
+      if (MediaRecorder.isTypeSupported(mime)) {
+        return mime;
+      }
     }
     return undefined; // Let browser pick default
   }, []);
@@ -287,7 +289,9 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) 
 
   // Start listening — uses ref to avoid stale closure on isListening state
   const start = useCallback(() => {
-    if (isListeningRef.current) return;
+    if (isListeningRef.current) {
+      return;
+    }
 
     if (mode === "browser") {
       startBrowserRecognition();

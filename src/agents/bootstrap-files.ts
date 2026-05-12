@@ -40,7 +40,9 @@ async function buildFirstRunBootstrapFile(): Promise<WorkspaceBootstrapFile | nu
     const markerPath = path.join(argentDir, "first-run-complete");
 
     // Already completed first run — skip
-    if (fs.existsSync(markerPath)) return null;
+    if (fs.existsSync(markerPath)) {
+      return null;
+    }
 
     // Check if memory store is empty (truly fresh install)
     const { getMemoryAdapter } = await import("../data/storage-factory.js");
@@ -254,7 +256,9 @@ async function buildRecentMemoryFile(): Promise<WorkspaceBootstrapFile | null> {
     const { getMemoryAdapter } = await import("../data/storage-factory.js");
     const store = await getMemoryAdapter();
     const recentItems = await store.listItems({ limit: 15 });
-    if (!recentItems || recentItems.length === 0) return null;
+    if (!recentItems || recentItems.length === 0) {
+      return null;
+    }
 
     const lines = [
       "# Recent Memory Context",
@@ -312,13 +316,17 @@ async function buildIdentityContextBootstrapFile(): Promise<WorkspaceBootstrapFi
  * real user/assistant exchanges so the agent has conversational continuity.
  */
 function normalizeOperatorName(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
   const cleaned = raw
     .replace(/\*\*/g, "")
     .replace(/[`*_]/g, "")
     .replace(/^['"]+|['"]+$/g, "")
     .trim();
-  if (!cleaned) return undefined;
+  if (!cleaned) {
+    return undefined;
+  }
   const lowered = cleaned.toLowerCase();
   if (lowered === "unknown" || lowered === "n/a" || lowered === "none" || lowered === "tbd") {
     return undefined;
@@ -332,7 +340,9 @@ function normalizeOperatorName(raw: string | undefined): string | undefined {
 function resolveOperatorNameFromUserDoc(workspaceDir: string): string | undefined {
   try {
     const userPath = path.join(workspaceDir, "USER.md");
-    if (!fs.existsSync(userPath)) return undefined;
+    if (!fs.existsSync(userPath)) {
+      return undefined;
+    }
     const content = fs.readFileSync(userPath, "utf-8");
     const patterns = [
       /^\s*-\s*Preferred address:\s*(.+)\s*$/im,
@@ -345,7 +355,9 @@ function resolveOperatorNameFromUserDoc(workspaceDir: string): string | undefine
     for (const pattern of patterns) {
       const match = content.match(pattern);
       const value = normalizeOperatorName(match?.[1]);
-      if (value) return value;
+      if (value) {
+        return value;
+      }
     }
   } catch {
     // Non-fatal. Fall back to a generic user label.
@@ -362,7 +374,9 @@ function buildRecentChannelConversationsFile(workspaceDir: string): WorkspaceBoo
       "main",
       "sessions",
     );
-    if (!fs.existsSync(sessionsDir)) return null;
+    if (!fs.existsSync(sessionsDir)) {
+      return null;
+    }
 
     // Read all .jsonl files, sort by modification time descending
     const files = fs
@@ -384,7 +398,9 @@ function buildRecentChannelConversationsFile(workspaceDir: string): WorkspaceBoo
       .sort((a, b) => b.mtimeMs - a.mtimeMs)
       .slice(0, 4); // top 4 most recent
 
-    if (files.length === 0) return null;
+    if (files.length === 0) {
+      return null;
+    }
 
     const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
 
@@ -420,11 +436,17 @@ function buildRecentChannelConversationsFile(workspaceDir: string): WorkspaceBoo
           };
 
           // Filter by message timestamp — only last 24h
-          if (parsed.timestamp && new Date(parsed.timestamp).getTime() < cutoffMs) continue;
+          if (parsed.timestamp && new Date(parsed.timestamp).getTime() < cutoffMs) {
+            continue;
+          }
 
           const msg = parsed.message;
-          if (!msg || !msg.role) continue;
-          if (msg.role !== "user" && msg.role !== "assistant") continue;
+          if (!msg || !msg.role) {
+            continue;
+          }
+          if (msg.role !== "user" && msg.role !== "assistant") {
+            continue;
+          }
 
           // Extract text
           let text = "";
@@ -439,16 +461,32 @@ function buildRecentChannelConversationsFile(workspaceDir: string): WorkspaceBoo
             text = msg.text;
           }
           text = text.trim();
-          if (!text) continue;
+          if (!text) {
+            continue;
+          }
 
           // Skip system/internal messages
-          if (text.startsWith("Heartbeat:")) continue;
-          if (text.startsWith("[NUDGE]")) continue;
-          if (text.startsWith("System:")) continue;
-          if (text.startsWith("[CONTEMPLATION")) continue;
-          if (text.includes("HEARTBEAT_OK")) continue;
-          if (text.includes("CONTEMPLATION_OK")) continue;
-          if (text.includes("Read HEARTBEAT.md")) continue;
+          if (text.startsWith("Heartbeat:")) {
+            continue;
+          }
+          if (text.startsWith("[NUDGE]")) {
+            continue;
+          }
+          if (text.startsWith("System:")) {
+            continue;
+          }
+          if (text.startsWith("[CONTEMPLATION")) {
+            continue;
+          }
+          if (text.includes("HEARTBEAT_OK")) {
+            continue;
+          }
+          if (text.includes("CONTEMPLATION_OK")) {
+            continue;
+          }
+          if (text.includes("Read HEARTBEAT.md")) {
+            continue;
+          }
 
           allExchanges.push({
             timestamp: parsed.timestamp || "",
@@ -462,13 +500,17 @@ function buildRecentChannelConversationsFile(workspaceDir: string): WorkspaceBoo
       }
     }
 
-    if (allExchanges.length === 0) return null;
+    if (allExchanges.length === 0) {
+      return null;
+    }
 
     // Deduplicate (same file may appear in multiple reads), keep last 20 real exchanges
     const seen = new Set<string>();
     const deduped = allExchanges.filter((ex) => {
       const key = `${ex.timestamp}:${ex.role}:${ex.text.slice(0, 50)}`;
-      if (seen.has(key)) return false;
+      if (seen.has(key)) {
+        return false;
+      }
       seen.add(key);
       return true;
     });
@@ -522,7 +564,9 @@ function buildRecentChannelConversationsFile(workspaceDir: string): WorkspaceBoo
 function buildRecentContemplationFile(workspaceDir: string): WorkspaceBootstrapFile | null {
   try {
     const dir = path.join(workspaceDir, "memory", "contemplation");
-    if (!fs.existsSync(dir)) return null;
+    if (!fs.existsSync(dir)) {
+      return null;
+    }
 
     // Read from the most recent journal files (same logic as loadRecentContemplations)
     const files = fs
@@ -531,7 +575,9 @@ function buildRecentContemplationFile(workspaceDir: string): WorkspaceBootstrapF
       .sort()
       .reverse();
 
-    if (files.length === 0) return null;
+    if (files.length === 0) {
+      return null;
+    }
 
     const entries: Array<{
       timestamp: string;
@@ -550,11 +596,15 @@ function buildRecentContemplationFile(workspaceDir: string): WorkspaceBootstrapF
     const maxEntries = 5;
 
     for (const file of files) {
-      if (entries.length >= maxEntries) break;
+      if (entries.length >= maxEntries) {
+        break;
+      }
       const content = fs.readFileSync(path.join(dir, file), "utf-8");
       const lines = content.trim().split("\n").reverse();
       for (const line of lines) {
-        if (entries.length >= maxEntries) break;
+        if (entries.length >= maxEntries) {
+          break;
+        }
         try {
           entries.push(JSON.parse(line));
         } catch {
@@ -563,7 +613,9 @@ function buildRecentContemplationFile(workspaceDir: string): WorkspaceBootstrapF
       }
     }
 
-    if (entries.length === 0) return null;
+    if (entries.length === 0) {
+      return null;
+    }
 
     // Reverse back to chronological order
     entries.reverse();
@@ -642,7 +694,9 @@ function buildRecentContemplationFile(workspaceDir: string): WorkspaceBootstrapF
 function buildSisContextFile(workspaceDir: string): WorkspaceBootstrapFile | null {
   try {
     const sisDir = path.join(workspaceDir, "memory", "sis");
-    if (!fs.existsSync(sisDir)) return null;
+    if (!fs.existsSync(sisDir)) {
+      return null;
+    }
 
     const today = new Date();
     const formatDate = (d: Date) => d.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -654,10 +708,14 @@ function buildSisContextFile(workspaceDir: string): WorkspaceBootstrapFile | nul
 
     for (const dateStr of candidates) {
       const filePath = path.join(sisDir, `${dateStr}.md`);
-      if (!fs.existsSync(filePath)) continue;
+      if (!fs.existsSync(filePath)) {
+        continue;
+      }
 
       const raw = fs.readFileSync(filePath, "utf-8").trim();
-      if (!raw) continue;
+      if (!raw) {
+        continue;
+      }
 
       // Split into consolidation blocks (separated by ---)
       const sections = raw.split(/\n---+\n/).filter((s) => s.trim());
@@ -668,10 +726,14 @@ function buildSisContextFile(workspaceDir: string): WorkspaceBootstrapFile | nul
       }
 
       // Today had content — don't need yesterday
-      if (blocks.length > 0 && dateStr === formatDate(today)) break;
+      if (blocks.length > 0 && dateStr === formatDate(today)) {
+        break;
+      }
     }
 
-    if (blocks.length === 0) return null;
+    if (blocks.length === 0) {
+      return null;
+    }
 
     const lines = [
       "# SIS Context (Session Intelligence Store)",
@@ -701,7 +763,9 @@ function buildSisContextFile(workspaceDir: string): WorkspaceBootstrapFile | nul
 function buildAccountabilityContextFile(workspaceDir: string): WorkspaceBootstrapFile | null {
   try {
     const scorePath = path.join(workspaceDir, "memory", "heartbeat-score.json");
-    if (!fs.existsSync(scorePath)) return null;
+    if (!fs.existsSync(scorePath)) {
+      return null;
+    }
 
     const raw = fs.readFileSync(scorePath, "utf-8");
     const state = JSON.parse(raw) as {
@@ -829,11 +893,15 @@ function buildAccountabilityContextFile(workspaceDir: string): WorkspaceBootstra
 function buildSessionSnapshotFile(agentId: string): WorkspaceBootstrapFile | null {
   try {
     const snapshot = loadSessionSnapshot(agentId);
-    if (!snapshot) return null;
+    if (!snapshot) {
+      return null;
+    }
 
     // Only inject if the snapshot is less than 24h old
     const age = Date.now() - new Date(snapshot.timestamp).getTime();
-    if (age > 24 * 60 * 60 * 1000) return null;
+    if (age > 24 * 60 * 60 * 1000) {
+      return null;
+    }
 
     const time = new Date(snapshot.timestamp).toLocaleString("en-US", {
       month: "short",
@@ -1005,7 +1073,9 @@ async function buildLiveInboxLedgerFile(): Promise<WorkspaceBootstrapFile | null
 
     const store = await getMemoryAdapter();
     const content = buildLiveInboxLedger({ store: store as any, maxItems: 20 });
-    if (!content) return null;
+    if (!content) {
+      return null;
+    }
 
     return {
       name: DEFAULT_LIVE_INBOX_LEDGER_FILENAME,

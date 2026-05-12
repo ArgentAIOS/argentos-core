@@ -2127,7 +2127,9 @@ export function searchTags(query: string): AudioTag[] {
  */
 export function getRandomTags(category: string, count: number): AudioTag[] {
   const tags = getTagsByCategory(category);
-  if (tags.length <= count) return [...tags];
+  if (tags.length <= count) {
+    return [...tags];
+  }
   const shuffled = [...tags].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 }

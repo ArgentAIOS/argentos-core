@@ -19,7 +19,9 @@ before(async () => {
 });
 
 after(() => {
-  if (server) server.close();
+  if (server) {
+    server.close();
+  }
 });
 
 async function api(method, route, body) {

@@ -119,7 +119,9 @@ initSchema();
  * @returns {number|null} epoch ms of next run, or null if not applicable
  */
 function computeNextRun(schedule, fromTime) {
-  if (!schedule) return null;
+  if (!schedule) {
+    return null;
+  }
   const now = fromTime || Date.now();
 
   if (schedule.frequency === "interval" && schedule.intervalMinutes) {
@@ -187,7 +189,9 @@ function getScheduledTasksDue() {
  */
 function markScheduledTaskExecuted(id) {
   const task = getTask(id);
-  if (!task || !task.schedule) return null;
+  if (!task || !task.schedule) {
+    return null;
+  }
 
   const now = Date.now();
   const newSchedule = {
@@ -211,7 +215,9 @@ function markScheduledTaskExecuted(id) {
 
 // Safely convert a DB timestamp (epoch ms or ISO string) to ISO string
 function safeToISOString(value) {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   try {
     // If it's already an ISO string, validate it
     if (typeof value === "string") {
@@ -226,7 +232,9 @@ function safeToISOString(value) {
 
 // Convert DB row to dashboard task format
 function rowToTask(row) {
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   return {
     id: row.id,
@@ -369,7 +377,9 @@ function createTask({
 // Update a task
 function updateTask(id, updates) {
   const existing = getTask(id);
-  if (!existing) return null;
+  if (!existing) {
+    return null;
+  }
 
   const now = Date.now();
   const sets = ["updated_at = ?"];

@@ -159,10 +159,14 @@ function postNativeVoiceEvent(payload: {
   messageId: string;
   mood?: string | null;
 }): boolean {
-  if (!isNativeVoiceActive()) return false;
+  if (!isNativeVoiceActive()) {
+    return false;
+  }
   try {
     const handler = window.webkit?.messageHandlers?.argentNativeVoiceEvent;
-    if (!handler) return false;
+    if (!handler) {
+      return false;
+    }
     handler.postMessage(payload);
     return true;
   } catch (error) {
@@ -172,10 +176,14 @@ function postNativeVoiceEvent(payload: {
 }
 
 function postNativeVoiceCommand(payload: { kind: "tts_stop" }): boolean {
-  if (!isNativeVoiceActive()) return false;
+  if (!isNativeVoiceActive()) {
+    return false;
+  }
   try {
     const handler = window.webkit?.messageHandlers?.argentNativeVoiceEvent;
-    if (!handler) return false;
+    if (!handler) {
+      return false;
+    }
     handler.postMessage(payload);
     return true;
   } catch (error) {
@@ -185,10 +193,14 @@ function postNativeVoiceCommand(payload: { kind: "tts_stop" }): boolean {
 }
 
 function postNativeSpeechCommand(payload: { kind: "start" | "stop" }): boolean {
-  if (!isNativeSpeechActive()) return false;
+  if (!isNativeSpeechActive()) {
+    return false;
+  }
   try {
     const handler = window.webkit?.messageHandlers?.argentNativeSpeechEvent;
-    if (!handler) return false;
+    if (!handler) {
+      return false;
+    }
     handler.postMessage(payload);
     return true;
   } catch (error) {
@@ -215,7 +227,9 @@ function normalizeAgentId(raw: string | null | undefined, fallback = DEFAULT_AGE
 
 function isWebchatSessionAlias(value: string): boolean {
   const key = value.trim().toLowerCase();
-  if (!key) return false;
+  if (!key) {
+    return false;
+  }
   return key === "webchat" || key.startsWith("webchat-") || key.startsWith("webchat:");
 }
 
@@ -390,9 +404,13 @@ function toCanonicalSessionKey(
     defaults?.defaultAgentId || DEFAULT_AGENT_ID,
   );
   const raw = coerceVisibleOperatorSessionKey({ sessionKey, mainSessionKey }).trim();
-  if (!raw) return mainSessionKey;
+  if (!raw) {
+    return mainSessionKey;
+  }
   const lowered = raw.toLowerCase();
-  if (lowered === "global") return "global";
+  if (lowered === "global") {
+    return "global";
+  }
   if (
     lowered === "main" ||
     lowered === mainSessionKey.toLowerCase() ||
@@ -427,19 +445,25 @@ function resolveSessionAgentId(
   defaultAgentId = DEFAULT_AGENT_ID,
 ): string {
   const raw = (sessionKey ?? "").trim();
-  if (!raw) return normalizeAgentId(defaultAgentId);
+  if (!raw) {
+    return normalizeAgentId(defaultAgentId);
+  }
   const match = /^agent:([^:]+):/i.exec(raw);
   return normalizeAgentId(match?.[1], defaultAgentId);
 }
 
 function normalizeOperatorDisplayName(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
   const cleaned = raw
     .replace(/\*\*/g, "")
     .replace(/[`*_]/g, "")
     .replace(/^['"]+|['"]+$/g, "")
     .trim();
-  if (!cleaned) return undefined;
+  if (!cleaned) {
+    return undefined;
+  }
   const lowered = cleaned.toLowerCase();
   if (lowered === "unknown" || lowered === "n/a" || lowered === "none" || lowered === "tbd") {
     return undefined;
@@ -462,7 +486,9 @@ function extractOperatorDisplayNameFromUserDoc(content: string): string | undefi
   for (const pattern of patterns) {
     const match = content.match(pattern);
     const parsed = normalizeOperatorDisplayName(match?.[1]);
-    if (parsed) return parsed;
+    if (parsed) {
+      return parsed;
+    }
   }
   return undefined;
 }
@@ -552,17 +578,22 @@ function parseStructuredMarkers(text: string, marker: "TTS" | "TTS_NOW"): Struct
 
   while (searchIndex < text.length) {
     const start = text.indexOf(token, searchIndex);
-    if (start === -1) break;
+    if (start === -1) {
+      break;
+    }
 
     let depth = 1;
     let cursor = start + token.length;
 
     while (cursor < text.length) {
       const ch = text[cursor];
-      if (ch === "[") depth++;
-      else if (ch === "]") {
+      if (ch === "[") {
+        depth++;
+      } else if (ch === "]") {
         depth--;
-        if (depth === 0) break;
+        if (depth === 0) {
+          break;
+        }
       }
       cursor++;
     }
@@ -589,12 +620,16 @@ function stripStructuredMarkers(text: string): string {
     ...parseStructuredMarkers(text, "TTS"),
     ...parseStructuredMarkers(text, "TTS_NOW"),
   ].sort((a, b) => a.start - b.start);
-  if (ranges.length === 0) return text;
+  if (ranges.length === 0) {
+    return text;
+  }
 
   let out = "";
   let cursor = 0;
   for (const range of ranges) {
-    if (range.start < cursor) continue;
+    if (range.start < cursor) {
+      continue;
+    }
     out += text.slice(cursor, range.start);
     cursor = range.end;
   }
@@ -603,7 +638,9 @@ function stripStructuredMarkers(text: string): string {
 }
 
 function stripTtsControlMarkers(text: string): string {
-  if (!text) return "";
+  if (!text) {
+    return "";
+  }
   const withoutStructuredMarkers = stripStructuredMarkers(text).replace(
     /\[(?:TTS|TTS_NOW):[^\]]*\]/g,
     "",
@@ -612,7 +649,9 @@ function stripTtsControlMarkers(text: string): string {
 }
 
 function prepareTextForTTS(text: string, maxWords = 300): string {
-  if (!text) return "";
+  if (!text) {
+    return "";
+  }
 
   let cleaned = text
     // Convert bare mood direction lines to v3 audio tags BEFORE any other processing.
@@ -728,7 +767,9 @@ function prepareTextForTTS(text: string, maxWords = 300): string {
   );
   if (lastPuncIdx >= 0 && lastPuncIdx < cleaned.length - 1) {
     const trailing = cleaned.slice(lastPuncIdx + 1).trim();
-    if (trailing.length >= 5) sentenceMatches.push(trailing);
+    if (trailing.length >= 5) {
+      sentenceMatches.push(trailing);
+    }
   } else if (sentenceMatches.length === 0) {
     sentenceMatches.push(cleaned);
   }
@@ -736,14 +777,20 @@ function prepareTextForTTS(text: string, maxWords = 300): string {
   const conversational: string[] = [];
   for (const sentence of sentenceMatches) {
     const s = sentence.trim();
-    if (s.length < 5) continue;
+    if (s.length < 5) {
+      continue;
+    }
     // Skip sentences that are mostly numbers (e.g. raw data)
-    if ((s.match(/\d/g) || []).length > s.length * 0.5) continue;
+    if ((s.match(/\d/g) || []).length > s.length * 0.5) {
+      continue;
+    }
     // Skip sentences that look like technical output (paths, camelCase, snake_case heavy)
     const techTokens = (
       s.match(/[a-z][A-Z]|_[a-z]|[/\\][\w.-]+\.\w|::\w|=>|\{\s*\}|^\s*[-*]\s/g) || []
     ).length;
-    if (techTokens > 3) continue;
+    if (techTokens > 3) {
+      continue;
+    }
     conversational.push(s);
   }
 
@@ -801,7 +848,9 @@ function pickSpokenSummary(params: {
 
   const markerCandidates = params.markers.map((m) => m.content.trim()).filter(Boolean);
   const bestMarker = markerCandidates.reduce<string | null>((best, current) => {
-    if (!best) return current;
+    if (!best) {
+      return current;
+    }
     return scoreSpokenSummary(current) > scoreSpokenSummary(best) ? current : best;
   }, null);
 
@@ -813,8 +862,12 @@ function pickSpokenSummary(params: {
   if (autoScore > 0 && (markerScore === 0 || markerScore < 40 || autoScore >= markerScore + 20)) {
     return { text: autoPrepared, source: "auto" };
   }
-  if (bestMarker) return { text: bestMarker, source: "marker" };
-  if (autoScore > 0) return { text: autoPrepared, source: "auto" };
+  if (bestMarker) {
+    return { text: bestMarker, source: "marker" };
+  }
+  if (autoScore > 0) {
+    return { text: autoPrepared, source: "auto" };
+  }
   return { text: null, source: "none" };
 }
 
@@ -850,7 +903,9 @@ const OPERATIONS_PRESENCE_LOCKED_SCALE = 1.33;
 function readStoredGatewayToken(): string {
   try {
     const raw = localStorage.getItem(CONTROL_SETTINGS_KEY);
-    if (!raw) return "";
+    if (!raw) {
+      return "";
+    }
     const parsed = JSON.parse(raw) as { token?: unknown };
     return typeof parsed.token === "string" ? parsed.token.trim() : "";
   } catch {
@@ -859,7 +914,9 @@ function readStoredGatewayToken(): string {
 }
 
 function persistGatewayToken(token: string) {
-  if (!token) return;
+  if (!token) {
+    return;
+  }
   try {
     const raw = localStorage.getItem(CONTROL_SETTINGS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
@@ -896,7 +953,9 @@ function resolveGatewayToken(): string {
     return tokenFromUrl;
   }
   const tokenFromStorage = readStoredGatewayToken();
-  if (tokenFromStorage) return tokenFromStorage;
+  if (tokenFromStorage) {
+    return tokenFromStorage;
+  }
   // Server-injected global (static-server `injectGatewayTokenIntoIndexHtml`)
   // — fixes bare-URL loads where the URL carries no `?token=` and a fresh
   // localStorage has no prior token. We persist it to localStorage so the
@@ -962,7 +1021,9 @@ function persistDashboardMode(mode: DashboardMode) {
 function readStoredOperationsPresencePosition(): { x: number; y: number } | null {
   try {
     const raw = localStorage.getItem(OPERATIONS_PRESENCE_POSITION_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
     const x = typeof parsed.x === "number" ? parsed.x : NaN;
     const y = typeof parsed.y === "number" ? parsed.y : NaN;
@@ -978,7 +1039,9 @@ function readStoredOperationsPresencePosition(): { x: number; y: number } | null
 function readStoredOperationsPresenceSize(): { width: number; height: number } | null {
   try {
     const raw = localStorage.getItem(OPERATIONS_PRESENCE_SIZE_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const parsed = JSON.parse(raw) as { width?: unknown; height?: unknown };
     const width = typeof parsed.width === "number" ? parsed.width : NaN;
     const height = typeof parsed.height === "number" ? parsed.height : NaN;
@@ -1067,7 +1130,9 @@ let memoryStatsCache: {
 let memoryStatsInterval: ReturnType<typeof setInterval> | null = null;
 
 function startMemoryStatsPolling() {
-  if (memoryStatsInterval) return; // already polling
+  if (memoryStatsInterval) {
+    return;
+  } // already polling
   const load = async () => {
     try {
       const res = await fetchLocalApi("/api/memory/stats");
@@ -1100,7 +1165,9 @@ function MemoryStatsCards() {
       }
     }, 1000);
     // Immediately sync if cache already has data
-    if (memoryStatsCache) setStats(memoryStatsCache);
+    if (memoryStatsCache) {
+      setStats(memoryStatsCache);
+    }
     return () => clearInterval(sync);
   }, []);
 
@@ -1180,7 +1247,9 @@ function App() {
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => {
     try {
       const stored = localStorage.getItem("argent-workspaces");
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        return JSON.parse(stored);
+      }
     } catch {}
     return [{ id: "home", name: "Home", icon: "🏠" }];
   });
@@ -1190,7 +1259,9 @@ function App() {
   const [colWidths, setColWidths] = useState<[number, number, number]>(() => {
     try {
       const stored = localStorage.getItem("argent-col-widths");
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        return JSON.parse(stored);
+      }
     } catch {}
     return [38, 32, 30]; // tasks%, avatar%, chat%
   });
@@ -1206,7 +1277,9 @@ function App() {
     (colIndex: number, e: React.MouseEvent) => {
       e.preventDefault();
       const container = containerRef.current;
-      if (!container) return;
+      if (!container) {
+        return;
+      }
       const rect = container.getBoundingClientRect();
       const startX = e.clientX;
       const startWidths = [...colWidths] as [number, number, number];
@@ -1226,8 +1299,12 @@ function App() {
           next[2] = startWidths[2] - (next[1] - startWidths[1]);
         }
         // Clamp minimums
-        if (next[1] < 20) return;
-        if (next[2] < 15) return;
+        if (next[1] < 20) {
+          return;
+        }
+        if (next[2] < 15) {
+          return;
+        }
         setColWidths(next);
       };
 
@@ -1288,8 +1365,12 @@ function App() {
   // Currently supports `?widget=workflows` → Operations → Workflows so the
   // pipeline builder is reachable from a bookmarkable URL.
   useEffect(() => {
-    if (widgetDeepLinkAppliedRef.current) return;
-    if (!initialWidgetDeepLink) return;
+    if (widgetDeepLinkAppliedRef.current) {
+      return;
+    }
+    if (!initialWidgetDeepLink) {
+      return;
+    }
     if (initialWidgetDeepLink === "workflows" && allowOperationsSurface) {
       widgetDeepLinkAppliedRef.current = true;
       setActiveWorkspace("operations");
@@ -1335,7 +1416,9 @@ function App() {
   const [operationsPresenceVisible, setOperationsPresenceVisible] = useState(false);
   const [operationsPresencePosition, setOperationsPresencePosition] = useState(() => {
     const stored = readStoredOperationsPresencePosition();
-    if (stored) return stored;
+    if (stored) {
+      return stored;
+    }
     return {
       x: Math.max(24, window.innerWidth - 584),
       y: 112,
@@ -1343,7 +1426,9 @@ function App() {
   });
   const [operationsPresenceSize, setOperationsPresenceSize] = useState(() => {
     const stored = readStoredOperationsPresenceSize();
-    if (stored) return stored;
+    if (stored) {
+      return stored;
+    }
     return {
       width: OPERATIONS_PRESENCE_DEFAULT_WIDTH,
       height: OPERATIONS_PRESENCE_DEFAULT_HEIGHT,
@@ -1490,7 +1575,9 @@ function App() {
       }
 
       const resize = operationsPresenceResizeRef.current;
-      if (!resize) return;
+      if (!resize) {
+        return;
+      }
 
       const maxWidth = Math.min(
         OPERATIONS_PRESENCE_MAX_WIDTH,
@@ -1604,11 +1691,21 @@ function App() {
         title: task.title,
         details: task.details,
       };
-      if (task.status) updates.status = task.status;
-      if (task.type) updates.type = task.type;
-      if (task.schedule !== undefined) updates.schedule = task.schedule;
-      if (task.dueAt !== undefined) updates.dueAt = task.dueAt;
-      if (task.metadata !== undefined) updates.metadata = task.metadata;
+      if (task.status) {
+        updates.status = task.status;
+      }
+      if (task.type) {
+        updates.type = task.type;
+      }
+      if (task.schedule !== undefined) {
+        updates.schedule = task.schedule;
+      }
+      if (task.dueAt !== undefined) {
+        updates.dueAt = task.dueAt;
+      }
+      if (task.metadata !== undefined) {
+        updates.metadata = task.metadata;
+      }
       const updated = await updateTask(task.id, updates);
       return !!updated;
     },
@@ -1624,10 +1721,18 @@ function App() {
         details: task.details,
         status: task.status,
       };
-      if ("assignee" in task) updates.assignee = task.assignee;
-      if ("priority" in task) updates.priority = task.priority;
-      if ("dueAt" in task) updates.dueAt = task.dueAt;
-      if ("metadata" in task) updates.metadata = task.metadata;
+      if ("assignee" in task) {
+        updates.assignee = task.assignee;
+      }
+      if ("priority" in task) {
+        updates.priority = task.priority;
+      }
+      if ("dueAt" in task) {
+        updates.dueAt = task.dueAt;
+      }
+      if ("metadata" in task) {
+        updates.metadata = task.metadata;
+      }
       updateTask(task.id, updates);
     },
     [updateTask],
@@ -1740,7 +1845,9 @@ function App() {
               return { ...prev, [appId]: fullApp };
             }
             const fallback = prev[appId] || listApp;
-            if (!fallback) return prev;
+            if (!fallback) {
+              return prev;
+            }
             return {
               ...prev,
               [appId]: {
@@ -1989,7 +2096,9 @@ function App() {
   const [visualIdentity, setVisualIdentity] = useState<AgentVisualIdentity>(() => {
     try {
       const saved = localStorage.getItem("aevp-identity");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        return JSON.parse(saved);
+      }
     } catch {
       /* use default */
     }
@@ -2003,7 +2112,9 @@ function App() {
   const [accessibilityConfig, setAccessibilityConfig] = useState<AccessibilityConfig>(() => {
     try {
       const saved = localStorage.getItem("aevp-accessibility");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        return JSON.parse(saved);
+      }
     } catch {
       /* use default */
     }
@@ -2051,7 +2162,9 @@ function App() {
                 {},
                 12_000,
               );
-              if (!docResponse.ok) return null;
+              if (!docResponse.ok) {
+                return null;
+              }
               return await docResponse.json();
             }),
           );
@@ -2075,7 +2188,9 @@ function App() {
 
   // Check for first-run setup wizard
   useEffect(() => {
-    if (localStorage.getItem("argent-setup-complete")) return;
+    if (localStorage.getItem("argent-setup-complete")) {
+      return;
+    }
     fetchLocalApi("/api/settings/auth-profiles")
       .then((res) => res.json())
       .then((data) => {
@@ -2238,7 +2353,9 @@ function App() {
   useEffect(() => {
     const handleAutoSwitch = (e: CustomEvent) => {
       const bgMode = e.detail as string; // "professional" | "casual" | "tech"
-      if (!bgMode) return;
+      if (!bgMode) {
+        return;
+      }
       // Map background mode to time slot, then look up assigned preset
       const tp = loadTimePresets();
       const slotMap: Record<string, string> = {
@@ -2298,7 +2415,9 @@ function App() {
       const recentlyAlerted = alerts.some(
         (a) => a.source === "heartbeat-stale" && now - a.timestamp.getTime() < 12 * 60 * 60 * 1000,
       );
-      if (recentlyAlerted) return;
+      if (recentlyAlerted) {
+        return;
+      }
 
       const lastCycle = detail?.lastCycleAt
         ? new Date(detail.lastCycleAt).toLocaleString()
@@ -2342,7 +2461,9 @@ function App() {
           a.source === "heartbeat-runner-inactive" &&
           now - a.timestamp.getTime() < 6 * 60 * 60 * 1000,
       );
-      if (recentlyAlerted) return;
+      if (recentlyAlerted) {
+        return;
+      }
 
       const state = typeof detail?.state === "string" && detail.state ? detail.state : "unknown";
       const lastRun = detail?.lastRunAt ? new Date(detail.lastRunAt).toLocaleString() : "unknown";
@@ -2386,7 +2507,9 @@ function App() {
       const services = Array.isArray(detail?.services)
         ? detail.services.filter((v): v is string => typeof v === "string" && v.length > 0)
         : [];
-      if (services.length === 0) return;
+      if (services.length === 0) {
+        return;
+      }
       const servicesKey = services.slice().sort().join(",");
       const now = Date.now();
       const recentlyAlerted = alerts.some(
@@ -2395,7 +2518,9 @@ function App() {
           a.message.includes(servicesKey) &&
           now - a.timestamp.getTime() < 60 * 60 * 1000,
       );
-      if (recentlyAlerted) return;
+      if (recentlyAlerted) {
+        return;
+      }
 
       const checkedAt = detail?.timestamp ? new Date(detail.timestamp).toLocaleString() : "unknown";
       addAlert(
@@ -2415,7 +2540,9 @@ function App() {
       const previous = Array.isArray(detail?.previous)
         ? detail.previous.filter((v): v is string => typeof v === "string" && v.length > 0)
         : [];
-      if (previous.length === 0) return;
+      if (previous.length === 0) {
+        return;
+      }
       const checkedAt = detail?.timestamp ? new Date(detail.timestamp).toLocaleString() : "unknown";
       addAlert(
         `Critical services recovered (${previous.join(",")}) at ${checkedAt}.`,
@@ -2497,7 +2624,9 @@ function App() {
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setRuntimeLoadProfile((prev) => ({
           active: data.active || prev.active,
           label: data.label || prev.label,
@@ -2564,7 +2693,9 @@ function App() {
   }, [currentChatAgentId, primaryChatAgentId]);
 
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     let cancelled = false;
 
     const loadChatAgents = async () => {
@@ -2573,13 +2704,17 @@ function App() {
           defaultId?: string;
           agents?: Array<{ id?: string; name?: string }>;
         }>("agents.list");
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         const options = Array.isArray(payload?.agents)
           ? payload.agents
               .map((row) => {
                 const id = normalizeAgentId(row?.id, "");
-                if (!id) return null;
+                if (!id) {
+                  return null;
+                }
                 const label =
                   typeof row?.name === "string" && row.name.trim() ? row.name.trim() : id;
                 return { id, label };
@@ -2618,7 +2753,9 @@ function App() {
   }, [currentChatAgentId, gateway.connected, gateway.request, primaryChatAgentId]);
 
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     let canceled = false;
 
     const pollCriticalHealth = async () => {
@@ -2628,11 +2765,15 @@ function App() {
           {},
           { timeoutMs: 8000 },
         );
-        if (canceled) return;
+        if (canceled) {
+          return;
+        }
         const criticalAlerts = Array.isArray(payload?.criticalAlerts) ? payload.criticalAlerts : [];
         for (const alert of criticalAlerts) {
           const dedupeKey = `${alert.id}:${alert.status}:${alert.lastSeenAt}`;
-          if (criticalAlertSeenRef.current.has(dedupeKey)) continue;
+          if (criticalAlertSeenRef.current.has(dedupeKey)) {
+            continue;
+          }
           const existingUnread = alerts.some(
             (item) => item.source === `critical-service:${alert.id}` && item.read === false,
           );
@@ -2678,7 +2819,9 @@ function App() {
         const overview = await gateway.request<{ dueNowCount?: number; blockedRunsCount?: number }>(
           "jobs.overview",
         );
-        if (disposed) return;
+        if (disposed) {
+          return;
+        }
         setWorkforceBadgeAvailable(true);
         setWorkforceBadge({
           dueNow:
@@ -2719,7 +2862,9 @@ function App() {
 
     return () => {
       disposed = true;
-      if (timer) clearInterval(timer);
+      if (timer) {
+        clearInterval(timer);
+      }
     };
   }, [
     gateway.connected,
@@ -2737,7 +2882,9 @@ function App() {
   // Phase 5+6: Consume agent-initiated identity changes
   useEffect(() => {
     const change = agentState.pendingIdentityChange;
-    if (!change) return;
+    if (!change) {
+      return;
+    }
 
     setVisualIdentity((prev) => {
       // Apply preset if specified
@@ -2747,10 +2894,18 @@ function App() {
 
       // Apply individual personality overrides
       const personality = { ...next.personality };
-      if (change.warmth !== undefined) personality.warmth = change.warmth;
-      if (change.energy !== undefined) personality.energy = change.energy;
-      if (change.formality !== undefined) personality.formality = change.formality;
-      if (change.openness !== undefined) personality.openness = change.openness;
+      if (change.warmth !== undefined) {
+        personality.warmth = change.warmth;
+      }
+      if (change.energy !== undefined) {
+        personality.energy = change.energy;
+      }
+      if (change.formality !== undefined) {
+        personality.formality = change.formality;
+      }
+      if (change.openness !== undefined) {
+        personality.openness = change.openness;
+      }
       next.personality = personality;
 
       return next;
@@ -2816,14 +2971,18 @@ function App() {
   const pendingTtsMsgRef = useRef<{ msgId: string } | null>(null);
   const attachTtsSummary = useCallback((msgId: string, summary: string) => {
     const cleanedSummary = stripTtsControlMarkers(summary).trim();
-    if (!cleanedSummary) return;
+    if (!cleanedSummary) {
+      return;
+    }
     setMessages((prev) =>
       prev.map((m) => (m.id === msgId ? { ...m, ttsSummary: cleanedSummary } : m)),
     );
   }, []);
 
   const attachTtsAudioUrl = useCallback((msgId: string, audioUrl: string) => {
-    if (!msgId || !audioUrl) return;
+    if (!msgId || !audioUrl) {
+      return;
+    }
     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, ttsAudioUrl: audioUrl } : m)));
   }, []);
 
@@ -2910,8 +3069,12 @@ function App() {
         }>
       ).detail;
       const task = detail?.task;
-      if (!task?.id) return;
-      if (reminderAlertSeenRef.current.has(task.id)) return;
+      if (!task?.id) {
+        return;
+      }
+      if (reminderAlertSeenRef.current.has(task.id)) {
+        return;
+      }
       reminderAlertSeenRef.current.add(task.id);
 
       const targets = Array.isArray(detail?.deliveryTargets)
@@ -3079,7 +3242,9 @@ function App() {
   // Capture model routing info from background "agent" events
   // (so we can attach it to the corresponding background "chat" message)
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
 
     const unsubscribe = gateway.on("agent", (payload: unknown) => {
       const event = payload as {
@@ -3094,9 +3259,13 @@ function App() {
           routed?: boolean;
         };
       };
-      if (!event.runId) return;
+      if (!event.runId) {
+        return;
+      }
       // Skip user-initiated runs (already handled by sendMessage)
-      if (gateway.activeUserRunIds.has(event.runId)) return;
+      if (gateway.activeUserRunIds.has(event.runId)) {
+        return;
+      }
       // Capture model selection events
       if (event.stream === "lifecycle" && event.data?.phase === "model_selected") {
         // Prevent unbounded growth — purge if map exceeds 100 entries
@@ -3119,7 +3288,9 @@ function App() {
   // Listen for background "chat" events (e.g. subagent announce results)
   // These come from runs NOT initiated by the dashboard user (Forge, cron, etc.)
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
 
     const unsubscribe = gateway.on("chat", (payload: unknown) => {
       const event = payload as {
@@ -3134,18 +3305,25 @@ function App() {
       };
 
       // Skip events from user-initiated runs (already handled by sendMessage)
-      if (event.runId && gateway.activeUserRunIds.has(event.runId)) return;
+      if (event.runId && gateway.activeUserRunIds.has(event.runId)) {
+        return;
+      }
 
       // Only handle final messages with actual content
-      if (event.state !== "final" || !event.message) return;
+      if (event.state !== "final" || !event.message) {
+        return;
+      }
 
       const text = event.message.content?.[0]?.text;
-      if (!text || !text.trim()) return;
+      if (!text || !text.trim()) {
+        return;
+      }
 
       // Only render background messages that belong to the active visible session.
       // This prevents agent announce / workflow chatter from polluting the main chat thread.
-      if (!event.sessionKey || canonicalizeSessionKey(event.sessionKey) !== currentSessionKey)
+      if (!event.sessionKey || canonicalizeSessionKey(event.sessionKey) !== currentSessionKey) {
         return;
+      }
 
       console.log("[Chat] Background message received:", text.substring(0, 200));
 
@@ -3233,7 +3411,9 @@ function App() {
 
       // Look up model info captured from background "agent" events
       const modelInfo = event.runId ? bgModelInfoRef.current.get(event.runId) : undefined;
-      if (event.runId) bgModelInfoRef.current.delete(event.runId);
+      if (event.runId) {
+        bgModelInfoRef.current.delete(event.runId);
+      }
 
       // Add as a new assistant message in the chat
       const bgMessage: ChatMessage = {
@@ -3286,10 +3466,14 @@ function App() {
   }, []);
 
   const loadOperatorDisplayName = useCallback(async (): Promise<string | undefined> => {
-    if (operatorDisplayName) return operatorDisplayName;
+    if (operatorDisplayName) {
+      return operatorDisplayName;
+    }
     try {
       const res = await fetchLocalApi("/api/settings/alignment/__main__/USER.md");
-      if (!res.ok) return undefined;
+      if (!res.ok) {
+        return undefined;
+      }
       const payload = (await res.json()) as { content?: string };
       const parsed = extractOperatorDisplayNameFromUserDoc(payload.content ?? "");
       if (parsed) {
@@ -3383,7 +3567,9 @@ function App() {
       // Add welcome message only if no stored history
       const seedWelcome = async () => {
         const name = operatorDisplayName ?? (await loadOperatorDisplayName());
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setMessages((prev) => {
           if (prev.length === 0) {
             return [
@@ -3418,7 +3604,9 @@ function App() {
 
   // Fetch available slash commands when connected
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     gateway
       .listCommands()
       .then((res) => {
@@ -3431,7 +3619,9 @@ function App() {
 
   // Fetch context usage on connect and when session changes
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     gateway
       .getSessionTokens(currentSessionKey)
       .then(setContextUsage)
@@ -3509,7 +3699,9 @@ function App() {
       }
 
       setIsLoading(true);
-      if (!isSilent) setAvatarState("thinking");
+      if (!isSilent) {
+        setAvatarState("thinking");
+      }
       // Don't hard-reset mood — let continuity system handle natural transitions
       // Only reset on session clear, not per-message
       setStreamingContent("");
@@ -4282,7 +4474,9 @@ function App() {
   const handleSteerMessage = useCallback(
     async (content: string, image?: string, attachments?: ChatAttachment[]) => {
       const trimmed = content.trim();
-      if (!trimmed) return;
+      if (!trimmed) {
+        return;
+      }
 
       stopActiveSpeech();
 
@@ -4369,7 +4563,9 @@ function App() {
   // ── Session Management Handlers ──
 
   const refreshSessions = useCallback(async () => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     setSessionsLoading(true);
     try {
       const res = await gateway.listSessions({ limit: 50 });
@@ -4510,7 +4706,9 @@ function App() {
   const handleSelectSession = useCallback(
     async (sessionKey: string) => {
       const canonicalSessionKey = canonicalizeSessionKey(sessionKey);
-      if (canonicalSessionKey === currentSessionKey) return;
+      if (canonicalSessionKey === currentSessionKey) {
+        return;
+      }
 
       // Save current messages before switching
       if (messages.length > 0) {
@@ -4589,7 +4787,9 @@ function App() {
 
   const handleDeleteSession = useCallback(
     async (sessionKey: string) => {
-      if (!gateway.connected) return;
+      if (!gateway.connected) {
+        return;
+      }
       try {
         await gateway.deleteSession(sessionKey);
         // Remove from local list
@@ -4639,7 +4839,9 @@ function App() {
   const handleReplayTtsSummary = useCallback(
     (summary: string, audioUrl?: string) => {
       const cleanedSummary = stripTtsControlMarkers(summary).trim();
-      if (!cleanedSummary && !audioUrl) return;
+      if (!cleanedSummary && !audioUrl) {
+        return;
+      }
 
       stopActiveSpeech();
       if (audioUrl) {
@@ -4809,7 +5011,9 @@ function App() {
 
     eventSource.onmessage = (event) => {
       try {
-        if (!event.data) return;
+        if (!event.data) {
+          return;
+        }
         const data = JSON.parse(event.data);
         console.log("[Canvas SSE] Received:", data);
 
@@ -4856,7 +5060,9 @@ function App() {
 
   // Listen for canvas events from gateway (when agent creates documents)
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
 
     // Listen for dedicated 'canvas' events (from dashboard.canvas.push gateway method)
     const unsubCanvas = gateway.on("canvas", (payload: unknown) => {
@@ -4996,8 +5202,11 @@ function App() {
             key={ws.id}
             onClick={() => {
               setActiveWorkspace(ws.id);
-              if (ws.id === "operations") setDashboardMode("operations");
-              else setDashboardMode("personal");
+              if (ws.id === "operations") {
+                setDashboardMode("operations");
+              } else {
+                setDashboardMode("personal");
+              }
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeWorkspace === ws.id
@@ -5018,7 +5227,9 @@ function App() {
         <button
           onClick={() => {
             const name = prompt("Workspace name:");
-            if (!name?.trim()) return;
+            if (!name?.trim()) {
+              return;
+            }
             const id = `ws-${Date.now()}`;
             setWorkspaceTabs((prev) => [...prev, { id, name: name.trim(), icon: "📋" }]);
             setActiveWorkspace(id);
@@ -5713,7 +5924,9 @@ function App() {
                 className="flex cursor-move items-center justify-between border-b border-white/10 px-4 py-3"
                 onMouseDown={(event) => {
                   const rect = event.currentTarget.parentElement?.getBoundingClientRect();
-                  if (!rect) return;
+                  if (!rect) {
+                    return;
+                  }
                   operationsPresenceDragRef.current = {
                     pointerOffsetX: event.clientX - rect.left,
                     pointerOffsetY: event.clientY - rect.top,
@@ -6161,7 +6374,9 @@ function App() {
         const cachedApp = loadedAppCode[win.appId];
         const app =
           cachedApp && (!isAppStatusShell(cachedApp.code) || !listApp?.code) ? cachedApp : listApp;
-        if (!app) return null;
+        if (!app) {
+          return null;
+        }
         return (
           <AppWindow
             key={win.appId}

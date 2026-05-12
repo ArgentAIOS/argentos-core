@@ -135,7 +135,9 @@ export async function pgResolveServiceKey(
   variable: string,
 ): Promise<string | undefined> {
   const key = await pgGetServiceKeyByVariable(sql, variable);
-  if (!key || !key.enabled) return undefined;
+  if (!key || !key.enabled) {
+    return undefined;
+  }
   return key.value;
 }
 
@@ -164,7 +166,9 @@ export async function pgGetServiceKeyByVariable(
     WHERE variable = ${variable}
     LIMIT 1
   `;
-  if (rows.length === 0) return undefined;
+  if (rows.length === 0) {
+    return undefined;
+  }
   return decryptServiceKeyRow(rows[0]!);
 }
 
@@ -276,7 +280,9 @@ export async function pgGetAuthCredential(
     WHERE profile_id = ${profileId} AND enabled = true
     LIMIT 1
   `;
-  if (rows.length === 0) return undefined;
+  if (rows.length === 0) {
+    return undefined;
+  }
   return decryptAuthRow(rows[0]!);
 }
 

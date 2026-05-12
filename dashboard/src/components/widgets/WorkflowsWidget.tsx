@@ -858,11 +858,21 @@ const EXCLUDED_IDS = new Set(["main", "dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 function isOperational(a: { id: string; role?: string }): boolean {
-  if (EXCLUDED_IDS.has(a.id.toLowerCase())) return false;
-  if (a.id.startsWith("test-") || a.id.startsWith("test_")) return false;
-  if (UUID_RE.test(a.id)) return false;
-  if (a.role === "think_tank_panelist") return false;
-  if (!a.role) return false;
+  if (EXCLUDED_IDS.has(a.id.toLowerCase())) {
+    return false;
+  }
+  if (a.id.startsWith("test-") || a.id.startsWith("test_")) {
+    return false;
+  }
+  if (UUID_RE.test(a.id)) {
+    return false;
+  }
+  if (a.role === "think_tank_panelist") {
+    return false;
+  }
+  if (!a.role) {
+    return false;
+  }
   return true;
 }
 
@@ -1008,7 +1018,9 @@ function normalizeWorkflowVersions(raw: unknown): WorkflowVersionRecord[] {
 
 let stylesInjected = false;
 function injectWorkflowStyles(): void {
-  if (stylesInjected) return;
+  if (stylesInjected) {
+    return;
+  }
   stylesInjected = true;
   const style = document.createElement("style");
   style.textContent = `
@@ -1044,9 +1056,13 @@ function injectWorkflowStyles(): void {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) {
+    return `${s}s`;
+  }
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
@@ -1320,10 +1336,18 @@ function normalizeRunRecords(raw: unknown[] | undefined): RunRecord[] {
 // ── Exec State Helpers ──────────────────────────────────────────────
 
 function execStateClass(state?: NodeExecState): string {
-  if (state === "active") return "wf-node-active";
-  if (state === "waiting") return "wf-node-waiting";
-  if (state === "completed") return "wf-node-completed";
-  if (state === "failed") return "wf-node-failed";
+  if (state === "active") {
+    return "wf-node-active";
+  }
+  if (state === "waiting") {
+    return "wf-node-waiting";
+  }
+  if (state === "completed") {
+    return "wf-node-completed";
+  }
+  if (state === "failed") {
+    return "wf-node-failed";
+  }
   return "";
 }
 
@@ -1371,7 +1395,9 @@ function PinnedDataBadge({ active }: { active?: boolean }) {
 }
 
 function RetryBadge({ retryCount }: { retryCount?: number }) {
-  if (!retryCount || retryCount <= 0) return null;
+  if (!retryCount || retryCount <= 0) {
+    return null;
+  }
   return (
     <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full text-[8px] text-black font-bold flex items-center justify-center z-20">
       {retryCount}
@@ -1380,7 +1406,9 @@ function RetryBadge({ retryCount }: { retryCount?: number }) {
 }
 
 function NodeIssueBadge({ issues }: { issues?: WorkflowValidationIssue[] }) {
-  if (!issues?.length) return null;
+  if (!issues?.length) {
+    return null;
+  }
   const errorCount = issues.filter((issue) => issue.severity === "error").length;
   const isError = errorCount > 0;
   const count = isError ? errorCount : issues.length;
@@ -2988,14 +3016,20 @@ function parseCronToSchedule(cron: string): {
   days: number[];
   dayOfMonth: number;
 } | null {
-  if (!cron || !cron.trim()) return null;
+  if (!cron || !cron.trim()) {
+    return null;
+  }
   const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return null;
+  if (parts.length !== 5) {
+    return null;
+  }
 
   const [minStr, hourStr, dom, , dow] = parts;
   const minute = minStr.padStart(2, "0");
   const hour24 = parseInt(hourStr, 10);
-  if (isNaN(hour24)) return null;
+  if (isNaN(hour24)) {
+    return null;
+  }
 
   const ampm: "AM" | "PM" = hour24 >= 12 ? "PM" : "AM";
   const hour = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
@@ -3036,16 +3070,22 @@ function generateCronFromSchedule(
   dayOfMonth: number,
   rawCron: string,
 ): string {
-  if (scheduleType === "custom") return rawCron;
+  if (scheduleType === "custom") {
+    return rawCron;
+  }
 
   let hour24 = hour % 12;
-  if (ampm === "PM") hour24 += 12;
+  if (ampm === "PM") {
+    hour24 += 12;
+  }
 
   switch (scheduleType) {
     case "daily":
       return `${parseInt(minute, 10)} ${hour24} * * *`;
     case "weekly": {
-      if (selectedDays.length === 0) return "";
+      if (selectedDays.length === 0) {
+        return "";
+      }
       const days = selectedDays.map((d) => DOW_CRON[d]).join(",");
       return `${parseInt(minute, 10)} ${hour24} * * ${days}`;
     }
@@ -3072,8 +3112,12 @@ function generateScheduleSummary(
     case "daily":
       return `Every day at ${timeStr} ${tz}`;
     case "weekly": {
-      if (selectedDays.length === 0) return "Select days";
-      if (selectedDays.length === 7) return `Every day at ${timeStr} ${tz}`;
+      if (selectedDays.length === 0) {
+        return "Select days";
+      }
+      if (selectedDays.length === 7) {
+        return `Every day at ${timeStr} ${tz}`;
+      }
       const dayStr = selectedDays.map((d) => DAY_LABELS[d]).join(", ");
       return `Every ${dayStr} at ${timeStr} ${tz}`;
     }
@@ -3159,7 +3203,9 @@ function TriggerForm({
       data.channelType,
     ] as (string | undefined)[];
     for (const p of providerFields) {
-      if (p && TRIGGER_PROVIDER_CONNECTOR_MAP[p]) return TRIGGER_PROVIDER_CONNECTOR_MAP[p];
+      if (p && TRIGGER_PROVIDER_CONNECTOR_MAP[p]) {
+        return TRIGGER_PROVIDER_CONNECTOR_MAP[p];
+      }
     }
     return data.connectorId;
   }, [data]);
@@ -3737,7 +3783,9 @@ function AgentForm({
   };
 
   const handleAIEnhance = async () => {
-    if (!data.rolePrompt.trim()) return;
+    if (!data.rolePrompt.trim()) {
+      return;
+    }
     setEnhancing(true);
     try {
       const result = await gateway.request<{ text?: string }>("agent", {
@@ -3761,23 +3809,29 @@ function AgentForm({
   // Parse existing comma-separated tools into arrays
   const toolsAllow: string[] = useMemo(() => {
     const raw = rawToolsAllow;
-    if (Array.isArray(raw)) return raw as string[];
-    if (typeof raw === "string" && raw.trim())
+    if (Array.isArray(raw)) {
+      return raw as string[];
+    }
+    if (typeof raw === "string" && raw.trim()) {
       return raw
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    }
     return [];
   }, [rawToolsAllow]);
 
   const toolsDeny: string[] = useMemo(() => {
     const raw = rawToolsDeny;
-    if (Array.isArray(raw)) return raw as string[];
-    if (typeof raw === "string" && raw.trim())
+    if (Array.isArray(raw)) {
+      return raw as string[];
+    }
+    if (typeof raw === "string" && raw.trim()) {
       return raw
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    }
     return [];
   }, [rawToolsDeny]);
 
@@ -7178,7 +7232,9 @@ function Sidebar({
       ".json,.yaml,.yml,.argent-workflow.json,.argent-workflow.yaml,.argent-workflow.yml";
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+      if (!file) {
+        return;
+      }
       void onImportWorkflowFile(file);
     };
     input.click();
@@ -8176,7 +8232,9 @@ export function WorkflowsWidget() {
 
   // Load connector catalog
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -8200,7 +8258,9 @@ export function WorkflowsWidget() {
 
   // Load tested owner-operator workflow packages for the template gallery.
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     let cancelled = false;
     setPackageTemplatesLoading(true);
     (async () => {
@@ -9130,7 +9190,9 @@ function WorkflowCanvasInner({
 
   const handleApprove = useCallback(
     async (runId: string, nodeId: string) => {
-      if (!gateway.connected) return;
+      if (!gateway.connected) {
+        return;
+      }
       try {
         await gateway.request("workflows.approve", { runId, nodeId });
         setPendingApprovals((prev) =>
@@ -9145,7 +9207,9 @@ function WorkflowCanvasInner({
 
   const handleDeny = useCallback(
     async (runId: string, nodeId: string) => {
-      if (!gateway.connected) return;
+      if (!gateway.connected) {
+        return;
+      }
       try {
         await gateway.request("workflows.deny", { runId, nodeId, reason: "Denied by operator" });
         setPendingApprovals((prev) =>
@@ -9160,7 +9224,9 @@ function WorkflowCanvasInner({
 
   // Fetch family members for agent dropdown
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -9186,10 +9252,16 @@ function WorkflowCanvasInner({
       setNodes((nds) =>
         nds.map((n) => {
           let execState: NodeExecState = "pending";
-          if (n.id === active) execState = "active";
-          else if (completed.has(n.id)) execState = "completed";
-          else if (failed.has(n.id)) execState = "failed";
-          if (n.data.execState === execState) return n;
+          if (n.id === active) {
+            execState = "active";
+          } else if (completed.has(n.id)) {
+            execState = "completed";
+          } else if (failed.has(n.id)) {
+            execState = "failed";
+          }
+          if (n.data.execState === execState) {
+            return n;
+          }
           return { ...n, data: { ...n.data, execState } };
         }),
       );
@@ -9211,7 +9283,9 @@ function WorkflowCanvasInner({
     (issues: WorkflowValidationIssue[]) => {
       const issuesByNode = new Map<string, WorkflowValidationIssue[]>();
       for (const issue of issues) {
-        if (!issue.nodeId) continue;
+        if (!issue.nodeId) {
+          continue;
+        }
         const nodeIssues = issuesByNode.get(issue.nodeId) ?? [];
         nodeIssues.push(issue);
         issuesByNode.set(issue.nodeId, nodeIssues);
@@ -9235,7 +9309,9 @@ function WorkflowCanvasInner({
       );
 
       setSelectedNode((prev) => {
-        if (!prev) return prev;
+        if (!prev) {
+          return prev;
+        }
         const nextIssues = issuesByNode.get(prev.id);
         const nextData = { ...(prev.data as Record<string, unknown>) };
         if (nextIssues) {
@@ -9273,7 +9349,9 @@ function WorkflowCanvasInner({
   // ── Gateway live step events ──────────────────────────────────────
 
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
 
     const unsubStepStarted = gateway.on("workflow.step.started", (payload: unknown) => {
       const p = payload as { nodeId?: string };
@@ -9282,10 +9360,12 @@ function WorkflowCanvasInner({
         // Apply immediately
         setNodes((nds) =>
           nds.map((n) => {
-            if (n.id === p.nodeId)
+            if (n.id === p.nodeId) {
               return { ...n, data: { ...n.data, execState: "active" as NodeExecState } };
-            if (n.data.execState === "active")
+            }
+            if (n.data.execState === "active") {
               return { ...n, data: { ...n.data, execState: "pending" as NodeExecState } };
+            }
             return n;
           }),
         );
@@ -9294,14 +9374,18 @@ function WorkflowCanvasInner({
 
     const unsubStepCompleted = gateway.on("workflow.step.completed", (payload: unknown) => {
       const p = payload as { nodeId?: string; status?: string; error?: string };
-      if (!p.nodeId) return;
+      if (!p.nodeId) {
+        return;
+      }
       const isFailed = p.status === "failed" || !!p.error;
       if (isFailed) {
         setFailedNodeIds((prev) => new Set([...prev, p.nodeId!]));
       } else {
         setCompletedNodeIds((prev) => new Set([...prev, p.nodeId!]));
       }
-      if (activeNodeId === p.nodeId) setActiveNodeId(null);
+      if (activeNodeId === p.nodeId) {
+        setActiveNodeId(null);
+      }
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === p.nodeId) {
@@ -9353,7 +9437,9 @@ function WorkflowCanvasInner({
         timeoutAction?: string;
         requestedAt?: number;
       };
-      if (!p.runId || !p.nodeId) return;
+      if (!p.runId || !p.nodeId) {
+        return;
+      }
       // Set the gate node to "waiting" state
       setNodes((nds) =>
         nds.map((n) =>
@@ -9405,7 +9491,9 @@ function WorkflowCanvasInner({
 
     const unsubApprovalResolved = gateway.on("workflow.approval.resolved", (payload: unknown) => {
       const p = payload as { runId?: string; nodeId?: string; approved?: boolean };
-      if (!p.runId || !p.nodeId) return;
+      if (!p.runId || !p.nodeId) {
+        return;
+      }
       setPendingApprovals((prev) =>
         prev.filter((a) => !(a.runId === p.runId && a.nodeId === p.nodeId)),
       );
@@ -9434,14 +9522,19 @@ function WorkflowCanvasInner({
 
   useEffect(() => {
     if (!replayRun) {
-      if (!running) clearExecState();
+      if (!running) {
+        clearExecState();
+      }
       return;
     }
     const newCompleted = new Set<string>();
     const newFailed = new Set<string>();
     for (const step of replayRun.steps) {
-      if (step.status === "completed") newCompleted.add(step.nodeId);
-      else if (step.status === "failed") newFailed.add(step.nodeId);
+      if (step.status === "completed") {
+        newCompleted.add(step.nodeId);
+      } else if (step.status === "failed") {
+        newFailed.add(step.nodeId);
+      }
     }
     setActiveNodeId(null);
     setCompletedNodeIds(newCompleted);
@@ -9599,7 +9692,9 @@ function WorkflowCanvasInner({
   // ── Run Handler ───────────────────────────────────────────────────
 
   const handleRun = useCallback(async () => {
-    if (!activeWorkflowId || running) return;
+    if (!activeWorkflowId || running) {
+      return;
+    }
     const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId) ?? null;
     const stage = workflowDeploymentStage(workflow);
     const report = workflow?.importReport;
@@ -9665,7 +9760,9 @@ function WorkflowCanvasInner({
 
   const handleTestToNode = useCallback(
     async (nodeId: string) => {
-      if (!activeWorkflowId || running) return;
+      if (!activeWorkflowId || running) {
+        return;
+      }
       try {
         setRunning(true);
         setPartialRunningNodeId(nodeId);
@@ -9706,10 +9803,14 @@ function WorkflowCanvasInner({
   );
 
   const handleSchedule = useCallback(async () => {
-    if (!activeWorkflowId || scheduling || !gateway.connected) return;
+    if (!activeWorkflowId || scheduling || !gateway.connected) {
+      return;
+    }
     const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
     const scheduleTrigger = nodes.find((node) => {
-      if (node.type !== "trigger") return false;
+      if (node.type !== "trigger") {
+        return false;
+      }
       const data = node.data as Record<string, unknown>;
       return data.triggerType === "schedule";
     });
@@ -9829,7 +9930,9 @@ function WorkflowCanvasInner({
 
   const handleRestoreVersion = useCallback(
     async (version: number) => {
-      if (!activeWorkflowId || !gateway.connected) return;
+      if (!activeWorkflowId || !gateway.connected) {
+        return;
+      }
       if (
         !confirm(`Restore workflow to version ${version}? The current version will be saved first.`)
       ) {
@@ -10167,7 +10270,9 @@ function WorkflowCanvasInner({
     (event: React.KeyboardEvent) => {
       if ((event.key === "Delete" || event.key === "Backspace") && selectedNode) {
         const tag = (event.target as HTMLElement).tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+          return;
+        }
 
         setNodes((nds) => nds.filter((n) => n.id !== selectedNode.id));
         setEdges((eds) =>
@@ -10274,9 +10379,13 @@ function WorkflowCanvasInner({
         : "";
   const focusValidationIssue = useCallback(
     (issue: WorkflowValidationIssue) => {
-      if (!issue.nodeId) return;
+      if (!issue.nodeId) {
+        return;
+      }
       const node = nodes.find((candidate) => candidate.id === issue.nodeId);
-      if (!node) return;
+      if (!node) {
+        return;
+      }
       setSelectedNode(node);
       setCenter(node.position.x + 90, node.position.y + 45, { zoom: 1, duration: 250 });
     },
@@ -10294,7 +10403,9 @@ function WorkflowCanvasInner({
               value={editingName ? draftName : activeWorkflow.name}
               onFocus={startRename}
               onChange={(e) => {
-                if (!editingName) setEditingName(true);
+                if (!editingName) {
+                  setEditingName(true);
+                }
                 setDraftName(e.target.value);
               }}
               onBlur={commitRename}
@@ -10387,7 +10498,9 @@ function WorkflowCanvasInner({
           <button
             disabled={!activeWorkflowId}
             onClick={() => {
-              if (!activeWorkflow) return;
+              if (!activeWorkflow) {
+                return;
+              }
               const cleanNodes = nodes.map((n) => ({
                 ...n,
                 position: n.position,

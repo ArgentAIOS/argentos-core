@@ -108,14 +108,20 @@ export function pickNudgeActivity(
   // Filter out activities still in cooldown AND disabled nudges
   const available = activities.filter((activity) => {
     // @ts-ignore - enabled field may not exist on default nudges
-    if (activity.enabled === false) return false;
+    if (activity.enabled === false) {
+      return false;
+    }
 
     const lastUsed = recentActivityIds.get(activity.id);
-    if (!lastUsed) return true;
+    if (!lastUsed) {
+      return true;
+    }
     return now - lastUsed >= activity.cooldownMinutes * 60 * 1000;
   });
 
-  if (available.length === 0) return null;
+  if (available.length === 0) {
+    return null;
+  }
 
   // Weighted random selection
   const totalWeight = available.reduce((sum, a) => sum + a.weight, 0);
@@ -123,7 +129,9 @@ export function pickNudgeActivity(
 
   for (const activity of available) {
     roll -= activity.weight;
-    if (roll <= 0) return activity;
+    if (roll <= 0) {
+      return activity;
+    }
   }
 
   return available[available.length - 1];

@@ -205,7 +205,9 @@ function PanelistCard({ panelist, round }: { panelist: PanelistState; round: num
   useEffect(() => {
     if (panelist.status === "streaming" && cardRef.current) {
       const el = cardRef.current.querySelector(".panelist-text");
-      if (el) el.scrollTop = el.scrollHeight;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   }, [panelist.currentText, panelist.status]);
 

@@ -68,10 +68,14 @@ function resolveProvider(
 
   if (requested) {
     const match = order.find((o) => o.provider === requested);
-    if (!match) return null;
+    if (!match) {
+      return null;
+    }
     for (const envKey of match.envKeys) {
       const key = resolveKey(envKey);
-      if (key) return { provider: match.provider, ...key };
+      if (key) {
+        return { provider: match.provider, ...key };
+      }
     }
     return null;
   }
@@ -79,7 +83,9 @@ function resolveProvider(
   for (const entry of order) {
     for (const envKey of entry.envKeys) {
       const key = resolveKey(envKey);
-      if (key) return { provider: entry.provider, ...key };
+      if (key) {
+        return { provider: entry.provider, ...key };
+      }
     }
   }
   return null;
@@ -132,10 +138,14 @@ async function generateGemini(
   };
 
   const parts = json.candidates?.[0]?.content?.parts;
-  if (!parts) throw new Error("Gemini returned no content");
+  if (!parts) {
+    throw new Error("Gemini returned no content");
+  }
 
   const imagePart = parts.find((p) => p.inlineData);
-  if (!imagePart?.inlineData) throw new Error("Gemini returned no image data");
+  if (!imagePart?.inlineData) {
+    throw new Error("Gemini returned no image data");
+  }
 
   const ext = imagePart.inlineData.mimeType.includes("png") ? "png" : "jpg";
   const buf = Buffer.from(imagePart.inlineData.data, "base64");
@@ -153,8 +163,12 @@ async function generateOpenAI(
     n: 1,
     response_format: "b64_json",
   };
-  if (opts.size) body.size = opts.size;
-  if (opts.quality) body.quality = opts.quality;
+  if (opts.size) {
+    body.size = opts.size;
+  }
+  if (opts.quality) {
+    body.quality = opts.quality;
+  }
 
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -172,7 +186,9 @@ async function generateOpenAI(
 
   const json = (await res.json()) as { data?: Array<{ b64_json?: string }> };
   const b64 = json.data?.[0]?.b64_json;
-  if (!b64) throw new Error("OpenAI returned no image data");
+  if (!b64) {
+    throw new Error("OpenAI returned no image data");
+  }
 
   const buf = Buffer.from(b64, "base64");
   return saveTempImage(buf, "png");
@@ -187,9 +203,13 @@ async function generateFal(
   const url = `https://fal.run/${model}`;
 
   let imageSize = "square_hd";
-  if (opts.aspect_ratio === "16:9") imageSize = "landscape_16_9";
-  else if (opts.aspect_ratio === "9:16") imageSize = "portrait_16_9";
-  else if (opts.aspect_ratio === "4:3") imageSize = "landscape_4_3";
+  if (opts.aspect_ratio === "16:9") {
+    imageSize = "landscape_16_9";
+  } else if (opts.aspect_ratio === "9:16") {
+    imageSize = "portrait_16_9";
+  } else if (opts.aspect_ratio === "4:3") {
+    imageSize = "landscape_4_3";
+  }
 
   const body = { prompt, image_size: imageSize, num_images: 1 };
 
@@ -209,10 +229,14 @@ async function generateFal(
 
   const json = (await res.json()) as { images?: Array<{ url?: string }> };
   const imageUrl = json.images?.[0]?.url;
-  if (!imageUrl) throw new Error("FAL returned no image URL");
+  if (!imageUrl) {
+    throw new Error("FAL returned no image URL");
+  }
 
   const imgRes = await fetch(imageUrl);
-  if (!imgRes.ok) throw new Error(`Failed to download FAL image: ${imgRes.status}`);
+  if (!imgRes.ok) {
+    throw new Error(`Failed to download FAL image: ${imgRes.status}`);
+  }
 
   const buf = Buffer.from(await imgRes.arrayBuffer());
   const ext = imageUrl.includes(".jpg") || imageUrl.includes(".jpeg") ? "jpg" : "png";

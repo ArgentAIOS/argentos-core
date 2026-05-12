@@ -585,10 +585,14 @@ export function buildScorePromptSection(state: ScoreState): string {
  */
 export function getScoreIntervalOverride(state: ScoreState): number | null {
   const penalty = resolvePenalty(state);
-  if (penalty.intervalOverrideMs) return penalty.intervalOverrideMs;
+  if (penalty.intervalOverrideMs) {
+    return penalty.intervalOverrideMs;
+  }
 
   const reward = resolveReward(state);
-  if (reward.intervalOverrideMs) return reward.intervalOverrideMs;
+  if (reward.intervalOverrideMs) {
+    return reward.intervalOverrideMs;
+  }
 
   return null;
 }
@@ -727,7 +731,9 @@ export async function recomputeScoreStateFromJournal(
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    if (lines.length === 0) continue;
+    if (lines.length === 0) {
+      continue;
+    }
 
     let currentScore = 0;
     let peakScore = 0;
@@ -772,7 +778,9 @@ export async function recomputeScoreStateFromJournal(
       }
     }
 
-    if (!initialized) continue;
+    if (!initialized) {
+      continue;
+    }
     daily.push({
       date: file.date,
       score: currentScore,
@@ -831,7 +839,9 @@ export async function recomputeScoreStateFromJournal(
   for (const d of asc) {
     if (d.targetReached) {
       streak += 1;
-      if (streak > longestStreak) longestStreak = streak;
+      if (streak > longestStreak) {
+        longestStreak = streak;
+      }
     } else {
       streak = 0;
     }

@@ -533,8 +533,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const hits: SearchHit[] = [];
 
     for (const [key, entry] of Object.entries(store)) {
-      if (!entry?.sessionId) continue;
-      if (hits.length >= limit) break;
+      if (!entry?.sessionId) {
+        continue;
+      }
+      if (hits.length >= limit) {
+        break;
+      }
 
       let messages: unknown[];
       try {
@@ -546,21 +550,33 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       }
 
       for (const msg of messages) {
-        if (hits.length >= limit) break;
+        if (hits.length >= limit) {
+          break;
+        }
         const m = msg as { role?: string; content?: unknown; timestamp?: number };
-        if (!m.role || m.role === "tool" || m.role === "system") continue;
+        if (!m.role || m.role === "tool" || m.role === "system") {
+          continue;
+        }
 
         const text = extractMessageText(m.content);
-        if (!text) continue;
+        if (!text) {
+          continue;
+        }
 
         const idx = text.toLowerCase().indexOf(query);
-        if (idx === -1) continue;
+        if (idx === -1) {
+          continue;
+        }
 
         const start = Math.max(0, idx - 60);
         const end = Math.min(text.length, idx + query.length + 100);
         let snippet = text.slice(start, end);
-        if (start > 0) snippet = "..." + snippet;
-        if (end < text.length) snippet = snippet + "...";
+        if (start > 0) {
+          snippet = "..." + snippet;
+        }
+        if (end < text.length) {
+          snippet = snippet + "...";
+        }
 
         hits.push({
           sessionKey: key,
@@ -582,11 +598,17 @@ export const sessionsHandlers: GatewayRequestHandlers = {
 
 /** Extract plain text from message content (string or content array). */
 function extractMessageText(content: unknown): string | null {
-  if (typeof content === "string") return content.trim() || null;
-  if (!Array.isArray(content)) return null;
+  if (typeof content === "string") {
+    return content.trim() || null;
+  }
+  if (!Array.isArray(content)) {
+    return null;
+  }
   const parts: string[] = [];
   for (const part of content) {
-    if (!part || typeof part !== "object") continue;
+    if (!part || typeof part !== "object") {
+      continue;
+    }
     const p = part as { type?: string; text?: string };
     if ((p.type === "text" || p.type === "output_text" || p.type === "input_text") && p.text) {
       parts.push(p.text);

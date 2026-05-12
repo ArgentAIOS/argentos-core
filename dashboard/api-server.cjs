@@ -22,7 +22,9 @@ function readRuntimeBuildInfo(baseDir) {
   ];
   for (const candidate of candidates) {
     try {
-      if (!fs.existsSync(candidate)) continue;
+      if (!fs.existsSync(candidate)) {
+        continue;
+      }
       const parsed = JSON.parse(fs.readFileSync(candidate, "utf-8"));
       if (typeof parsed?.version === "string" && parsed.version.trim()) {
         return {
@@ -60,7 +62,9 @@ function resolveGatewayAuthToken(config = readArgentConfig()) {
         const match = plistRaw.match(
           /<key>ARGENT_GATEWAY_TOKEN<\/key>\s*<string>([^<]+)<\/string>/,
         );
-        if (match?.[1]) gwToken = match[1].trim();
+        if (match?.[1]) {
+          gwToken = match[1].trim();
+        }
       }
     } catch {}
   }
@@ -74,7 +78,9 @@ function resolveGatewayAuthToken(config = readArgentConfig()) {
         .trim();
     } catch {}
   }
-  if (!gwToken) gwToken = process.env.ARGENT_GATEWAY_TOKEN || "";
+  if (!gwToken) {
+    gwToken = process.env.ARGENT_GATEWAY_TOKEN || "";
+  }
   return gwToken;
 }
 
@@ -95,7 +101,9 @@ function sendGatewayRpcFireAndForget(method, params, options = {}) {
       },
       Number(options.timeoutMs) || 3000,
     );
-    if (typeof timeout.unref === "function") timeout.unref();
+    if (typeof timeout.unref === "function") {
+      timeout.unref();
+    }
 
     function cleanup() {
       clearTimeout(timeout);
@@ -133,7 +141,9 @@ function sendGatewayRpcFireAndForget(method, params, options = {}) {
       } catch {
         return;
       }
-      if (msg?.type !== "res") return;
+      if (msg?.type !== "res") {
+        return;
+      }
       if (msg.id === connectId) {
         if (!msg.ok) {
           cleanup();
@@ -142,7 +152,9 @@ function sendGatewayRpcFireAndForget(method, params, options = {}) {
         ws.send(JSON.stringify({ type: "req", id: requestId, method, params }));
         return;
       }
-      if (msg.id === requestId) cleanup();
+      if (msg.id === requestId) {
+        cleanup();
+      }
     });
     ws.on("error", (err) => {
       if (options.logErrors) {
@@ -281,8 +293,12 @@ function matchesSurfaceRoutePattern(routePath, pattern) {
       `^${pattern
         .split("/")
         .map((segment) => {
-          if (!segment) return "";
-          if (segment.startsWith(":")) return "[^/]+";
+          if (!segment) {
+            return "";
+          }
+          if (segment.startsWith(":")) {
+            return "[^/]+";
+          }
           return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         })
         .join("/")}$`,
@@ -299,11 +315,17 @@ function isBlockedInPublicCore(routePath) {
 }
 
 app.use("/api", (req, res, next) => {
-  if (req.method === "OPTIONS") return next();
+  if (req.method === "OPTIONS") {
+    return next();
+  }
   const surfaceProfile = getDashboardSurfaceProfile(readArgentConfig());
-  if (surfaceProfile !== "public-core") return next();
+  if (surfaceProfile !== "public-core") {
+    return next();
+  }
   const routePath = normalizeSurfaceApiPath(req);
-  if (!isBlockedInPublicCore(routePath)) return next();
+  if (!isBlockedInPublicCore(routePath)) {
+    return next();
+  }
   return res.status(403).json({
     error: "Route not available in Public Core",
     surfaceProfile,
@@ -361,7 +383,9 @@ function resolveGatewayConfigToken() {
       ".argentos",
       "argent.json",
     );
-    if (!fs.existsSync(argentConfigPath)) return null;
+    if (!fs.existsSync(argentConfigPath)) {
+      return null;
+    }
     const cfg = JSON.parse(fs.readFileSync(argentConfigPath, "utf-8"));
     const token = cfg?.gateway?.auth?.token;
     return typeof token === "string" && token.trim() ? token.trim() : null;
@@ -385,18 +409,33 @@ function resolveAcceptedTokens() {
 //      tests / fresh installs while still protecting any normal install.
 app.use("/api/", (req, res, next) => {
   // Allow preflight and health check (no auth needed)
-  if (req.method === "OPTIONS") return next();
-  if (req.path === "/api/health" || req.path === "/health") return next();
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+  if (req.path === "/api/health" || req.path === "/health") {
+    return next();
+  }
   if (req.originalUrl?.includes("/api/settings/auth-profiles/openai-codex/oauth/callback")) {
     return next();
   }
-  if (req.path.endsWith("/events")) return next(); // SSE — EventSource can't send headers
-  if (req.path === "/media" || req.path === "/api/media") return next(); // Media served via <img>/<video>/<audio> tags — has own path-based security
-  if (req.path === "/proxy/tts/elevenlabs" || req.path === "/api/proxy/tts/elevenlabs")
-    return next(); // Browser TTS calls may not have access to dashboard API token
-  if (req.path === "/proxy/tts/openai" || req.path === "/api/proxy/tts/openai") return next();
-  if (req.path === "/proxy/tts/fish" || req.path === "/api/proxy/tts/fish") return next();
-  if (req.path.startsWith("/license")) return next(); // License endpoints need to work before auth is established
+  if (req.path.endsWith("/events")) {
+    return next();
+  } // SSE — EventSource can't send headers
+  if (req.path === "/media" || req.path === "/api/media") {
+    return next();
+  } // Media served via <img>/<video>/<audio> tags — has own path-based security
+  if (req.path === "/proxy/tts/elevenlabs" || req.path === "/api/proxy/tts/elevenlabs") {
+    return next();
+  } // Browser TTS calls may not have access to dashboard API token
+  if (req.path === "/proxy/tts/openai" || req.path === "/api/proxy/tts/openai") {
+    return next();
+  }
+  if (req.path === "/proxy/tts/fish" || req.path === "/api/proxy/tts/fish") {
+    return next();
+  }
+  if (req.path.startsWith("/license")) {
+    return next();
+  } // License endpoints need to work before auth is established
 
   const acceptedTokens = resolveAcceptedTokens();
   if (acceptedTokens.length === 0) {
@@ -462,7 +501,9 @@ app.use("/api", (_req, res, next) => {
 function isExternalUrl(urlString) {
   try {
     const parsed = new URL(urlString);
-    if (!["http:", "https:"].includes(parsed.protocol)) return false;
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return false;
+    }
     const host = parsed.hostname.toLowerCase();
     // Block localhost, private IPs, link-local, metadata endpoints
     if (
@@ -580,9 +621,13 @@ app.post("/api/media/cleanup", (req, res) => {
 
   for (const filePath of paths) {
     const normalized = path.normalize(filePath);
-    if (normalized.includes("..")) continue;
+    if (normalized.includes("..")) {
+      continue;
+    }
     // Only allow temp directories for safety
-    if (!allowedPrefixes.some((p) => normalized.startsWith(p))) continue;
+    if (!allowedPrefixes.some((p) => normalized.startsWith(p))) {
+      continue;
+    }
     try {
       if (fs.existsSync(normalized)) {
         fs.unlinkSync(normalized);
@@ -736,7 +781,9 @@ app.post("/api/contemplation/wakeup", (req, res) => {
   let resolvedMood = mood;
   if (!resolvedMood) {
     const moodMatch = text.match(/\[MOOD:([^\]]+)\]/);
-    if (moodMatch) resolvedMood = moodMatch[1].trim();
+    if (moodMatch) {
+      resolvedMood = moodMatch[1].trim();
+    }
   }
 
   // Strip markers from display text
@@ -799,7 +846,9 @@ function loadStorageTargets() {
     redis: { host: "127.0.0.1", port: 6380 },
   };
   try {
-    if (!fs.existsSync(configPath)) return defaults;
+    if (!fs.existsSync(configPath)) {
+      return defaults;
+    }
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
     const storage = parsed?.storage || {};
@@ -823,7 +872,9 @@ function checkTcpReachable(host, port, timeoutMs = 1200) {
     const socket = new net.Socket();
     let done = false;
     const finish = (ok) => {
-      if (done) return;
+      if (done) {
+        return;
+      }
       done = true;
       try {
         socket.destroy();
@@ -841,7 +892,9 @@ function checkTcpReachable(host, port, timeoutMs = 1200) {
 function resolveBrewCommand() {
   const candidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
   return "brew";
 }
@@ -852,7 +905,9 @@ function resolvePgDumpCommand() {
     "/usr/local/opt/postgresql@17/bin/pg_dump",
   ];
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
   return "pg_dump";
 }
@@ -879,7 +934,9 @@ function readStorageConfigSummary() {
     postgresConnectionString: null,
   };
   try {
-    if (!fs.existsSync(configPath)) return defaults;
+    if (!fs.existsSync(configPath)) {
+      return defaults;
+    }
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
     const storage = parsed?.storage || {};
     return {
@@ -898,7 +955,9 @@ function readStorageConfigSummary() {
 
 function listDatabaseBackups() {
   const backupDir = getDatabaseBackupDir();
-  if (!fs.existsSync(backupDir)) return [];
+  if (!fs.existsSync(backupDir)) {
+    return [];
+  }
   return fs
     .readdirSync(backupDir)
     .filter((f) => f.startsWith("argentos-db-backup-") && f.endsWith(".dump"))
@@ -928,7 +987,9 @@ function getPostgresServiceState(postgresPort) {
     const pg = Array.isArray(rows)
       ? rows.find((row) => String(row?.name || "").startsWith("postgresql@17"))
       : null;
-    if (pg?.status) serviceStatus = String(pg.status);
+    if (pg?.status) {
+      serviceStatus = String(pg.status);
+    }
   } catch {}
 
   let pid = null;
@@ -965,8 +1026,12 @@ app.get("/api/health", async (req, res) => {
   ]);
 
   const criticalServicesDown = [];
-  if (!postgresReachable) criticalServicesDown.push("postgres");
-  if (!redisReachable) criticalServicesDown.push("redis");
+  if (!postgresReachable) {
+    criticalServicesDown.push("postgres");
+  }
+  if (!redisReachable) {
+    criticalServicesDown.push("redis");
+  }
   const status = criticalServicesDown.length > 0 ? "degraded" : "ok";
 
   res.json({
@@ -1174,7 +1239,9 @@ const CALENDAR_SETTINGS_PATH = path.join(
 
 function readCalendarSettings() {
   try {
-    if (!fs.existsSync(CALENDAR_SETTINGS_PATH)) return {};
+    if (!fs.existsSync(CALENDAR_SETTINGS_PATH)) {
+      return {};
+    }
     const parsed = JSON.parse(fs.readFileSync(CALENDAR_SETTINGS_PATH, "utf-8"));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
@@ -1198,7 +1265,9 @@ function listGogCalendarAccountsDetailed() {
       timeout: 10000,
     });
     const parsed = JSON.parse(output);
-    if (!Array.isArray(parsed?.accounts)) return [];
+    if (!Array.isArray(parsed?.accounts)) {
+      return [];
+    }
     return parsed.accounts
       .filter((entry) => entry && typeof entry.email === "string")
       .filter((entry) => Array.isArray(entry.services) && entry.services.includes("calendar"))
@@ -1227,7 +1296,9 @@ function getGogDefaultAccount() {
       .split("\n")
       .map((row) => row.trim())
       .find((row) => row.startsWith("account\t"));
-    if (!line) return null;
+    if (!line) {
+      return null;
+    }
     const [, account] = line.split("\t");
     return account || null;
   } catch {
@@ -1252,7 +1323,9 @@ function persistCalendarAccount(account) {
 }
 
 function normalizeRequestedAccount(raw) {
-  if (typeof raw !== "string") return null;
+  if (typeof raw !== "string") {
+    return null;
+  }
   const normalized = raw.trim();
   return normalized ? normalized : null;
 }
@@ -1268,7 +1341,9 @@ function runGogCalendarEvents(preferredAccount = null) {
   const enqueue = (account) => {
     const normalized = typeof account === "string" ? account.trim() : "";
     const key = normalized || "__default__";
-    if (seen.has(key)) return;
+    if (seen.has(key)) {
+      return;
+    }
     seen.add(key);
     queue.push(normalized || null);
   };
@@ -1469,10 +1544,18 @@ app.get("/api/calendar/upcoming", (req, res) => {
 
 function weatherIconFromDescription(desc) {
   const normalized = String(desc || "").toLowerCase();
-  if (normalized.includes("rain") || normalized.includes("drizzle")) return "rain";
-  if (normalized.includes("cloud") || normalized.includes("overcast")) return "cloud";
-  if (normalized.includes("snow")) return "snow";
-  if (normalized.includes("thunder") || normalized.includes("storm")) return "storm";
+  if (normalized.includes("rain") || normalized.includes("drizzle")) {
+    return "rain";
+  }
+  if (normalized.includes("cloud") || normalized.includes("overcast")) {
+    return "cloud";
+  }
+  if (normalized.includes("snow")) {
+    return "snow";
+  }
+  if (normalized.includes("thunder") || normalized.includes("storm")) {
+    return "storm";
+  }
   return "sun";
 }
 
@@ -1733,14 +1816,18 @@ function readCorsAllowlist() {
 /** Write the CORS allowlist to disk */
 function writeCorsAllowlist(data) {
   const dir = path.dirname(CORS_ALLOWLIST_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(CORS_ALLOWLIST_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
 function normalizeFilesystemPath(inputPath) {
   const resolved = path.resolve(String(inputPath || "").trim());
   const root = path.parse(resolved).root;
-  if (resolved === root) return resolved;
+  if (resolved === root) {
+    return resolved;
+  }
   return resolved.replace(/[\\/]+$/, "");
 }
 
@@ -1787,11 +1874,15 @@ function readFilesystemAllowlist() {
 
 function writeFilesystemAllowlist(data) {
   const dir = path.dirname(FILESYSTEM_ALLOWLIST_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   const deduped = [];
   for (const entry of data.entries || []) {
     const covered = deduped.find((current) => isPathCoveredByAllowlist(entry.path, current.path));
-    if (covered) continue;
+    if (covered) {
+      continue;
+    }
     const next = deduped.filter((current) => !isPathCoveredByAllowlist(current.path, entry.path));
     next.push(entry);
     deduped.splice(0, deduped.length, ...next);
@@ -1822,7 +1913,9 @@ function getAuditActor(req) {
 function appendFilesystemAuditEvent(req, event) {
   try {
     const dir = path.dirname(FILESYSTEM_AUDIT_LOG_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     const now = new Date().toISOString();
     const eventActorId =
       event && typeof event.actorId === "string" && event.actorId.trim().length > 0
@@ -1960,7 +2053,9 @@ app.post("/api/gateway/tools/invoke", async (req, res) => {
           const match = plistRaw.match(
             /<key>ARGENT_GATEWAY_TOKEN<\/key>\s*<string>([^<]+)<\/string>/,
           );
-          if (match?.[1]) gwToken = match[1].trim();
+          if (match?.[1]) {
+            gwToken = match[1].trim();
+          }
         }
       } catch {}
     }
@@ -1974,10 +2069,14 @@ app.post("/api/gateway/tools/invoke", async (req, res) => {
           .trim();
       } catch {}
     }
-    if (!gwToken) gwToken = process.env.ARGENT_GATEWAY_TOKEN || "";
+    if (!gwToken) {
+      gwToken = process.env.ARGENT_GATEWAY_TOKEN || "";
+    }
 
     const headers = { "Content-Type": "application/json" };
-    if (gwToken) headers["Authorization"] = `Bearer ${gwToken}`;
+    if (gwToken) {
+      headers["Authorization"] = `Bearer ${gwToken}`;
+    }
     const upstream = await fetch(`http://127.0.0.1:${gwPort}/tools/invoke`, {
       method: "POST",
       headers,
@@ -2295,10 +2394,14 @@ const STORAGE_CONFIG_PATH = path.join(process.env.HOME || "", ".argentos", "arge
 
 function readStorageBackend() {
   try {
-    if (!fs.existsSync(STORAGE_CONFIG_PATH)) return "sqlite";
+    if (!fs.existsSync(STORAGE_CONFIG_PATH)) {
+      return "sqlite";
+    }
     const raw = JSON.parse(fs.readFileSync(STORAGE_CONFIG_PATH, "utf8"));
     const backend = String(raw?.storage?.backend || "sqlite").toLowerCase();
-    if (backend === "postgres" || backend === "dual") return backend;
+    if (backend === "postgres" || backend === "dual") {
+      return backend;
+    }
     return "sqlite";
   } catch {
     return "sqlite";
@@ -2331,9 +2434,13 @@ function readStorageConfig() {
 
 function resolvePgConnectionString() {
   const fromConfig = STORAGE_CONFIG.postgresConnectionString;
-  if (fromConfig) return fromConfig;
+  if (fromConfig) {
+    return fromConfig;
+  }
   const fromEnv = process.env.ARGENT_PG_URL || process.env.DATABASE_URL;
-  if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv.trim();
+  if (typeof fromEnv === "string" && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
   return "postgres://localhost:5433/argentos";
 }
 
@@ -2495,8 +2602,12 @@ async function ensurePgCompatSchema(sql) {
 }
 
 async function getPgSqlClient() {
-  if (!IS_PG_STORAGE_BACKEND) return null;
-  if (_pgSqlClient) return _pgSqlClient;
+  if (!IS_PG_STORAGE_BACKEND) {
+    return null;
+  }
+  if (_pgSqlClient) {
+    return _pgSqlClient;
+  }
   if (!_postgresFactory) {
     _postgresFactory = await import("postgres")
       .then((mod) => mod.default || mod)
@@ -2534,7 +2645,9 @@ function setPgSqlClientForTests(client) {
 async function getPgDashboardCompatHooks() {
   const sql = await getPgSqlClient();
   const hooks = sql?.__dashboardCompat;
-  if (!hooks || typeof hooks !== "object") return null;
+  if (!hooks || typeof hooks !== "object") {
+    return null;
+  }
   return hooks;
 }
 
@@ -2556,8 +2669,12 @@ function isStorageUnavailableError(err) {
 }
 
 function parseTaskMetadata(value) {
-  if (!value) return {};
-  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (!value) {
+    return {};
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
@@ -2593,17 +2710,23 @@ function parseTaskTags(value) {
 }
 
 function mapTaskStatusFromDb(status) {
-  if (status === "in_progress") return "in-progress";
+  if (status === "in_progress") {
+    return "in-progress";
+  }
   return status || "pending";
 }
 
 function mapTaskStatusToDb(status) {
-  if (status === "in-progress") return "in_progress";
+  if (status === "in-progress") {
+    return "in_progress";
+  }
   return status;
 }
 
 function taskFromPgRow(row) {
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
   const metadata = parseTaskMetadata(row.metadata);
   const tags = parseTaskTags(row.tags);
   const type = extractTaskType(metadata, row.parentTaskId || row.parent_task_id);
@@ -2631,14 +2754,20 @@ function taskFromPgRow(row) {
 }
 
 function toPgDateOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
   return d;
 }
 
 function computeNextScheduledRunEpoch(schedule, fromTime) {
-  if (!schedule || typeof schedule !== "object") return null;
+  if (!schedule || typeof schedule !== "object") {
+    return null;
+  }
   const now = Number(fromTime || Date.now());
 
   if (schedule.frequency === "interval" && Number.isFinite(schedule.intervalMinutes)) {
@@ -2687,8 +2816,12 @@ function computeNextScheduledRunEpoch(schedule, fromTime) {
 }
 
 function enrichTaskScheduleForType(type, schedule, fromTime) {
-  if (!schedule || typeof schedule !== "object") return schedule;
-  if (!["scheduled", "interval", "reminder"].includes(String(type || ""))) return schedule;
+  if (!schedule || typeof schedule !== "object") {
+    return schedule;
+  }
+  if (!["scheduled", "interval", "reminder"].includes(String(type || ""))) {
+    return schedule;
+  }
   return {
     ...schedule,
     nextRun: computeNextScheduledRunEpoch(schedule, fromTime),
@@ -2698,7 +2831,9 @@ function enrichTaskScheduleForType(type, schedule, fromTime) {
 function createPgTasksCompatDb() {
   async function listRaw(options = {}) {
     const sql = await getPgSqlClient();
-    if (!sql) return [];
+    if (!sql) {
+      return [];
+    }
     const where = [];
     const params = [];
     let idx = 1;
@@ -2751,7 +2886,9 @@ function createPgTasksCompatDb() {
 
   async function getRaw(id) {
     const sql = await getPgSqlClient();
-    if (!sql) return null;
+    if (!sql) {
+      return null;
+    }
     const rows = await sql`
       SELECT
         id,
@@ -2803,7 +2940,9 @@ function createPgTasksCompatDb() {
       metadata,
     }) {
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const id = crypto.randomUUID();
       const now = new Date();
       const mergedMeta = mergeTaskMetadata({}, { type, schedule, metadata });
@@ -2851,9 +2990,13 @@ function createPgTasksCompatDb() {
     },
     async updateTask(id, updates = {}) {
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const existing = await getRaw(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
       const existingMeta = parseTaskMetadata(existing.metadata);
       const nextMeta = mergeTaskMetadata(existingMeta, updates);
       const nextStatus = updates.status ? mapTaskStatusToDb(updates.status) : existing.status;
@@ -2908,13 +3051,17 @@ function createPgTasksCompatDb() {
     },
     async deleteTask(id) {
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const out = await sql`DELETE FROM tasks WHERE id = ${id}`;
       return Number(out.count || 0) > 0;
     },
     async startTask(id) {
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const now = new Date();
       const updated = await sql`
         UPDATE tasks
@@ -2943,7 +3090,9 @@ function createPgTasksCompatDb() {
     },
     async completeTask(id) {
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const now = new Date();
       const updated = await sql`
         UPDATE tasks
@@ -2972,7 +3121,9 @@ function createPgTasksCompatDb() {
     },
     async searchTasks(query, limit = 20) {
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const q = `%${String(query || "")
         .trim()
         .toLowerCase()}%`;
@@ -3028,8 +3179,12 @@ function createPgTasksCompatDb() {
       const projects = rows.filter((task) => task?.type === "project");
       const childrenByParent = new Map();
       for (const row of rows) {
-        if (!row?.parentTaskId) continue;
-        if (!childrenByParent.has(row.parentTaskId)) childrenByParent.set(row.parentTaskId, []);
+        if (!row?.parentTaskId) {
+          continue;
+        }
+        if (!childrenByParent.has(row.parentTaskId)) {
+          childrenByParent.set(row.parentTaskId, []);
+        }
         childrenByParent.get(row.parentTaskId).push(row);
       }
       return projects
@@ -3057,7 +3212,9 @@ function createPgTasksCompatDb() {
         return (await compatFn()) || [];
       }
       const sql = await getPgSqlClient();
-      if (!sql) return [];
+      if (!sql) {
+        return [];
+      }
       const now = Date.now();
       const rows = await sql`
         SELECT
@@ -3096,10 +3253,14 @@ function createPgTasksCompatDb() {
         return await compatFn(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) return null;
+      if (!sql) {
+        return null;
+      }
       const row = await getRaw(id);
       const task = taskFromPgRow(row);
-      if (!task || !task.schedule || typeof task.schedule !== "object") return null;
+      if (!task || !task.schedule || typeof task.schedule !== "object") {
+        return null;
+      }
       const now = Date.now();
       const nextSchedule = {
         ...task.schedule,
@@ -3164,31 +3325,45 @@ async function getTaskStorageAdapter() {
 }
 
 function safeIso(value) {
-  if (value === null || value === undefined) return undefined;
+  if (value === null || value === undefined) {
+    return undefined;
+  }
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return undefined;
+  if (Number.isNaN(d.getTime())) {
+    return undefined;
+  }
   return d.toISOString();
 }
 
 function toEpochMs(value) {
-  if (value === null || value === undefined || value === "") return undefined;
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return undefined;
+  if (Number.isNaN(d.getTime())) {
+    return undefined;
+  }
   return d.getTime();
 }
 
 function statusFromStorage(status) {
-  if (status === "in_progress") return "in-progress";
+  if (status === "in_progress") {
+    return "in-progress";
+  }
   return status || "pending";
 }
 
 function statusToStorage(status) {
-  if (status === "in-progress") return "in_progress";
+  if (status === "in-progress") {
+    return "in_progress";
+  }
   return status;
 }
 
 function normalizeMetadata(value) {
-  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
   if (typeof value === "string" && value.trim()) {
     try {
       const parsed = JSON.parse(value);
@@ -3201,13 +3376,19 @@ function normalizeMetadata(value) {
 }
 
 function extractTaskType(meta, parentTaskId) {
-  if (meta && typeof meta.type === "string" && meta.type.trim()) return meta.type.trim();
-  if (parentTaskId) return "one-time";
+  if (meta && typeof meta.type === "string" && meta.type.trim()) {
+    return meta.type.trim();
+  }
+  if (parentTaskId) {
+    return "one-time";
+  }
   return "one-time";
 }
 
 function toDashboardTaskFromStorage(task) {
-  if (!task) return null;
+  if (!task) {
+    return null;
+  }
   const metadata = normalizeMetadata(task.metadata);
   return {
     id: task.id,
@@ -3235,8 +3416,12 @@ function toDashboardTaskFromStorage(task) {
 function mergeTaskMetadata(existing, updates) {
   const current = normalizeMetadata(existing);
   const next = { ...current };
-  if (updates.type !== undefined) next.type = updates.type;
-  if (updates.schedule !== undefined) next.schedule = updates.schedule;
+  if (updates.type !== undefined) {
+    next.type = updates.type;
+  }
+  if (updates.schedule !== undefined) {
+    next.schedule = updates.schedule;
+  }
   if (updates.metadata && typeof updates.metadata === "object") {
     Object.assign(next, updates.metadata);
   }
@@ -3250,7 +3435,9 @@ function archivedAtFromMetadata(metadata) {
 }
 
 function isArchivedProjectTask(task) {
-  if (!task || typeof task !== "object") return false;
+  if (!task || typeof task !== "object") {
+    return false;
+  }
   return Boolean(archivedAtFromMetadata(task.metadata));
 }
 
@@ -3260,14 +3447,20 @@ function isProjectTask(task) {
 }
 
 function isWorkerLaneTask(task) {
-  if (!task || typeof task !== "object") return false;
-  if (task.source === "job") return true;
+  if (!task || typeof task !== "object") {
+    return false;
+  }
+  if (task.source === "job") {
+    return true;
+  }
   const metadata = normalizeMetadata(task.metadata);
   return Boolean(metadata.jobAssignmentId);
 }
 
 function filterOperatorLaneTasks(tasks, options = {}) {
-  if (options.includeWorkerTasks) return tasks;
+  if (options.includeWorkerTasks) {
+    return tasks;
+  }
   return tasks.filter((task) => !isWorkerLaneTask(task));
 }
 
@@ -3298,14 +3491,18 @@ async function listTasksCompat(options = {}) {
 
 async function getTaskCompat(id) {
   const adapter = await getTaskStorageAdapter();
-  if (!adapter) return getLegacyTasksDbOrThrow().getTask(id);
+  if (!adapter) {
+    return getLegacyTasksDbOrThrow().getTask(id);
+  }
   const row = await adapter.tasks.get(id);
   return toDashboardTaskFromStorage(row);
 }
 
 async function createTaskCompat(input) {
   const adapter = await getTaskStorageAdapter();
-  if (!adapter) return getLegacyTasksDbOrThrow().createTask(input);
+  if (!adapter) {
+    return getLegacyTasksDbOrThrow().createTask(input);
+  }
 
   const type = input.type || "one-time";
   const schedule = enrichTaskScheduleForType(type, input.schedule, Date.now());
@@ -3327,10 +3524,14 @@ async function createTaskCompat(input) {
 
 async function updateTaskCompat(id, updates) {
   const adapter = await getTaskStorageAdapter();
-  if (!adapter) return getLegacyTasksDbOrThrow().updateTask(id, updates);
+  if (!adapter) {
+    return getLegacyTasksDbOrThrow().updateTask(id, updates);
+  }
 
   const existing = await adapter.tasks.get(id);
-  if (!existing) return null;
+  if (!existing) {
+    return null;
+  }
   const existingMeta = normalizeMetadata(existing.metadata);
   const nextType = updates.type || extractTaskType(existingMeta, existing.parentTaskId);
   const nextSchedule =
@@ -3352,20 +3553,26 @@ async function updateTaskCompat(id, updates) {
 
 async function deleteTaskCompat(id) {
   const adapter = await getTaskStorageAdapter();
-  if (!adapter) return getLegacyTasksDbOrThrow().deleteTask(id);
+  if (!adapter) {
+    return getLegacyTasksDbOrThrow().deleteTask(id);
+  }
   return adapter.tasks.delete(id);
 }
 
 async function startTaskCompat(id) {
   const adapter = await getTaskStorageAdapter();
-  if (!adapter) return getLegacyTasksDbOrThrow().startTask(id);
+  if (!adapter) {
+    return getLegacyTasksDbOrThrow().startTask(id);
+  }
   const task = await adapter.tasks.start(id);
   return toDashboardTaskFromStorage(task);
 }
 
 async function completeTaskCompat(id) {
   const adapter = await getTaskStorageAdapter();
-  if (!adapter) return getLegacyTasksDbOrThrow().completeTask(id);
+  if (!adapter) {
+    return getLegacyTasksDbOrThrow().completeTask(id);
+  }
   const task = await adapter.tasks.complete(id);
   return toDashboardTaskFromStorage(task);
 }
@@ -3443,7 +3650,9 @@ async function listProjectsCompat(options = {}) {
       await getLegacyTasksDbOrThrow().listProjects(),
       options,
     );
-    if (options.includeArchived) return legacyProjects;
+    if (options.includeArchived) {
+      return legacyProjects;
+    }
     return legacyProjects.filter((project) => !isArchivedProjectTask(project));
   }
 
@@ -3451,7 +3660,9 @@ async function listProjectsCompat(options = {}) {
   const projects = rows.filter(isProjectTask);
   const childrenByParent = new Map();
   for (const row of rows) {
-    if (!row.parentTaskId) continue;
+    if (!row.parentTaskId) {
+      continue;
+    }
     if (!childrenByParent.has(row.parentTaskId)) {
       childrenByParent.set(row.parentTaskId, []);
     }
@@ -3536,10 +3747,15 @@ function normalizeReminderTarget(value) {
     .trim()
     .toLowerCase()
     .replace(/[-\s]+/g, "_");
-  if (normalized === "docpanel") return "doc_panel";
-  if (normalized === "tts" || normalized === "audio" || normalized === "audio_alert")
+  if (normalized === "docpanel") {
+    return "doc_panel";
+  }
+  if (normalized === "tts" || normalized === "audio" || normalized === "audio_alert") {
     return "voice";
-  if (normalized === "inapp" || normalized === "app") return "in_app";
+  }
+  if (normalized === "inapp" || normalized === "app") {
+    return "in_app";
+  }
   return normalized;
 }
 
@@ -3553,9 +3769,13 @@ function normalizeReminderTargets(reminder) {
 
 function getReminderConfig(config) {
   const direct = config?.reminders;
-  if (direct && typeof direct === "object") return direct;
+  if (direct && typeof direct === "object") {
+    return direct;
+  }
   const nested = config?.tasks?.reminders;
-  if (nested && typeof nested === "object") return nested;
+  if (nested && typeof nested === "object") {
+    return nested;
+  }
   return {};
 }
 
@@ -3612,7 +3832,9 @@ async function deliverReminderChannel({ task, target, message, route }) {
 
 async function sendReminderResendEmail({ route, message, subject }) {
   const apiKey = await resolveServiceKeyForProxy("RESEND_API_KEY");
-  if (!apiKey) return { ok: false, reason: "missing-resend-key" };
+  if (!apiKey) {
+    return { ok: false, reason: "missing-resend-key" };
+  }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -4239,11 +4461,15 @@ function parseNumberOr(value, fallback = 0) {
 }
 
 function parseMemoryJsonObject(value) {
-  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
   if (typeof value === "string" && value.trim()) {
     try {
       const parsed = JSON.parse(value);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
     } catch {
       // Ignore malformed JSON.
     }
@@ -4252,11 +4478,15 @@ function parseMemoryJsonObject(value) {
 }
 
 function parseMemoryJsonArray(value) {
-  if (Array.isArray(value)) return value;
+  if (Array.isArray(value)) {
+    return value;
+  }
   if (typeof value === "string" && value.trim()) {
     try {
       const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
     } catch {
       // Ignore malformed JSON.
     }
@@ -4309,11 +4539,17 @@ function normalizeMemoryCategoryName(name) {
   const normalized = String(name || "")
     .trim()
     .replace(/\s+/g, " ");
-  if (!normalized) return null;
-  for (const rule of MEMORY_CATEGORY_CANONICAL_RULES) {
-    if (rule.pattern.test(normalized)) return rule.canonical;
+  if (!normalized) {
+    return null;
   }
-  if (/^[\d\W_]+$/.test(normalized)) return null;
+  for (const rule of MEMORY_CATEGORY_CANONICAL_RULES) {
+    if (rule.pattern.test(normalized)) {
+      return rule.canonical;
+    }
+  }
+  if (/^[\d\W_]+$/.test(normalized)) {
+    return null;
+  }
   return titleCaseMemoryWord(normalized);
 }
 
@@ -4326,8 +4562,12 @@ function normalizeMemoryAliasName(name) {
 
 function isCanonicalPersonAliasCandidate(name) {
   const trimmed = String(name || "").trim();
-  if (!/^[A-Za-z][A-Za-z'-]*$/.test(trimmed)) return false;
-  if (!/^[A-Z][a-z'-]*$/.test(trimmed)) return false;
+  if (!/^[A-Za-z][A-Za-z'-]*$/.test(trimmed)) {
+    return false;
+  }
+  if (!/^[A-Z][a-z'-]*$/.test(trimmed)) {
+    return false;
+  }
   const genericStopwords = new Set([
     "sender",
     "operator",
@@ -4358,8 +4598,12 @@ function findCanonicalPersonAliasRecord(name, candidates) {
   }
   const folded = normalizeMemoryAliasName(normalized);
   const matches = candidates.filter((candidate) => {
-    if (candidate.entity_type !== "person") return false;
-    if (candidate.name.includes("(") || candidate.name.includes(")")) return false;
+    if (candidate.entity_type !== "person") {
+      return false;
+    }
+    if (candidate.name.includes("(") || candidate.name.includes(")")) {
+      return false;
+    }
     if (!/^[A-Z][a-z'-]*(?:\s+[A-Z][a-z'-]*)+$/.test(String(candidate.name || "").trim())) {
       return false;
     }
@@ -4368,8 +4612,12 @@ function findCanonicalPersonAliasRecord(name, candidates) {
       candidateParts.length >= 2 && normalizeMemoryAliasName(candidateParts[0] || "") === folded
     );
   });
-  if (matches.length !== 1) return null;
-  if (parseNumberOr(matches[0].memory_count, 0) < 5) return null;
+  if (matches.length !== 1) {
+    return null;
+  }
+  if (parseNumberOr(matches[0].memory_count, 0) < 5) {
+    return null;
+  }
   return matches[0];
 }
 
@@ -4399,12 +4647,16 @@ const MEMORY_REPAIR_HISTORY_PATH = path.join(
 
 function ensureParentDir(filePath) {
   const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
 function readMemoryRepairHistory() {
   try {
-    if (!fs.existsSync(MEMORY_REPAIR_HISTORY_PATH)) return [];
+    if (!fs.existsSync(MEMORY_REPAIR_HISTORY_PATH)) {
+      return [];
+    }
     const raw = JSON.parse(fs.readFileSync(MEMORY_REPAIR_HISTORY_PATH, "utf-8"));
     return Array.isArray(raw) ? raw : [];
   } catch {
@@ -4438,10 +4690,14 @@ async function getMemoryStatsSnapshot(sql) {
 function chooseBetterEntityRecord(a, b) {
   const aCount = parseNumberOr(a?.memory_count, 0);
   const bCount = parseNumberOr(b?.memory_count, 0);
-  if (aCount !== bCount) return aCount > bCount ? a : b;
+  if (aCount !== bCount) {
+    return aCount > bCount ? a : b;
+  }
   const aSummaryLen = String(a?.profile_summary || "").length;
   const bSummaryLen = String(b?.profile_summary || "").length;
-  if (aSummaryLen !== bSummaryLen) return aSummaryLen > bSummaryLen ? a : b;
+  if (aSummaryLen !== bSummaryLen) {
+    return aSummaryLen > bSummaryLen ? a : b;
+  }
   return String(a?.created_at || "") <= String(b?.created_at || "") ? a : b;
 }
 
@@ -4451,9 +4707,13 @@ function detectManualEntityReviewCandidates(entityRows) {
   const fullNamesByFirst = new Map();
   for (const row of people) {
     const name = String(row.name || "").trim();
-    if (name.includes("(") || !name.includes(" ")) continue;
+    if (name.includes("(") || !name.includes(" ")) {
+      continue;
+    }
     const first = normalizeMemoryAliasName(name.split(/\s+/)[0] || "");
-    if (!first) continue;
+    if (!first) {
+      continue;
+    }
     const bucket = fullNamesByFirst.get(first) || [];
     bucket.push(row);
     fullNamesByFirst.set(first, bucket);
@@ -4461,7 +4721,9 @@ function detectManualEntityReviewCandidates(entityRows) {
 
   for (const row of people) {
     const name = String(row.name || "").trim();
-    if (!name) continue;
+    if (!name) {
+      continue;
+    }
     if (name.includes("(") || name.includes(")")) {
       manual.push({
         type: "parenthetical",
@@ -4471,7 +4733,9 @@ function detectManualEntityReviewCandidates(entityRows) {
       });
       continue;
     }
-    if (name.includes(" ")) continue;
+    if (name.includes(" ")) {
+      continue;
+    }
     const first = normalizeMemoryAliasName(name);
     const candidates = (fullNamesByFirst.get(first) || [])
       .filter((candidate) => candidate.id !== row.id)
@@ -4548,7 +4812,9 @@ async function getMemoryQualityReport(sql) {
       continue;
     }
     const key = `${row.agent_id}::${canonical}`;
-    if (!categoryGroups.has(key)) categoryGroups.set(key, []);
+    if (!categoryGroups.has(key)) {
+      categoryGroups.set(key, []);
+    }
     categoryGroups.get(key).push(row);
   }
   let categoryRenameCandidates = 0;
@@ -4592,13 +4858,19 @@ async function getMemoryQualityReport(sql) {
     const exactGroups = new Map();
     for (const row of rows) {
       const normalized = normalizeMemoryAliasName(row.name);
-      if (!normalized || !String(row.name || "").includes(" ")) continue;
+      if (!normalized || !String(row.name || "").includes(" ")) {
+        continue;
+      }
       const key = `${row.entity_type}::${normalized}`;
-      if (!exactGroups.has(key)) exactGroups.set(key, []);
+      if (!exactGroups.has(key)) {
+        exactGroups.set(key, []);
+      }
       exactGroups.get(key).push(row);
     }
     for (const groupRows of exactGroups.values()) {
-      if (groupRows.length <= 1) continue;
+      if (groupRows.length <= 1) {
+        continue;
+      }
       let keeper = groupRows[0];
       for (const row of groupRows.slice(1)) {
         keeper = chooseBetterEntityRecord(keeper, row);
@@ -4619,9 +4891,13 @@ async function getMemoryQualityReport(sql) {
       const normalized = String(row.name || "")
         .trim()
         .replace(/\s+/g, " ");
-      if (!normalized || normalized.includes(" ")) continue;
+      if (!normalized || normalized.includes(" ")) {
+        continue;
+      }
       const canonical = findCanonicalPersonAliasRecord(normalized, rows);
-      if (!canonical || canonical.id === row.id) continue;
+      if (!canonical || canonical.id === row.id) {
+        continue;
+      }
       entityMergeCandidates += 1;
       entityMergePlans.push({ source: row, target: canonical });
       entityPreview.push({
@@ -4638,14 +4914,20 @@ async function getMemoryQualityReport(sql) {
   const reflectionPreview = [];
   const reflectionGroups = new Map();
   for (const row of reflectionRows) {
-    if (!isEmptySisConsolidationContent(row.content)) continue;
+    if (!isEmptySisConsolidationContent(row.content)) {
+      continue;
+    }
     emptySisConsolidations += 1;
     const key = `${formatMemoryDay(row.created_at)}::${buildSisConsolidationSignatureForInspector(row.content)}`;
-    if (!reflectionGroups.has(key)) reflectionGroups.set(key, []);
+    if (!reflectionGroups.has(key)) {
+      reflectionGroups.set(key, []);
+    }
     reflectionGroups.get(key).push(row);
   }
   for (const rows of reflectionGroups.values()) {
-    if (rows.length <= 1) continue;
+    if (rows.length <= 1) {
+      continue;
+    }
     duplicateEmptySisCandidates += rows.length - 1;
     reflectionPreview.push({
       createdDay: formatMemoryDay(rows[0]?.created_at),
@@ -4725,7 +5007,9 @@ async function applyMemoryRepair(sql) {
   await sql.begin(async (tx) => {
     for (const rows of quality.repairPreview._categoryGroups.values()) {
       const canonical = normalizeMemoryCategoryName(rows[0]?.name);
-      if (!canonical) continue;
+      if (!canonical) {
+        continue;
+      }
       let keeper = rows.find((row) => row.name === canonical) || rows[0];
       if (keeper.name !== canonical) {
         const conflict = rows.find((row) => row.id !== keeper.id && row.name === canonical);
@@ -4742,7 +5026,9 @@ async function applyMemoryRepair(sql) {
       }
 
       for (const row of rows) {
-        if (row.id === keeper.id) continue;
+        if (row.id === keeper.id) {
+          continue;
+        }
         await tx.unsafe(
           `
             INSERT INTO category_items (item_id, category_id)
@@ -4853,10 +5139,14 @@ async function applyMemoryRepair(sql) {
     }
 
     for (const rows of quality.repairPreview._reflectionGroups.values()) {
-      if (rows.length <= 1) continue;
+      if (rows.length <= 1) {
+        continue;
+      }
       const keep = rows[0]?.id;
       for (const row of rows) {
-        if (row.id === keep) continue;
+        if (row.id === keep) {
+          continue;
+        }
         await tx.unsafe(`DELETE FROM reflections WHERE id = $1`, [row.id]);
         result.reflectionsPruned += 1;
       }
@@ -4961,7 +5251,9 @@ function createPgMemoryCompatDb() {
   const tableExistsCache = new Map();
 
   async function hasTable(sql, tableName) {
-    if (tableExistsCache.has(tableName)) return tableExistsCache.get(tableName);
+    if (tableExistsCache.has(tableName)) {
+      return tableExistsCache.get(tableName);
+    }
     const regName = `public.${tableName}`;
     const rows = await sql`SELECT to_regclass(${regName}) AS "regName"`;
     const exists = Boolean(rows?.[0]?.regName);
@@ -4970,7 +5262,9 @@ function createPgMemoryCompatDb() {
   }
 
   async function countTableRows(sql, tableName) {
-    if (!(await hasTable(sql, tableName))) return 0;
+    if (!(await hasTable(sql, tableName))) {
+      return 0;
+    }
     const rows = await sql.unsafe(`SELECT count(*)::bigint AS cnt FROM ${tableName}`);
     return parseNumberOr(rows?.[0]?.cnt, 0);
   }
@@ -4983,8 +5277,9 @@ function createPgMemoryCompatDb() {
   return {
     async getStats() {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
+      }
 
       const [items, resources, categories, entities, reflections] = await Promise.all([
         countTableRows(sql, "memory_items"),
@@ -5022,8 +5317,9 @@ function createPgMemoryCompatDb() {
 
     async searchItems(query, opts = {}) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
+      }
 
       const q = typeof query === "string" ? query.trim() : "";
       const { type, significance, entity, limit = 50, offset = 0, sort = "created_at_desc" } = opts;
@@ -5095,8 +5391,9 @@ function createPgMemoryCompatDb() {
 
     async getItem(id) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
+      }
 
       const itemRows = await sql`
         SELECT to_jsonb(memory_items) AS row
@@ -5105,7 +5402,9 @@ function createPgMemoryCompatDb() {
         LIMIT 1
       `;
       const record = itemRows?.[0]?.row;
-      if (!record) return null;
+      if (!record) {
+        return null;
+      }
 
       const categories = [];
       if ((await hasTable(sql, "memory_categories")) && (await hasTable(sql, "category_items"))) {
@@ -5152,9 +5451,12 @@ function createPgMemoryCompatDb() {
 
     async listEntities(opts = {}) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
-      if (!(await hasTable(sql, "entities"))) return { entities: [], total: 0 };
+      }
+      if (!(await hasTable(sql, "entities"))) {
+        return { entities: [], total: 0 };
+      }
 
       const { type, minBond, sort = "bond_desc", limit = 50, offset = 0 } = opts;
       const where = ["1=1"];
@@ -5208,9 +5510,12 @@ function createPgMemoryCompatDb() {
 
     async getEntity(id) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
-      if (!(await hasTable(sql, "entities"))) return null;
+      }
+      if (!(await hasTable(sql, "entities"))) {
+        return null;
+      }
 
       const rows = await sql`
         SELECT to_jsonb(entities) AS row
@@ -5219,7 +5524,9 @@ function createPgMemoryCompatDb() {
         LIMIT 1
       `;
       const record = rows?.[0]?.row;
-      if (!record) return null;
+      if (!record) {
+        return null;
+      }
 
       let recentItems = [];
       if ((await hasTable(sql, "item_entities")) && (await hasTable(sql, "memory_items"))) {
@@ -5239,9 +5546,12 @@ function createPgMemoryCompatDb() {
 
     async listCategories(opts = {}) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
-      if (!(await hasTable(sql, "memory_categories"))) return { categories: [], total: 0 };
+      }
+      if (!(await hasTable(sql, "memory_categories"))) {
+        return { categories: [], total: 0 };
+      }
 
       const { limit = 50, offset = 0 } = opts;
       const hasCategoryItems = await hasTable(sql, "category_items");
@@ -5274,9 +5584,12 @@ function createPgMemoryCompatDb() {
 
     async getCategory(id) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
-      if (!(await hasTable(sql, "memory_categories"))) return null;
+      }
+      if (!(await hasTable(sql, "memory_categories"))) {
+        return null;
+      }
 
       const rows = await sql`
         SELECT to_jsonb(memory_categories) AS row
@@ -5285,7 +5598,9 @@ function createPgMemoryCompatDb() {
         LIMIT 1
       `;
       const record = rows?.[0]?.row;
-      if (!record) return null;
+      if (!record) {
+        return null;
+      }
 
       let items = [];
       if ((await hasTable(sql, "category_items")) && (await hasTable(sql, "memory_items"))) {
@@ -5305,9 +5620,12 @@ function createPgMemoryCompatDb() {
 
     async listReflections(opts = {}) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
-      if (!(await hasTable(sql, "reflections"))) return { reflections: [], total: 0 };
+      }
+      if (!(await hasTable(sql, "reflections"))) {
+        return { reflections: [], total: 0 };
+      }
 
       const { trigger, limit = 50, offset = 0 } = opts;
       const where = ["1=1"];
@@ -5346,8 +5664,9 @@ function createPgMemoryCompatDb() {
 
     async getTimeline(days = 30) {
       const sql = await getPgSqlClient();
-      if (!sql)
+      if (!sql) {
         throw Object.assign(new Error("Memory storage unavailable"), { code: "UNAVAILABLE" });
+      }
 
       const dayWindow = Math.max(1, Math.min(365, Number(days) || 30));
       const start = new Date(Date.now() - dayWindow * 24 * 60 * 60 * 1000);
@@ -5400,7 +5719,9 @@ if (LEGACY_SQLITE_QUARANTINED) {
 
 // GET /api/memory/stats - Aggregated memory counts
 app.get("/api/memory/stats", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     res.json(await memoryDb.getStats());
   } catch (err) {
@@ -5411,10 +5732,14 @@ app.get("/api/memory/stats", async (req, res) => {
 
 // GET /api/memory/quality - Repair preview + source/fanout semantics
 app.get("/api/memory/quality", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const sql = await getPgSqlClient();
-    if (!sql) return res.status(503).json({ error: "Memory storage unavailable" });
+    if (!sql) {
+      return res.status(503).json({ error: "Memory storage unavailable" });
+    }
     const quality = await getMemoryQualityReport(sql);
     delete quality.repairPreview._entityMergePlans;
     delete quality.repairPreview._exactDuplicatePlans;
@@ -5429,10 +5754,14 @@ app.get("/api/memory/quality", async (req, res) => {
 
 // POST /api/memory/repair/apply - Historical category/entity/reflection cleanup
 app.post("/api/memory/repair/apply", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const sql = await getPgSqlClient();
-    if (!sql) return res.status(503).json({ error: "Memory storage unavailable" });
+    if (!sql) {
+      return res.status(503).json({ error: "Memory storage unavailable" });
+    }
     const result = await applyMemoryRepair(sql);
     res.json(result);
   } catch (err) {
@@ -5443,10 +5772,14 @@ app.post("/api/memory/repair/apply", async (req, res) => {
 
 // GET /api/memory/repair/export - download repair history/export bundle
 app.get("/api/memory/repair/export", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const sql = await getPgSqlClient();
-    if (!sql) return res.status(503).json({ error: "Memory storage unavailable" });
+    if (!sql) {
+      return res.status(503).json({ error: "Memory storage unavailable" });
+    }
     const quality = await getMemoryQualityReport(sql);
     delete quality.repairPreview._entityMergePlans;
     delete quality.repairPreview._exactDuplicatePlans;
@@ -5471,7 +5804,9 @@ app.get("/api/memory/repair/export", async (req, res) => {
 
 // GET /api/memory/items - Search/list memory items
 app.get("/api/memory/items", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const { q, type, significance, entity, limit, offset, sort } = req.query;
     const result = await memoryDb.searchItems(q || "", {
@@ -5491,10 +5826,14 @@ app.get("/api/memory/items", async (req, res) => {
 
 // GET /api/memory/items/:id - Get single memory item with categories and entities
 app.get("/api/memory/items/:id", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const item = await memoryDb.getItem(req.params.id);
-    if (!item) return res.status(404).json({ error: "Item not found" });
+    if (!item) {
+      return res.status(404).json({ error: "Item not found" });
+    }
     res.json(item);
   } catch (err) {
     console.error("Error getting memory item:", err);
@@ -5504,7 +5843,9 @@ app.get("/api/memory/items/:id", async (req, res) => {
 
 // GET /api/memory/entities - List entities
 app.get("/api/memory/entities", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const { type, minBond, sort, limit, offset } = req.query;
     const result = await memoryDb.listEntities({
@@ -5523,10 +5864,14 @@ app.get("/api/memory/entities", async (req, res) => {
 
 // GET /api/memory/entities/:id - Get single entity with recent items
 app.get("/api/memory/entities/:id", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const entity = await memoryDb.getEntity(req.params.id);
-    if (!entity) return res.status(404).json({ error: "Entity not found" });
+    if (!entity) {
+      return res.status(404).json({ error: "Entity not found" });
+    }
     res.json(entity);
   } catch (err) {
     console.error("Error getting entity:", err);
@@ -5536,7 +5881,9 @@ app.get("/api/memory/entities/:id", async (req, res) => {
 
 // GET /api/memory/categories - List categories with item counts
 app.get("/api/memory/categories", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const { limit, offset } = req.query;
     const result = await memoryDb.listCategories({
@@ -5552,10 +5899,14 @@ app.get("/api/memory/categories", async (req, res) => {
 
 // GET /api/memory/categories/:id - Get single category with items
 app.get("/api/memory/categories/:id", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const category = await memoryDb.getCategory(req.params.id);
-    if (!category) return res.status(404).json({ error: "Category not found" });
+    if (!category) {
+      return res.status(404).json({ error: "Category not found" });
+    }
     res.json(category);
   } catch (err) {
     console.error("Error getting category:", err);
@@ -5565,7 +5916,9 @@ app.get("/api/memory/categories/:id", async (req, res) => {
 
 // GET /api/memory/reflections - List reflections
 app.get("/api/memory/reflections", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const { trigger, limit, offset } = req.query;
     const result = await memoryDb.listReflections({
@@ -5582,7 +5935,9 @@ app.get("/api/memory/reflections", async (req, res) => {
 
 // GET /api/memory/timeline - Daily memory counts
 app.get("/api/memory/timeline", async (req, res) => {
-  if (!memoryDb) return res.status(503).json({ error: "Memory database not available" });
+  if (!memoryDb) {
+    return res.status(503).json({ error: "Memory database not available" });
+  }
   try {
     const days = parseInt(req.query.days) || 30;
     res.json(await memoryDb.getTimeline(days));
@@ -5610,20 +5965,30 @@ const KNOWLEDGE_DOCX_MIME =
 const KNOWLEDGE_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 function normalizeMimeType(value) {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   return String(value).split(";")[0].trim().toLowerCase() || undefined;
 }
 
 function isTextMime(mime) {
-  if (!mime) return false;
-  if (KNOWLEDGE_TEXT_MIME_PREFIXES.some((p) => mime.startsWith(p))) return true;
+  if (!mime) {
+    return false;
+  }
+  if (KNOWLEDGE_TEXT_MIME_PREFIXES.some((p) => mime.startsWith(p))) {
+    return true;
+  }
   return KNOWLEDGE_TEXT_MIME_EXACT.has(mime);
 }
 
 function isLikelyBase64(value) {
-  if (!value || typeof value !== "string") return false;
+  if (!value || typeof value !== "string") {
+    return false;
+  }
   const trimmed = value.trim();
-  if (trimmed.length < 8 || trimmed.length % 4 !== 0) return false;
+  if (trimmed.length < 8 || trimmed.length % 4 !== 0) {
+    return false;
+  }
   return !/[^A-Za-z0-9+/=]/.test(trimmed);
 }
 
@@ -5673,14 +6038,20 @@ async function extractDocxText(buffer) {
   const parts = Object.keys(zip.files)
     .filter((name) => /^word\/(document|header\d+|footer\d+|footnotes|endnotes)\.xml$/i.test(name))
     .sort();
-  if (parts.length === 0) return "";
+  if (parts.length === 0) {
+    return "";
+  }
   const sections = [];
   for (const part of parts) {
     const file = zip.file(part);
-    if (!file) continue;
+    if (!file) {
+      continue;
+    }
     const xml = await file.async("string");
     const text = extractDocxXmlText(xml);
-    if (text) sections.push(text);
+    if (text) {
+      sections.push(text);
+    }
   }
   return sections.join("\n\n");
 }
@@ -5713,14 +6084,19 @@ function extractCellText(body, type, sharedStrings) {
     return collapseWhitespacePreserveLines(decodeXmlEntities(inline.replace(/<[^>]+>/g, "")));
   }
   const raw = bodyText.match(/<v\b[^>]*>([\s\S]*?)<\/v>/)?.[1] || "";
-  if (!raw) return "";
-  if (type === "s") {
-    const idx = Number.parseInt(raw.trim(), 10);
-    if (Number.isFinite(idx) && idx >= 0 && idx < sharedStrings.length)
-      return sharedStrings[idx] || "";
+  if (!raw) {
     return "";
   }
-  if (type === "b") return raw.trim() === "1" ? "TRUE" : "FALSE";
+  if (type === "s") {
+    const idx = Number.parseInt(raw.trim(), 10);
+    if (Number.isFinite(idx) && idx >= 0 && idx < sharedStrings.length) {
+      return sharedStrings[idx] || "";
+    }
+    return "";
+  }
+  if (type === "b") {
+    return raw.trim() === "1" ? "TRUE" : "FALSE";
+  }
   return decodeXmlEntities(raw.trim());
 }
 
@@ -5735,10 +6111,14 @@ function extractWorksheetText(xml, sharedStrings) {
       const ref = cellRefFromAttrs(attrs);
       const type = cellTypeFromAttrs(attrs);
       const value = extractCellText(body, type, sharedStrings);
-      if (!value) continue;
+      if (!value) {
+        continue;
+      }
       cells.push(ref ? `${ref}:${value}` : value);
     }
-    if (cells.length > 0) rows.push(cells.join("\t"));
+    if (cells.length > 0) {
+      rows.push(cells.join("\t"));
+    }
   }
   return rows.join("\n");
 }
@@ -5753,14 +6133,20 @@ async function extractXlsxText(buffer) {
   const sheetFiles = Object.keys(zip.files)
     .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
     .sort();
-  if (sheetFiles.length === 0) return "";
+  if (sheetFiles.length === 0) {
+    return "";
+  }
   const out = [];
   for (const sheetFile of sheetFiles) {
     const file = zip.file(sheetFile);
-    if (!file) continue;
+    if (!file) {
+      continue;
+    }
     const xml = await file.async("string");
     const text = extractWorksheetText(xml, sharedStrings);
-    if (text) out.push(`[${path.basename(sheetFile)}]\n${text}`);
+    if (text) {
+      out.push(`[${path.basename(sheetFile)}]\n${text}`);
+    }
   }
   return out.join("\n\n");
 }
@@ -5780,7 +6166,9 @@ async function extractPdfText(buffer, maxPages = 8) {
       .map((item) => ("str" in item ? String(item.str) : ""))
       .filter(Boolean)
       .join(" ");
-    if (pageText) parts.push(pageText);
+    if (pageText) {
+      parts.push(pageText);
+    }
   }
   return parts.join("\n\n");
 }
@@ -5835,7 +6223,9 @@ function chunkTextForIngest(text, chunkSize, overlap) {
   const content = String(text || "")
     .replace(/\r\n/g, "\n")
     .trim();
-  if (!content) return [];
+  if (!content) {
+    return [];
+  }
   const chunks = [];
   const size = Math.max(300, Math.min(12000, Number(chunkSize) || 1800));
   const ov = Math.max(0, Math.min(size - 1, Number(overlap) || 200));
@@ -5843,7 +6233,9 @@ function chunkTextForIngest(text, chunkSize, overlap) {
   while (start < content.length) {
     const end = Math.min(content.length, start + size);
     chunks.push({ start, end, text: content.slice(start, end) });
-    if (end >= content.length) break;
+    if (end >= content.length) {
+      break;
+    }
     start = Math.max(0, end - ov);
   }
   return chunks;
@@ -5853,7 +6245,9 @@ let _knowledgeGatewayHandlersPromise = null;
 let _knowledgeGatewayLoadFailed = false;
 
 async function loadKnowledgeGatewayHandlers() {
-  if (_knowledgeGatewayLoadFailed) return null;
+  if (_knowledgeGatewayLoadFailed) {
+    return null;
+  }
   if (!_knowledgeGatewayHandlersPromise) {
     _knowledgeGatewayHandlersPromise = import("../dist/gateway/server-methods/knowledge.js")
       .then((mod) => mod.knowledgeHandlers)
@@ -5872,16 +6266,24 @@ async function loadKnowledgeGatewayHandlers() {
 
 function knowledgeGatewayErrorStatus(error) {
   const code = typeof error?.code === "string" ? error.code : "";
-  if (code === "INVALID_REQUEST" || code === "INVALID_PARAMS") return 400;
-  if (code === "UNAVAILABLE" || code === "INTERNAL_ERROR") return 503;
+  if (code === "INVALID_REQUEST" || code === "INVALID_PARAMS") {
+    return 400;
+  }
+  if (code === "UNAVAILABLE" || code === "INTERNAL_ERROR") {
+    return 503;
+  }
   return 500;
 }
 
 function parseSessionAgentId(sessionKey) {
   const raw = typeof sessionKey === "string" ? sessionKey.trim() : "";
-  if (!raw) return "main";
+  if (!raw) {
+    return "main";
+  }
   const match = raw.match(/agent:([^:]+)/i);
-  if (match?.[1]) return match[1].trim();
+  if (match?.[1]) {
+    return match[1].trim();
+  }
   return "main";
 }
 
@@ -5890,11 +6292,15 @@ function normalizeKnowledgeOptionalString(value) {
 }
 
 function normalizeKnowledgeExtra(value) {
-  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
     } catch {
       // Ignore malformed JSON.
     }
@@ -5904,7 +6310,9 @@ function normalizeKnowledgeExtra(value) {
 
 function parseKnowledgeCitation(summary, fallback) {
   const fallbackText = normalizeKnowledgeOptionalString(fallback);
-  if (fallbackText) return fallbackText;
+  if (fallbackText) {
+    return fallbackText;
+  }
   const m = /^\s*\[\[citation:([^\]]+)\]\]/i.exec(String(summary || ""));
   return m?.[1]?.trim() || null;
 }
@@ -5922,13 +6330,19 @@ function parseKnowledgeCollectionFilters(value) {
       .map((entry) => entry.trim())
       .filter(Boolean);
   }
-  if (typeof value === "string" && value.trim()) return [value.trim()];
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
   return [];
 }
 
 function useGlobalKnowledgeScope(options) {
-  if (!options || typeof options !== "object") return false;
-  if (options.scope === "global" || options.includeAllAgents === true) return true;
+  if (!options || typeof options !== "object") {
+    return false;
+  }
+  if (options.scope === "global" || options.includeAllAgents === true) {
+    return true;
+  }
   const collections = parseKnowledgeCollectionFilters(options.collection)
     .map((entry) => sanitizeTagValue(String(entry).toLowerCase(), ""))
     .filter(Boolean);
@@ -5998,7 +6412,9 @@ function formatKnowledgeRowFromPg(row, includeFullText = false) {
 
 function knowledgeRowMatchesFilters(row, opts) {
   const ingestedOnly = opts.ingestedOnly !== false;
-  if (ingestedOnly && row.sourceType !== "ingested") return false;
+  if (ingestedOnly && row.sourceType !== "ingested") {
+    return false;
+  }
 
   const query = normalizeKnowledgeOptionalString(opts.q).toLowerCase();
   const sourceFileFilter = normalizeKnowledgeOptionalString(opts.sourceFile).toLowerCase();
@@ -6010,15 +6426,21 @@ function knowledgeRowMatchesFilters(row, opts) {
   const rowCollectionTag = sanitizeTagValue(rowCollection, "");
 
   if (collections.length > 0) {
-    if (!collections.includes(rowCollection) && !collectionTags.has(rowCollectionTag)) return false;
+    if (!collections.includes(rowCollection) && !collectionTags.has(rowCollectionTag)) {
+      return false;
+    }
   }
 
   if (sourceFileFilter) {
     const src = normalizeKnowledgeOptionalString(row.sourceFile).toLowerCase();
-    if (!src.includes(sourceFileFilter)) return false;
+    if (!src.includes(sourceFileFilter)) {
+      return false;
+    }
   }
 
-  if (!query) return true;
+  if (!query) {
+    return true;
+  }
   const haystacks = [
     normalizeKnowledgeOptionalString(row._summary).toLowerCase(),
     normalizeKnowledgeOptionalString(row.documentTitle).toLowerCase(),
@@ -6033,9 +6455,13 @@ function knowledgeRowMatchesFilters(row, opts) {
 async function resolveKnowledgeAgentId(sql, sessionKey, createIfMissing = false) {
   const preferred = parseSessionAgentId(sessionKey);
   const existing = await sql`SELECT id FROM agents WHERE id = ${preferred} LIMIT 1`;
-  if (existing[0]?.id) return existing[0].id;
+  if (existing[0]?.id) {
+    return existing[0].id;
+  }
   const first = await sql`SELECT id FROM agents ORDER BY created_at ASC LIMIT 1`;
-  if (first[0]?.id) return first[0].id;
+  if (first[0]?.id) {
+    return first[0].id;
+  }
   if (createIfMissing) {
     await sql`
       INSERT INTO agents (id, name, role, status)
@@ -6134,9 +6560,13 @@ async function invokeKnowledgeLocalMethod(method, params) {
       const rows = await loadKnowledgeRowsFromPg(params);
       rows.sort((a, b) => {
         let cmp = 0;
-        if (sort === "title") cmp = String(a.title || "").localeCompare(String(b.title || ""));
-        else if (sort === "type") cmp = String(a.type || "").localeCompare(String(b.type || ""));
-        else cmp = new Date(a.savedAt || 0).getTime() - new Date(b.savedAt || 0).getTime();
+        if (sort === "title") {
+          cmp = String(a.title || "").localeCompare(String(b.title || ""));
+        } else if (sort === "type") {
+          cmp = String(a.type || "").localeCompare(String(b.type || ""));
+        } else {
+          cmp = new Date(a.savedAt || 0).getTime() - new Date(b.savedAt || 0).getTime();
+        }
         return order === "asc" ? cmp : -cmp;
       });
       const sliced = rows.slice(0, limit).map((row) => {
@@ -6455,7 +6885,9 @@ async function invokeKnowledgeGatewayMethod(method, params) {
         responsePayload = { success, data, error };
       },
     });
-    if (responded) return responsePayload;
+    if (responded) {
+      return responsePayload;
+    }
     return {
       success: false,
       error: { code: "UNAVAILABLE", message: `knowledge method did not respond: ${method}` },
@@ -6523,15 +6955,21 @@ function canvasDocIdFromSourceFile(sourceFile) {
 
 function canvasDocIdFromKnowledgeRow(row) {
   const explicit = typeof row?.documentId === "string" ? row.documentId.trim() : "";
-  if (explicit) return explicit;
+  if (explicit) {
+    return explicit;
+  }
   const fromSource = canvasDocIdFromSourceFile(row?.sourceFile);
-  if (fromSource) return fromSource;
+  if (fromSource) {
+    return fromSource;
+  }
   return typeof row?.id === "string" ? row.id.trim() : "";
 }
 
 function guessCanvasTitleFromSourceFile(sourceFile) {
   const source = String(sourceFile || "").trim();
-  if (!source) return "Untitled";
+  if (!source) {
+    return "Untitled";
+  }
   return source.replace(/^docpanel-/i, "").replace(/\.md$/i, "") || "Untitled";
 }
 
@@ -6547,14 +6985,22 @@ function mergeCanvasChunkContent(rows) {
   const chunks = rows
     .map((row) => (typeof row?.fullText === "string" ? row.fullText : ""))
     .filter(Boolean);
-  if (chunks.length === 0) return "";
-  if (chunks.length === 1) return chunks[0];
+  if (chunks.length === 0) {
+    return "";
+  }
+  if (chunks.length === 1) {
+    return chunks[0];
+  }
 
   let merged = chunks[0];
   for (let i = 1; i < chunks.length; i += 1) {
     const next = chunks[i];
-    if (!next) continue;
-    if (merged.endsWith(next)) continue;
+    if (!next) {
+      continue;
+    }
+    if (merged.endsWith(next)) {
+      continue;
+    }
 
     const maxOverlap = Math.min(merged.length, next.length, 4000);
     let overlap = 0;
@@ -6570,7 +7016,9 @@ function mergeCanvasChunkContent(rows) {
 }
 
 function buildCanvasDocumentFromRows(docId, rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return null;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
   const ordered = [...rows].sort((a, b) => {
     const ai = Number.isFinite(Number(a?.chunkIndex))
       ? Number(a.chunkIndex)
@@ -6578,7 +7026,9 @@ function buildCanvasDocumentFromRows(docId, rows) {
     const bi = Number.isFinite(Number(b?.chunkIndex))
       ? Number(b.chunkIndex)
       : Number.MAX_SAFE_INTEGER;
-    if (ai !== bi) return ai - bi;
+    if (ai !== bi) {
+      return ai - bi;
+    }
     return String(a?.id || "").localeCompare(String(b?.id || ""));
   });
   const first = ordered[0] || {};
@@ -6643,7 +7093,9 @@ async function loadCanvasDocumentRowsBySource({ sessionKey, collection, sourceFi
       },
       sessionKey,
     });
-    if (!listing.success) return listing;
+    if (!listing.success) {
+      return listing;
+    }
     const rows = Array.isArray(listing.data?.rows) ? listing.data.rows : [];
     if (rows.length > 0) {
       return { success: true, data: { rows } };
@@ -6683,7 +7135,9 @@ app.post("/api/canvas/save", async (req, res) => {
     const tags = normalizeStringList(doc.tags);
     if (tags.length === 0) {
       tags.push(type);
-      if (language) tags.push(language);
+      if (language) {
+        tags.push(language);
+      }
     }
     if (!saveToKnowledge) {
       return res.status(400).json({
@@ -6795,7 +7249,9 @@ app.get("/api/canvas/documents", async (req, res) => {
     const documents = rows
       .map((row) => {
         const docId = canvasDocIdFromKnowledgeRow(row);
-        if (!docId) return null;
+        if (!docId) {
+          return null;
+        }
         const savedAt = normalizeCanvasSavedAt(row.savedAt);
         const createdAt = normalizeCanvasSavedAt(row.documentCreatedAt || row.savedAt || savedAt);
         return {
@@ -6987,7 +7443,9 @@ app.post("/api/canvas/search", async (req, res) => {
       const rows = Array.isArray(listing.data?.rows) ? listing.data.rows : [];
       for (const row of rows) {
         const docId = canvasDocIdFromKnowledgeRow(row);
-        if (!docId) continue;
+        if (!docId) {
+          continue;
+        }
         const title =
           (typeof row.documentTitle === "string" && row.documentTitle.trim()) ||
           guessCanvasTitleFromSourceFile(row.sourceFile);
@@ -7027,7 +7485,9 @@ app.post("/api/canvas/search", async (req, res) => {
       const hits = Array.isArray(searched.data?.results) ? searched.data.results : [];
       for (const hit of hits) {
         const docId = canvasDocIdFromKnowledgeRow(hit);
-        if (!docId) continue;
+        if (!docId) {
+          continue;
+        }
         const title =
           (typeof hit.documentTitle === "string" && hit.documentTitle.trim()) ||
           guessCanvasTitleFromSourceFile(hit.sourceFile);
@@ -7053,7 +7513,9 @@ app.post("/api/canvas/search", async (req, res) => {
     const results = [...grouped.values()]
       .sort((a, b) => {
         const scoreDelta = Number(b.score || 0) - Number(a.score || 0);
-        if (scoreDelta !== 0) return scoreDelta;
+        if (scoreDelta !== 0) {
+          return scoreDelta;
+        }
         return Number(b.createdAt || 0) - Number(a.createdAt || 0);
       })
       .slice(0, limit);
@@ -7088,7 +7550,9 @@ app.get("/api/canvas/stats", async (req, res) => {
     const docIds = new Set();
     for (const row of rows) {
       const docId = canvasDocIdFromKnowledgeRow(row);
-      if (docId) docIds.add(docId);
+      if (docId) {
+        docIds.add(docId);
+      }
     }
 
     return res.json({
@@ -7248,7 +7712,9 @@ function createInMemoryAppsDb() {
   const nowIso = () => new Date().toISOString();
   const sortRows = (entries) =>
     [...entries].sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if (a.pinned !== b.pinned) {
+        return a.pinned ? -1 : 1;
+      }
       return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
     });
   return {
@@ -7261,7 +7727,9 @@ function createInMemoryAppsDb() {
     },
     getApp(id) {
       const existing = rows.get(id);
-      if (existing) return { ...existing };
+      if (existing) {
+        return { ...existing };
+      }
       return {
         id,
         name: "Unavailable App",
@@ -7300,7 +7768,9 @@ function createInMemoryAppsDb() {
     },
     updateApp(id, updates = {}) {
       const existing = rows.get(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
       const updated = {
         ...existing,
         name: updates.name ?? existing.name,
@@ -7319,7 +7789,9 @@ function createInMemoryAppsDb() {
     },
     recordOpen(id) {
       const existing = rows.get(id);
-      if (!existing) return false;
+      if (!existing) {
+        return false;
+      }
       const updated = {
         ...existing,
         openCount: Number(existing.openCount || 0) + 1,
@@ -7331,7 +7803,9 @@ function createInMemoryAppsDb() {
     },
     pinApp(id) {
       const existing = rows.get(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
       const updated = { ...existing, pinned: !existing.pinned, updatedAt: nowIso() };
       rows.set(id, updated);
       return { ...updated };
@@ -7355,7 +7829,9 @@ function createInMemoryAppsDb() {
 }
 
 function appFromPgRow(row, options = {}) {
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
   const includeCode = options.includeCode === true;
   const app = {
     id: row.id,
@@ -7371,7 +7847,9 @@ function appFromPgRow(row, options = {}) {
     pinned: Boolean(row.pinned),
     metadata: normalizeMetadata(row.metadata),
   };
-  if (includeCode) app.code = row.code;
+  if (includeCode) {
+    app.code = row.code;
+  }
   return app;
 }
 
@@ -7384,7 +7862,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.listApps(options);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const limit = Math.max(1, Number(options.limit) || 100);
       const includeCode = options.includeCode === true;
       const rows = await sql`
@@ -7409,7 +7889,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.getApp(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const rows = await sql`
         SELECT
           id, name, description, icon, code, version, creator,
@@ -7431,7 +7913,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.createApp({ name, description, icon, code, creator, metadata });
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const id = crypto.randomUUID();
       const now = new Date();
       const rows = await sql`
@@ -7458,9 +7942,13 @@ function createPgAppsCompatDb() {
         return await hooks.apps.updateApp(id, updates);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const existing = await this.getApp(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
       const now = new Date();
       const rows = await sql`
         UPDATE dashboard_apps
@@ -7498,7 +7986,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.deleteApp(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const now = new Date();
       const out = await sql`
         UPDATE dashboard_apps
@@ -7513,7 +8003,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.recordOpen(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const now = new Date();
       const out = await sql`
         UPDATE dashboard_apps
@@ -7531,7 +8023,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.pinApp(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const rows = await sql`
         UPDATE dashboard_apps
         SET pinned = NOT pinned, updated_at = ${new Date()}
@@ -7553,7 +8047,9 @@ function createPgAppsCompatDb() {
         return await hooks.apps.searchApps(query, limit);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const pattern = `%${String(query || "").trim()}%`;
       const rows = await sql`
         SELECT
@@ -7987,7 +8483,9 @@ function createInMemoryWidgetsDb() {
     },
     getWidget(id) {
       const existing = rows.get(id);
-      if (existing) return { ...existing };
+      if (existing) {
+        return { ...existing };
+      }
       return {
         id,
         name: "Unavailable Widget",
@@ -8017,7 +8515,9 @@ function createInMemoryWidgetsDb() {
     },
     updateWidget(id, updates = {}) {
       const existing = rows.get(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
       const next = normalizeWidget({
         ...existing,
         ...updates,
@@ -8029,7 +8529,9 @@ function createInMemoryWidgetsDb() {
     },
     deleteWidget(id) {
       for (const [slot, widgetId] of slots.entries()) {
-        if (widgetId === id) slots.delete(slot);
+        if (widgetId === id) {
+          slots.delete(slot);
+        }
       }
       return rows.delete(id);
     },
@@ -8037,7 +8539,9 @@ function createInMemoryWidgetsDb() {
 }
 
 function widgetFromPgRow(row, options = {}) {
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
   const includeCode = options.includeCode === true;
   const widget = {
     id: row.id,
@@ -8050,7 +8554,9 @@ function widgetFromPgRow(row, options = {}) {
     updatedAt: safeIso(row.updatedAt || row.updated_at),
     metadata: normalizeMetadata(row.metadata),
   };
-  if (includeCode) widget.code = row.code;
+  if (includeCode) {
+    widget.code = row.code;
+  }
   return widget;
 }
 
@@ -8064,7 +8570,9 @@ function createPgWidgetsCompatDb() {
         return await hooks.widgets.getLayout();
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const rows = await sql`
         SELECT position, widget_id AS "widgetId", updated_at AS "updatedAt"
         FROM dashboard_widget_slots
@@ -8082,7 +8590,9 @@ function createPgWidgetsCompatDb() {
         return await hooks.widgets.assignSlot(position, widgetId);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const pos = Number(position);
       const wid = String(widgetId);
       await sql`
@@ -8099,7 +8609,9 @@ function createPgWidgetsCompatDb() {
         return await hooks.widgets.listWidgets(options);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const limit = Math.max(1, Number(options.limit) || 100);
       const rows = await sql`
         SELECT
@@ -8120,7 +8632,9 @@ function createPgWidgetsCompatDb() {
         return await hooks.widgets.getWidget(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const rows = await sql`
         SELECT
           id, name, description, icon, code, version, creator,
@@ -8146,7 +8660,9 @@ function createPgWidgetsCompatDb() {
         });
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const id = crypto.randomUUID();
       const now = new Date();
       const rows = await sql`
@@ -8178,9 +8694,13 @@ function createPgWidgetsCompatDb() {
         return await hooks.widgets.updateWidget(id, updates);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const existing = await this.getWidget(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
       const rows = await sql`
         UPDATE dashboard_widgets
         SET
@@ -8214,7 +8734,9 @@ function createPgWidgetsCompatDb() {
         return await hooks.widgets.deleteWidget(id);
       }
       const sql = await getPgSqlClient();
-      if (!sql) throw new Error("PostgreSQL storage unavailable");
+      if (!sql) {
+        throw new Error("PostgreSQL storage unavailable");
+      }
       const now = new Date();
       await sql`DELETE FROM dashboard_widget_slots WHERE widget_id = ${id}`;
       const out = await sql`
@@ -8455,7 +8977,9 @@ app.post("/api/proxy/tts/elevenlabs", async (req, res) => {
     const proxyStart = Date.now();
     // Always use the /stream endpoint for lowest latency
     const url = new URL(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`);
-    if (outputFormat) url.searchParams.set("output_format", outputFormat);
+    if (outputFormat) {
+      url.searchParams.set("output_format", outputFormat);
+    }
     // optimize_streaming_latency: not supported by eleven_v3, only use for older models
     if (model_id && model_id.startsWith("eleven_v3")) {
       // v3 doesn't support this param — omit it
@@ -8610,11 +9134,21 @@ app.post("/api/proxy/search/brave", async (req, res) => {
   try {
     const url = new URL("https://api.search.brave.com/res/v1/web/search");
     url.searchParams.set("q", query);
-    if (count) url.searchParams.set("count", String(count));
-    if (country) url.searchParams.set("country", country);
-    if (search_lang) url.searchParams.set("search_lang", search_lang);
-    if (ui_lang) url.searchParams.set("ui_lang", ui_lang);
-    if (freshness) url.searchParams.set("freshness", freshness);
+    if (count) {
+      url.searchParams.set("count", String(count));
+    }
+    if (country) {
+      url.searchParams.set("country", country);
+    }
+    if (search_lang) {
+      url.searchParams.set("search_lang", search_lang);
+    }
+    if (ui_lang) {
+      url.searchParams.set("ui_lang", ui_lang);
+    }
+    if (freshness) {
+      url.searchParams.set("freshness", freshness);
+    }
     const response = await fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json", "X-Subscription-Token": apiKey },
@@ -8810,7 +9344,9 @@ const OPENAI_CODEX_OAUTH_TTL_MS = 10 * 60 * 1000;
 const openAICodexAuthSessions = new Map();
 
 function maskKey(key) {
-  if (!key || key.length < 8) return "***";
+  if (!key || key.length < 8) {
+    return "***";
+  }
   return key.substring(0, 7) + "***..." + key.substring(key.length - 4);
 }
 
@@ -8852,7 +9388,9 @@ function escapeHtml(value) {
 function writeOpenAICodexOAuthProfile(tokenData) {
   const data = readAuthProfiles();
   const existingProfile = data.profiles?.["openai-codex:default"] || {};
-  if (!data.profiles) data.profiles = {};
+  if (!data.profiles) {
+    data.profiles = {};
+  }
   data.profiles["openai-codex:default"] = {
     type: "oauth",
     provider: "openai-codex",
@@ -8864,14 +9402,18 @@ function writeOpenAICodexOAuthProfile(tokenData) {
     accountId: existingProfile.accountId,
     email: existingProfile.email,
   };
-  if (!data.order) data.order = {};
+  if (!data.order) {
+    data.order = {};
+  }
   if (!Array.isArray(data.order["openai-codex"])) {
     data.order["openai-codex"] = [];
   }
   if (!data.order["openai-codex"].includes("openai-codex:default")) {
     data.order["openai-codex"].unshift("openai-codex:default");
   }
-  if (!data.lastGood) data.lastGood = {};
+  if (!data.lastGood) {
+    data.lastGood = {};
+  }
   data.lastGood["openai-codex"] = "openai-codex:default";
   writeAuthProfiles(data);
 }
@@ -9430,7 +9972,9 @@ function readEncryptedServiceKeyValues() {
 
 function canDecryptSecretValue(value, key) {
   const parts = value.slice(ENC_PREFIX.length).split(":");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) {
+    return false;
+  }
   try {
     const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(parts[0], "hex"));
     decipher.setAuthTag(Buffer.from(parts[1], "hex"));
@@ -9444,12 +9988,16 @@ function canDecryptSecretValue(value, key) {
 
 function canDecryptExistingSecrets(key) {
   const encryptedValues = readEncryptedServiceKeyValues();
-  if (encryptedValues.length === 0) return true;
+  if (encryptedValues.length === 0) {
+    return true;
+  }
   return encryptedValues.every((value) => canDecryptSecretValue(value, key));
 }
 
 function getMasterKey() {
-  if (_masterKeyCache) return _masterKeyCache;
+  if (_masterKeyCache) {
+    return _masterKeyCache;
+  }
   let keychainKey = null;
   if (process.platform === "darwin") {
     try {
@@ -9520,7 +10068,9 @@ function getMasterKey() {
     }
   }
   const dir = path.dirname(MASTER_KEY_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(MASTER_KEY_FILE, key.toString("hex"), "utf-8");
   fs.chmodSync(MASTER_KEY_FILE, 0o600);
   _masterKeyCache = key;
@@ -9537,9 +10087,13 @@ function encryptSecret(plaintext) {
 }
 
 function decryptSecret(value) {
-  if (!value || !value.startsWith(ENC_PREFIX)) return value;
+  if (!value || !value.startsWith(ENC_PREFIX)) {
+    return value;
+  }
   const parts = value.slice(ENC_PREFIX.length).split(":");
-  if (parts.length !== 3) return value;
+  if (parts.length !== 3) {
+    return value;
+  }
   const key = getMasterKey();
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(parts[0], "hex"));
   decipher.setAuthTag(Buffer.from(parts[1], "hex"));
@@ -9587,7 +10141,9 @@ function readServiceKeys() {
 
 function writeServiceKeys(data) {
   const dir = path.dirname(SERVICE_KEYS_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(SERVICE_KEYS_PATH, JSON.stringify(data, null, 2), "utf-8");
   fs.chmodSync(SERVICE_KEYS_PATH, 0o600); // Only owner can read (contains secrets)
 }
@@ -9598,7 +10154,9 @@ function resolveServiceKey(variable) {
   const entry = data.keys.find((k) => k.variable === variable && k.enabled !== false);
   if (entry?.value) {
     const decrypted = tryDecryptSecret(entry.value);
-    if (!decrypted.error) return decrypted.value;
+    if (!decrypted.error) {
+      return decrypted.value;
+    }
     console.warn("[ServiceKeys] Failed to decrypt key, falling back:", variable, decrypted.error);
   }
   return process.env[variable] || "";
@@ -9613,17 +10171,23 @@ let _asyncServiceKeyResolverPromise = null;
 let _pgServiceKeyClientPromise = null;
 
 async function getPgServiceKeyClient() {
-  if (_pgServiceKeyClientPromise) return _pgServiceKeyClientPromise;
+  if (_pgServiceKeyClientPromise) {
+    return _pgServiceKeyClientPromise;
+  }
   _pgServiceKeyClientPromise = (async () => {
     try {
       const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
-      if (!fs.existsSync(configPath)) return null;
+      if (!fs.existsSync(configPath)) {
+        return null;
+      }
       const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       const storage = raw?.storage ?? {};
       const backend = storage.backend ?? "sqlite";
       const pgConn = storage?.postgres?.connectionString;
       const pgEnabled = backend === "postgres" || backend === "dual";
-      if (!pgEnabled || !pgConn) return null;
+      if (!pgEnabled || !pgConn) {
+        return null;
+      }
       const pgMod = await import("postgres");
       const postgres = pgMod.default || pgMod;
       return postgres(pgConn, { max: 2, idle_timeout: 5, connect_timeout: 5 });
@@ -9637,7 +10201,9 @@ async function getPgServiceKeyClient() {
 async function resolveServiceKeyFromPgDirect(variable) {
   try {
     const sql = await getPgServiceKeyClient();
-    if (!sql) return "";
+    if (!sql) {
+      return "";
+    }
     const rows = await sql`
       SELECT encrypted_value
       FROM service_keys
@@ -9664,11 +10230,15 @@ async function resolveServiceKeyForProxy(variable) {
     const resolveAsync = await _asyncServiceKeyResolverPromise;
     if (resolveAsync) {
       const value = await resolveAsync(variable);
-      if (value) return value;
+      if (value) {
+        return value;
+      }
     }
   } catch {}
   const pgValue = await resolveServiceKeyFromPgDirect(variable);
-  if (pgValue) return pgValue;
+  if (pgValue) {
+    return pgValue;
+  }
   return resolveServiceKey(variable);
 }
 
@@ -9787,10 +10357,18 @@ app.patch("/api/settings/service-keys/:id", (req, res) => {
   try {
     const data = readServiceKeys();
     const idx = data.keys.findIndex((k) => k.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: "Key not found" });
-    if (name !== undefined) data.keys[idx].name = name;
-    if (value !== undefined) data.keys[idx].value = encryptSecret(value);
-    if (enabled !== undefined) data.keys[idx].enabled = enabled;
+    if (idx === -1) {
+      return res.status(404).json({ error: "Key not found" });
+    }
+    if (name !== undefined) {
+      data.keys[idx].name = name;
+    }
+    if (value !== undefined) {
+      data.keys[idx].value = encryptSecret(value);
+    }
+    if (enabled !== undefined) {
+      data.keys[idx].enabled = enabled;
+    }
     if (allowedRoles !== undefined) {
       data.keys[idx].allowedRoles = Array.isArray(allowedRoles)
         ? allowedRoles.filter((v) => typeof v === "string")
@@ -9806,7 +10384,9 @@ app.patch("/api/settings/service-keys/:id", (req, res) => {
         ? allowedTeams.filter((v) => typeof v === "string")
         : [];
     }
-    if (denyAll !== undefined) data.keys[idx].denyAll = denyAll === true;
+    if (denyAll !== undefined) {
+      data.keys[idx].denyAll = denyAll === true;
+    }
     data.keys[idx].updatedAt = new Date().toISOString();
     writeServiceKeys(data);
     const k = data.keys[idx];
@@ -9822,7 +10402,9 @@ app.delete("/api/settings/service-keys/:id", (req, res) => {
   try {
     const data = readServiceKeys();
     const idx = data.keys.findIndex((k) => k.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: "Key not found" });
+    if (idx === -1) {
+      return res.status(404).json({ error: "Key not found" });
+    }
     data.keys.splice(idx, 1);
     writeServiceKeys(data);
     res.json({ success: true });
@@ -10019,7 +10601,9 @@ let _composioMissingLoggedOnce = false;
 // "feature disabled" and respond with 503; this loader never throws for the
 // expected `ERR_MODULE_NOT_FOUND` case, so the gateway log stays clean.
 function loadComposioConnectorModule() {
-  if (_composioConnectorModulePromise) return _composioConnectorModulePromise;
+  if (_composioConnectorModulePromise) {
+    return _composioConnectorModulePromise;
+  }
   _composioConnectorModulePromise = import("../dist/connectors/composio/index.js").then(
     (mod) => mod,
     (err) => {
@@ -10260,10 +10844,14 @@ function resolveLoadProfileConfig(config) {
 }
 
 function mergeDefined(base, patch) {
-  if (!patch || typeof patch !== "object") return { ...base };
+  if (!patch || typeof patch !== "object") {
+    return { ...base };
+  }
   const next = { ...base };
   for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) next[key] = value;
+    if (value !== undefined) {
+      next[key] = value;
+    }
   }
   return next;
 }
@@ -10277,31 +10865,45 @@ function applyLoadProfileToDefaults(config) {
   const resolved = resolveLoadProfileConfig(config);
   const next = { ...defaults };
   const patch = resolved.patch || {};
-  if (patch.heartbeat) next.heartbeat = mergeDefined(next.heartbeat || {}, patch.heartbeat);
+  if (patch.heartbeat) {
+    next.heartbeat = mergeDefined(next.heartbeat || {}, patch.heartbeat);
+  }
   if (patch.contemplation) {
     next.contemplation = mergeDefined(next.contemplation || {}, patch.contemplation);
   }
-  if (patch.sis) next.sis = mergeDefined(next.sis || {}, patch.sis);
+  if (patch.sis) {
+    next.sis = mergeDefined(next.sis || {}, patch.sis);
+  }
   if (patch.executionWorker) {
     next.executionWorker = mergeDefined(next.executionWorker || {}, patch.executionWorker);
   }
-  if (typeof patch.maxConcurrent === "number") next.maxConcurrent = patch.maxConcurrent;
-  if (patch.subagents) next.subagents = mergeDefined(next.subagents || {}, patch.subagents);
+  if (typeof patch.maxConcurrent === "number") {
+    next.maxConcurrent = patch.maxConcurrent;
+  }
+  if (patch.subagents) {
+    next.subagents = mergeDefined(next.subagents || {}, patch.subagents);
+  }
 
   if (resolved.allowManualOverrides && resolved.overrides) {
     const overrides = resolved.overrides;
-    if (overrides.heartbeat)
+    if (overrides.heartbeat) {
       next.heartbeat = mergeDefined(next.heartbeat || {}, overrides.heartbeat);
+    }
     if (overrides.contemplation) {
       next.contemplation = mergeDefined(next.contemplation || {}, overrides.contemplation);
     }
-    if (overrides.sis) next.sis = mergeDefined(next.sis || {}, overrides.sis);
+    if (overrides.sis) {
+      next.sis = mergeDefined(next.sis || {}, overrides.sis);
+    }
     if (overrides.executionWorker) {
       next.executionWorker = mergeDefined(next.executionWorker || {}, overrides.executionWorker);
     }
-    if (typeof overrides.maxConcurrent === "number") next.maxConcurrent = overrides.maxConcurrent;
-    if (overrides.subagents)
+    if (typeof overrides.maxConcurrent === "number") {
+      next.maxConcurrent = overrides.maxConcurrent;
+    }
+    if (overrides.subagents) {
       next.subagents = mergeDefined(next.subagents || {}, overrides.subagents);
+    }
   }
 
   return next;
@@ -10310,7 +10912,9 @@ function applyLoadProfileToDefaults(config) {
 function parseProviderModelRef(ref) {
   const normalized = String(ref || "").trim();
   const slashIndex = normalized.indexOf("/");
-  if (slashIndex <= 0 || slashIndex === normalized.length - 1) return null;
+  if (slashIndex <= 0 || slashIndex === normalized.length - 1) {
+    return null;
+  }
   return {
     provider: normalized.slice(0, slashIndex).trim(),
     model: normalized.slice(slashIndex + 1).trim(),
@@ -10322,7 +10926,9 @@ function isEmbeddingOnlyModelId(value) {
   const model = String(value || "")
     .trim()
     .toLowerCase();
-  if (!model) return false;
+  if (!model) {
+    return false;
+  }
   return (
     model.includes("embed") ||
     model.includes("embedding") ||
@@ -10372,7 +10978,9 @@ async function loadPiBackedModelCatalog() {
         .map((entry) => {
           const id = String(entry?.id || "").trim();
           const provider = String(entry?.provider || "").trim();
-          if (!id || !provider) return null;
+          if (!id || !provider) {
+            return null;
+          }
           const name = String(entry?.name || id).trim() || id;
           return {
             id,
@@ -10411,7 +11019,9 @@ async function collectAvailableModelsCatalog(config) {
   const seen = new Set();
 
   const pushModel = (id, alias = null, params = null) => {
-    if (typeof id !== "string" || id.trim().length === 0) return;
+    if (typeof id !== "string" || id.trim().length === 0) {
+      return;
+    }
     const slashIndex = id.indexOf("/");
     if (slashIndex > 0) {
       availableProviders.add(id.slice(0, slashIndex));
@@ -10579,7 +11189,9 @@ async function collectAvailableModelsCatalog(config) {
     }
 
     for (const profile of Object.values(profiles)) {
-      if (profile?.provider !== providerId) continue;
+      if (profile?.provider !== providerId) {
+        continue;
+      }
       if (typeof profile?.token === "string" && profile.token.trim()) {
         return profile.token.trim();
       }
@@ -10591,16 +11203,22 @@ async function collectAvailableModelsCatalog(config) {
   };
 
   const fetchOpenAICompatModels = async (providerId, baseUrl, apiKey, requireKey = true) => {
-    if (requireKey && !apiKey) return;
+    if (requireKey && !apiKey) {
+      return;
+    }
     const normalizedBaseUrl = String(baseUrl || "")
       .trim()
       .replace(/\/+$/, "");
-    if (!normalizedBaseUrl) return;
+    if (!normalizedBaseUrl) {
+      return;
+    }
     const modelsUrl = normalizedBaseUrl.endsWith("/v1")
       ? `${normalizedBaseUrl}/models`
       : `${normalizedBaseUrl}/v1/models`;
     const headers = { Accept: "application/json" };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -10609,7 +11227,9 @@ async function collectAvailableModelsCatalog(config) {
         headers,
         signal: controller.signal,
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        return;
+      }
       const payload = await response.json();
       for (const model of Array.isArray(payload?.data) ? payload.data : []) {
         if (typeof model?.id === "string" && model.id.trim().length > 0) {
@@ -10713,7 +11333,9 @@ async function probeLmStudioCatalogWithState(baseUrlRaw) {
     const entries = Array.isArray(payload?.data) ? payload.data : [];
     const out = [];
     for (const entry of entries) {
-      if (typeof entry?.id !== "string" || entry.id.trim().length === 0) continue;
+      if (typeof entry?.id !== "string" || entry.id.trim().length === 0) {
+        continue;
+      }
       const id = entry.id.trim();
       const stateRaw = typeof entry?.state === "string" ? entry.state.trim() : "";
       const loaded = stateRaw === "loaded" ? true : stateRaw === "not-loaded" ? false : null;
@@ -10746,7 +11368,9 @@ async function probeLmStudioCatalogWithState(baseUrlRaw) {
     const entries = Array.isArray(payload?.data) ? payload.data : [];
     const out = [];
     for (const entry of entries) {
-      if (typeof entry?.id !== "string" || entry.id.trim().length === 0) continue;
+      if (typeof entry?.id !== "string" || entry.id.trim().length === 0) {
+        continue;
+      }
       const id = entry.id.trim();
       const size =
         typeof entry?.size === "number" && Number.isFinite(entry.size)
@@ -10872,7 +11496,9 @@ async function probeLocalModelRuntimes(config, configuredProviders, pushModel) {
       for (const entry of Array.isArray(data?.models) ? data.models : []) {
         const id =
           typeof entry?.name === "string" && entry.name.trim().length > 0 ? entry.name.trim() : "";
-        if (!id) continue;
+        if (!id) {
+          continue;
+        }
         const ref = `ollama/${id}`;
         pushModel(ref, null, { liveRuntime: "ollama" });
         ollamaRuntime.models.push({ id, ref, label: ref });
@@ -11009,9 +11635,13 @@ function buildBackgroundModelRecommendations(config, catalog) {
     const skipDownLocalRuntimes = opts.skipDownLocalRuntimes !== false; // default: skip
     for (const ref of preferredRefs) {
       const hit = availableByLower.get(String(ref).trim().toLowerCase());
-      if (!hit) continue;
+      if (!hit) {
+        continue;
+      }
       const parsed = parseProviderModelRef(hit.id);
-      if (!parsed) continue;
+      if (!parsed) {
+        continue;
+      }
       // Filter: never suggest from a local runtime that isn't running.
       if (
         skipDownLocalRuntimes &&
@@ -11026,7 +11656,9 @@ function buildBackgroundModelRecommendations(config, catalog) {
           hit.params &&
           typeof hit.params === "object" &&
           typeof hit.params.liveRuntime === "string";
-        if (!live) continue;
+        if (!live) {
+          continue;
+        }
       }
       return {
         provider: parsed.provider,
@@ -11040,14 +11672,22 @@ function buildBackgroundModelRecommendations(config, catalog) {
     if (requireLiveLocal) {
       for (const entry of catalog.models) {
         const parsed = parseProviderModelRef(entry.id);
-        if (!parsed) continue;
-        if (!isLocalRuntimeProvider(parsed.provider)) continue;
-        if (!isLocalRuntimeUp(parsed.provider)) continue;
+        if (!parsed) {
+          continue;
+        }
+        if (!isLocalRuntimeProvider(parsed.provider)) {
+          continue;
+        }
+        if (!isLocalRuntimeUp(parsed.provider)) {
+          continue;
+        }
         const live =
           entry.params &&
           typeof entry.params === "object" &&
           typeof entry.params.liveRuntime === "string";
-        if (!live) continue;
+        if (!live) {
+          continue;
+        }
         return {
           provider: parsed.provider,
           model: parsed.model,
@@ -11298,13 +11938,21 @@ function normalizeImageAnalysisConfig(config) {
 }
 
 function applyImageAnalysisConfigPatch(config, patch) {
-  if (!patch || typeof patch !== "object") return;
-  if (!config.agents || typeof config.agents !== "object") config.agents = {};
+  if (!patch || typeof patch !== "object") {
+    return;
+  }
+  if (!config.agents || typeof config.agents !== "object") {
+    config.agents = {};
+  }
   if (!config.agents.defaults || typeof config.agents.defaults !== "object") {
     config.agents.defaults = {};
   }
-  if (!config.tools || typeof config.tools !== "object") config.tools = {};
-  if (!config.tools.media || typeof config.tools.media !== "object") config.tools.media = {};
+  if (!config.tools || typeof config.tools !== "object") {
+    config.tools = {};
+  }
+  if (!config.tools.media || typeof config.tools.media !== "object") {
+    config.tools.media = {};
+  }
   if (!config.tools.media.image || typeof config.tools.media.image !== "object") {
     config.tools.media.image = {};
   }
@@ -11400,7 +12048,9 @@ function findBundledAosBinary(tool) {
       return null;
     }
   })();
-  if (pathResult) return pathResult;
+  if (pathResult) {
+    return pathResult;
+  }
 
   const binaryName = process.platform === "win32" ? `${tool}.exe` : tool;
   const candidates =
@@ -11546,7 +12196,9 @@ app.post("/api/settings/connectors/scaffold", (req, res) => {
 
 function resolveConfiguredVaultPath(config) {
   const raw = config?.memory?.vault?.path;
-  if (typeof raw !== "string" || !raw.trim()) return "";
+  if (typeof raw !== "string" || !raw.trim()) {
+    return "";
+  }
   const trimmed = raw.trim();
   return process.env.HOME ? trimmed.replace(/^~(?=$|[\\/])/, process.env.HOME) : trimmed;
 }
@@ -11764,7 +12416,9 @@ function readNudges() {
 
 function writeNudges(data) {
   const dir = path.dirname(NUDGES_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(NUDGES_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
@@ -11877,16 +12531,24 @@ function resolveDefaultAgentId(config) {
   const explicitDefault = list.find(
     (entry) => entry && typeof entry === "object" && entry.default === true && entry.id,
   );
-  if (explicitDefault?.id) return String(explicitDefault.id).trim();
+  if (explicitDefault?.id) {
+    return String(explicitDefault.id).trim();
+  }
   const argentEntry = list.find(
     (entry) => entry && typeof entry === "object" && String(entry.id || "").trim() === "argent",
   );
-  if (argentEntry?.id) return String(argentEntry.id).trim();
+  if (argentEntry?.id) {
+    return String(argentEntry.id).trim();
+  }
   const mainEntry = list.find(
     (entry) => entry && typeof entry === "object" && String(entry.id || "").trim() === "main",
   );
-  if (mainEntry?.id) return String(mainEntry.id).trim();
-  if (list[0]?.id) return String(list[0].id).trim();
+  if (mainEntry?.id) {
+    return String(mainEntry.id).trim();
+  }
+  if (list[0]?.id) {
+    return String(list[0].id).trim();
+  }
   return "main";
 }
 
@@ -11899,7 +12561,9 @@ function parseAgentSettingsTarget(req) {
 }
 
 function findConfigAgent(config, agentId) {
-  if (!agentId) return null;
+  if (!agentId) {
+    return null;
+  }
   const list = Array.isArray(config?.agents?.list) ? config.agents.list : [];
   return list.find(
     (entry) => entry && typeof entry === "object" && String(entry.id || "").trim() === agentId,
@@ -11911,9 +12575,13 @@ function listConfigAgentOptions(config) {
   const rows = [];
   const seen = new Set();
   for (const entry of list) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
     const id = String(entry.id || "").trim();
-    if (!id || seen.has(id)) continue;
+    if (!id || seen.has(id)) {
+      continue;
+    }
     seen.add(id);
     const name = typeof entry.name === "string" ? entry.name.trim() : "";
     rows.push({ id, label: name || id });
@@ -11963,7 +12631,9 @@ async function buildKnowledgeAgentOptions(config, defaultAgentId) {
       const names = fs
         .readdirSync(agentsDir)
         .filter((name) => {
-          if (!name || name.startsWith("agent-main-subagent-")) return false;
+          if (!name || name.startsWith("agent-main-subagent-")) {
+            return false;
+          }
           const agentDir = path.join(agentsDir, name, "agent");
           return fs.existsSync(agentDir) && fs.statSync(agentDir).isDirectory();
         })
@@ -11982,7 +12652,9 @@ async function buildKnowledgeAgentOptions(config, defaultAgentId) {
         if (Array.isArray(members)) {
           for (const row of members) {
             const id = typeof row?.id === "string" ? row.id.trim() : "";
-            if (!id) continue;
+            if (!id) {
+              continue;
+            }
             const name = typeof row?.name === "string" ? row.name.trim() : "";
             familyOptions.push({ id, label: name || id });
           }
@@ -12001,7 +12673,9 @@ async function buildKnowledgeAgentOptions(config, defaultAgentId) {
     ...fsOptions,
   ]) {
     const id = typeof option?.id === "string" ? option.id.trim() : "";
-    if (!id || seen.has(id)) continue;
+    if (!id || seen.has(id)) {
+      continue;
+    }
     seen.add(id);
     const label =
       typeof option?.label === "string" && option.label.trim() ? option.label.trim() : id;
@@ -12011,18 +12685,24 @@ async function buildKnowledgeAgentOptions(config, defaultAgentId) {
 }
 
 function normalizeIntentString(value) {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeIntentStringList(values) {
-  if (!Array.isArray(values)) return undefined;
+  if (!Array.isArray(values)) {
+    return undefined;
+  }
   const out = [];
   const seen = new Set();
   for (const raw of values) {
     const normalized = normalizeIntentString(raw);
-    if (!normalized || seen.has(normalized)) continue;
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
     seen.add(normalized);
     out.push(normalized);
   }
@@ -12030,7 +12710,9 @@ function normalizeIntentStringList(values) {
 }
 
 function normalizeIntentEscalation(value) {
-  if (!value || typeof value !== "object") return undefined;
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
   const out = {};
   if (typeof value.sentimentThreshold === "number" && Number.isFinite(value.sentimentThreshold)) {
     out.sentimentThreshold = Math.max(-1, Math.min(1, value.sentimentThreshold));
@@ -12057,18 +12739,30 @@ function normalizeIntentEscalation(value) {
 }
 
 function normalizeIntentPolicy(value, options = {}) {
-  if (!value || typeof value !== "object") return undefined;
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
   const out = {};
   const objective = normalizeIntentString(value.objective);
-  if (objective) out.objective = objective;
+  if (objective) {
+    out.objective = objective;
+  }
   const tradeoffHierarchy = normalizeIntentStringList(value.tradeoffHierarchy);
-  if (tradeoffHierarchy) out.tradeoffHierarchy = tradeoffHierarchy;
+  if (tradeoffHierarchy) {
+    out.tradeoffHierarchy = tradeoffHierarchy;
+  }
   const neverDo = normalizeIntentStringList(value.neverDo);
-  if (neverDo) out.neverDo = neverDo;
+  if (neverDo) {
+    out.neverDo = neverDo;
+  }
   const allowedActions = normalizeIntentStringList(value.allowedActions);
-  if (allowedActions) out.allowedActions = allowedActions;
+  if (allowedActions) {
+    out.allowedActions = allowedActions;
+  }
   const requiresHumanApproval = normalizeIntentStringList(value.requiresHumanApproval);
-  if (requiresHumanApproval) out.requiresHumanApproval = requiresHumanApproval;
+  if (requiresHumanApproval) {
+    out.requiresHumanApproval = requiresHumanApproval;
+  }
 
   if (typeof value.requireAcknowledgmentBeforeClose === "boolean") {
     out.requireAcknowledgmentBeforeClose = value.requireAcknowledgmentBeforeClose;
@@ -12080,27 +12774,39 @@ function normalizeIntentPolicy(value, options = {}) {
     out.weightPreviousEscalations = value.weightPreviousEscalations;
   }
   const escalation = normalizeIntentEscalation(value.escalation);
-  if (escalation) out.escalation = escalation;
+  if (escalation) {
+    out.escalation = escalation;
+  }
 
   if (options.allowVersion) {
     const version = normalizeIntentString(value.version);
-    if (version) out.version = version;
+    if (version) {
+      out.version = version;
+    }
   }
   if (options.allowOwner) {
     const owner = normalizeIntentString(value.owner);
-    if (owner) out.owner = owner;
+    if (owner) {
+      out.owner = owner;
+    }
   }
   if (options.allowCoreValues) {
     const coreValues = normalizeIntentStringList(value.coreValues);
-    if (coreValues) out.coreValues = coreValues;
+    if (coreValues) {
+      out.coreValues = coreValues;
+    }
   }
   if (options.allowDepartmentId) {
     const departmentId = normalizeIntentString(value.departmentId);
-    if (departmentId) out.departmentId = departmentId;
+    if (departmentId) {
+      out.departmentId = departmentId;
+    }
   }
   if (options.allowRole) {
     const role = normalizeIntentString(value.role);
-    if (role) out.role = role;
+    if (role) {
+      out.role = role;
+    }
   }
   if (
     options.allowSimulationGate &&
@@ -12137,19 +12843,27 @@ function normalizeIntentPolicy(value, options = {}) {
 }
 
 function normalizeIntentPolicyMap(map, options = {}) {
-  if (!map || typeof map !== "object" || Array.isArray(map)) return undefined;
+  if (!map || typeof map !== "object" || Array.isArray(map)) {
+    return undefined;
+  }
   const out = {};
   for (const [rawKey, rawValue] of Object.entries(map)) {
     const key = normalizeIntentString(rawKey);
-    if (!key) continue;
+    if (!key) {
+      continue;
+    }
     const policy = normalizeIntentPolicy(rawValue, options);
-    if (policy) out[key] = policy;
+    if (policy) {
+      out[key] = policy;
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function normalizeIntentConfig(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
   const out = {};
   if (typeof value.enabled === "boolean") {
     out.enabled = value.enabled;
@@ -12166,13 +12880,17 @@ function normalizeIntentConfig(value) {
     allowOwner: true,
     allowCoreValues: true,
   });
-  if (global) out.global = global;
+  if (global) {
+    out.global = global;
+  }
 
   const departments = normalizeIntentPolicyMap(value.departments, {
     allowVersion: true,
     allowOwner: true,
   });
-  if (departments) out.departments = departments;
+  if (departments) {
+    out.departments = departments;
+  }
 
   const agents = normalizeIntentPolicyMap(value.agents, {
     allowVersion: true,
@@ -12181,7 +12899,9 @@ function normalizeIntentConfig(value) {
     allowRole: true,
     allowSimulationGate: true,
   });
-  if (agents) out.agents = agents;
+  if (agents) {
+    out.agents = agents;
+  }
 
   if (value.simulationGate && typeof value.simulationGate === "object") {
     const simulationGate = {};
@@ -12277,8 +12997,12 @@ function intentPreviewIsSuperset(values, parentValues) {
 }
 
 function intentPreviewHasPrefix(values, prefix) {
-  if (!Array.isArray(values) || !Array.isArray(prefix)) return false;
-  if (prefix.length > values.length) return false;
+  if (!Array.isArray(values) || !Array.isArray(prefix)) {
+    return false;
+  }
+  if (prefix.length > values.length) {
+    return false;
+  }
   return prefix.every((value, index) => values[index] === value);
 }
 
@@ -12406,7 +13130,9 @@ function intentPreviewValidateChildPolicy(parentRaw, childRaw, childPath) {
 }
 
 function intentPreviewValidateHierarchy(intent) {
-  if (!intent || intent.enabled === false) return [];
+  if (!intent || intent.enabled === false) {
+    return [];
+  }
   const issues = [];
   const globalPolicy = intentPreviewNormalizePolicy(intent.global) || {};
   const departments =
@@ -12443,7 +13169,9 @@ function intentPreviewValidateHierarchy(intent) {
 }
 
 function intentPreviewClampScore(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
   return Math.max(0, Math.min(1, value));
 }
 
@@ -12485,8 +13213,12 @@ function intentPreviewParseSuites(raw, warnings) {
 }
 
 function intentPreviewResolveReportPath(reportPath) {
-  if (!reportPath || typeof reportPath !== "string" || !reportPath.trim()) return null;
-  if (path.isAbsolute(reportPath)) return reportPath.trim();
+  if (!reportPath || typeof reportPath !== "string" || !reportPath.trim()) {
+    return null;
+  }
+  if (path.isAbsolute(reportPath)) {
+    return reportPath.trim();
+  }
   // Assume relative paths are relative to the project root, not the dashboard folder
   return path.resolve(path.join(__dirname, ".."), reportPath.trim());
 }
@@ -12544,7 +13276,9 @@ function intentPreviewEvaluateSimulation(intent, agentId) {
     for (const suiteId of requiredSuites) {
       const suite = suiteById.get(suiteId);
       if (!suite) {
-        if (enabled) reasons.push(`Missing required simulation suite "${suiteId}".`);
+        if (enabled) {
+          reasons.push(`Missing required simulation suite "${suiteId}".`);
+        }
         continue;
       }
       scopedSuites.push(suite);
@@ -12552,10 +13286,11 @@ function intentPreviewEvaluateSimulation(intent, agentId) {
   }
   for (const suite of scopedSuites) {
     if (suite.passRate < minPassRate) {
-      if (enabled)
+      if (enabled) {
         reasons.push(
           `Suite "${suite.suiteId}" pass rate ${(suite.passRate * 100).toFixed(1)}% is below minimum ${(minPassRate * 100).toFixed(1)}%.`,
         );
+      }
     }
   }
   const overallPassRate =
@@ -12735,8 +13470,12 @@ app.get("/api/settings/knowledge/collections", async (req, res) => {
     const collections = Array.isArray(listing?.collections)
       ? listing.collections
           .filter((entry) => {
-            if (!entry || typeof entry !== "object") return false;
-            if (includeInaccessible) return true;
+            if (!entry || typeof entry !== "object") {
+              return false;
+            }
+            if (includeInaccessible) {
+              return true;
+            }
             return entry.canRead === true || entry.canWrite === true || entry.isOwner === true;
           })
           .map((entry) => ({
@@ -13110,9 +13849,15 @@ app.patch("/api/settings/agent", (req, res) => {
     const surfaceProfile = getDashboardSurfaceProfile(config);
     const target = parseAgentSettingsTarget(req);
     const updatingAgentOverride = Boolean(target.agentId);
-    if (!config.agents) config.agents = {};
-    if (!config.agents.defaults) config.agents.defaults = {};
-    if (!config.agents.defaults.loadProfile) config.agents.defaults.loadProfile = {};
+    if (!config.agents) {
+      config.agents = {};
+    }
+    if (!config.agents.defaults) {
+      config.agents.defaults = {};
+    }
+    if (!config.agents.defaults.loadProfile) {
+      config.agents.defaults.loadProfile = {};
+    }
     let nudgeChanged = false;
 
     if (surfaceProfile === "public-core") {
@@ -13229,7 +13974,9 @@ app.patch("/api/settings/agent", (req, res) => {
           error: "executionWorker, tools, or skills patch object required for per-agent updates",
         });
       }
-      if (!Array.isArray(config.agents.list)) config.agents.list = [];
+      if (!Array.isArray(config.agents.list)) {
+        config.agents.list = [];
+      }
       let agentEntry = findConfigAgent(config, target.agentId);
       if (!agentEntry) {
         agentEntry = { id: target.agentId };
@@ -13256,7 +14003,9 @@ app.patch("/api/settings/agent", (req, res) => {
         }
         const toolsPatch = req.body.tools || {};
         const assignList = (key) => {
-          if (!(key in toolsPatch)) return;
+          if (!(key in toolsPatch)) {
+            return;
+          }
           if (Array.isArray(toolsPatch[key])) {
             agentEntry.tools[key] = toolsPatch[key]
               .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
@@ -13312,16 +14061,20 @@ app.patch("/api/settings/agent", (req, res) => {
         config.agents.defaults.loadProfile.active !== "desktop" &&
         config.agents.defaults.loadProfile.allowManualOverrides !== false
       ) {
-        if (!config.agents.defaults.loadProfile.overrides)
+        if (!config.agents.defaults.loadProfile.overrides) {
           config.agents.defaults.loadProfile.overrides = {};
-        if (!config.agents.defaults.loadProfile.overrides.contemplation)
+        }
+        if (!config.agents.defaults.loadProfile.overrides.contemplation) {
           config.agents.defaults.loadProfile.overrides.contemplation = {};
+        }
         Object.assign(
           config.agents.defaults.loadProfile.overrides.contemplation,
           req.body.contemplation,
         );
       } else {
-        if (!config.agents.defaults.contemplation) config.agents.defaults.contemplation = {};
+        if (!config.agents.defaults.contemplation) {
+          config.agents.defaults.contemplation = {};
+        }
         Object.assign(config.agents.defaults.contemplation, req.body.contemplation);
       }
     }
@@ -13393,13 +14146,17 @@ app.patch("/api/settings/agent", (req, res) => {
         config.agents.defaults.loadProfile.active !== "desktop" &&
         config.agents.defaults.loadProfile.allowManualOverrides !== false
       ) {
-        if (!config.agents.defaults.loadProfile.overrides)
+        if (!config.agents.defaults.loadProfile.overrides) {
           config.agents.defaults.loadProfile.overrides = {};
-        if (!config.agents.defaults.loadProfile.overrides.heartbeat)
+        }
+        if (!config.agents.defaults.loadProfile.overrides.heartbeat) {
           config.agents.defaults.loadProfile.overrides.heartbeat = {};
+        }
         Object.assign(config.agents.defaults.loadProfile.overrides.heartbeat, req.body.heartbeat);
       } else {
-        if (!config.agents.defaults.heartbeat) config.agents.defaults.heartbeat = {};
+        if (!config.agents.defaults.heartbeat) {
+          config.agents.defaults.heartbeat = {};
+        }
         Object.assign(config.agents.defaults.heartbeat, req.body.heartbeat);
       }
     }
@@ -13409,13 +14166,17 @@ app.patch("/api/settings/agent", (req, res) => {
         config.agents.defaults.loadProfile.active !== "desktop" &&
         config.agents.defaults.loadProfile.allowManualOverrides !== false
       ) {
-        if (!config.agents.defaults.loadProfile.overrides)
+        if (!config.agents.defaults.loadProfile.overrides) {
           config.agents.defaults.loadProfile.overrides = {};
-        if (!config.agents.defaults.loadProfile.overrides.sis)
+        }
+        if (!config.agents.defaults.loadProfile.overrides.sis) {
           config.agents.defaults.loadProfile.overrides.sis = {};
+        }
         Object.assign(config.agents.defaults.loadProfile.overrides.sis, req.body.sis);
       } else {
-        if (!config.agents.defaults.sis) config.agents.defaults.sis = {};
+        if (!config.agents.defaults.sis) {
+          config.agents.defaults.sis = {};
+        }
         Object.assign(config.agents.defaults.sis, req.body.sis);
       }
     }
@@ -13425,16 +14186,20 @@ app.patch("/api/settings/agent", (req, res) => {
         config.agents.defaults.loadProfile.active !== "desktop" &&
         config.agents.defaults.loadProfile.allowManualOverrides !== false
       ) {
-        if (!config.agents.defaults.loadProfile.overrides)
+        if (!config.agents.defaults.loadProfile.overrides) {
           config.agents.defaults.loadProfile.overrides = {};
-        if (!config.agents.defaults.loadProfile.overrides.executionWorker)
+        }
+        if (!config.agents.defaults.loadProfile.overrides.executionWorker) {
           config.agents.defaults.loadProfile.overrides.executionWorker = {};
+        }
         Object.assign(
           config.agents.defaults.loadProfile.overrides.executionWorker,
           req.body.executionWorker,
         );
       } else {
-        if (!config.agents.defaults.executionWorker) config.agents.defaults.executionWorker = {};
+        if (!config.agents.defaults.executionWorker) {
+          config.agents.defaults.executionWorker = {};
+        }
         Object.assign(config.agents.defaults.executionWorker, req.body.executionWorker);
       }
     }
@@ -13445,9 +14210,15 @@ app.patch("/api/settings/agent", (req, res) => {
       nudgeChanged = true;
     }
     if (req.body.memory?.memu?.llm !== undefined) {
-      if (!config.memory) config.memory = {};
-      if (!config.memory.memu) config.memory.memu = {};
-      if (!config.memory.memu.llm) config.memory.memu.llm = {};
+      if (!config.memory) {
+        config.memory = {};
+      }
+      if (!config.memory.memu) {
+        config.memory.memu = {};
+      }
+      if (!config.memory.memu.llm) {
+        config.memory.memu.llm = {};
+      }
       const incoming = req.body.memory.memu.llm || {};
 
       if (incoming.provider !== undefined) {
@@ -13484,8 +14255,12 @@ app.patch("/api/settings/agent", (req, res) => {
       }
     }
     if (req.body.memory?.vault !== undefined) {
-      if (!config.memory) config.memory = {};
-      if (!config.memory.vault || typeof config.memory.vault !== "object") config.memory.vault = {};
+      if (!config.memory) {
+        config.memory = {};
+      }
+      if (!config.memory.vault || typeof config.memory.vault !== "object") {
+        config.memory.vault = {};
+      }
       const incoming = req.body.memory.vault || {};
       if (incoming.enabled !== undefined) {
         config.memory.vault.enabled = incoming.enabled === true;
@@ -13543,9 +14318,12 @@ app.patch("/api/settings/agent", (req, res) => {
       }
     }
     if (req.body.memory?.cognee !== undefined) {
-      if (!config.memory) config.memory = {};
-      if (!config.memory.cognee || typeof config.memory.cognee !== "object")
+      if (!config.memory) {
+        config.memory = {};
+      }
+      if (!config.memory.cognee || typeof config.memory.cognee !== "object") {
         config.memory.cognee = {};
+      }
       const incoming = req.body.memory.cognee || {};
       if (incoming.enabled !== undefined) {
         config.memory.cognee.enabled = incoming.enabled === true;
@@ -13611,7 +14389,9 @@ app.patch("/api/settings/agent", (req, res) => {
       }
     }
     if (req.body.contemplation?.discoveryPhase !== undefined) {
-      if (!config.agents.defaults.contemplation) config.agents.defaults.contemplation = {};
+      if (!config.agents.defaults.contemplation) {
+        config.agents.defaults.contemplation = {};
+      }
       if (
         !config.agents.defaults.contemplation.discoveryPhase ||
         typeof config.agents.defaults.contemplation.discoveryPhase !== "object"
@@ -13654,10 +14434,14 @@ app.patch("/api/settings/agent", (req, res) => {
       applyImageAnalysisConfigPatch(config, req.body.imageAnalysis);
     }
     if (req.body.tools !== undefined && typeof req.body.tools === "object") {
-      if (!config.tools || typeof config.tools !== "object") config.tools = {};
+      if (!config.tools || typeof config.tools !== "object") {
+        config.tools = {};
+      }
       const toolsPatch = req.body.tools || {};
       const assignList = (key) => {
-        if (!(key in toolsPatch)) return;
+        if (!(key in toolsPatch)) {
+          return;
+        }
         if (Array.isArray(toolsPatch[key])) {
           config.tools[key] = toolsPatch[key]
             .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
@@ -13681,7 +14465,9 @@ app.patch("/api/settings/agent", (req, res) => {
     if (req.body.backgroundModels !== undefined) {
       const incoming = req.body.backgroundModels || {};
       const stringifyModelSelection = (value) => {
-        if (!value || typeof value !== "object") return undefined;
+        if (!value || typeof value !== "object") {
+          return undefined;
+        }
         const raw =
           typeof value.model === "string" && value.model.trim().length > 0
             ? value.model.trim()
@@ -13696,17 +14482,21 @@ app.patch("/api/settings/agent", (req, res) => {
           config.agents.defaults.loadProfile.active !== "desktop" &&
           config.agents.defaults.loadProfile.allowManualOverrides !== false
         ) {
-          if (!config.agents.defaults.loadProfile.overrides)
+          if (!config.agents.defaults.loadProfile.overrides) {
             config.agents.defaults.loadProfile.overrides = {};
-          if (!config.agents.defaults.loadProfile.overrides.contemplation)
+          }
+          if (!config.agents.defaults.loadProfile.overrides.contemplation) {
             config.agents.defaults.loadProfile.overrides.contemplation = {};
+          }
           if (modelRef) {
             config.agents.defaults.loadProfile.overrides.contemplation.model = modelRef;
           } else {
             delete config.agents.defaults.loadProfile.overrides.contemplation.model;
           }
         } else {
-          if (!config.agents.defaults.contemplation) config.agents.defaults.contemplation = {};
+          if (!config.agents.defaults.contemplation) {
+            config.agents.defaults.contemplation = {};
+          }
           if (modelRef) {
             config.agents.defaults.contemplation.model = modelRef;
           } else {
@@ -13722,17 +14512,21 @@ app.patch("/api/settings/agent", (req, res) => {
           config.agents.defaults.loadProfile.active !== "desktop" &&
           config.agents.defaults.loadProfile.allowManualOverrides !== false
         ) {
-          if (!config.agents.defaults.loadProfile.overrides)
+          if (!config.agents.defaults.loadProfile.overrides) {
             config.agents.defaults.loadProfile.overrides = {};
-          if (!config.agents.defaults.loadProfile.overrides.sis)
+          }
+          if (!config.agents.defaults.loadProfile.overrides.sis) {
             config.agents.defaults.loadProfile.overrides.sis = {};
+          }
           if (modelRef) {
             config.agents.defaults.loadProfile.overrides.sis.model = modelRef;
           } else {
             delete config.agents.defaults.loadProfile.overrides.sis.model;
           }
         } else {
-          if (!config.agents.defaults.sis) config.agents.defaults.sis = {};
+          if (!config.agents.defaults.sis) {
+            config.agents.defaults.sis = {};
+          }
           if (modelRef) {
             config.agents.defaults.sis.model = modelRef;
           } else {
@@ -13748,17 +14542,21 @@ app.patch("/api/settings/agent", (req, res) => {
           config.agents.defaults.loadProfile.active !== "desktop" &&
           config.agents.defaults.loadProfile.allowManualOverrides !== false
         ) {
-          if (!config.agents.defaults.loadProfile.overrides)
+          if (!config.agents.defaults.loadProfile.overrides) {
             config.agents.defaults.loadProfile.overrides = {};
-          if (!config.agents.defaults.loadProfile.overrides.heartbeat)
+          }
+          if (!config.agents.defaults.loadProfile.overrides.heartbeat) {
             config.agents.defaults.loadProfile.overrides.heartbeat = {};
+          }
           if (modelRef) {
             config.agents.defaults.loadProfile.overrides.heartbeat.model = modelRef;
           } else {
             delete config.agents.defaults.loadProfile.overrides.heartbeat.model;
           }
         } else {
-          if (!config.agents.defaults.heartbeat) config.agents.defaults.heartbeat = {};
+          if (!config.agents.defaults.heartbeat) {
+            config.agents.defaults.heartbeat = {};
+          }
           if (modelRef) {
             config.agents.defaults.heartbeat.model = modelRef;
           } else {
@@ -13774,17 +14572,21 @@ app.patch("/api/settings/agent", (req, res) => {
           config.agents.defaults.loadProfile.active !== "desktop" &&
           config.agents.defaults.loadProfile.allowManualOverrides !== false
         ) {
-          if (!config.agents.defaults.loadProfile.overrides)
+          if (!config.agents.defaults.loadProfile.overrides) {
             config.agents.defaults.loadProfile.overrides = {};
-          if (!config.agents.defaults.loadProfile.overrides.executionWorker)
+          }
+          if (!config.agents.defaults.loadProfile.overrides.executionWorker) {
             config.agents.defaults.loadProfile.overrides.executionWorker = {};
+          }
           if (modelRef) {
             config.agents.defaults.loadProfile.overrides.executionWorker.model = modelRef;
           } else {
             delete config.agents.defaults.loadProfile.overrides.executionWorker.model;
           }
         } else {
-          if (!config.agents.defaults.executionWorker) config.agents.defaults.executionWorker = {};
+          if (!config.agents.defaults.executionWorker) {
+            config.agents.defaults.executionWorker = {};
+          }
           if (modelRef) {
             config.agents.defaults.executionWorker.model = modelRef;
           } else {
@@ -13794,7 +14596,9 @@ app.patch("/api/settings/agent", (req, res) => {
       }
 
       if (incoming.embeddings !== undefined) {
-        if (!config.agents.defaults.memorySearch) config.agents.defaults.memorySearch = {};
+        if (!config.agents.defaults.memorySearch) {
+          config.agents.defaults.memorySearch = {};
+        }
         const embeddingProvider =
           typeof incoming.embeddings.provider === "string"
             ? incoming.embeddings.provider.trim()
@@ -13856,16 +14660,24 @@ app.patch("/api/settings/agent", (req, res) => {
             ? incoming.intentSimulationAgent.model.trim()
             : "";
 
-        if (!config.agents.defaults.backgroundModels) config.agents.defaults.backgroundModels = {};
-        if (!config.agents.defaults.backgroundModels.intentSimulationAgent)
+        if (!config.agents.defaults.backgroundModels) {
+          config.agents.defaults.backgroundModels = {};
+        }
+        if (!config.agents.defaults.backgroundModels.intentSimulationAgent) {
           config.agents.defaults.backgroundModels.intentSimulationAgent = {};
+        }
 
-        if (provider)
+        if (provider) {
           config.agents.defaults.backgroundModels.intentSimulationAgent.provider = provider;
-        else delete config.agents.defaults.backgroundModels.intentSimulationAgent.provider;
+        } else {
+          delete config.agents.defaults.backgroundModels.intentSimulationAgent.provider;
+        }
 
-        if (model) config.agents.defaults.backgroundModels.intentSimulationAgent.model = model;
-        else delete config.agents.defaults.backgroundModels.intentSimulationAgent.model;
+        if (model) {
+          config.agents.defaults.backgroundModels.intentSimulationAgent.model = model;
+        } else {
+          delete config.agents.defaults.backgroundModels.intentSimulationAgent.model;
+        }
       }
 
       if (incoming.intentSimulationJudge !== undefined) {
@@ -13878,16 +14690,24 @@ app.patch("/api/settings/agent", (req, res) => {
             ? incoming.intentSimulationJudge.model.trim()
             : "";
 
-        if (!config.agents.defaults.backgroundModels) config.agents.defaults.backgroundModels = {};
-        if (!config.agents.defaults.backgroundModels.intentSimulationJudge)
+        if (!config.agents.defaults.backgroundModels) {
+          config.agents.defaults.backgroundModels = {};
+        }
+        if (!config.agents.defaults.backgroundModels.intentSimulationJudge) {
           config.agents.defaults.backgroundModels.intentSimulationJudge = {};
+        }
 
-        if (provider)
+        if (provider) {
           config.agents.defaults.backgroundModels.intentSimulationJudge.provider = provider;
-        else delete config.agents.defaults.backgroundModels.intentSimulationJudge.provider;
+        } else {
+          delete config.agents.defaults.backgroundModels.intentSimulationJudge.provider;
+        }
 
-        if (model) config.agents.defaults.backgroundModels.intentSimulationJudge.model = model;
-        else delete config.agents.defaults.backgroundModels.intentSimulationJudge.model;
+        if (model) {
+          config.agents.defaults.backgroundModels.intentSimulationJudge.model = model;
+        } else {
+          delete config.agents.defaults.backgroundModels.intentSimulationJudge.model;
+        }
       }
     }
 
@@ -13978,8 +14798,12 @@ app.post("/api/settings/memory-v3/bootstrap-vault", (req, res) => {
       typeof config?.memory?.vault?.path === "string" ? config.memory.vault.path.trim() : "";
     const shouldBind = forceBind || !configuredVaultPath;
     if (shouldBind) {
-      if (!config.memory) config.memory = {};
-      if (!config.memory.vault || typeof config.memory.vault !== "object") config.memory.vault = {};
+      if (!config.memory) {
+        config.memory = {};
+      }
+      if (!config.memory.vault || typeof config.memory.vault !== "object") {
+        config.memory.vault = {};
+      }
       config.memory.vault.path = DEFAULT_ARGENT_VAULT_PATH;
       if (config.memory.vault.enabled !== true) {
         config.memory.vault.enabled = true;
@@ -14043,8 +14867,12 @@ app.post("/api/settings/memory-v3/choose-vault-folder", (req, res) => {
     const bind = req.body?.bind !== false;
     if (bind) {
       const config = readArgentConfig();
-      if (!config.memory) config.memory = {};
-      if (!config.memory.vault || typeof config.memory.vault !== "object") config.memory.vault = {};
+      if (!config.memory) {
+        config.memory = {};
+      }
+      if (!config.memory.vault || typeof config.memory.vault !== "object") {
+        config.memory.vault = {};
+      }
       config.memory.vault.path = normalized;
       config.memory.vault.enabled = true;
       if (!config.memory.vault.knowledgeCollection) {
@@ -14099,8 +14927,12 @@ app.post("/api/settings/aos-google/preflight", (req, res) => {
       });
     }
     const args = [AOS_GOOGLE_PREFLIGHT_PATH];
-    if (req.body?.installMissing === true) args.push("--install-missing");
-    if (req.body?.requireAuth !== false) args.push("--require-auth");
+    if (req.body?.installMissing === true) {
+      args.push("--install-missing");
+    }
+    if (req.body?.requireAuth !== false) {
+      args.push("--require-auth");
+    }
     args.push("--json");
 
     try {
@@ -14382,7 +15214,9 @@ app.get("/api/settings/alignment", (req, res) => {
     // Add named agents from agents/ directory
     if (fs.existsSync(AGENTS_DIR)) {
       const namedAgents = fs.readdirSync(AGENTS_DIR).filter((name) => {
-        if (name.startsWith("agent-main-subagent-")) return false;
+        if (name.startsWith("agent-main-subagent-")) {
+          return false;
+        }
         const agentDir = path.join(AGENTS_DIR, name, "agent");
         return fs.existsSync(agentDir) && fs.statSync(agentDir).isDirectory();
       });
@@ -14966,8 +15800,12 @@ app.get("/api/settings/models", async (req, res) => {
 app.patch("/api/settings/models", (req, res) => {
   try {
     const config = readArgentConfig();
-    if (!config.agents) config.agents = {};
-    if (!config.agents.defaults) config.agents.defaults = {};
+    if (!config.agents) {
+      config.agents = {};
+    }
+    if (!config.agents.defaults) {
+      config.agents.defaults = {};
+    }
 
     if (req.body.model !== undefined) {
       config.agents.defaults.model = req.body.model;
@@ -15049,14 +15887,23 @@ app.get("/api/settings/model-profiles", async (req, res) => {
 app.patch("/api/settings/model-profiles", (req, res) => {
   try {
     const { name, label, tiers, routingPolicy, sessionOverrides } = req.body;
-    if (!name) return res.status(400).json({ error: "name is required" });
+    if (!name) {
+      return res.status(400).json({ error: "name is required" });
+    }
 
     const config = readArgentConfig();
-    if (!config.agents) config.agents = {};
-    if (!config.agents.defaults) config.agents.defaults = {};
-    if (!config.agents.defaults.modelRouter) config.agents.defaults.modelRouter = {};
-    if (!config.agents.defaults.modelRouter.profiles)
+    if (!config.agents) {
+      config.agents = {};
+    }
+    if (!config.agents.defaults) {
+      config.agents.defaults = {};
+    }
+    if (!config.agents.defaults.modelRouter) {
+      config.agents.defaults.modelRouter = {};
+    }
+    if (!config.agents.defaults.modelRouter.profiles) {
       config.agents.defaults.modelRouter.profiles = {};
+    }
 
     config.agents.defaults.modelRouter.profiles[name] = {
       label,
@@ -15077,7 +15924,9 @@ app.patch("/api/settings/model-profiles", (req, res) => {
 app.delete("/api/settings/model-profiles/:name", (req, res) => {
   try {
     const { name } = req.params;
-    if (name === "default") return res.status(400).json({ error: "Cannot delete default profile" });
+    if (name === "default") {
+      return res.status(400).json({ error: "Cannot delete default profile" });
+    }
 
     const config = readArgentConfig();
     const profiles = config.agents?.defaults?.modelRouter?.profiles;
@@ -15102,9 +15951,15 @@ app.post("/api/settings/model-profiles/:name/activate", (req, res) => {
   try {
     const { name } = req.params;
     const config = readArgentConfig();
-    if (!config.agents) config.agents = {};
-    if (!config.agents.defaults) config.agents.defaults = {};
-    if (!config.agents.defaults.modelRouter) config.agents.defaults.modelRouter = {};
+    if (!config.agents) {
+      config.agents = {};
+    }
+    if (!config.agents.defaults) {
+      config.agents.defaults = {};
+    }
+    if (!config.agents.defaults.modelRouter) {
+      config.agents.defaults.modelRouter = {};
+    }
 
     config.agents.defaults.modelRouter.activeProfile = name;
     writeArgentConfig(config);
@@ -15319,11 +16174,21 @@ app.patch("/api/settings/providers/:name", (req, res) => {
       return res.status(404).json({ error: "Provider not found" });
     }
     const { baseUrl, api, authType, envKeyVar, oauthPlaceholder } = req.body;
-    if (baseUrl !== undefined) existing.baseUrl = baseUrl;
-    if (api !== undefined) existing.api = api;
-    if (authType !== undefined) existing.authType = authType;
-    if (envKeyVar !== undefined) existing.envKeyVar = envKeyVar;
-    if (oauthPlaceholder !== undefined) existing.oauthPlaceholder = oauthPlaceholder;
+    if (baseUrl !== undefined) {
+      existing.baseUrl = baseUrl;
+    }
+    if (api !== undefined) {
+      existing.api = api;
+    }
+    if (authType !== undefined) {
+      existing.authType = authType;
+    }
+    if (envKeyVar !== undefined) {
+      existing.envKeyVar = envKeyVar;
+    }
+    if (oauthPlaceholder !== undefined) {
+      existing.oauthPlaceholder = oauthPlaceholder;
+    }
     registry.providers[name] = existing;
     writeProviderRegistry(registry);
     console.log("[ProviderRegistry] Updated provider:", name);
@@ -15390,9 +16255,13 @@ app.post("/api/settings/providers/:name/models", (req, res) => {
       return res.status(404).json({ error: "Provider not found" });
     }
     const { id, modelName, reasoning, input, cost, contextWindow, maxTokens } = req.body;
-    if (!id) return res.status(400).json({ error: "Model id is required" });
+    if (!id) {
+      return res.status(400).json({ error: "Model id is required" });
+    }
     const provider = registry.providers[name];
-    if (!Array.isArray(provider.models)) provider.models = [];
+    if (!Array.isArray(provider.models)) {
+      provider.models = [];
+    }
     if (provider.models.some((m) => m.id === id)) {
       return res.status(409).json({ error: "Model already exists in provider" });
     }
@@ -15500,7 +16369,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
 
     const pushRow = (modelId, alias = null, options = {}) => {
       const model = String(modelId || "").trim();
-      if (!model) return;
+      if (!model) {
+        return;
+      }
       const verified = options?.verified === true;
       const source = typeof options?.source === "string" ? options.source : "configured";
       const reasoning = typeof options?.reasoning === "boolean" ? options.reasoning : undefined;
@@ -15530,7 +16401,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
         }
         return;
       }
-      if (query && !model.toLowerCase().includes(query)) return;
+      if (query && !model.toLowerCase().includes(query)) {
+        return;
+      }
       seen.add(model);
       rowIndexByModel.set(model, rows.length);
       rows.push({
@@ -15548,7 +16421,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
     const parseRef = (ref) => {
       const normalized = String(ref || "").trim();
       const slashIndex = normalized.indexOf("/");
-      if (slashIndex <= 0 || slashIndex === normalized.length - 1) return null;
+      if (slashIndex <= 0 || slashIndex === normalized.length - 1) {
+        return null;
+      }
       return {
         provider: normalized.slice(0, slashIndex).trim().toLowerCase(),
         model: normalized.slice(slashIndex + 1).trim(),
@@ -15583,7 +16458,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
       for (const tier of Object.values(tiers)) {
         const tierProvider =
           typeof tier?.provider === "string" ? tier.provider.trim().toLowerCase() : "";
-        if (tierProvider !== provider) continue;
+        if (tierProvider !== provider) {
+          continue;
+        }
         if (typeof tier?.model === "string") {
           pushRow(tier.model);
         }
@@ -15613,7 +16490,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
           : typeof modelDef?.id === "string"
             ? modelDef.id
             : "";
-      if (!modelId) continue;
+      if (!modelId) {
+        continue;
+      }
       const alias =
         typeof modelDef?.name === "string" && modelDef.name.trim().length > 0
           ? modelDef.name.trim()
@@ -15644,8 +16523,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
         String(entry.provider || "")
           .trim()
           .toLowerCase() !== catalogProvider
-      )
+      ) {
         continue;
+      }
       pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
         source: "pi",
         // GH #186: surface the catalog `reasoning` flag so the dashboard can
@@ -15675,21 +16555,29 @@ app.get("/api/settings/provider-models", async (req, res) => {
     }
 
     const fetchOpenAICompatModels = async (baseUrl, apiKey, requireKey = true) => {
-      if (requireKey && !apiKey) return { ok: false, ids: [] };
+      if (requireKey && !apiKey) {
+        return { ok: false, ids: [] };
+      }
       const normalizedBaseUrl = String(baseUrl || "")
         .trim()
         .replace(/\/+$/, "");
-      if (!normalizedBaseUrl) return { ok: false, ids: [] };
+      if (!normalizedBaseUrl) {
+        return { ok: false, ids: [] };
+      }
       const modelsUrl = normalizedBaseUrl.endsWith("/v1")
         ? `${normalizedBaseUrl}/models`
         : `${normalizedBaseUrl}/v1/models`;
       const headers = { Accept: "application/json" };
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
       try {
         const response = await fetch(modelsUrl, { headers, signal: controller.signal });
-        if (!response.ok) return { ok: false, ids: [] };
+        if (!response.ok) {
+          return { ok: false, ids: [] };
+        }
         const payload = await response.json();
         const ids = [];
         for (const model of Array.isArray(payload?.data) ? payload.data : []) {
@@ -15711,7 +16599,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
         typeof configuredProviders?.[providerId]?.apiKey === "string"
           ? configuredProviders[providerId].apiKey.trim()
           : "";
-      if (configuredApiKey) return configuredApiKey;
+      if (configuredApiKey) {
+        return configuredApiKey;
+      }
       try {
         const authProfilesData = readAuthProfiles();
         const profiles = authProfilesData?.profiles || {};
@@ -15727,7 +16617,9 @@ app.get("/api/settings/provider-models", async (req, res) => {
           }
         }
         for (const profile of Object.values(profiles)) {
-          if (profile?.provider !== providerId) continue;
+          if (profile?.provider !== providerId) {
+            continue;
+          }
           if (typeof profile?.token === "string" && profile.token.trim()) {
             return profile.token.trim();
           }
@@ -16125,7 +17017,9 @@ app.patch("/api/settings/auth-profiles/order", (req, res) => {
     const providerOrders = {};
     for (const key of order) {
       const profile = data.profiles[key];
-      if (!profile) continue;
+      if (!profile) {
+        continue;
+      }
       const provider = profile.provider || key.split(":")[0];
       if (!providerOrders[provider]) {
         providerOrders[provider] = [];
@@ -16221,7 +17115,9 @@ app.post("/api/settings/auth-profiles/:key/set-active", (req, res) => {
 
     // Update lastGood for this provider
     const provider = profile.provider || key.split(":")[0];
-    if (!data.lastGood) data.lastGood = {};
+    if (!data.lastGood) {
+      data.lastGood = {};
+    }
     data.lastGood[provider] = key;
 
     writeAuthProfiles(data);
@@ -16245,7 +17141,9 @@ function discoverAllAuthProfiles() {
   const agentsDir = path.join(process.env.HOME, ".argentos", "agents");
   const results = [];
   try {
-    if (!fs.existsSync(agentsDir)) return results;
+    if (!fs.existsSync(agentsDir)) {
+      return results;
+    }
     const agents = fs.readdirSync(agentsDir);
     for (const agentName of agents) {
       const profilePath = path.join(agentsDir, agentName, "agent", "auth-profiles.json");
@@ -16292,10 +17190,16 @@ app.get("/api/settings/auth-diagnostics", (req, res) => {
         const isAvailable = !cooldownUntil && !disabledUntil;
         const recentFailure = stats.lastFailureAt && now - stats.lastFailureAt < ONE_HOUR;
 
-        if (disabledUntil) disabledCount++;
-        else if (cooldownUntil) inCooldownCount++;
-        else availableCount++;
-        if (recentFailure) recentFailureCount++;
+        if (disabledUntil) {
+          disabledCount++;
+        } else if (cooldownUntil) {
+          inCooldownCount++;
+        } else {
+          availableCount++;
+        }
+        if (recentFailure) {
+          recentFailureCount++;
+        }
 
         // Show profiles with active issues OR recent failures (last hour)
         const hasIssues =
@@ -16305,17 +17209,24 @@ app.get("/api/settings/auth-diagnostics", (req, res) => {
           const activeUntil = disabledUntil || cooldownUntil;
           if (activeUntil) {
             const remainMs = activeUntil - now;
-            if (remainMs > 60000) cooldownRemaining = Math.ceil(remainMs / 60000) + "min";
-            else cooldownRemaining = Math.ceil(remainMs / 1000) + "s";
+            if (remainMs > 60000) {
+              cooldownRemaining = Math.ceil(remainMs / 60000) + "min";
+            } else {
+              cooldownRemaining = Math.ceil(remainMs / 1000) + "s";
+            }
           }
 
           // Time since last failure (human-readable)
           let failureAge = null;
           if (stats.lastFailureAt) {
             const ageMs = now - stats.lastFailureAt;
-            if (ageMs < 60000) failureAge = Math.round(ageMs / 1000) + "s ago";
-            else if (ageMs < ONE_HOUR) failureAge = Math.round(ageMs / 60000) + "min ago";
-            else failureAge = Math.round(ageMs / ONE_HOUR) + "h ago";
+            if (ageMs < 60000) {
+              failureAge = Math.round(ageMs / 1000) + "s ago";
+            } else if (ageMs < ONE_HOUR) {
+              failureAge = Math.round(ageMs / 60000) + "min ago";
+            } else {
+              failureAge = Math.round(ageMs / ONE_HOUR) + "h ago";
+            }
           }
 
           profiles[key] = {
@@ -16363,13 +17274,17 @@ app.post("/api/settings/auth-profiles/clear-cooldowns", (req, res) => {
     let cleared = 0;
 
     for (const { agentName, filePath, data } of allAgents) {
-      if (!data.usageStats) continue;
+      if (!data.usageStats) {
+        continue;
+      }
       let modified = false;
 
       const keysToCheck = key ? [key] : Object.keys(data.usageStats);
       for (const profileKey of keysToCheck) {
         const stats = data.usageStats[profileKey];
-        if (!stats) continue;
+        if (!stats) {
+          continue;
+        }
 
         const hadIssue =
           stats.errorCount > 0 || stats.cooldownUntil || stats.disabledUntil || stats.failureCounts;
@@ -16409,13 +17324,21 @@ const SCORE_MAX_TARGET = 500;
 const SCORE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 function parseHeartbeatEveryMs(raw) {
-  if (typeof raw !== "string" && typeof raw !== "number") return null;
+  if (typeof raw !== "string" && typeof raw !== "number") {
+    return null;
+  }
   const text = String(raw).trim();
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
   const m = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)?$/i.exec(text);
-  if (!m) return null;
+  if (!m) {
+    return null;
+  }
   const value = Number.parseFloat(m[1]);
-  if (!Number.isFinite(value) || value <= 0) return null;
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
   const unit = (m[2] || "m").toLowerCase();
   const factors = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
   return Math.round(value * (factors[unit] || factors.m));
@@ -16489,17 +17412,22 @@ function computeScoreTarget(state) {
   const rawFloor = state.lifetime?.targetFloor || SCORE_BASE_MINIMUM;
   const floor = Math.max(SCORE_BASE_MINIMUM, Math.min(SCORE_MAX_TARGET, Math.round(rawFloor)));
   const history = (state.history || []).slice(0, SCORE_MAX_HISTORY);
-  if (history.length === 0) return Math.min(SCORE_MAX_TARGET, Math.max(floor, SCORE_BASE_MINIMUM));
-  const positiveDays = history.filter((d) => d.score > 0);
-  if (positiveDays.length === 0)
+  if (history.length === 0) {
     return Math.min(SCORE_MAX_TARGET, Math.max(floor, SCORE_BASE_MINIMUM));
+  }
+  const positiveDays = history.filter((d) => d.score > 0);
+  if (positiveDays.length === 0) {
+    return Math.min(SCORE_MAX_TARGET, Math.max(floor, SCORE_BASE_MINIMUM));
+  }
   const avg = Math.round(positiveDays.reduce((sum, d) => sum + d.score, 0) / positiveDays.length);
   return Math.min(SCORE_MAX_TARGET, Math.max(avg, floor, SCORE_BASE_MINIMUM));
 }
 
 function getLastHeartbeatCycleAtMs(journalDir) {
   try {
-    if (!journalDir || !fs.existsSync(journalDir)) return null;
+    if (!journalDir || !fs.existsSync(journalDir)) {
+      return null;
+    }
     const files = fs
       .readdirSync(journalDir)
       .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
@@ -16521,7 +17449,9 @@ function getLastHeartbeatCycleAtMs(journalDir) {
           const entry = JSON.parse(lines[i]);
           const raw = entry?.occurredAt;
           const ts = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
-          if (Number.isFinite(ts) && ts > 0) return ts;
+          if (Number.isFinite(ts) && ts > 0) {
+            return ts;
+          }
         } catch {
           continue;
         }
@@ -16534,7 +17464,9 @@ function getLastHeartbeatCycleAtMs(journalDir) {
 }
 
 function isHeartbeatContentEffectivelyEmpty(content) {
-  if (typeof content !== "string") return true;
+  if (typeof content !== "string") {
+    return true;
+  }
   const lines = content
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -16545,7 +17477,9 @@ function isHeartbeatContentEffectivelyEmpty(content) {
 
 function isHeartbeatMonitoringEnabled(heartbeatFile) {
   try {
-    if (!heartbeatFile || !fs.existsSync(heartbeatFile)) return true;
+    if (!heartbeatFile || !fs.existsSync(heartbeatFile)) {
+      return true;
+    }
     const content = fs.readFileSync(heartbeatFile, "utf-8");
     return !isHeartbeatContentEffectivelyEmpty(content);
   } catch {
@@ -16555,7 +17489,9 @@ function isHeartbeatMonitoringEnabled(heartbeatFile) {
 
 function readHeartbeatContractTaskCount(heartbeatFile) {
   try {
-    if (!heartbeatFile || !fs.existsSync(heartbeatFile)) return 0;
+    if (!heartbeatFile || !fs.existsSync(heartbeatFile)) {
+      return 0;
+    }
     const lines = fs.readFileSync(heartbeatFile, "utf-8").split(/\r?\n/);
     let inTasks = false;
     let count = 0;
@@ -16615,8 +17551,12 @@ function resolveHeartbeatRunnerStatus(params) {
   }
   if (lastRunAtMs == null) {
     for (const [key, entry] of Object.entries(store || {})) {
-      if (!String(key).startsWith(`agent:${agentId}:`)) continue;
-      if (!String(key).includes(":heartbeat")) continue;
+      if (!String(key).startsWith(`agent:${agentId}:`)) {
+        continue;
+      }
+      if (!String(key).includes(":heartbeat")) {
+        continue;
+      }
       const updatedAt = entry?.updatedAt;
       if (typeof updatedAt === "number" && Number.isFinite(updatedAt) && updatedAt > 0) {
         if (lastRunAtMs == null || updatedAt > lastRunAtMs) {
@@ -16656,10 +17596,14 @@ function readScoreState(scoreFile) {
     const today = new Date().toISOString().slice(0, 10);
     if (state.today && state.today.date !== today) {
       const yesterday = state.today;
-      if (!state.history) state.history = [];
+      if (!state.history) {
+        state.history = [];
+      }
       state.history.unshift(yesterday);
-      if (state.history.length > 7) state.history = state.history.slice(0, 7);
-      if (!state.lifetime)
+      if (state.history.length > 7) {
+        state.history = state.history.slice(0, 7);
+      }
+      if (!state.lifetime) {
         state.lifetime = {
           totalVerified: 0,
           totalFailed: 0,
@@ -16671,19 +17615,27 @@ function readScoreState(scoreFile) {
           daysTracked: 0,
           targetFloor: SCORE_BASE_MINIMUM,
         };
-      if (!state.lifetime.targetFloor) state.lifetime.targetFloor = SCORE_BASE_MINIMUM;
+      }
+      if (!state.lifetime.targetFloor) {
+        state.lifetime.targetFloor = SCORE_BASE_MINIMUM;
+      }
       state.lifetime.targetFloor = Math.max(
         SCORE_BASE_MINIMUM,
         Math.min(SCORE_MAX_TARGET, Math.round(state.lifetime.targetFloor)),
       );
       state.lifetime.daysTracked++;
       state.lifetime.totalPoints += yesterday.score;
-      if (yesterday.score > state.lifetime.bestDay) state.lifetime.bestDay = yesterday.score;
-      if (yesterday.score < state.lifetime.worstDay) state.lifetime.worstDay = yesterday.score;
+      if (yesterday.score > state.lifetime.bestDay) {
+        state.lifetime.bestDay = yesterday.score;
+      }
+      if (yesterday.score < state.lifetime.worstDay) {
+        state.lifetime.worstDay = yesterday.score;
+      }
       if (yesterday.targetReached) {
         state.lifetime.currentStreak++;
-        if (state.lifetime.currentStreak > state.lifetime.longestStreak)
+        if (state.lifetime.currentStreak > state.lifetime.longestStreak) {
           state.lifetime.longestStreak = state.lifetime.currentStreak;
+        }
       } else {
         state.lifetime.currentStreak = 0;
       }
@@ -16739,7 +17691,9 @@ function readScoreState(scoreFile) {
 
 function writeScoreState(scoreFile, state) {
   const dir = path.dirname(scoreFile);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(scoreFile, JSON.stringify(state, null, 2), "utf-8");
 }
 
@@ -16871,10 +17825,16 @@ app.post("/api/score/feedback", (req, res) => {
       state.today.failedCount++;
       state.lifetime.totalFailed++;
     }
-    if (state.today.score > state.today.peakScore) state.today.peakScore = state.today.score;
-    if (state.today.score < state.today.lowestScore) state.today.lowestScore = state.today.score;
+    if (state.today.score > state.today.peakScore) {
+      state.today.peakScore = state.today.score;
+    }
+    if (state.today.score < state.today.lowestScore) {
+      state.today.lowestScore = state.today.score;
+    }
     const target = computeScoreTarget(state);
-    if (state.today.score >= target) state.today.targetReached = true;
+    if (state.today.score >= target) {
+      state.today.targetReached = true;
+    }
     writeScoreState(paths.scoreFile, state);
     console.log(
       `[Score] Human feedback: ${type} (${points > 0 ? "+" : ""}${points}) → score now ${state.today.score}/${target}`,
@@ -16960,7 +17920,9 @@ app.get("/api/journal/:date", (req, res) => {
 // Channels endpoints
 // ============================================
 function normalizeAllowFromInput(value) {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]+/) : [];
   const entries = raw.map((entry) => String(entry).trim()).filter(Boolean);
   return Array.from(new Set(entries));
@@ -17000,8 +17962,12 @@ app.patch("/api/settings/channels/:id", (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (!config.channels) config.channels = {};
-    if (!config.channels[channelId]) config.channels[channelId] = {};
+    if (!config.channels) {
+      config.channels = {};
+    }
+    if (!config.channels[channelId]) {
+      config.channels[channelId] = {};
+    }
 
     // Merge allowed fields
     const allowed = ["groupPolicy", "dmPolicy", "enabled", "mentionGating", "threadMode"];
@@ -17050,13 +18016,17 @@ app.post("/api/settings/channels", (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (!config.channels) config.channels = {};
+    if (!config.channels) {
+      config.channels = {};
+    }
     if (config.channels[provider]) {
       return res.status(409).json({ error: `Channel "${provider}" already exists` });
     }
     config.channels[provider] =
       provider === "telegram" ? { botToken: token.trim() } : { token: token.trim() };
-    if (dmPolicy) config.channels[provider].dmPolicy = dmPolicy;
+    if (dmPolicy) {
+      config.channels[provider].dmPolicy = dmPolicy;
+    }
     const allowFrom = normalizeAllowFromInput(req.body.allowFrom);
     if (allowFrom && allowFrom.length > 0) {
       config.channels[provider].allowFrom = allowFrom;
@@ -17124,7 +18094,9 @@ function getGatewayId() {
 }
 
 function readPairedDevices() {
-  if (!fs.existsSync(PAIRED_DEVICES_PATH)) return { devices: [] };
+  if (!fs.existsSync(PAIRED_DEVICES_PATH)) {
+    return { devices: [] };
+  }
   try {
     return JSON.parse(fs.readFileSync(PAIRED_DEVICES_PATH, "utf-8"));
   } catch {
@@ -17356,11 +18328,12 @@ app.get("/api/settings/pairing", (req, res) => {
   const data = readPairedDevices();
   const pending = [];
   for (const [, p] of pendingPairings) {
-    if (p.deviceName)
+    if (p.deviceName) {
       pending.push({
         name: p.deviceName,
         publicKey: (p.devicePublicKey || "").slice(0, 12) + "...",
       });
+    }
   }
   res.json({
     pending,
@@ -17415,7 +18388,9 @@ function readLaunchAgentServiceState({ domain, launchdLabel, port }) {
 
 function isLaunchctlIgnorableError(detail, mode) {
   const text = String(detail || "");
-  if (!text) return false;
+  if (!text) {
+    return false;
+  }
   if (mode === "stop") {
     return /could not find service|service not found|no such process/i.test(text);
   }
@@ -17447,7 +18422,9 @@ function resolveCargoCommand() {
         execFileSync("/usr/bin/env", ["cargo", "--version"], { stdio: "ignore", timeout: 3000 });
         return "cargo";
       }
-      if (fs.existsSync(candidate)) return candidate;
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     } catch {}
   }
   return null;
@@ -17542,7 +18519,9 @@ app.get("/api/settings/gateway", async (req, res) => {
   const domain = `gui/${uid}`;
   const repoRoot = path.resolve(__dirname, "..");
   function readLaunchAgentProgramArgs(plistPath) {
-    if (!plistPath || !fs.existsSync(plistPath)) return null;
+    if (!plistPath || !fs.existsSync(plistPath)) {
+      return null;
+    }
     try {
       const json = execFileSync("plutil", ["-convert", "json", "-o", "-", plistPath], {
         encoding: "utf8",
@@ -17785,7 +18764,9 @@ app.patch("/api/settings/gateway", (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (!config.gateway) config.gateway = {};
+    if (!config.gateway) {
+      config.gateway = {};
+    }
 
     const allowed = ["port", "mode", "bind"];
     for (const key of allowed) {
@@ -17797,7 +18778,9 @@ app.patch("/api/settings/gateway", (req, res) => {
       config.gateway.tailscale = { ...config.gateway.tailscale, ...req.body.tailscale };
     }
     if (req.body.alwaysOnLoop !== undefined) {
-      if (!config.alwaysOnLoop) config.alwaysOnLoop = {};
+      if (!config.alwaysOnLoop) {
+        config.alwaysOnLoop = {};
+      }
       config.alwaysOnLoop = { ...config.alwaysOnLoop, ...req.body.alwaysOnLoop };
     }
 
@@ -17812,9 +18795,13 @@ app.post("/api/settings/gateway/regenerate-token", (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (!config.gateway) config.gateway = {};
+    if (!config.gateway) {
+      config.gateway = {};
+    }
     const newToken = crypto.randomBytes(24).toString("hex");
-    if (!config.gateway.auth) config.gateway.auth = {};
+    if (!config.gateway.auth) {
+      config.gateway.auth = {};
+    }
     config.gateway.auth.mode = "token";
     config.gateway.auth.token = newToken;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -17989,7 +18976,9 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
         port: service.port,
       });
       if (action === "stop") {
-        if (!verified.loaded && verified.status === "stopped") break;
+        if (!verified.loaded && verified.status === "stopped") {
+          break;
+        }
       } else if (verified.status === "running") {
         break;
       }
@@ -18055,7 +19044,9 @@ app.get("/api/settings/database", async (req, res) => {
           )
             .toString()
             .trim();
-          if (result) pid = Number.parseInt(result.split("\n")[0] || "", 10) || null;
+          if (result) {
+            pid = Number.parseInt(result.split("\n")[0] || "", 10) || null;
+          }
         } catch {}
         return {
           service: "ai.argent.redis",
@@ -18316,38 +19307,69 @@ app.post("/api/settings/tts", (req, res) => {
     const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
     const raw = fs.readFileSync(configPath, "utf-8");
     const cfg = JSON.parse(raw);
-    if (!cfg.messages) cfg.messages = {};
-    if (!cfg.messages.tts) cfg.messages.tts = {};
+    if (!cfg.messages) {
+      cfg.messages = {};
+    }
+    if (!cfg.messages.tts) {
+      cfg.messages.tts = {};
+    }
 
     const { auto, provider, fallbackOrder, elevenlabs, openai } = req.body;
 
-    if (auto !== undefined) cfg.messages.tts.auto = auto;
-    if (provider !== undefined) cfg.messages.tts.provider = provider;
-    if (fallbackOrder !== undefined) cfg.messages.tts.fallbackOrder = fallbackOrder;
+    if (auto !== undefined) {
+      cfg.messages.tts.auto = auto;
+    }
+    if (provider !== undefined) {
+      cfg.messages.tts.provider = provider;
+    }
+    if (fallbackOrder !== undefined) {
+      cfg.messages.tts.fallbackOrder = fallbackOrder;
+    }
 
     if (elevenlabs) {
-      if (!cfg.messages.tts.elevenlabs) cfg.messages.tts.elevenlabs = {};
-      if (elevenlabs.voiceId !== undefined)
+      if (!cfg.messages.tts.elevenlabs) {
+        cfg.messages.tts.elevenlabs = {};
+      }
+      if (elevenlabs.voiceId !== undefined) {
         cfg.messages.tts.elevenlabs.voiceId = elevenlabs.voiceId;
-      if (elevenlabs.modelId !== undefined)
+      }
+      if (elevenlabs.modelId !== undefined) {
         cfg.messages.tts.elevenlabs.modelId = elevenlabs.modelId;
+      }
       if (elevenlabs.voiceSettings) {
-        if (!cfg.messages.tts.elevenlabs.voiceSettings)
+        if (!cfg.messages.tts.elevenlabs.voiceSettings) {
           cfg.messages.tts.elevenlabs.voiceSettings = {};
+        }
         const vs = cfg.messages.tts.elevenlabs.voiceSettings;
         const patch = elevenlabs.voiceSettings;
-        if (patch.stability !== undefined) vs.stability = patch.stability;
-        if (patch.similarityBoost !== undefined) vs.similarityBoost = patch.similarityBoost;
-        if (patch.style !== undefined) vs.style = patch.style;
-        if (patch.useSpeakerBoost !== undefined) vs.useSpeakerBoost = patch.useSpeakerBoost;
-        if (patch.speed !== undefined) vs.speed = patch.speed;
+        if (patch.stability !== undefined) {
+          vs.stability = patch.stability;
+        }
+        if (patch.similarityBoost !== undefined) {
+          vs.similarityBoost = patch.similarityBoost;
+        }
+        if (patch.style !== undefined) {
+          vs.style = patch.style;
+        }
+        if (patch.useSpeakerBoost !== undefined) {
+          vs.useSpeakerBoost = patch.useSpeakerBoost;
+        }
+        if (patch.speed !== undefined) {
+          vs.speed = patch.speed;
+        }
       }
     }
 
     if (openai) {
-      if (!cfg.messages.tts.openai) cfg.messages.tts.openai = {};
-      if (openai.model !== undefined) cfg.messages.tts.openai.model = openai.model;
-      if (openai.voice !== undefined) cfg.messages.tts.openai.voice = openai.voice;
+      if (!cfg.messages.tts.openai) {
+        cfg.messages.tts.openai = {};
+      }
+      if (openai.model !== undefined) {
+        cfg.messages.tts.openai.model = openai.model;
+      }
+      if (openai.voice !== undefined) {
+        cfg.messages.tts.openai.voice = openai.voice;
+      }
     }
 
     fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
@@ -18741,7 +19763,9 @@ app.post("/api/org/sync-secrets", async (req, res) => {
     if (result.synced > 0 || (result.errors.length === 0 && result.skipped >= 0)) {
       const syncMetaPath = path.join(process.env.HOME, ".argentos", "org-sync-meta.json");
       const dir = path.dirname(syncMetaPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
       fs.writeFileSync(
         syncMetaPath,
         JSON.stringify({ lastSyncAt: new Date().toISOString() }, null, 2),
@@ -18790,8 +19814,12 @@ app.get("/api/workflow-map/agents", async (req, res) => {
             pgAgents = members
               .filter((row) => {
                 const id = String(row?.id || "").trim();
-                if (!id || SKIP.has(id)) return false;
-                if (SKIP_PREFIXES.some((p) => id.startsWith(p))) return false;
+                if (!id || SKIP.has(id)) {
+                  return false;
+                }
+                if (SKIP_PREFIXES.some((p) => id.startsWith(p))) {
+                  return false;
+                }
                 return true;
               })
               .map((row) => ({
@@ -18819,9 +19847,15 @@ app.get("/api/workflow-map/agents", async (req, res) => {
             const roleMatch = content.match(/\*\*Role:\*\*\s*(.+)/i);
             const teamMatch = content.match(/\*\*Team:\*\*\s*(.+)/i);
             const colorMatch = content.match(/\*\*Color:\*\*\s*(#[0-9a-fA-F]{6})/i);
-            if (roleMatch && !agent.role) agent.role = roleMatch[1].trim().replace(/_/g, " ");
-            if (teamMatch && !agent.team) agent.team = teamMatch[1].trim();
-            if (colorMatch && !agent.color) agent.color = colorMatch[1].trim();
+            if (roleMatch && !agent.role) {
+              agent.role = roleMatch[1].trim().replace(/_/g, " ");
+            }
+            if (teamMatch && !agent.team) {
+              agent.team = teamMatch[1].trim();
+            }
+            if (colorMatch && !agent.color) {
+              agent.color = colorMatch[1].trim();
+            }
           }
         } catch {}
       }
@@ -18829,10 +19863,16 @@ app.get("/api/workflow-map/agents", async (req, res) => {
     }
 
     // Fallback: filesystem scan
-    if (!fs.existsSync(agentsDir)) return res.json({ agents: [], source: "empty" });
+    if (!fs.existsSync(agentsDir)) {
+      return res.json({ agents: [], source: "empty" });
+    }
     const entries = fs.readdirSync(agentsDir).filter((name) => {
-      if (!name || name.startsWith(".") || name.startsWith("agent-main-subagent-")) return false;
-      if (SKIP.has(name)) return false;
+      if (!name || name.startsWith(".") || name.startsWith("agent-main-subagent-")) {
+        return false;
+      }
+      if (SKIP.has(name)) {
+        return false;
+      }
       const agentDir = path.join(agentsDir, name, "agent");
       return fs.existsSync(agentDir) && fs.statSync(agentDir).isDirectory();
     });
@@ -18850,10 +19890,18 @@ app.get("/api/workflow-map/agents", async (req, res) => {
           const roleMatch = content.match(/\*\*Role:\*\*\s*(.+)/i);
           const teamMatch = content.match(/\*\*Team:\*\*\s*(.+)/i);
           const colorMatch = content.match(/\*\*Color:\*\*\s*(#[0-9a-fA-F]{6})/i);
-          if (nameMatch) name = nameMatch[1].trim();
-          if (roleMatch) role = roleMatch[1].trim().replace(/_/g, " ");
-          if (teamMatch) team = teamMatch[1].trim();
-          if (colorMatch) color = colorMatch[1].trim();
+          if (nameMatch) {
+            name = nameMatch[1].trim();
+          }
+          if (roleMatch) {
+            role = roleMatch[1].trim().replace(/_/g, " ");
+          }
+          if (teamMatch) {
+            team = teamMatch[1].trim();
+          }
+          if (colorMatch) {
+            color = colorMatch[1].trim();
+          }
         }
       } catch {}
       return { id, name, role, team, color, status: "idle" };
@@ -18877,7 +19925,9 @@ app.get("/api/workflow-map/providers", (req, res) => {
     for (const key of allKeys) {
       const profile = data.profiles[key];
       const provId = (profile.provider || key.split(":")[0]).toLowerCase();
-      if (!provId) continue;
+      if (!provId) {
+        continue;
+      }
       const isLastGood = Object.values(lastGood).includes(key);
       if (!providerMap[provId] || (isLastGood && providerMap[provId].status !== "active")) {
         providerMap[provId] = {

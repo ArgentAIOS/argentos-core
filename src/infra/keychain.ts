@@ -34,14 +34,18 @@ let cachedKey: Buffer | null = null;
  * Read the master key from macOS Keychain.
  */
 function readKeychainKey(): Buffer | null {
-  if (process.platform !== "darwin") return null;
+  if (process.platform !== "darwin") {
+    return null;
+  }
   try {
     const hex = execSync(
       `security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${KEYCHAIN_ACCOUNT}" -w`,
       { encoding: "utf8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] },
     ).trim();
     const buf = Buffer.from(hex, "hex");
-    if (buf.length !== 32) return null;
+    if (buf.length !== 32) {
+      return null;
+    }
     return buf;
   } catch {
     return null;
@@ -52,7 +56,9 @@ function readKeychainKey(): Buffer | null {
  * Write the master key to macOS Keychain.
  */
 function writeKeychainKey(key: Buffer): boolean {
-  if (process.platform !== "darwin") return false;
+  if (process.platform !== "darwin") {
+    return false;
+  }
   const disableRaw = process.env[KEYCHAIN_DISABLE_WRITE_ENV]?.trim().toLowerCase();
   if (disableRaw === "1" || disableRaw === "true" || disableRaw === "yes" || disableRaw === "on") {
     log.info("skipping macOS Keychain write because ARGENT_KEYCHAIN_DISABLE_WRITE is enabled");
@@ -76,9 +82,13 @@ function writeKeychainKey(key: Buffer): boolean {
 }
 
 function shouldAutoMigrateFileKeyToKeychain(): boolean {
-  if (process.platform !== "darwin") return false;
+  if (process.platform !== "darwin") {
+    return false;
+  }
   const raw = process.env[KEYCHAIN_AUTO_MIGRATE_ENV]?.trim().toLowerCase();
-  if (!raw) return false;
+  if (!raw) {
+    return false;
+  }
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
@@ -99,7 +109,9 @@ function readFileKey(): Buffer | null {
   try {
     const hex = fs.readFileSync(keyPath, "utf-8").trim();
     const buf = Buffer.from(hex, "hex");
-    if (buf.length !== 32) return null;
+    if (buf.length !== 32) {
+      return null;
+    }
     return buf;
   } catch {
     return null;
@@ -113,7 +125,9 @@ function writeFileKey(key: Buffer): boolean {
   const keyPath = resolveKeyFilePath();
   try {
     const dir = path.dirname(keyPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(keyPath, key.toString("hex"), "utf-8");
     fs.chmodSync(keyPath, 0o600);
     log.info("stored master key in file", { path: keyPath });
@@ -214,7 +228,9 @@ function ensureRedundantStorage(key: Buffer, source: "keychain" | "file"): void 
  * all existing encrypted data permanently unrecoverable.
  */
 export function getMasterKey(): Buffer {
-  if (cachedKey) return cachedKey;
+  if (cachedKey) {
+    return cachedKey;
+  }
 
   const keychainKey = readKeychainKey();
   const fileKey = readFileKey();
@@ -289,7 +305,9 @@ export function getMasterKey(): Buffer {
  * Check if a master key exists without generating one.
  */
 export function hasMasterKey(): boolean {
-  if (cachedKey) return true;
+  if (cachedKey) {
+    return true;
+  }
   return readKeychainKey() !== null || readFileKey() !== null;
 }
 
@@ -359,10 +377,16 @@ export function restoreMasterKey(hex: string): {
  * Returns null if no key exists.
  */
 export function getMasterKeyHex(): string | null {
-  if (cachedKey) return cachedKey.toString("hex");
+  if (cachedKey) {
+    return cachedKey.toString("hex");
+  }
   const keychainKey = readKeychainKey();
-  if (keychainKey) return keychainKey.toString("hex");
+  if (keychainKey) {
+    return keychainKey.toString("hex");
+  }
   const fileKey = readFileKey();
-  if (fileKey) return fileKey.toString("hex");
+  if (fileKey) {
+    return fileKey.toString("hex");
+  }
   return null;
 }

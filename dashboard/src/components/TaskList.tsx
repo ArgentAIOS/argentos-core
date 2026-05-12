@@ -163,16 +163,26 @@ const ownerBadge: Record<TaskOwner, { label: string; className: string }> = {
 };
 
 function getTaskOwner(task: Task): TaskOwner {
-  if (task.teamId) return "team";
-  if (task.assignee?.includes(":subagent:")) return "team";
-  if (task.source === "user") return "operator";
-  if (task.source === "heartbeat" || task.source === "schedule") return "system";
+  if (task.teamId) {
+    return "team";
+  }
+  if (task.assignee?.includes(":subagent:")) {
+    return "team";
+  }
+  if (task.source === "user") {
+    return "operator";
+  }
+  if (task.source === "heartbeat" || task.source === "schedule") {
+    return "system";
+  }
   return "agent";
 }
 
 function isArchivedProject(project: Project): boolean {
   const metadata = project.metadata;
-  if (!metadata || typeof metadata !== "object") return false;
+  if (!metadata || typeof metadata !== "object") {
+    return false;
+  }
   const archivedAt = (metadata as Record<string, unknown>).archivedAt;
   return typeof archivedAt === "string" && archivedAt.trim().length > 0;
 }
@@ -184,9 +194,13 @@ function resolveCronExecutionMode(job: CronJob): "live" | "paper_trade" {
 }
 
 function cronAtToLocalInputValue(at?: string): string {
-  if (!at) return "";
+  if (!at) {
+    return "";
+  }
   const date = new Date(at);
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
@@ -197,9 +211,13 @@ function cronAtToLocalInputValue(at?: string): string {
 
 function cronLocalInputValueToIso(value: string): string | null {
   const trimmed = value.trim();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    return null;
+  }
   const date = new Date(trimmed);
-  if (Number.isNaN(date.getTime())) return null;
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
   return date.toISOString();
 }
 
@@ -387,7 +405,9 @@ export function TaskList({
 
   useEffect(() => {
     const expanded = expandedProjectsRef.current;
-    if (expanded.size === 0) return;
+    if (expanded.size === 0) {
+      return;
+    }
 
     for (const projectId of expanded) {
       void refreshProjectTasks(projectId);
@@ -441,7 +461,9 @@ export function TaskList({
     e: React.MouseEvent<HTMLButtonElement>,
   ) => {
     e.stopPropagation();
-    if (!onProjectArchive) return;
+    if (!onProjectArchive) {
+      return;
+    }
     setProjectBusy(project.id, true);
     setActionError(null);
     try {
@@ -476,7 +498,9 @@ export function TaskList({
 
   const toggleReminderDeliveryTarget = (target: string) => {
     setReminderDeliveryTargets((prev) => {
-      if (!prev.includes(target)) return [...prev, target];
+      if (!prev.includes(target)) {
+        return [...prev, target];
+      }
       const next = prev.filter((item) => item !== target);
       return next.length > 0 ? next : ["in_app"];
     });
@@ -693,8 +717,12 @@ export function TaskList({
     if (newTaskTitle.trim()) {
       // Convert 12h to 24h format for storage
       let hour = parseInt(scheduleTime);
-      if (scheduleAmPm === "PM" && hour !== 12) hour += 12;
-      if (scheduleAmPm === "AM" && hour === 12) hour = 0;
+      if (scheduleAmPm === "PM" && hour !== 12) {
+        hour += 12;
+      }
+      if (scheduleAmPm === "AM" && hour === 12) {
+        hour = 0;
+      }
       const time24 = `${hour.toString().padStart(2, "0")}:${scheduleMinute}`;
 
       // Build schedule based on task type
@@ -955,8 +983,12 @@ export function TaskList({
   };
 
   const handleEditSave = async () => {
-    if (!editingTask) return;
-    if (!editingTitle.trim()) return;
+    if (!editingTask) {
+      return;
+    }
+    if (!editingTitle.trim()) {
+      return;
+    }
     if (!onTaskEdit) {
       setActionError("Task updates are unavailable in this view.");
       return;
@@ -972,7 +1004,9 @@ export function TaskList({
   };
 
   const handleEditDelete = async () => {
-    if (!editingTask) return;
+    if (!editingTask) {
+      return;
+    }
     if (!onTaskDelete) {
       setActionError("Task deletion is unavailable in this view.");
       return;
@@ -1028,7 +1062,9 @@ export function TaskList({
   };
 
   const handleCronEditSave = async () => {
-    if (!editingCronJob) return;
+    if (!editingCronJob) {
+      return;
+    }
     if (!editingCronTitle.trim()) {
       setActionError("Scheduled job name is required.");
       return;
@@ -1058,7 +1094,9 @@ export function TaskList({
   };
 
   const handleCronEditDelete = async () => {
-    if (!editingCronJob) return;
+    if (!editingCronJob) {
+      return;
+    }
     if (!onCronJobDelete) {
       setActionError("Scheduled job deletion is unavailable in this view.");
       return;
@@ -1093,7 +1131,9 @@ export function TaskList({
       () => onProjectDelete(project.id),
       "Failed to delete project.",
     );
-    if (!ok) return;
+    if (!ok) {
+      return;
+    }
 
     setExpandedProjects((prev) => {
       const next = new Set(prev);
@@ -1123,7 +1163,9 @@ export function TaskList({
   };
 
   const handleProjectTaskAdd = async (projectId: string) => {
-    if (!newProjectTaskTitle.trim()) return;
+    if (!newProjectTaskTitle.trim()) {
+      return;
+    }
     if (!onProjectTaskAdd) {
       setActionError("Adding project tasks is unavailable in this view.");
       return;
@@ -1138,7 +1180,9 @@ export function TaskList({
         ),
       "Failed to add project task.",
     );
-    if (!ok) return;
+    if (!ok) {
+      return;
+    }
 
     setNewProjectTaskTitle("");
     setNewProjectTaskDetails("");
@@ -1147,14 +1191,20 @@ export function TaskList({
   };
 
   const formatSchedule = (task: Task) => {
-    if (!task.schedule) return "No schedule";
+    if (!task.schedule) {
+      return "No schedule";
+    }
     const { frequency, time, days, intervalMinutes } = task.schedule;
 
     if (frequency === "once" || task.type === "reminder") {
       const at = task.schedule.at || task.schedule.nextRun;
-      if (!at) return "Reminder";
+      if (!at) {
+        return "Reminder";
+      }
       const date = new Date(at);
-      if (Number.isNaN(date.getTime())) return "Reminder";
+      if (Number.isNaN(date.getTime())) {
+        return "Reminder";
+      }
       return `Reminder: ${date.toLocaleString(undefined, {
         month: "short",
         day: "numeric",
@@ -1167,13 +1217,17 @@ export function TaskList({
       return `Every ${intervalMinutes || 10} minutes`;
     }
 
-    if (frequency === "daily") return `Daily at ${time || "9:00"}`;
+    if (frequency === "daily") {
+      return `Daily at ${time || "9:00"}`;
+    }
     if (frequency === "weekly") {
       const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
       const selectedDays = days?.map((d) => dayNames[d]).join(", ") || "Mon-Fri";
       return `Weekly: ${selectedDays} at ${time || "9:00"}`;
     }
-    if (frequency === "monthly") return `Monthly on day ${days?.[0] || 1} at ${time || "9:00"}`;
+    if (frequency === "monthly") {
+      return `Monthly on day ${days?.[0] || 1} at ${time || "9:00"}`;
+    }
     return task.schedule.cron || "Custom";
   };
 

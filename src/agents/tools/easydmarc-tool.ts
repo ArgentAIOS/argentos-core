@@ -49,7 +49,9 @@ function asBool(value: unknown): boolean {
 }
 
 function asPayload(value: unknown): JsonObject | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("payload must be an object");
   }
