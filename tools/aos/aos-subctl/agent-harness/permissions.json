@@ -1,0 +1,20 @@
+{
+  "tool": "aos-subctl",
+  "backend": "subctl-http",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "health.check": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "state.get": "readonly",
+    "orchestration.list": "readonly",
+    "orchestration.status": "readonly",
+    "orchestration.spawn": "write",
+    "orchestration.msg": "write",
+    "orchestration.kill": "write",
+    "notify.send": "write",
+    "notify.inbox": "readonly",
+    "notify.inbox_ack": "write"
+  }
+}

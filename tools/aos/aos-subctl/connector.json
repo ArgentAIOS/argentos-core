@@ -1,0 +1,220 @@
+{
+  "tool": "aos-subctl",
+  "backend": "subctl-http",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "subctl",
+    "category": "developer-tools",
+    "categories": ["developer-tools", "ai-orchestration", "operator-alerts"],
+    "resources": ["state", "orchestration", "notify"]
+  },
+  "scope": {
+    "kind": "ai-orchestration",
+    "surface": "multi-account-control-plane",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "worker_visible_actions": [
+      "orchestration.spawn",
+      "orchestration.msg",
+      "orchestration.kill",
+      "notify.send",
+      "notify.inbox_ack"
+    ],
+    "workerFields": ["name", "account", "task", "text", "session", "to", "id"],
+    "commandDefaults": {
+      "orchestration.spawn": {
+        "selection_surface": "session",
+        "args": ["SUBCTL_DEFAULT_ACCOUNT"],
+        "requires_operator_destination": false
+      },
+      "notify.send": {
+        "selection_surface": "operator",
+        "args": [],
+        "requires_operator_destination": true
+      }
+    },
+    "fields": [
+      {
+        "id": "name",
+        "label": "Session name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": [
+          "orchestration.spawn",
+          "orchestration.msg",
+          "orchestration.kill",
+          "orchestration.status"
+        ],
+        "placeholder": "release-prep",
+        "description": "Name-addressed orchestrator session. Must be unique."
+      },
+      {
+        "id": "account",
+        "label": "Account alias",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["orchestration.spawn"],
+        "placeholder": "claude-personal",
+        "description": "Configured subctl account alias from accounts.conf."
+      },
+      {
+        "id": "task",
+        "label": "Initial task / prompt",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["orchestration.spawn"],
+        "placeholder": "ship release 2.4 — see docs/releases/2.4.md",
+        "description": "First message piped into the spawned session."
+      },
+      {
+        "id": "text",
+        "label": "Message body",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["orchestration.msg", "notify.send"],
+        "placeholder": "status?",
+        "description": "Text to deliver to the session (orchestration.msg) or the operator (notify.send)."
+      }
+    ]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": false,
+    "service_keys": [],
+    "optional_service_keys": ["SUBCTL_API", "SUBCTL_BIN"],
+    "interactive_setup": [
+      "Install subctl: `curl -fsSL https://subctl.com/install | bash` (or git-clone + ./install.sh).",
+      "Enable the dashboard service: `subctl service enable`. Verifies it binds to 127.0.0.1:8787.",
+      "Optionally pin SUBCTL_API (default http://127.0.0.1:8787) and SUBCTL_BIN (default ~/.subctl/bin/subctl) in operator-controlled API Keys.",
+      "subctl is localhost-only by design — no network credentials, no remote endpoint."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report subctl dashboard reachability + verdict",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health.check",
+      "summary": "Alias for subctl connector readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run subctl connector diagnostics (state probe + verdict)",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "state.get",
+      "summary": "Full GET /api/state — accounts, sessions, verdict, costs",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "state",
+      "action_class": "read"
+    },
+    {
+      "id": "orchestration.list",
+      "summary": "List running orchestrator sessions",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "orchestration",
+      "action_class": "read"
+    },
+    {
+      "id": "orchestration.status",
+      "summary": "Status of a single named orchestrator session",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "orchestration",
+      "action_class": "read"
+    },
+    {
+      "id": "orchestration.spawn",
+      "summary": "Spawn a name-addressed orchestrator in a chosen account",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "orchestration",
+      "action_class": "write"
+    },
+    {
+      "id": "orchestration.msg",
+      "summary": "Send a message to a running orchestrator by name",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "orchestration",
+      "action_class": "write"
+    },
+    {
+      "id": "orchestration.kill",
+      "summary": "Gracefully kill an orchestrator session by name",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "orchestration",
+      "action_class": "write"
+    },
+    {
+      "id": "notify.send",
+      "summary": "Fire-and-forget Telegram message to the configured operator",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "notify",
+      "action_class": "write"
+    },
+    {
+      "id": "notify.inbox",
+      "summary": "Read pending operator replies + system notifications",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "notify",
+      "action_class": "read"
+    },
+    {
+      "id": "notify.inbox_ack",
+      "summary": "Acknowledge an inbox entry by id",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "notify",
+      "action_class": "write"
+    }
+  ]
+}
