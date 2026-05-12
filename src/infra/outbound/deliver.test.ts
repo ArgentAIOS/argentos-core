@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../../config/config.js";
 import { discordOutbound } from "../../channels/plugins/outbound/discord.js";
 import { signalOutbound } from "../../channels/plugins/outbound/signal.js";
+import { slackOutbound } from "../../channels/plugins/outbound/slack.js";
 import { telegramOutbound } from "../../channels/plugins/outbound/telegram.js";
 import { whatsappOutbound } from "../../channels/plugins/outbound/whatsapp.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
@@ -384,15 +385,95 @@ describe("deliverOutboundPayloads", () => {
     expect(sentText).toBe("😊\nHello there!");
   });
 
-  // GH #198 — Signal/iMessage/etc. are not in the icon-render scope; their
-  // text should pass through unchanged so we don't accidentally widen the
-  // behaviour.
-  it("does not transform agent tags for signal channel (GH #198 scope)", async () => {
-    const cfg: ArgentConfig = {};
+  // GH #202 — normalizeOutboundPayloads itself never transforms agent tags;
+  // the icon-prefix transform is applied later, inside deliverOutboundPayloads.
+  // Keep this sanity check so the two layers stay separate.
+  it("normalizeOutboundPayloads does not transform agent tags", () => {
     const result = normalizeOutboundPayloads([{ text: "[MOOD:happy] hi" }]);
-    // Sanity: normalization itself is unchanged.
     expect(result[0]?.text).toBe("[MOOD:happy] hi");
-    void cfg;
+  });
+
+  // GH #202 — Signal should now receive icon-rendered text. The transform is
+  // applied before the Signal-specific markdown chunker runs so the icon
+  // prefix becomes part of the styled output.
+  it("renders MOOD and TTS agent tags as icons for signal (GH #202)", async () => {
+    const sendSignal = vi.fn().mockResolvedValue({ messageId: "s1", timestamp: 1 });
+    const cfg: ArgentConfig = {};
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "signal",
+      to: "+1555",
+      payloads: [{ text: "[MOOD:happy] Hello there!" }],
+      deps: { sendSignal },
+    });
+    expect(sendSignal).toHaveBeenCalledTimes(1);
+    const sentText = sendSignal.mock.calls[0]?.[1] as string;
+    expect(sentText).toContain("😊");
+    expect(sentText).toContain("Hello there!");
+    expect(sentText).not.toMatch(/\[MOOD:/);
+  });
+
+  // GH #202 — Slack should receive icon-rendered text via the plugin handler.
+  it("renders MOOD and TTS agent tags as icons for slack (GH #202)", async () => {
+    const sendSlack = vi.fn().mockResolvedValue({ messageId: "sl1", channelId: "C1" });
+    const cfg: ArgentConfig = { channels: { slack: { botToken: "xoxb-1" } } };
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "slack",
+      to: "C1",
+      payloads: [{ text: "[MOOD:happy] Hello there!" }],
+      deps: { sendSlack },
+    });
+    expect(sendSlack).toHaveBeenCalledTimes(1);
+    const sentText = sendSlack.mock.calls[0]?.[1] as string;
+    expect(sentText).toContain("😊");
+    expect(sentText).toContain("Hello there!");
+    expect(sentText).not.toMatch(/\[MOOD:/);
+  });
+
+  // GH #202 — iMessage should receive icon-rendered text.
+  it("renders MOOD and TTS agent tags as icons for imessage (GH #202)", async () => {
+    const sendIMessage = vi.fn().mockResolvedValue({ messageId: "i1" });
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "imessage",
+          source: "test",
+          plugin: createIMessageTestPlugin(),
+        },
+      ]),
+    );
+    const cfg: ArgentConfig = {};
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "imessage",
+      to: "chat_id:42",
+      payloads: [{ text: "[MOOD:happy] Hello there!" }],
+      deps: { sendIMessage },
+    });
+    expect(sendIMessage).toHaveBeenCalledTimes(1);
+    const sentText = sendIMessage.mock.calls[0]?.[1] as string;
+    expect(sentText).toContain("😊");
+    expect(sentText).toContain("Hello there!");
+    expect(sentText).not.toMatch(/\[MOOD:/);
+  });
+
+  // GH #202 — WhatsApp should receive icon-rendered text.
+  it("renders MOOD and TTS agent tags as icons for whatsapp (GH #202)", async () => {
+    const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
+    const cfg: ArgentConfig = {};
+    await deliverOutboundPayloads({
+      cfg,
+      channel: "whatsapp",
+      to: "+1555",
+      payloads: [{ text: "[MOOD:happy] Hello there!" }],
+      deps: { sendWhatsApp },
+    });
+    expect(sendWhatsApp).toHaveBeenCalledTimes(1);
+    const sentText = sendWhatsApp.mock.calls[0]?.[1] as string;
+    expect(sentText).toContain("😊");
+    expect(sentText).toContain("Hello there!");
+    expect(sentText).not.toMatch(/\[MOOD:/);
   });
 
   it("mirrors delivered output when mirror options are provided", async () => {
@@ -446,6 +527,11 @@ const defaultRegistry = createTestRegistry([
   {
     pluginId: "discord",
     plugin: createOutboundTestPlugin({ id: "discord", outbound: discordOutbound }),
+    source: "test",
+  },
+  {
+    pluginId: "slack",
+    plugin: createOutboundTestPlugin({ id: "slack", outbound: slackOutbound }),
     source: "test",
   },
 ]);
