@@ -33,8 +33,11 @@ export const BUILTIN_PROFILES: Record<
     label: "MiniMax Mix",
     tiers: {
       local: { provider: "ollama", model: "qwen3:30b-a3b-instruct-2507-q4_K_M" },
-      fast: { provider: "minimax", model: "MiniMax-M2.5" },
-      balanced: { provider: "minimax", model: "MiniMax-M2.5" },
+      // Track the most-recent flagship in provider-registry-seed.ts. The
+      // onboarding default for MiniMax is "MiniMax-M2.7-highspeed" — keep
+      // the built-in profile aligned so catalog audits don't see drift.
+      fast: { provider: "minimax", model: "MiniMax-M2.7-highspeed" },
+      balanced: { provider: "minimax", model: "MiniMax-M2.7" },
       powerful: { provider: "anthropic", model: "claude-opus-4-6" },
     },
     routingPolicy: { likelyToolUseMinTier: "balanced" },
@@ -43,20 +46,16 @@ export const BUILTIN_PROFILES: Record<
     label: "Budget",
     tiers: {
       local: { provider: "ollama", model: "qwen3:30b-a3b-instruct-2507-q4_K_M" },
-      fast: { provider: "minimax", model: "MiniMax-M2.5" },
-      balanced: { provider: "minimax", model: "MiniMax-M2.5" },
+      // See minimax-mix comment above re: model-id pinning.
+      fast: { provider: "minimax", model: "MiniMax-M2.7-highspeed" },
+      balanced: { provider: "minimax", model: "MiniMax-M2.7" },
       powerful: { provider: "anthropic", model: "claude-sonnet-4-6" },
     },
     routingPolicy: { likelyToolUseMinTier: "balanced" },
   },
-  "nvidia-free": {
-    label: "NVIDIA Free",
-    tiers: {
-      local: { provider: "ollama", model: "qwen3:30b-a3b-instruct-2507-q4_K_M" },
-      fast: { provider: "nvidia", model: "nvidia/mistral-nemo-minitron-8b-8k-instruct" },
-      balanced: { provider: "nvidia", model: "nvidia/llama-3.3-70b-instruct" },
-      powerful: { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct" },
-    },
-    routingPolicy: { likelyToolUseMinTier: "balanced" },
-  },
+  // nvidia-free was removed 2026-05-12 (issue #108 catalog follow-through):
+  // the `nvidia` provider has no entry in provider-registry-seed.ts and no
+  // onboarding/auth path, so this profile could not be activated without
+  // hand-editing config + setting NVIDIA_API_KEY. If we want a real NVIDIA
+  // routing option we should wire the provider end-to-end first.
 };
