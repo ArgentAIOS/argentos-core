@@ -7,6 +7,7 @@
 
 import { Activity, Pause, Square, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 interface Worker {
   id: string;
@@ -37,7 +38,7 @@ export function ActiveWorkersWidget() {
 
   const fetchWorkers = useCallback(async () => {
     try {
-      const res = await fetch("/api/workers/active");
+      const res = await fetchLocalApi("/api/workers/active");
       if (res.ok) {
         const data = await res.json();
         setWorkers(data.workers || []);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 import { buildSandboxSrcDoc } from "../../utils/sandboxSrcDoc";
 import { WidgetContainer } from "./WidgetContainer";
 
@@ -15,7 +16,7 @@ export function CustomWidget({ widgetId }: CustomWidgetProps) {
   );
 
   useEffect(() => {
-    fetch(`/api/widgets/${widgetId}`, { credentials: "include" })
+    fetchLocalApi(`/api/widgets/${widgetId}`, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Widget not found");
         return res.json();

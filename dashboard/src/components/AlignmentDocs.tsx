@@ -20,6 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 import { normalizeAlignmentState, type AlignmentState } from "./AlignmentDocs.helpers";
 
 // ── Confirmation Modal ──
@@ -99,7 +100,7 @@ export function AlignmentDocs() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/settings/alignment");
+        const res = await fetchLocalApi("/api/settings/alignment");
         let data: unknown = null;
         try {
           data = await res.json();
@@ -135,7 +136,7 @@ export function AlignmentDocs() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
+        const res = await fetchLocalApi(
           `/api/settings/alignment/${encodeURIComponent(selectedAgent)}/${encodeURIComponent(activeDoc)}`,
         );
         const data = await res.json();
@@ -163,7 +164,7 @@ export function AlignmentDocs() {
     setSaving(true);
     setSaveStatus("idle");
     try {
-      const res = await fetch(
+      const res = await fetchLocalApi(
         `/api/settings/alignment/${encodeURIComponent(selectedAgent)}/${encodeURIComponent(activeDoc)}`,
         {
           method: "PUT",
@@ -219,7 +220,7 @@ export function AlignmentDocs() {
     setBackingUp(true);
     setBackupStatus(null);
     try {
-      const res = await fetch("/api/settings/alignment/backup", { method: "POST" });
+      const res = await fetchLocalApi("/api/settings/alignment/backup", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         setBackupStatus(`Backup saved: ${data.filename}`);
@@ -238,7 +239,7 @@ export function AlignmentDocs() {
 
   const fetchGitStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/settings/alignment/git/status");
+      const res = await fetchLocalApi("/api/settings/alignment/git/status");
       const data = await res.json();
       setGitStatus(data);
       if (data.remote && !remoteInput) setRemoteInput(data.remote);
@@ -256,7 +257,7 @@ export function AlignmentDocs() {
     setGitLoading(true);
     setGitMsg(null);
     try {
-      const res = await fetch("/api/settings/alignment/git/commit", {
+      const res = await fetchLocalApi("/api/settings/alignment/git/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -284,7 +285,7 @@ export function AlignmentDocs() {
     setGitLoading(true);
     setGitMsg(null);
     try {
-      const res = await fetch("/api/settings/alignment/git/push", {
+      const res = await fetchLocalApi("/api/settings/alignment/git/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -308,7 +309,7 @@ export function AlignmentDocs() {
     setGitLoading(true);
     setGitMsg(null);
     try {
-      const res = await fetch("/api/settings/alignment/git/remote", {
+      const res = await fetchLocalApi("/api/settings/alignment/git/remote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: remoteInput.trim() }),
@@ -331,7 +332,7 @@ export function AlignmentDocs() {
     setGitLoading(true);
     setGitMsg(null);
     try {
-      const res = await fetch("/api/settings/alignment/git/auto", {
+      const res = await fetchLocalApi("/api/settings/alignment/git/auto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled, intervalHours: 4 }),

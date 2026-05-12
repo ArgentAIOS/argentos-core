@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { WidgetType } from "../components/widgets/widgetRegistry";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 export interface WidgetSlot {
   position: number; // 1-7 (1-3 left, 4-6 right, 7 bottom)
@@ -47,7 +48,7 @@ export function useWidgets() {
   const fetchCustomWidgets = useCallback(async () => {
     if (!WIDGET_API_ENABLED) return;
     try {
-      const res = await fetch("/api/widgets", { credentials: "include" });
+      const res = await fetchLocalApi("/api/widgets", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setCustomWidgets(data.widgets || []);

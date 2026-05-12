@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Calendar, Clock, MapPin, Users, ExternalLink } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { getStoredCalendarAccount, setStoredCalendarAccount } from "../hooks/useCalendar";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 type MeetingPlatform = "zoom" | "meet" | "teams" | null;
 
@@ -103,7 +104,7 @@ export function CalendarModal({ isOpen, onClose }: CalendarModalProps) {
   const fetchAccounts = useCallback(async () => {
     setAccountLoading(true);
     try {
-      const response = await fetch("/api/calendar/accounts");
+      const response = await fetchLocalApi("/api/calendar/accounts");
       if (!response.ok) return selectedAccount || getStoredCalendarAccount() || "";
 
       const data = await response.json();
@@ -143,10 +144,14 @@ export function CalendarModal({ isOpen, onClose }: CalendarModalProps) {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(withAccountQuery("/api/calendar/today", accountOverride));
+        const response = await fetchLocalApi(
+          withAccountQuery("/api/calendar/today", accountOverride),
+        );
         if (!response.ok) {
           // Fallback to next event endpoint
-          const nextResponse = await fetch(withAccountQuery("/api/calendar/next", accountOverride));
+          const nextResponse = await fetchLocalApi(
+            withAccountQuery("/api/calendar/next", accountOverride),
+          );
           if (nextResponse.ok) {
             const data = await nextResponse.json();
             if (data.event) {
@@ -199,7 +204,7 @@ export function CalendarModal({ isOpen, onClose }: CalendarModalProps) {
     setStoredCalendarAccount(normalized || null);
     setAccountLoading(true);
     try {
-      const response = await fetch("/api/calendar/account", {
+      const response = await fetchLocalApi("/api/calendar/account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account: normalized || null }),

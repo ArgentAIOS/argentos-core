@@ -5,6 +5,7 @@
 
 import { AlertTriangle, Check, X, Shield } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 interface Approval {
   id: string;
@@ -30,7 +31,7 @@ export function ApprovalsWidget() {
 
   const fetchApprovals = useCallback(async () => {
     try {
-      const res = await fetch("/api/exec-approvals/pending");
+      const res = await fetchLocalApi("/api/exec-approvals/pending");
       if (res.ok) {
         const data = await res.json();
         setApprovals(data.approvals || []);
@@ -50,14 +51,14 @@ export function ApprovalsWidget() {
 
   const handleApprove = async (id: string) => {
     try {
-      await fetch(`/api/exec-approvals/${id}/approve`, { method: "POST" });
+      await fetchLocalApi(`/api/exec-approvals/${id}/approve`, { method: "POST" });
       setApprovals((prev) => prev.filter((a) => a.id !== id));
     } catch {}
   };
 
   const handleReject = async (id: string) => {
     try {
-      await fetch(`/api/exec-approvals/${id}/reject`, { method: "POST" });
+      await fetchLocalApi(`/api/exec-approvals/${id}/reject`, { method: "POST" });
       setApprovals((prev) => prev.filter((a) => a.id !== id));
     } catch {}
   };

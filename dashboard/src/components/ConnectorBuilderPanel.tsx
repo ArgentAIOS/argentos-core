@@ -1,5 +1,6 @@
 import { CheckCircle, Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 type ConnectorRootEntry = {
   path: string;
@@ -101,7 +102,7 @@ export function ConnectorBuilderPanel(props: ConnectorBuilderPanelProps) {
   const loadRoots = useCallback(async () => {
     try {
       setLoadingRoots(true);
-      const response = await fetch("/api/settings/connectors/roots");
+      const response = await fetchLocalApi("/api/settings/connectors/roots");
       const payload = (await response.json().catch(() => ({}))) as ConnectorRootsResponse;
       if (!response.ok || payload.ok === false) {
         throw new Error(payload.error || payload.details || `HTTP ${response.status}`);
@@ -149,7 +150,7 @@ export function ConnectorBuilderPanel(props: ConnectorBuilderPanelProps) {
       setSaving(true);
       setMessage(null);
       setResult(null);
-      const response = await fetch("/api/settings/connectors/scaffold", {
+      const response = await fetchLocalApi("/api/settings/connectors/scaffold", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
