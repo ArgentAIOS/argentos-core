@@ -173,7 +173,7 @@ describe("QmdMemoryManager", () => {
         if (args[0] === "query") {
           stdout.emit(
             "data",
-            `booting\n[{\"docid\":\"abc\",\"collection\":\"workspace\",\"file\":\"MEMORY.md\",\"score\":0.8,\"snippet\":\"@@ -1,1\\nline one\"}]\nready`,
+            `booting\n[{"docid":"abc","collection":"workspace","file":"MEMORY.md","score":0.8,"snippet":"@@ -1,1\\nline one"}]\nready`,
           );
         } else {
           stdout.emit("data", "");

@@ -46,7 +46,7 @@ function shouldUseAppleScriptBridge(): boolean {
 }
 
 function shellEscape(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 async function runAppleScriptShell(command: string, timeout = 20_000): Promise<string> {
@@ -507,7 +507,7 @@ function extractActionItems(lines: string[], sentences: string[]): MeetingAction
   const trigger =
     /\b(action item|todo|to-?do|next step|follow[\s-]?up|assigned|owner|need to|needs to|must|should|will)\b/i;
   const ownerPattern = /(?:owner|assignee|assigned to)[:\s]+([A-Za-z][A-Za-z .'-]{1,40})/i;
-  const duePattern = /(?:due|by)\s+([A-Za-z0-9,\/\- ]{2,30})/i;
+  const duePattern = /(?:due|by)\s+([A-Za-z0-9,/\- ]{2,30})/i;
 
   const seen = new Set<string>();
   const out: MeetingActionItem[] = [];

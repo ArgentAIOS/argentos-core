@@ -235,7 +235,7 @@ export function resolveSessionSurface(key: string): string | undefined {
   if (!raw) {
     return undefined;
   }
-  const match = /^([a-z0-9_]+)(?:[:\-]|$)/i.exec(raw);
+  const match = /^([a-z0-9_]+)(?:[:-]|$)/i.exec(raw);
   return match?.[1]?.toLowerCase();
 }
 

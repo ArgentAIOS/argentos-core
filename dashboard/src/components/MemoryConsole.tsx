@@ -322,7 +322,7 @@ async function downloadApi(path: string, filenameFallback: string) {
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
   const blob = await res.blob();
   const disposition = res.headers.get("content-disposition") || "";
-  const match = disposition.match(/filename=\"?([^"]+)\"?/i);
+  const match = disposition.match(/filename="?([^"]+)"?/i);
   const filename = match?.[1] || filenameFallback;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");

@@ -11368,7 +11368,7 @@ const AOS_GOOGLE_PREFLIGHT_PATH = path.join(
 );
 
 function shellSingleQuote(value) {
-  return `'${String(value ?? "").replace(/'/g, `'\"'\"'`)}'`;
+  return `'${String(value ?? "").replace(/'/g, `'"'"'`)}'`;
 }
 
 function appleScriptStringLiteral(value) {
@@ -14479,7 +14479,7 @@ FILENAME="argent-workspace-backup-\${TIMESTAMP}.zip"
 mkdir -p "$BACKUP_DIR"
 cd "$WORKSPACE" && zip -r "$BACKUP_DIR/$FILENAME" . -x "*.zip" "data/chroma/*" "dist/*"
 ls -t "$BACKUP_DIR"/argent-workspace-backup-*.zip | tail -n +8 | xargs rm -f 2>/dev/null
-echo "[\$(date)] Backup complete: $FILENAME" >> "${logPath}"
+echo "[$(date)] Backup complete: $FILENAME" >> "${logPath}"
 `;
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
 
