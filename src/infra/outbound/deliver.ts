@@ -227,9 +227,9 @@ export async function deliverOutboundPayloads(params: {
   const signalMaxBytes = isSignalChannel
     ? resolveChannelMediaMaxBytes({
         cfg,
-        resolveChannelLimitMb: ({ cfg, accountId }) =>
-          cfg.channels?.signal?.accounts?.[accountId]?.mediaMaxMb ??
-          cfg.channels?.signal?.mediaMaxMb,
+        resolveChannelLimitMb: ({ cfg: signalCfg, accountId: signalAccountId }) =>
+          signalCfg.channels?.signal?.accounts?.[signalAccountId]?.mediaMaxMb ??
+          signalCfg.channels?.signal?.mediaMaxMb,
         accountId,
       })
     : undefined;
