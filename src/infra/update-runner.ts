@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { type CommandOptions, runCommandWithTimeout } from "../process/exec.js";
 import { trimLogTail } from "./restart-sentinel.js";
+import { sweepLegacyInstallSymlinks } from "./symlink-sweep.js";
 import {
   channelToNpmTag,
   DEFAULT_PACKAGE_CHANNEL,
@@ -319,6 +320,15 @@ async function syncRuntimeSnapshot(sourceRoot: string, snapshotRoot: string) {
     }
     await fs.rename(tmp, target);
     await fs.rm(backup, { recursive: true, force: true });
+    // node:fs.cp resolves relative symlinks to *absolute* paths anchored at
+    // `source`, so the freshly copied node_modules tree is full of pnpm
+    // symlinks pointing back at the source checkout. Sweep them now so the
+    // canonical install is self-contained (closes #168).
+    await sweepLegacyInstallSymlinks(target, { sourceRoot: source }).catch(() => {
+      // Sweep failures must not abort the update — the install is no worse
+      // off than the legacy behavior, and `argent doctor` will flag any
+      // remaining escaped links on the next run.
+    });
   } catch (err) {
     await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
     if ((await pathExists(backup)) && !(await pathExists(target))) {
