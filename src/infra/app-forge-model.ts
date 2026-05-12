@@ -46,6 +46,12 @@ export type AppForgeField = {
   ratingMax?: number;
   /** Glyph used to render `rating` fields. Defaults to `"star"`. */
   ratingIcon?: AppForgeRatingIcon;
+  /**
+   * Opt-in: when true on a `rating` field, the cell accepts 0.5 increments
+   * (e.g. 4.5★) and renders a half-filled glyph. Defaults to `false`
+   * (integer-only) so existing rating columns are unchanged.
+   */
+  allowHalf?: boolean;
 };
 
 export type AppForgeRecord = {
@@ -203,9 +209,18 @@ export function resolveAppForgeRatingMax(field: Pick<AppForgeField, "ratingMax">
   return rounded;
 }
 
-/** Normalize a rating value to a non-negative integer ≤ resolved max, or `null` when invalid. */
+/**
+ * Normalize a rating value to a value in [0, resolvedMax], or `null` when
+ * invalid.
+ *
+ * - When `field.allowHalf` is truthy the value is snapped to the nearest 0.5
+ *   increment (so 3.4 → 3.5, 3.74 → 3.5, 3.76 → 4.0).
+ * - Otherwise the value is rounded to the nearest whole integer, preserving
+ *   the original integer-only behavior so existing rating columns are
+ *   bit-identical after this change.
+ */
 export function coerceAppForgeRatingValue(
-  field: Pick<AppForgeField, "ratingMax">,
+  field: Pick<AppForgeField, "ratingMax" | "allowHalf">,
   value: unknown,
 ): number | null {
   if (value === null || value === undefined || value === "") {
@@ -215,15 +230,27 @@ export function coerceAppForgeRatingValue(
   if (!Number.isFinite(parsed)) {
     return null;
   }
-  const rounded = Math.round(parsed);
-  if (rounded < 0) {
+  const snapped = field.allowHalf ? Math.round(parsed * 2) / 2 : Math.round(parsed);
+  if (snapped < 0) {
     return null;
   }
   const max = resolveAppForgeRatingMax(field);
-  if (rounded > max) {
+  if (snapped > max) {
     return null;
   }
-  return rounded;
+  return snapped;
+}
+
+/**
+ * True iff `value` is a finite non-negative multiple of 0.5 (half steps). Used
+ * by validation to reject quarter / arbitrary fractional drafts when
+ * `allowHalf` is enabled.
+ */
+function isHalfStep(value: number): boolean {
+  if (!Number.isFinite(value) || value < 0) {
+    return false;
+  }
+  return Number.isInteger(value * 2);
 }
 
 function nowIso(): string {
@@ -353,12 +380,20 @@ export function validateAppForgeRecordValues(
 
     if (field.type === "rating") {
       const max = resolveAppForgeRatingMax(field);
-      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+      const allowHalf = field.allowHalf === true;
+      const isValid =
+        typeof value === "number" &&
+        value >= 0 &&
+        value <= max &&
+        (allowHalf ? isHalfStep(value) : Number.isInteger(value));
+      if (!isValid) {
         errors.push(
           validationError(
             field,
             "invalid_rating",
-            `${field.name} must be a whole number between 0 and ${max}.`,
+            allowHalf
+              ? `${field.name} must be a multiple of 0.5 between 0 and ${max}.`
+              : `${field.name} must be a whole number between 0 and ${max}.`,
           ),
         );
       }
@@ -554,6 +589,10 @@ export function normalizeLegacyAppForgeField(value: unknown): AppForgeField | nu
     const rawIcon = stringValue(value.ratingIcon);
     if (rawIcon && (APP_FORGE_RATING_ICONS as readonly string[]).includes(rawIcon)) {
       field.ratingIcon = rawIcon as AppForgeRatingIcon;
+    }
+    const rawAllowHalf = booleanValue(value.allowHalf);
+    if (rawAllowHalf !== undefined) {
+      field.allowHalf = rawAllowHalf;
     }
   }
   const defaultValue = value.defaultValue;

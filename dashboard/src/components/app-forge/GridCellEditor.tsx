@@ -777,7 +777,20 @@ function ratingMaxFor(field: Pick<ForgeStructuredField, "ratingMax">): number {
   return rounded;
 }
 
-function parseRatingDraft(value: string, max: number): number {
+function ratingAllowHalfFor(field: Pick<ForgeStructuredField, "allowHalf">): boolean {
+  return field.allowHalf === true;
+}
+
+/**
+ * Snap an arbitrary numeric input into the field's allowed step:
+ * - `allowHalf` on → nearest 0.5 increment
+ * - default       → nearest integer (preserves pre-half-rating behavior)
+ */
+function snapRatingValue(value: number, allowHalf: boolean): number {
+  return allowHalf ? Math.round(value * 2) / 2 : Math.round(value);
+}
+
+function parseRatingDraft(value: string, max: number, allowHalf: boolean = false): number {
   const trimmed = value.trim();
   if (!trimmed) {
     return 0;
@@ -786,34 +799,39 @@ function parseRatingDraft(value: string, max: number): number {
   if (!Number.isFinite(parsed)) {
     return 0;
   }
-  const rounded = Math.round(parsed);
-  if (rounded <= 0) return 0;
-  if (rounded > max) return max;
-  return rounded;
+  const snapped = snapRatingValue(parsed, allowHalf);
+  if (snapped <= 0) {
+    return 0;
+  }
+  if (snapped > max) {
+    return max;
+  }
+  return snapped;
 }
 
-function serializeRatingDraft(value: number): string {
+function serializeRatingDraft(value: number, allowHalf: boolean = false): string {
   if (!Number.isFinite(value) || value <= 0) {
     return "";
   }
-  return String(Math.round(value));
+  return String(snapRatingValue(value, allowHalf));
 }
 
 type RatingCellDisplayProps = {
-  field: Pick<ForgeStructuredField, "ratingMax" | "ratingIcon" | "name">;
+  field: Pick<ForgeStructuredField, "ratingMax" | "ratingIcon" | "allowHalf" | "name">;
   value: ForgeStructuredRecordValue | undefined;
 };
 
 export function RatingCellDisplay({ field, value }: RatingCellDisplayProps) {
   const max = ratingMaxFor(field);
   const iconKey = ratingIconFor(field);
+  const allowHalf = ratingAllowHalfFor(field);
   const Icon = RATING_ICON_GLYPHS[iconKey];
   const palette = RATING_ICON_PALETTE[iconKey];
   const numeric =
     typeof value === "number" && Number.isFinite(value)
-      ? Math.max(0, Math.min(max, Math.round(value)))
+      ? Math.max(0, Math.min(max, snapRatingValue(value, allowHalf)))
       : typeof value === "string" && value.trim()
-        ? Math.max(0, Math.min(max, Math.round(Number(value)) || 0))
+        ? Math.max(0, Math.min(max, snapRatingValue(Number(value) || 0, allowHalf)))
         : 0;
   const label = numeric === 0 ? `${field.name ?? "Rating"} unrated` : `${numeric} of ${max}`;
   return (
@@ -822,15 +840,41 @@ export function RatingCellDisplay({ field, value }: RatingCellDisplayProps) {
       data-testid="appforge-rating-cell"
       data-rating-value={numeric}
       data-rating-max={max}
+      data-rating-allow-half={allowHalf ? "true" : undefined}
       aria-label={label}
       title={label}
     >
       {Array.from({ length: max }).map((_, index) => {
-        const filled = index < numeric;
+        const slot = index + 1;
+        const full = slot <= numeric;
+        const half = !full && allowHalf && slot - 0.5 <= numeric;
+        if (half) {
+          // Render a half-filled glyph by overlaying an active icon clipped to
+          // the left 50% on top of the idle icon. No new asset required —
+          // Lucide icons fill via `currentColor` + `fill-current`.
+          return (
+            <span
+              key={index}
+              className="relative inline-block h-3.5 w-3.5"
+              data-rating-slot={slot}
+              data-rating-slot-fill="half"
+            >
+              <Icon className={`absolute inset-0 h-3.5 w-3.5 ${palette.idle}`} />
+              <span
+                className="pointer-events-none absolute inset-y-0 left-0 w-1/2 overflow-hidden"
+                aria-hidden="true"
+              >
+                <Icon className={`h-3.5 w-3.5 ${palette.active} fill-current`} />
+              </span>
+            </span>
+          );
+        }
         return (
           <Icon
             key={index}
-            className={`h-3.5 w-3.5 ${filled ? `${palette.active} fill-current` : palette.idle}`}
+            data-rating-slot={slot}
+            data-rating-slot-fill={full ? "full" : "empty"}
+            className={`h-3.5 w-3.5 ${full ? `${palette.active} fill-current` : palette.idle}`}
           />
         );
       })}
@@ -849,9 +893,11 @@ export function RatingCellEditor({
 }: RatingCellEditorProps) {
   const max = ratingMaxFor(field);
   const iconKey = ratingIconFor(field);
+  const allowHalf = ratingAllowHalfFor(field);
   const Icon = RATING_ICON_GLYPHS[iconKey];
   const palette = RATING_ICON_PALETTE[iconKey];
-  const current = parseRatingDraft(draft.value, max);
+  const current = parseRatingDraft(draft.value, max, allowHalf);
+  const step = allowHalf ? 0.5 : 1;
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -859,7 +905,7 @@ export function RatingCellEditor({
   }, []);
 
   const setValue = (next: number) => {
-    onChange({ ...draft, value: serializeRatingDraft(next) });
+    onChange({ ...draft, value: serializeRatingDraft(next, allowHalf) });
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -875,12 +921,12 @@ export function RatingCellEditor({
     }
     if (event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "+") {
       event.preventDefault();
-      setValue(Math.min(max, current + 1));
+      setValue(Math.min(max, current + step));
       return;
     }
     if (event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "-") {
       event.preventDefault();
-      setValue(Math.max(0, current - 1));
+      setValue(Math.max(0, current - step));
       return;
     }
     if (event.key === "Backspace" || event.key === "Delete" || event.key === "0") {
@@ -897,46 +943,98 @@ export function RatingCellEditor({
     }
   };
 
-  const label = `${field.name ?? "Rating"} — ${current} of ${max}. Click a glyph, or use arrow keys / number keys.`;
+  const label = `${field.name ?? "Rating"} — ${current} of ${max}. Click a glyph, or use arrow keys / number keys.${
+    allowHalf ? " Click the left half of a glyph for half-steps." : ""
+  }`;
 
   return (
     <div
       ref={containerRef}
       data-testid="appforge-rating-editor"
+      data-rating-allow-half={allowHalf ? "true" : undefined}
       role="slider"
       tabIndex={0}
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={current}
+      aria-valuetext={`${current} of ${max}`}
       onKeyDown={handleKeyDown}
       onBlur={() => onCommit()}
       className="flex items-center gap-1 rounded-md border border-sky-400/40 bg-black/55 px-2 py-1 outline-none"
     >
       {Array.from({ length: max }).map((_, index) => {
         const slot = index + 1;
-        const filled = slot <= current;
+        const halfSlot = slot - 0.5;
+        const full = slot <= current;
+        const half = !full && allowHalf && halfSlot <= current;
+        // Clicking the currently-active step clears the rating (AirTable
+        // parity). For half-rating fields the "active" check looks at both
+        // the half and the full step.
+        const clickFull = () => {
+          setValue(slot === current ? 0 : slot);
+        };
+        const clickHalf = () => {
+          setValue(Math.abs(current - halfSlot) < 1e-6 ? 0 : halfSlot);
+        };
         return (
-          <button
+          <span
             key={slot}
-            type="button"
             data-testid="appforge-rating-editor-step"
             data-rating-step={slot}
-            aria-label={`Set rating to ${slot}`}
-            onMouseDown={(event) => {
-              // Stop blur from firing onCommit before our click handler.
-              event.preventDefault();
-            }}
-            onClick={() => {
-              // Clicking the active glyph clears the rating (Airtable parity).
-              setValue(slot === current ? 0 : slot);
-            }}
-            className={`rounded p-0.5 transition-colors hover:bg-white/[0.08] ${
-              filled ? palette.active : palette.idle
+            data-rating-step-fill={full ? "full" : half ? "half" : "empty"}
+            className={`relative inline-flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-white/[0.08] ${
+              full || half ? palette.active : palette.idle
             }`}
           >
-            <Icon className={`h-4 w-4 ${filled ? "fill-current" : ""}`} />
-          </button>
+            <Icon
+              className={`pointer-events-none h-4 w-4 ${full || half ? "" : ""} ${
+                full ? "fill-current" : ""
+              }`}
+            />
+            {half && (
+              <span
+                className="pointer-events-none absolute inset-y-0 left-0 w-1/2 overflow-hidden"
+                aria-hidden="true"
+              >
+                <Icon className={`h-4 w-4 ${palette.active} fill-current`} />
+              </span>
+            )}
+            {allowHalf ? (
+              <>
+                <button
+                  type="button"
+                  data-rating-step-half={halfSlot}
+                  aria-label={`Set rating to ${halfSlot}`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={clickHalf}
+                  className="absolute inset-y-0 left-0 w-1/2 cursor-pointer bg-transparent"
+                />
+                <button
+                  type="button"
+                  data-rating-step-full={slot}
+                  aria-label={`Set rating to ${slot}`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={clickFull}
+                  className="absolute inset-y-0 right-0 w-1/2 cursor-pointer bg-transparent"
+                />
+              </>
+            ) : (
+              <button
+                type="button"
+                aria-label={`Set rating to ${slot}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={clickFull}
+                className="absolute inset-0 cursor-pointer bg-transparent"
+              />
+            )}
+          </span>
         );
       })}
       <span className="ml-1 text-[11px] tabular-nums text-white/45">
