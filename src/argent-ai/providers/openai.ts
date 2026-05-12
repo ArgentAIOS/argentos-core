@@ -239,6 +239,19 @@ export class OpenAIProvider implements Provider {
         }
       }
 
+      // Reasoning-only safety net (closes #280): mirror the non-streaming
+      // path. If the stream produced thinking but no visible text/tool calls,
+      // surface the reasoning as visible text so downstream consumers don't
+      // see an empty assistant payload. See convertResponse() for details.
+      if (
+        partial.text.trim().length === 0 &&
+        partial.toolCalls.length === 0 &&
+        typeof partial.thinking === "string" &&
+        partial.thinking.trim().length > 0
+      ) {
+        partial.text = partial.thinking;
+      }
+
       yield { type: "done", response: partial };
     } catch (error) {
       partial.stopReason = "error";
@@ -332,11 +345,30 @@ export class OpenAIProvider implements Provider {
       }
     }
 
+    const rawContent = choice?.message.content || "";
+    const reasoningContent =
+      ((choice?.message as unknown as { reasoning_content?: string } | undefined)
+        ?.reasoning_content as string | undefined) || "";
+
+    // Reasoning-only safety net (closes #280): some OpenAI-compatible providers
+    // (notably Z.AI's GLM-5 series in thinking-on mode) can return an empty
+    // `content` alongside non-empty `reasoning_content`. The native ZAI provider
+    // at src/argent-ai/providers/zai.ts:128-138 recovers by retrying with
+    // thinking disabled; the openai-completions adapter doesn't retry, so without
+    // this, the response surfaces as an empty assistant payload downstream.
+    //
+    // Conditional: only triggers when visible content is empty AND there are
+    // no tool calls AND reasoning_content is non-empty. OpenAI-proper o-series
+    // responses always include `content`, so this is a no-op for them.
+    const reasoningOnly =
+      rawContent.trim().length === 0 &&
+      toolCalls.length === 0 &&
+      reasoningContent.trim().length > 0;
+    const text = reasoningOnly ? reasoningContent : rawContent;
+
     return {
-      text: choice?.message.content || "",
-      thinking:
-        ((choice?.message as unknown as { reasoning_content?: string } | undefined)
-          ?.reasoning_content as string | undefined) || "",
+      text,
+      thinking: reasoningContent,
       toolCalls,
       usage: {
         inputTokens: response.usage?.prompt_tokens || 0,
