@@ -15,6 +15,7 @@ import {
   resolveAgentCoreRuntimeMode,
 } from "../../agent-core/runtime-policy.js";
 import { ArgentSessionManager } from "../../argent-agent/index.js";
+import { mapSessionCompactionResult } from "../../argent-agent/pi-bridge/index.js";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
@@ -472,7 +473,11 @@ export async function compactEmbeddedPiSessionDirect(
         } catch {
           // Estimation failed — leave at 0
         }
-        const result = await session.compact(params.customInstructions);
+        const piCompactionResult = await session.compact(params.customInstructions);
+        // GH #303: route the raw pi result through the bridge mapper so
+        // argent always sees a stable `ArgentSessionCompactionResult` shape
+        // (firstKeptEntryId + details guaranteed) regardless of pi version.
+        const result = mapSessionCompactionResult(piCompactionResult, session);
         // Use SDK value if it's non-zero, otherwise fall back to our local estimate
         const tokensBefore =
           result.tokensBefore > 0 ? result.tokensBefore : estimatedTokensBefore || undefined;

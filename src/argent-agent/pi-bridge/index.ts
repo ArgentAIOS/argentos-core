@@ -44,3 +44,21 @@ export { AuthStorage, createAuthStorage } from "./auth-storage.js";
 // in pi 0.73+.
 //
 export { ModelRegistry, createModelRegistry } from "./model-registry.js";
+
+// ---------------------------------------------------------------------------
+// SESSION COMPACTION RESULT MAPPER (GH #303)
+// ---------------------------------------------------------------------------
+//
+// pi 0.73+ drops `firstKeptEntryId` and `details` from `CompactionResult`.
+// Argent reads both fields in `pi-embedded-runner/compact.ts` and threads
+// them downstream into `EmbeddedPiCompactResult` / `appendCompaction(...)` /
+// `compaction-safeguard.ts`. `mapSessionCompactionResult` is the single
+// chokepoint that absorbs that drift — argent consumes
+// `ArgentSessionCompactionResult` (stable shape) instead of pi's raw type.
+//
+export {
+  mapSessionCompactionResult,
+  type ArgentSessionCompactionResult,
+  type PiSessionCompactionResultLike,
+  type SessionForCompactionMapping,
+} from "./session-compaction.js";
