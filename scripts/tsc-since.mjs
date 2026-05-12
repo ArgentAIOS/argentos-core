@@ -65,11 +65,26 @@ const NORMALIZATION_RULES = [
   new RegExp(`${escapeRegex(mainRepoRoot)}/`, "g"),
 ];
 
+// tsc emits a soft length cap on individual error messages and truncates the
+// tail with `...'` when the un-elided form would be too long. The cap is
+// applied to the *original* string before our path substitutions run, so the
+// truncation point shifts based on the absolute path length of the checkout
+// (e.g. `/private/var/folders/.../argent-update-preflight-XYZ/worktree/...`
+// in `argent update`'s preflight worktree is ~50 chars longer than the
+// `/Users/sem/code/argent-core/worktrees/<name>/...` paths the baseline was
+// snapshotted under, so tsc truncates earlier in the preflight run).
+// Result: the same conceptual error has a different message tail per
+// environment and the baseline never matches. Collapse `'import("…")…'`
+// blocks — the only place these long paths appear — to a stable placeholder
+// so identity is path-length-independent.
+const IMPORT_TYPE_RE = /'import\([^']*'/g;
+
 function normalizeMessage(msg) {
   let out = msg;
   for (const re of NORMALIZATION_RULES) {
     out = out.replace(re, "<repo>/");
   }
+  out = out.replace(IMPORT_TYPE_RE, "'import(…)'");
   return out;
 }
 
