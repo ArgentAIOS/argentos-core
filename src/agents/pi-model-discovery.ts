@@ -11,7 +11,7 @@ import {
   createModelRegistry,
 } from "../argent-agent/pi-bridge/index.js";
 
-export { AuthStorage, ModelRegistry };
+export { AuthStorage, ModelRegistry, createAuthStorage, createModelRegistry };
 
 // Compatibility helpers for pi-coding-agent 0.50+ (discover* helpers removed).
 export function discoverAuthStorage(agentDir: string): AuthStorage {

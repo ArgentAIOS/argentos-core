@@ -69,8 +69,15 @@ export async function loadModelCatalog(params?: {
       const piSdk = await importPiSdk();
       const agentDir = resolveArgentAgentDir();
       const { join } = await import("node:path");
-      const authStorage = new piSdk.AuthStorage(join(agentDir, "auth.json"));
-      const registry = new piSdk.ModelRegistry(authStorage, join(agentDir, "models.json")) as
+      // #300: route through the pi-bridge factories (re-exported from
+      // pi-model-discovery) so the private-constructor change in pi 0.73+ stays
+      // absorbed in a single file. Behaviourally identical to the previous
+      // `new piSdk.AuthStorage(...)` / `new piSdk.ModelRegistry(...)` shape.
+      const authStorage = piSdk.createAuthStorage(join(agentDir, "auth.json"));
+      const registry = piSdk.createModelRegistry(
+        authStorage,
+        join(agentDir, "models.json"),
+      ) as unknown as
         | {
             getAll: () => Array<DiscoveredModel>;
           }
