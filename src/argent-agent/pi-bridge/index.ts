@@ -62,3 +62,17 @@ export {
   type PiSessionCompactionResultLike,
   type SessionForCompactionMapping,
 } from "./session-compaction.js";
+
+// ---------------------------------------------------------------------------
+// TOOL / CONTEXT / TYPEBOX IDENTITY BRIDGE (GH #305)
+// ---------------------------------------------------------------------------
+//
+// pi 0.70+ ships its own `typebox@1.x` while argent still uses
+// `@sinclair/typebox@0.34.x`. The two `TSchema` identities collide at every
+// boundary that hands an argent tool to pi (`createAgentSession`,
+// `streamSimple`, etc.). `tool.ts` exposes pi's canonical identities plus
+// `bridgeToolParameters()` — the explicit cast that absorbs the version drift
+// in one place. See `./tool.ts` header for the full rationale.
+//
+export type { TSchema, Static, Tool, Context } from "./tool.js";
+export { Type, bridgeToolParameters } from "./tool.js";

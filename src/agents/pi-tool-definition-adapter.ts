@@ -1,5 +1,11 @@
-import type { ToolDefinition } from "../agent-core/coding.js";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "../agent-core/core.js";
+// GH #305: argent's runtime now consumes argent-native `ToolDefinition`
+// (parameters: `@sinclair/typebox` TSchema). Previously we forwarded pi's
+// `ToolDefinition` from `agent-core/coding.js` — pi's typebox identity is a
+// near-empty interface (`{}`) and isn't assignable back to argent's TSchema
+// (which requires `params`/`static`/`[Kind]`). Import argent's local version
+// so the parameter identity flows through unchanged.
+import type { ToolDefinition } from "../argent-agent/extension-types.js";
 import type { ClientToolDefinition } from "./pi-embedded-runner/run/params.js";
 import { logDebug, logError } from "../logger.js";
 import { runBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
@@ -122,13 +128,18 @@ function splitToolExecuteArgs(args: ToolExecuteArgsAny): {
 }
 
 export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
-  return tools.map((tool) => {
+  const definitions: ToolDefinition[] = tools.map((tool) => {
     const name = tool.name || "tool";
     const normalizedName = normalizeToolName(name);
-    return {
+    const def: ToolDefinition = {
       name,
       label: tool.label ?? name,
       description: tool.description ?? "",
+      // GH #305: argent's `AgentTool` and argent's local `ToolDefinition` both
+      // use `@sinclair/typebox` 0.34 TSchema, so the identity flows naturally.
+      // (The pi `Tool`/`Context` typebox 1.x identities are still surfaced via
+      // `argent-agent/pi-bridge/tool.ts` for any code that must talk to pi
+      // directly — that's not this adapter's job.)
       parameters: tool.parameters,
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
         const { toolCallId, params, onUpdate, signal } = splitToolExecuteArgs(args);
@@ -158,8 +169,10 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
           });
         }
       },
-    } satisfies ToolDefinition;
+    };
+    return def;
   });
+  return definitions;
 }
 
 // Convert client tools (OpenResponses hosted tools) to ToolDefinition format
@@ -169,12 +182,16 @@ export function toClientToolDefinitions(
   onClientToolCall?: (toolName: string, params: Record<string, unknown>) => void,
   hookContext?: { agentId?: string; sessionKey?: string },
 ): ToolDefinition[] {
-  return tools.map((tool) => {
+  const definitions: ToolDefinition[] = tools.map((tool) => {
     const func = tool.function;
-    return {
+    const def: ToolDefinition = {
       name: func.name,
       label: func.name,
       description: func.description ?? "",
+      // GH #305: client-tool JSON-Schema params are plain JSON Schema dictated
+      // by the protocol — cast to TSchema since argent's local ToolDefinition
+      // is typed against `@sinclair/typebox` TSchema and pi's hosted-tool
+      // schemas don't carry the typebox brand at runtime.
       // oxlint-disable-next-line typescript/no-explicit-any
       parameters: func.parameters as any,
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
@@ -201,6 +218,8 @@ export function toClientToolDefinitions(
           message: "Tool execution delegated to client",
         });
       },
-    } satisfies ToolDefinition;
+    };
+    return def;
   });
+  return definitions;
 }
