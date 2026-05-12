@@ -17,6 +17,7 @@ export {
 export {
   ensureAuthProfileStore,
   loadAuthProfileStore,
+  pruneDanglingOrderEntries,
   saveAuthProfileStore,
 } from "./auth-profiles/store.js";
 export type {

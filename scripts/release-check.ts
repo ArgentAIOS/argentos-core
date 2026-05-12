@@ -13,6 +13,11 @@ const requiredPaths = [
   "dist/plugin-sdk/index.js",
   "dist/plugin-sdk/index.d.ts",
   "dist/build-info.json",
+  // Google Workspace connector helper. The TS side resolves this at runtime
+  // via path.join(<root>, "tools/aos/aos-google/installer/preflight_gws.py").
+  // tsdown does not walk non-TS imports, so we explicitly enforce its
+  // presence here. See GH #128.
+  "tools/aos/aos-google/installer/preflight_gws.py",
 ];
 const forbiddenPrefixes = ["dist/Argent.app/"];
 

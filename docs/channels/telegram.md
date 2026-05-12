@@ -700,6 +700,27 @@ The agent sees reactions as **system notifications** in the conversation history
 - Fix by enabling IPv6 egress **or** forcing IPv4 resolution for `api.telegram.org` (for example, add an `/etc/hosts` entry using the IPv4 A record, or prefer IPv4 in your OS DNS stack), then restart the gateway.
 - Quick check: `dig +short api.telegram.org A` and `dig +short api.telegram.org AAAA` to confirm what DNS returns.
 
+### Another instance is polling this bot
+
+If `argent channels status` (or the dashboard chip) reports **"Another instance is polling this bot"**, or your logs are filling with `Telegram getUpdates conflict (bot=…, token=...XXXX): terminated by other getUpdates request`, a second client is holding the long-polling lock for your bot token. Telegram allows exactly **one** active poller per token — every other client gets HTTP 409 in a loop, and your local bot will stop responding until the conflict clears.
+
+The persistent-conflict warning fires after **10 minutes** of unbroken 409s — short overlaps during a gateway restart self-recover and never raise the chip.
+
+Common causes:
+
+- A second `argent gateway` process running on another host (or in a `tmux` you forgot about) with the same `channels.telegram.botToken`.
+- An old systemd / Docker / Railway / Render service that was never decommissioned after migration.
+- A locally-running webhook bot (Botpress, BotKit, n8n, etc.) configured against the same token.
+
+To resolve:
+
+1. **Find the other poller.** The log line includes the bot id, e.g. `bot=8619589114`. Grep for that id across your hosts: `journalctl -u argent-gateway | grep 8619589114`, or check Telegram's webhook info to spot a stray webhook: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`.
+2. **Stop the conflicting process.** Kill the stale gateway / webhook server, or delete the webhook with `curl https://api.telegram.org/bot<TOKEN>/deleteWebhook`. Your local poller will recover on the next backoff tick (no restart needed — backoff caps at 30 min).
+3. **If you can't locate the other instance**, rotate the token in BotFather (`/token`) and update `channels.telegram.botToken` (or your `tokenFile`). The old token immediately becomes invalid for everyone.
+4. **Avoid the race entirely** by switching to webhook mode: set `channels.telegram.webhookUrl` + `channels.telegram.webhookSecret`. Webhooks are single-delivery and can't conflict the same way.
+
+The 409 log line and dashboard warning intentionally redact the token (last 4 chars only) so it's safe to share in support threads.
+
 ## Configuration reference (Telegram)
 
 Full configuration: [Configuration](/gateway/configuration)

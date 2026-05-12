@@ -13,7 +13,31 @@ export type ForgeFieldType =
   | "url"
   | "email"
   | "attachment"
-  | "linked_record";
+  | "linked_record"
+  | "rating";
+
+export type ForgeRatingIcon = "star" | "heart" | "thumb" | "flame";
+
+export const FORGE_RATING_ICONS: ForgeRatingIcon[] = ["star", "heart", "thumb", "flame"];
+export const FORGE_DEFAULT_RATING_MAX = 5;
+export const FORGE_MIN_RATING_MAX = 3;
+export const FORGE_MAX_RATING_MAX = 10;
+
+/** Mirrors `resolveAppForgeRatingMax` in `src/infra/app-forge-model.ts`. */
+export function resolveForgeRatingMax(field: Pick<ForgeStructuredField, "ratingMax">): number {
+  const candidate = field.ratingMax;
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return FORGE_DEFAULT_RATING_MAX;
+  }
+  const rounded = Math.trunc(candidate);
+  if (rounded < FORGE_MIN_RATING_MAX) {
+    return FORGE_MIN_RATING_MAX;
+  }
+  if (rounded > FORGE_MAX_RATING_MAX) {
+    return FORGE_MAX_RATING_MAX;
+  }
+  return rounded;
+}
 
 export type ForgeStructuredField = {
   id: string;
@@ -25,6 +49,10 @@ export type ForgeStructuredField = {
   defaultValue?: ForgeStructuredRecordValue;
   options?: string[];
   selectOptions?: ForgeStructuredSelectOption[];
+  /** Maximum rating value when `type === "rating"`; defaults to FORGE_DEFAULT_RATING_MAX. */
+  ratingMax?: number;
+  /** Glyph used to render rating cells. Defaults to `"star"`. */
+  ratingIcon?: ForgeRatingIcon;
 };
 
 export type ForgeStructuredRecordValue = string | number | boolean | string[] | null;
@@ -418,6 +446,18 @@ function normalizeDefaultValue(
     const parsed = typeof rawValue === "number" ? rawValue : Number(rawValue);
     return Number.isFinite(parsed) ? parsed : undefined;
   }
+  if (field.type === "rating") {
+    const max = resolveForgeRatingMax(field);
+    const parsed = typeof rawValue === "number" ? rawValue : Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    const rounded = Math.round(parsed);
+    if (rounded < 0 || rounded > max) {
+      return undefined;
+    }
+    return rounded;
+  }
   if (field.type === "checkbox") {
     if (typeof rawValue === "boolean") {
       return rawValue;
@@ -491,6 +531,9 @@ function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStr
   if (field.type === "number") {
     return 0;
   }
+  if (field.type === "rating") {
+    return 0;
+  }
   if (field.type === "checkbox") {
     return false;
   }
@@ -516,6 +559,21 @@ function coerceValueForField(
       return Number.isFinite(parsed) ? parsed : 0;
     }
     return 0;
+  }
+  if (field.type === "rating") {
+    const max = resolveForgeRatingMax(field);
+    const raw = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(raw)) {
+      return 0;
+    }
+    const rounded = Math.round(raw);
+    if (rounded <= 0) {
+      return 0;
+    }
+    if (rounded > max) {
+      return max;
+    }
+    return rounded;
   }
   if (field.type === "checkbox") {
     return value === true || value === "true";
@@ -591,6 +649,18 @@ function normalizeFieldDraft(
   };
   if (requestedType !== "linked_record") {
     delete nextField.linkedTableId;
+  }
+  if (requestedType === "rating") {
+    nextField.ratingMax =
+      typeof nextField.ratingMax === "number"
+        ? resolveForgeRatingMax(nextField)
+        : FORGE_DEFAULT_RATING_MAX;
+    if (!nextField.ratingIcon || !FORGE_RATING_ICONS.includes(nextField.ratingIcon)) {
+      nextField.ratingIcon = "star";
+    }
+  } else {
+    delete nextField.ratingMax;
+    delete nextField.ratingIcon;
   }
   const defaultValue = normalizeDefaultValue(
     hasDefaultValueUpdate ? updates.defaultValue : field.defaultValue,
@@ -818,7 +888,8 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
     rawType === "url" ||
     rawType === "email" ||
     rawType === "attachment" ||
-    rawType === "linked_record"
+    rawType === "linked_record" ||
+    rawType === "rating"
       ? rawType
       : "text";
   const field: ForgeStructuredField = {
@@ -837,6 +908,16 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
     const effectiveOptions = selectOptions.length ? selectOptions : defaultSelectOptions();
     field.selectOptions = effectiveOptions;
     field.options = effectiveOptions.map((option) => option.label);
+  }
+  if (type === "rating") {
+    const rawMax = numberValue(value.ratingMax);
+    if (rawMax !== undefined) {
+      field.ratingMax = resolveForgeRatingMax({ ratingMax: rawMax });
+    }
+    const rawIcon = stringValue(value.ratingIcon);
+    if (rawIcon && (FORGE_RATING_ICONS as readonly string[]).includes(rawIcon)) {
+      field.ratingIcon = rawIcon as ForgeRatingIcon;
+    }
   }
   const defaultValue = normalizeDefaultValue(value.defaultValue, field);
   if (defaultValue !== undefined) {

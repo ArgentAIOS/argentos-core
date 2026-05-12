@@ -92,6 +92,7 @@ import { buildPresetConfig } from "./lib/avatarPresets";
 import {
   isDashboardModeAllowed,
   isOperationsSurfaceAllowed,
+  isOpsSubTabAllowed,
   isWorkforceSurfaceAllowed,
   parseDashboardMode,
   parseDashboardSurfaceProfile,
@@ -1419,6 +1420,16 @@ function App() {
     setShowWorkforce(false);
     // Note: do NOT close showBoard here — personal mode uses it too
   }, [isOperationsDashboard]);
+
+  // GH #105: Snap Operations sub-view back to a Core-safe tab when the
+  // workforce surface is disallowed. Workloads/OrgChart hit jobs.* and org.*
+  // gateway methods that only exist when the Business overlay is active —
+  // landing on them in public Core renders a panel that immediately errors.
+  useEffect(() => {
+    if (!isOpsSubTabAllowed(opsView, surfaceProfile)) {
+      setOpsView("map");
+    }
+  }, [opsView, surfaceProfile]);
 
   useEffect(() => {
     if (!operationsChatOpen && operationsPresenceVisible) {
@@ -5034,7 +5045,12 @@ function App() {
                 org: <OrgChartIcon size={16} />,
                 schedule: <ScheduleIcon size={16} />,
               };
-              return (
+              // Workforce-only sub-tabs (Workloads / Org Chart) call jobs.* and
+              // org.* gateway methods that only exist when the Business overlay
+              // is active. Hide them in public Core so a fresh install does not
+              // surface admin tiles whose first poll fails (jobs.overview 500,
+              // missing org tables, etc.) — see GH #105.
+              const opsTabs = (
                 [
                   { id: "map", label: "Workflow Map" },
                   { id: "workflows", label: "Workflows" },
@@ -5043,7 +5059,8 @@ function App() {
                   { id: "org", label: "Org Chart" },
                   { id: "schedule", label: "Schedule" },
                 ] as const
-              ).map((tab) => (
+              ).filter((tab) => isOpsSubTabAllowed(tab.id, surfaceProfile));
+              return opsTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setOpsView(tab.id)}

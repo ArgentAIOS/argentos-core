@@ -4,6 +4,8 @@ import {
   ArrowRight,
   Boxes,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   Copy,
   Ellipsis,
   ExternalLink,
@@ -27,9 +29,14 @@ import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent }
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import {
+  FORGE_DEFAULT_RATING_MAX,
+  FORGE_MAX_RATING_MAX,
+  FORGE_MIN_RATING_MAX,
+  FORGE_RATING_ICONS,
   toGatewayBase,
   toGatewayTable,
   useForgeStructuredData,
+  type ForgeRatingIcon,
   type GatewayRequestFn,
   type ForgeFieldType,
   type ForgeStructuredBase,
@@ -49,6 +56,8 @@ import {
   MultiSelectCellDisplay,
   MultiSelectCellEditor,
   NumberCellEditor,
+  RatingCellDisplay,
+  RatingCellEditor,
   UrlCellDisplay,
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
@@ -143,6 +152,7 @@ const FIELD_TYPE_OPTIONS: Array<{ value: ForgeFieldType; label: string }> = [
   { value: "single_select", label: "Single select" },
   { value: "multi_select", label: "Multi select" },
   { value: "number", label: "Number" },
+  { value: "rating", label: "Rating" },
   { value: "date", label: "Date" },
   { value: "checkbox", label: "Checkbox" },
   { value: "url", label: "URL" },
@@ -236,6 +246,36 @@ const DEFAULT_VIEW_SETTINGS: ForgeViewSettings = {
   sortDirection: "asc",
   groupFieldId: "",
 };
+
+// Pure helpers live in the substrate (`src/infra/app-forge-grid-sort.ts`) so
+// the dashboard click-to-sort UI and any future server-side replay path agree
+// on the cycle/indicator rules. Cycle: none -> asc -> desc -> none.
+function cycleGridSortLocal(
+  current: Pick<ForgeViewSettings, "sortFieldId" | "sortDirection">,
+  clickedFieldId: string,
+): { sortFieldId: string; sortDirection: ForgeSortDirection } {
+  const normalized = clickedFieldId.trim();
+  if (!normalized) {
+    return { sortFieldId: current.sortFieldId, sortDirection: current.sortDirection };
+  }
+  if (current.sortFieldId !== normalized) {
+    return { sortFieldId: normalized, sortDirection: "asc" };
+  }
+  if (current.sortDirection === "asc") {
+    return { sortFieldId: normalized, sortDirection: "desc" };
+  }
+  return { sortFieldId: "", sortDirection: "asc" };
+}
+
+function gridSortIndicatorLocal(
+  current: Pick<ForgeViewSettings, "sortFieldId" | "sortDirection">,
+  fieldId: string,
+): "asc" | "desc" | "none" {
+  if (!fieldId || current.sortFieldId !== fieldId) {
+    return "none";
+  }
+  return current.sortDirection === "desc" ? "desc" : "asc";
+}
 
 const TEMPLATE_SELECT_COLORS = ["emerald", "sky", "violet", "amber", "rose", "cyan"] as const;
 
@@ -797,6 +837,9 @@ function fieldTypeConversionWarning(from: ForgeFieldType, to: ForgeFieldType): s
     to === "linked_record"
   ) {
     return "Attachment and linked-record fields are metadata-only in this slice. Existing cell values will be coerced to the new field shape.";
+  }
+  if (from === "rating" || to === "rating") {
+    return "Rating fields store a whole number 0–max. Existing values outside that range will reset to 0.";
   }
   if (from === "multi_select" || to === "multi_select") {
     return "Multi-select conversions can split or collapse values. Existing cells will be normalized when you apply the type change.";
@@ -3529,43 +3572,95 @@ export function AppForge({
                                       <th className="w-14 border-b border-r border-white/10 px-3 py-3">
                                         #
                                       </th>
-                                      {visibleFields.map((field) => (
-                                        <th
-                                          key={field.id}
-                                          className="group min-w-36 border-b border-r border-white/10 px-3 py-3 hover:text-white/62"
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <button
-                                              onClick={() => {
-                                                setInspectorMode("field");
-                                                structured.selectField(field.id);
-                                              }}
-                                              className="min-w-0 flex-1 truncate text-left"
-                                              title={field.name}
-                                            >
-                                              {field.name}
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                void handleMoveViewField(field.id, "left")
-                                              }
-                                              className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
-                                              title="Move field left in this view"
-                                            >
-                                              <ArrowLeft className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                void handleMoveViewField(field.id, "right")
-                                              }
-                                              className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
-                                              title="Move field right in this view"
-                                            >
-                                              <ArrowRight className="h-3 w-3" />
-                                            </button>
-                                          </div>
-                                        </th>
-                                      ))}
+                                      {visibleFields.map((field) => {
+                                        const sortState = gridSortIndicatorLocal(
+                                          viewSettings,
+                                          field.id,
+                                        );
+                                        const sortLabel =
+                                          sortState === "asc"
+                                            ? "Sorted ascending — click to sort descending"
+                                            : sortState === "desc"
+                                              ? "Sorted descending — click to clear sort"
+                                              : "Click to sort by this column";
+                                        return (
+                                          <th
+                                            key={field.id}
+                                            data-testid="appforge-grid-header"
+                                            data-field-id={field.id}
+                                            data-sort-state={sortState}
+                                            className="group min-w-36 border-b border-r border-white/10 px-3 py-3 hover:text-white/62"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <button
+                                                data-testid="appforge-grid-header-sort"
+                                                data-field-id={field.id}
+                                                data-sort-state={sortState}
+                                                onClick={() => {
+                                                  const next = cycleGridSortLocal(
+                                                    viewSettings,
+                                                    field.id,
+                                                  );
+                                                  if (
+                                                    next.sortFieldId === viewSettings.sortFieldId &&
+                                                    next.sortDirection ===
+                                                      viewSettings.sortDirection
+                                                  ) {
+                                                    return;
+                                                  }
+                                                  void structured.updateActiveViewSettings({
+                                                    sortFieldId: next.sortFieldId,
+                                                    sortDirection: next.sortDirection,
+                                                  });
+                                                }}
+                                                aria-label={`${field.name}: ${sortLabel}`}
+                                                title={sortLabel}
+                                                className={`rounded p-0.5 transition-colors hover:bg-white/10 ${
+                                                  sortState === "none"
+                                                    ? "text-white/22 opacity-0 group-hover:opacity-100 hover:text-white/70"
+                                                    : "text-sky-200 hover:text-sky-100"
+                                                }`}
+                                              >
+                                                {sortState === "asc" ? (
+                                                  <ChevronUp className="h-3.5 w-3.5" />
+                                                ) : sortState === "desc" ? (
+                                                  <ChevronDown className="h-3.5 w-3.5" />
+                                                ) : (
+                                                  <ChevronsUpDown className="h-3.5 w-3.5" />
+                                                )}
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setInspectorMode("field");
+                                                  structured.selectField(field.id);
+                                                }}
+                                                className="min-w-0 flex-1 truncate text-left"
+                                                title={field.name}
+                                              >
+                                                {field.name}
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  void handleMoveViewField(field.id, "left")
+                                                }
+                                                className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
+                                                title="Move field left in this view"
+                                              >
+                                                <ArrowLeft className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  void handleMoveViewField(field.id, "right")
+                                                }
+                                                className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
+                                                title="Move field right in this view"
+                                              >
+                                                <ArrowRight className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          </th>
+                                        );
+                                      })}
                                       <th className="w-12 border-b border-white/10 px-3 py-3">
                                         <button
                                           onClick={() => void handleCreateField()}
@@ -3683,6 +3778,14 @@ export function AppForge({
                                                   onCommit={() => void commitEditingCell()}
                                                   onCancel={() => setEditingCell(null)}
                                                 />
+                                              ) : activeEditingCell && field.type === "rating" ? (
+                                                <RatingCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
                                               ) : activeEditingCell &&
                                                 field.type === "linked_record" ? (
                                                 <LinkedRecordCellEditor
@@ -3781,6 +3884,11 @@ export function AppForge({
                                                 />
                                               ) : field.type === "url" ? (
                                                 <UrlCellDisplay value={value} />
+                                              ) : field.type === "rating" ? (
+                                                <RatingCellDisplay
+                                                  field={field}
+                                                  value={record.values[field.id]}
+                                                />
                                               ) : field.type === "single_select" && value ? (
                                                 <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
                                                   {value}
@@ -4335,6 +4443,65 @@ export function AppForge({
                                   cells currently accept comma-separated record names.
                                 </div>
                               </label>
+                            )}
+
+                            {structured.selectedField.type === "rating" && (
+                              <div
+                                data-testid="appforge-rating-config"
+                                className="grid grid-cols-2 gap-3 rounded-xl border border-white/10 bg-black/15 p-3"
+                              >
+                                <label className="block">
+                                  <span className="mb-2 block text-xs text-white/38">Maximum</span>
+                                  <select
+                                    data-testid="appforge-rating-max-select"
+                                    value={String(
+                                      structured.selectedField.ratingMax ??
+                                        FORGE_DEFAULT_RATING_MAX,
+                                    )}
+                                    onChange={(event) =>
+                                      void structured.updateField(structured.selectedField!.id, {
+                                        ratingMax: Number(event.target.value),
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                                  >
+                                    {Array.from(
+                                      {
+                                        length: FORGE_MAX_RATING_MAX - FORGE_MIN_RATING_MAX + 1,
+                                      },
+                                      (_, index) => FORGE_MIN_RATING_MAX + index,
+                                    ).map((value) => (
+                                      <option key={value} value={String(value)}>
+                                        {value}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="mb-2 block text-xs text-white/38">Icon</span>
+                                  <select
+                                    data-testid="appforge-rating-icon-select"
+                                    value={structured.selectedField.ratingIcon ?? "star"}
+                                    onChange={(event) =>
+                                      void structured.updateField(structured.selectedField!.id, {
+                                        ratingIcon: event.target.value as ForgeRatingIcon,
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                                  >
+                                    {FORGE_RATING_ICONS.map((icon) => (
+                                      <option key={icon} value={icon}>
+                                        {icon.charAt(0).toUpperCase() + icon.slice(1)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <div className="col-span-2 text-[11px] leading-relaxed text-white/34">
+                                  Rating cells store a whole number from 0 to the maximum. Click the
+                                  active glyph in the grid to clear, press a number key to jump, or
+                                  use arrow keys.
+                                </div>
+                              </div>
                             )}
 
                             {fieldSupportsSelectOptions(structured.selectedField.type) && (

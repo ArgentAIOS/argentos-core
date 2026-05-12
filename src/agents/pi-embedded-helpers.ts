@@ -6,7 +6,9 @@ export {
   stripThoughtSignatures,
 } from "./pi-embedded-helpers/bootstrap.js";
 export {
+  appendReauthHintIfNeeded,
   classifyFailoverReason,
+  extractReauthCommand,
   formatRawAssistantErrorForUi,
   formatAssistantErrorText,
   getApiErrorPayloadFingerprint,

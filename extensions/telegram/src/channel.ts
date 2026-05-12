@@ -412,6 +412,7 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         lastOutboundAt: runtime?.lastOutboundAt ?? null,
         state: reportedState ?? derivedState,
         nextRetryAt: runtime?.nextRetryAt ?? null,
+        persistentConflict: runtime?.persistentConflict ?? false,
       };
     },
   },
@@ -443,6 +444,7 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         state?: string;
         lastError?: string | null;
         nextRetryAt?: number | null;
+        persistentConflict?: boolean;
       }) => {
         const current = ctx.getStatus();
         ctx.setStatus({
@@ -451,6 +453,9 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
           ...(patch.state !== undefined ? { state: patch.state } : {}),
           ...(patch.lastError !== undefined ? { lastError: patch.lastError } : {}),
           ...(patch.nextRetryAt !== undefined ? { nextRetryAt: patch.nextRetryAt } : {}),
+          ...(patch.persistentConflict !== undefined
+            ? { persistentConflict: patch.persistentConflict }
+            : {}),
         });
       };
       return getTelegramRuntime().channel.telegram.monitorTelegramProvider({

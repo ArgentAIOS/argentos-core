@@ -551,10 +551,91 @@ export function captureAndPromote(params: {
 }
 
 /**
+ * Either create a fresh PersonalSkillCandidate from this live-inbox hard
+ * trigger, or — if an equivalent candidate already exists — bump its
+ * `recurrenceCount` and merge in the new memory-item provenance.
+ *
+ * Background (closes #210): the previous dedup-skip silently dropped repeat
+ * observations on the floor. Because `createPersonalSkillCandidate` always
+ * seeds `recurrenceCount=1` and passive distillation never bumps it,
+ * `classifyReviewState`'s promotion gate
+ *   `recurrenceCount >= 2 || evidenceCount >= 2 ||
+ *    (sourceLessonIds && sourceTaskIds) ||
+ *    (confidence >= 0.9 && provenanceCount >= 1)`
+ * could only be satisfied by the rare strongCorrection branch, leaving
+ * legitimate operator rules stuck in `incubating` even with 0.88+ confidence.
+ *
+ * Each re-observation of the same proposed candidate (matched by
+ * `sourceMemoryIds` or normalized title) now increments the counter so
+ * legitimate skills graduate naturally after N repetitions.
+ *
+ * Returns the action taken so callers / tests can verify behaviour:
+ *   - "skipped":    the live-inbox candidate didn't qualify for distillation
+ *                   (non-user role, non-procedural, audio-transcript pollution).
+ *   - "created":    no equivalent candidate existed; a new one was inserted.
+ *   - "reinforced": an equivalent candidate existed and was bumped.
+ */
+export async function reinforceOrCreatePersonalSkillCandidateFromLiveInbox(params: {
+  store: MemoryAdapter;
+  candidate: CandidateInput;
+  promotedMemoryItemId: string;
+  now?: string;
+}): Promise<
+  | { action: "skipped" }
+  | { action: "created"; candidateId: string }
+  | { action: "reinforced"; candidateId: string; recurrenceCount: number }
+> {
+  const proposed = buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+    candidate: params.candidate,
+    promotedMemoryItemId: params.promotedMemoryItemId,
+  });
+  if (!proposed) {
+    return { action: "skipped" };
+  }
+
+  const existing = (await params.store.listPersonalSkillCandidates?.({ limit: 500 })) ?? [];
+  const normalizedTitle = proposed.title.trim().toLowerCase();
+  const duplicate = existing.find(
+    (entry) =>
+      entry.sourceMemoryIds.includes(params.promotedMemoryItemId) ||
+      entry.title.trim().toLowerCase() === normalizedTitle,
+  );
+
+  if (!duplicate) {
+    const created = await params.store.createPersonalSkillCandidate?.(proposed);
+    return created ? { action: "created", candidateId: created.id } : { action: "skipped" };
+  }
+
+  const now = params.now ?? new Date().toISOString();
+  const mergedSourceMemoryIds = duplicate.sourceMemoryIds.includes(params.promotedMemoryItemId)
+    ? duplicate.sourceMemoryIds
+    : [...duplicate.sourceMemoryIds, params.promotedMemoryItemId];
+  const nextRecurrenceCount = duplicate.recurrenceCount + 1;
+
+  await params.store.updatePersonalSkillCandidate?.(duplicate.id, {
+    recurrenceCount: nextRecurrenceCount,
+    sourceMemoryIds: mergedSourceMemoryIds,
+    lastReinforcedAt: now,
+  });
+
+  return {
+    action: "reinforced",
+    candidateId: duplicate.id,
+    recurrenceCount: nextRecurrenceCount,
+  };
+}
+
+/**
  * Promote a single candidate to MemU memory.
  * Deduplicates by content hash — reinforces if already exists.
+ *
+ * Exported so tests can drive promoteCandidate against a real MemoryAdapter
+ * (see capture.test.ts coverage for #210).
  */
-async function promoteCandidate(store: MemoryAdapter, candidate: CandidateInput): Promise<void> {
+export async function promoteCandidate(
+  store: MemoryAdapter,
+  candidate: CandidateInput,
+): Promise<void> {
   const hash = contentHash(candidate.factText);
 
   // Check for existing memory with same content
@@ -569,6 +650,16 @@ async function promoteCandidate(store: MemoryAdapter, candidate: CandidateInput)
     if (match) {
       await store.markLiveCandidateMerged?.(match.id, existing.id);
     }
+
+    // Re-observation must still feed recurrenceCount on the linked Personal
+    // Skill candidate. Otherwise an operator who repeats the same correction
+    // verbatim hits the memory-item hash dedup, returns early here, and the
+    // linked skill candidate never accrues recurrence. (closes #210)
+    await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+      store,
+      candidate,
+      promotedMemoryItemId: existing.id,
+    });
     return;
   }
 
@@ -593,19 +684,13 @@ async function promoteCandidate(store: MemoryAdapter, candidate: CandidateInput)
     await store.markLiveCandidatePromoted?.(match.id, item.id, "hard-trigger");
   }
 
-  const personalSkillCandidate = buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+  // Either spawn a new Personal Skill candidate from this hard trigger or
+  // bump an equivalent existing one. Dedup is keyed on shared memory
+  // provenance OR identical proposed title (e.g. operator re-uttering the
+  // same correction with the same fact text).
+  await reinforceOrCreatePersonalSkillCandidateFromLiveInbox({
+    store,
     candidate,
     promotedMemoryItemId: item.id,
   });
-  if (personalSkillCandidate) {
-    const existing = await store.listPersonalSkillCandidates?.({ limit: 500 });
-    const duplicate = (existing ?? []).some(
-      (entry) =>
-        entry.sourceMemoryIds.includes(item.id) ||
-        entry.title.trim().toLowerCase() === personalSkillCandidate.title.trim().toLowerCase(),
-    );
-    if (!duplicate) {
-      await store.createPersonalSkillCandidate?.(personalSkillCandidate);
-    }
-  }
 }

@@ -70,6 +70,20 @@ vi.mock("./daemon-cli.js", () => ({
   runDaemonRestart: vi.fn(),
 }));
 
+// Mock the dashboard LaunchAgent installer so tests can verify it gets
+// invoked from `argent update` without touching real launchctl or the real
+// LaunchAgents directory. Default to "all unchanged" so existing tests
+// continue to validate the kickstart restart path (install/update would skip
+// the explicit kickstart, since installLaunchAgent kicks internally).
+vi.mock("../daemon/dashboard-launchagent-install.js", () => ({
+  ensureDashboardLaunchAgents: vi.fn().mockResolvedValue({
+    installed: [],
+    updated: [],
+    unchanged: ["ai.argent.dashboard-ui", "ai.argent.dashboard-api"],
+    skipped: [],
+  }),
+}));
+
 // Mock the runtime
 vi.mock("../runtime.js", () => ({
   defaultRuntime: {
@@ -691,6 +705,74 @@ describe("update-cli", () => {
     }
   });
 
+  it("updateCommand installs missing dashboard LaunchAgents after daemon restart (regression: GH #175)", async () => {
+    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-home-"));
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
+    const originalPlatform = process.platform;
+    let homedirSpy: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
+      // No plists pre-seeded — mirrors the regression scenario from #175 where
+      // legacy plists were archived and the new install path had nothing for
+      // launchd to manage.
+      await fs.mkdir(path.join(tempHome, "Library", "LaunchAgents"), { recursive: true });
+      homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+      Object.defineProperty(process, "platform", {
+        value: "darwin",
+        configurable: true,
+      });
+
+      const { ensureDashboardLaunchAgents } =
+        await import("../daemon/dashboard-launchagent-install.js");
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(ensureDashboardLaunchAgents).mockResolvedValueOnce({
+        installed: ["ai.argent.dashboard-ui", "ai.argent.dashboard-api"],
+        updated: [],
+        unchanged: [],
+        skipped: [],
+      });
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(spawnSync).mockClear();
+
+      await updateCommand({});
+
+      expect(ensureDashboardLaunchAgents).toHaveBeenCalled();
+
+      // When ensureDashboardLaunchAgents reports labels were installed/updated,
+      // the explicit kickstart loop must skip them — installLaunchAgent
+      // already bootstraps + kickstarts during install, so an extra kickstart
+      // is redundant churn ("track the diff to avoid restarting
+      // unnecessarily" per the team-lead spec).
+      const kickstartCalls = vi
+        .mocked(spawnSync)
+        .mock.calls.filter(
+          ([cmd, args]) =>
+            cmd === "/bin/launchctl" &&
+            Array.isArray(args) &&
+            args.includes("kickstart") &&
+            args.some((a) => typeof a === "string" && a.includes("dashboard")),
+        );
+      expect(kickstartCalls).toEqual([]);
+    } finally {
+      homedirSpy?.mockRestore();
+      Object.defineProperty(process, "platform", {
+        value: originalPlatform,
+        configurable: true,
+      });
+      await fs.rm(tempHome, { recursive: true, force: true });
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("updateCommand runs post-update doctor from a fresh CLI process", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
     try {
@@ -986,5 +1068,149 @@ describe("update-cli", () => {
       }
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  // GH #167: argent update must NOT rotate gateway.auth.token unless the user
+  // explicitly passes --rotate-gateway-token. These tests pin the behavior so
+  // future refactors of the post-update flow don't silently regress it.
+  describe("gateway.auth.token preservation (GH #167)", () => {
+    const PRE_UPDATE_TOKEN = "pre-update-token-original-1234567890";
+    const POST_UPDATE_DRIFT_TOKEN = "post-update-token-clobbered-abcdef";
+
+    const baseGatewayConfig = {
+      gateway: {
+        auth: {
+          mode: "token" as const,
+          token: PRE_UPDATE_TOKEN,
+        },
+      },
+    };
+
+    it("preserves existing gateway.auth.token across update by default", async () => {
+      const { readConfigFileSnapshot, writeConfigFile } = await import("../config/config.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      // 1st read: pre-update snapshot has the original token.
+      // 2nd read: simulates the post-update state where some sub-step (doctor
+      //   --repair, plugin sync, etc.) rotated the token.
+      vi.mocked(readConfigFileSnapshot)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: baseGatewayConfig,
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {
+            gateway: {
+              auth: { mode: "token", token: POST_UPDATE_DRIFT_TOKEN },
+            },
+          },
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>);
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ json: true });
+
+      // The final writeConfigFile must restore the original token.
+      const writeCalls = vi.mocked(writeConfigFile).mock.calls;
+      expect(writeCalls.length).toBeGreaterThan(0);
+      const lastWritten = writeCalls.at(-1)?.[0] as {
+        gateway?: { auth?: { token?: string; mode?: string } };
+      };
+      expect(lastWritten?.gateway?.auth?.token).toBe(PRE_UPDATE_TOKEN);
+      expect(lastWritten?.gateway?.auth?.mode).toBe("token");
+    });
+
+    it("does not write a token when none existed before the update (fresh install)", async () => {
+      const { readConfigFileSnapshot, writeConfigFile } = await import("../config/config.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      // Pre-update: no token configured. Post-update: update flow generated one.
+      vi.mocked(readConfigFileSnapshot)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {},
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {
+            gateway: {
+              auth: { mode: "token", token: POST_UPDATE_DRIFT_TOKEN },
+            },
+          },
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>);
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ json: true });
+
+      // Fresh-install path: we must NOT overwrite the freshly generated token.
+      // Any writeConfigFile call (from plugin sync, etc.) must not have the
+      // sentinel "PRE_UPDATE_TOKEN" since none existed.
+      const writeCalls = vi.mocked(writeConfigFile).mock.calls;
+      for (const [cfg] of writeCalls) {
+        const writtenToken = (cfg as { gateway?: { auth?: { token?: string } } })?.gateway?.auth
+          ?.token;
+        // Allowed: undefined, empty, or POST_UPDATE_DRIFT_TOKEN. NEVER the
+        // pre-update sentinel (because there wasn't one).
+        expect(writtenToken === undefined || writtenToken === POST_UPDATE_DRIFT_TOKEN).toBe(true);
+      }
+    });
+
+    it("regenerates the token when --rotate-gateway-token is passed", async () => {
+      const { readConfigFileSnapshot, writeConfigFile } = await import("../config/config.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(readConfigFileSnapshot)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: baseGatewayConfig,
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>)
+        .mockResolvedValueOnce({
+          valid: true,
+          config: {
+            gateway: {
+              auth: { mode: "token", token: POST_UPDATE_DRIFT_TOKEN },
+            },
+          },
+          issues: [],
+        } as unknown as Awaited<ReturnType<typeof readConfigFileSnapshot>>);
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ json: true, rotateGatewayToken: true });
+
+      // No write should restore the original token when rotate is opt-in true.
+      const writeCalls = vi.mocked(writeConfigFile).mock.calls;
+      for (const [cfg] of writeCalls) {
+        const writtenToken = (cfg as { gateway?: { auth?: { token?: string } } })?.gateway?.auth
+          ?.token;
+        // Must NOT equal the original — the operator opted in to rotation.
+        expect(writtenToken).not.toBe(PRE_UPDATE_TOKEN);
+      }
+    });
   });
 });

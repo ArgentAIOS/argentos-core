@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isHeadlessSession } from "./oauth-env.js";
+import { isHeadlessSession, isRemoteEnvironment } from "./oauth-env.js";
 
 describe("isHeadlessSession", () => {
   it("returns true when SSH_CONNECTION is set", () => {
@@ -15,6 +15,15 @@ describe("isHeadlessSession", () => {
     expect(
       isHeadlessSession({
         env: { SSH_CLIENT: "1.2.3.4 12345 22" },
+        platform: "darwin",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when SSH_TTY is set (delegated via isRemoteEnvironment)", () => {
+    expect(
+      isHeadlessSession({
+        env: { SSH_TTY: "/dev/pts/0" },
         platform: "darwin",
       }),
     ).toBe(true);
@@ -105,5 +114,106 @@ describe("isHeadlessSession", () => {
         platform: "linux",
       }),
     ).toBe(true);
+  });
+
+  it("returns true when REMOTE_CONTAINERS is set (delegated)", () => {
+    expect(
+      isHeadlessSession({
+        env: { REMOTE_CONTAINERS: "true" },
+        platform: "linux",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when CODESPACES is set (delegated)", () => {
+    expect(
+      isHeadlessSession({
+        env: { CODESPACES: "true" },
+        platform: "linux",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("isRemoteEnvironment", () => {
+  it("returns true when SSH_CLIENT is set", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { SSH_CLIENT: "1.2.3.4 12345 22" },
+        platform: "darwin",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when SSH_TTY is set", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { SSH_TTY: "/dev/pts/0" },
+        platform: "darwin",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when SSH_CONNECTION is set", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { SSH_CONNECTION: "1.2.3.4 12345 5.6.7.8 22" },
+        platform: "darwin",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when REMOTE_CONTAINERS is set", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { REMOTE_CONTAINERS: "true" },
+        platform: "darwin",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when CODESPACES is set", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { CODESPACES: "true" },
+        platform: "darwin",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true on Linux with no DISPLAY and no WAYLAND_DISPLAY", () => {
+    expect(
+      isRemoteEnvironment({
+        env: {},
+        platform: "linux",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false on Linux when DISPLAY is set", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { DISPLAY: ":0" },
+        platform: "linux",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false on macOS with no DISPLAY (Macs always have a browser)", () => {
+    expect(
+      isRemoteEnvironment({
+        env: {},
+        platform: "darwin",
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT trigger on ARGENT_CODEX_DEVICE_AUTH=1 (that's an isHeadlessSession-only override)", () => {
+    expect(
+      isRemoteEnvironment({
+        env: { ARGENT_CODEX_DEVICE_AUTH: "1" },
+        platform: "darwin",
+      }),
+    ).toBe(false);
   });
 });

@@ -15,8 +15,11 @@
 //   * Exits 0 with `no NET-NEW TS errors (still N baseline)` if no new ones.
 //   * Exits 1 listing only the NEW errors otherwise.
 //
-// Identity: an error is identified by (file, line, code, message). Column is
-// excluded so trivial reformatting doesn't flag pre-existing errors as new.
+// Identity: an error is identified by (file, line, code, normalized message).
+// Column is excluded so trivial reformatting doesn't flag pre-existing errors
+// as new. The message is normalized to strip worktree-specific absolute paths
+// (see normalizeMessage) so the same baseline matches whether tsc runs from
+// the main checkout or any worktree (GH #211).
 
 import { spawnSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -27,9 +30,63 @@ const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   encoding: "utf8",
 }).trim();
 
+// The git common dir (`<main-checkout>/.git`) is shared across the main
+// checkout and every worktree, so its parent is the canonical repo root.
+// We normalize paths under either the main checkout OR any worktree under
+// `<mainRepoRoot>/worktrees/<name>/` to a stable `<repo>/` placeholder.
+const gitCommonDir = execFileSync(
+  "git",
+  ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+  { cwd: repoRoot, encoding: "utf8" },
+).trim();
+const mainRepoRoot = path.dirname(gitCommonDir);
+
 const snapshotPath = path.join(repoRoot, "ops", "known-failing.json");
 
 const ERROR_RE = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// TypeScript embeds absolute paths inside error message strings when it
+// reports cross-package type identity mismatches (e.g. `Type 'import("…")…'
+// is not assignable…`). Those paths differ between worktrees, so a baseline
+// snapshotted in one worktree would never match in another (GH #211). They
+// also differ between local checkouts and CI runners (`/home/runner/…`).
+// Normalize all known forms to a stable `<repo>/` placeholder:
+//   <mainRepoRoot>/worktrees/<name>/<rest>  →  <repo>/<rest>
+//   <repoRoot>/<rest>                       →  <repo>/<rest>  (current cwd; covers peer-dir worktrees too)
+//   <mainRepoRoot>/<rest>                   →  <repo>/<rest>
+// More-specific patterns are matched first so they win.
+const NORMALIZATION_RULES = [
+  new RegExp(`${escapeRegex(mainRepoRoot)}/worktrees/[^/"\\s]+/`, "g"),
+  new RegExp(`${escapeRegex(repoRoot)}/`, "g"),
+  new RegExp(`${escapeRegex(mainRepoRoot)}/`, "g"),
+];
+
+// tsc emits a soft length cap on individual error messages and truncates the
+// tail with `...'` when the un-elided form would be too long. The cap is
+// applied to the *original* string before our path substitutions run, so the
+// truncation point shifts based on the absolute path length of the checkout
+// (e.g. `/private/var/folders/.../argent-update-preflight-XYZ/worktree/...`
+// in `argent update`'s preflight worktree is ~50 chars longer than the
+// `/Users/sem/code/argent-core/worktrees/<name>/...` paths the baseline was
+// snapshotted under, so tsc truncates earlier in the preflight run).
+// Result: the same conceptual error has a different message tail per
+// environment and the baseline never matches. Collapse `'import("…")…'`
+// blocks — the only place these long paths appear — to a stable placeholder
+// so identity is path-length-independent.
+const IMPORT_TYPE_RE = /'import\([^']*'/g;
+
+function normalizeMessage(msg) {
+  let out = msg;
+  for (const re of NORMALIZATION_RULES) {
+    out = out.replace(re, "<repo>/");
+  }
+  out = out.replace(IMPORT_TYPE_RE, "'import(…)'");
+  return out;
+}
 
 function parseErrors(text) {
   const errors = [];
@@ -41,7 +98,7 @@ function parseErrors(text) {
       file: m[1],
       line: Number.parseInt(m[2], 10),
       code: m[4],
-      message: m[5],
+      message: normalizeMessage(m[5]),
     });
   }
   return errors;
@@ -49,7 +106,9 @@ function parseErrors(text) {
 
 function errorKey(err) {
   // Identity excludes column so harmless reformatting doesn't reclassify
-  // a baseline error as new.
+  // a baseline error as new. `message` is normalized to be worktree-agnostic
+  // — both current errors (via parseErrors) and baseline entries (via
+  // loadBaseline) pass through normalizeMessage before keying.
   return `${err.file}|${err.line}|${err.code}|${err.message}`;
 }
 
@@ -69,6 +128,12 @@ function loadBaseline() {
     console.error(`tsc-since: baseline at ${snapshotPath} missing "errors" array`);
     process.exit(2);
   }
+  // Normalize baseline messages too, so a baseline written before the
+  // worktree-path-normalization fix (GH #211) still matches.
+  data.errors = data.errors.map((err) => ({
+    ...err,
+    message: typeof err.message === "string" ? normalizeMessage(err.message) : err.message,
+  }));
   return data;
 }
 

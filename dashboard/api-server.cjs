@@ -10412,12 +10412,30 @@ async function collectAvailableModelsCatalog(config) {
 
   const pushModel = (id, alias = null, params = null) => {
     if (typeof id !== "string" || id.trim().length === 0) return;
-    if (seen.has(id)) return;
-    seen.add(id);
     const slashIndex = id.indexOf("/");
     if (slashIndex > 0) {
       availableProviders.add(id.slice(0, slashIndex));
     }
+    // Late live-runtime evidence ("liveRuntime") upgrades an existing entry so
+    // the suggestion filter can distinguish currently-loaded local models from
+    // statically configured (but possibly unloaded) ones.
+    if (seen.has(id)) {
+      if (params && typeof params === "object" && params.liveRuntime) {
+        const idx = available.findIndex((entry) => entry.id === id);
+        if (idx >= 0) {
+          const prevParams =
+            available[idx].params && typeof available[idx].params === "object"
+              ? available[idx].params
+              : {};
+          available[idx] = {
+            ...available[idx],
+            params: { ...prevParams, liveRuntime: params.liveRuntime },
+          };
+        }
+      }
+      return;
+    }
+    seen.add(id);
     available.push({ id, alias, params });
   };
 
@@ -10603,15 +10621,7 @@ async function collectAvailableModelsCatalog(config) {
     }
   };
 
-  try {
-    const ollamaRes = execSync("curl -s http://127.0.0.1:11434/api/tags", { timeout: 3000 });
-    const ollamaData = JSON.parse(ollamaRes.toString());
-    for (const m of ollamaData.models || []) {
-      pushModel(`ollama/${m.name}`);
-    }
-  } catch {
-    /* Ollama not running */
-  }
+  const localRuntimes = await probeLocalModelRuntimes(config, configuredProviders, pushModel);
 
   try {
     await Promise.all([
@@ -10638,34 +10648,281 @@ async function collectAvailableModelsCatalog(config) {
     /* live provider model discovery best-effort */
   }
 
-  try {
-    const baseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
-    const normalizedBaseUrl = baseUrlRaw.replace(/\/+$/, "");
-    const lmStudioModelsUrl = normalizedBaseUrl.endsWith("/v1")
-      ? `${normalizedBaseUrl}/models`
-      : `${normalizedBaseUrl}/v1/models`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const lmStudioRes = await fetch(lmStudioModelsUrl, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (lmStudioRes.ok) {
-      const lmStudioData = await lmStudioRes.json();
-      for (const model of Array.isArray(lmStudioData?.data) ? lmStudioData.data : []) {
-        if (typeof model?.id === "string" && model.id.trim().length > 0) {
-          pushModel(`lmstudio/${model.id.trim()}`);
-        }
-      }
-    }
-  } catch {
-    /* LM Studio not running */
-  }
-
   return {
     models: available,
     providers: Array.from(availableProviders).sort((a, b) => a.localeCompare(b)),
+    localRuntimes,
   };
+}
+
+/**
+ * Probe LM Studio for the list of registered models AND, when possible, each
+ * model's load state (in-memory vs not-loaded).
+ *
+ * LM Studio's legacy `/v1/models` endpoint returns the *catalog* (every
+ * registered/downloaded model) without indicating which ones are actually
+ * loaded into memory. Picking an unloaded model in the dashboard dropdown
+ * triggers a slow on-demand load (15–25 GB allocation, multi-second latency,
+ * possible OOM under memory pressure). See GH #220.
+ *
+ * LM Studio ≥ 0.3.5 exposes `/api/v0/models` (REST API) which adds a
+ * `state: "loaded" | "not-loaded"` field per model. We prefer that endpoint
+ * and fall back to `/v1/models` when v0 is unavailable (older LM Studio
+ * versions, OpenAI-compatible proxies that mimic the v1 surface only).
+ *
+ * Returned entries always carry:
+ *   - `id`        — model identifier (e.g. `qwen/qwen3.6-35b-a3b`)
+ *   - `ownedBy`   — string | null (passthrough of `owned_by`)
+ *   - `size`      — bytes | null (`size` / `metadata.size`, when present)
+ *   - `loaded`    — boolean | null (true/false from v0, null when only
+ *                   v1 data is available — caller should treat null as
+ *                   "unknown, behave as catalog-only")
+ *   - `state`     — raw state string from v0 (e.g. `"loaded"`,
+ *                   `"not-loaded"`), null otherwise
+ *
+ * @param {string} baseUrlRaw — provider baseUrl from config; tolerates
+ *   trailing slash and either `…:1234` or `…:1234/v1` shape.
+ * @returns {Promise<{ok: boolean, source: "v0"|"v1"|null, models: Array<{id:string,ownedBy:string|null,size:number|null,loaded:boolean|null,state:string|null}>}>}
+ */
+async function probeLmStudioCatalogWithState(baseUrlRaw) {
+  const normalized = String(baseUrlRaw || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!normalized) {
+    return { ok: false, source: null, models: [] };
+  }
+
+  // Strip a trailing `/v1` so we can compose either `/api/v0/models` (root)
+  // or `/v1/models` (legacy) against the same base.
+  const root = normalized.endsWith("/v1") ? normalized.slice(0, -3) : normalized;
+
+  const fetchWithTimeout = async (url, ms = 3000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+      return await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const parseV0 = (payload) => {
+    const entries = Array.isArray(payload?.data) ? payload.data : [];
+    const out = [];
+    for (const entry of entries) {
+      if (typeof entry?.id !== "string" || entry.id.trim().length === 0) continue;
+      const id = entry.id.trim();
+      const stateRaw = typeof entry?.state === "string" ? entry.state.trim() : "";
+      const loaded = stateRaw === "loaded" ? true : stateRaw === "not-loaded" ? false : null;
+      const size =
+        typeof entry?.loaded_context_length === "number" &&
+        Number.isFinite(entry.loaded_context_length)
+          ? null // context length is NOT bytes — keep size as separate field
+          : typeof entry?.size === "number" && Number.isFinite(entry.size)
+            ? entry.size
+            : typeof entry?.metadata?.size === "number"
+              ? entry.metadata.size
+              : null;
+      out.push({
+        id,
+        ownedBy:
+          typeof entry?.publisher === "string"
+            ? entry.publisher
+            : typeof entry?.owned_by === "string"
+              ? entry.owned_by
+              : null,
+        size,
+        loaded,
+        state: stateRaw || null,
+      });
+    }
+    return out;
+  };
+
+  const parseV1 = (payload) => {
+    const entries = Array.isArray(payload?.data) ? payload.data : [];
+    const out = [];
+    for (const entry of entries) {
+      if (typeof entry?.id !== "string" || entry.id.trim().length === 0) continue;
+      const id = entry.id.trim();
+      const size =
+        typeof entry?.size === "number" && Number.isFinite(entry.size)
+          ? entry.size
+          : typeof entry?.metadata?.size === "number"
+            ? entry.metadata.size
+            : null;
+      out.push({
+        id,
+        ownedBy: typeof entry?.owned_by === "string" ? entry.owned_by : null,
+        size,
+        // `/v1/models` is the catalog — load state is unknown from this
+        // surface. Caller should treat `null` as "registered, unknown state".
+        loaded: null,
+        state: null,
+      });
+    }
+    return out;
+  };
+
+  // 1) Try /api/v0/models (newer, exposes state)
+  try {
+    const res = await fetchWithTimeout(`${root}/api/v0/models`);
+    if (res.ok) {
+      const payload = await res.json().catch(() => null);
+      if (payload && Array.isArray(payload.data)) {
+        return { ok: true, source: "v0", models: parseV0(payload) };
+      }
+    }
+    // 404 / 405 / payload-mismatch falls through to v1.
+  } catch {
+    /* v0 unreachable / aborted — fall through */
+  }
+
+  // 2) Fall back to /v1/models (legacy OpenAI-compatible endpoint).
+  try {
+    const v1Url = normalized.endsWith("/v1") ? `${normalized}/models` : `${normalized}/v1/models`;
+    const res = await fetchWithTimeout(v1Url);
+    if (res.ok) {
+      const payload = await res.json().catch(() => null);
+      if (payload && Array.isArray(payload.data)) {
+        return { ok: true, source: "v1", models: parseV1(payload) };
+      }
+    }
+  } catch {
+    /* v1 also unreachable */
+  }
+
+  return { ok: false, source: null, models: [] };
+}
+
+/**
+ * Probe local-runtime endpoints (Ollama, LM Studio) and report which are
+ * reachable along with their currently-loaded model lists.
+ *
+ * Each probe is best-effort: a failure / timeout / refused-connection marks
+ * the runtime as `running: false` but never throws. Models discovered via
+ * a successful probe are ALSO pushed into the flat catalog (via `pushModel`)
+ * so existing consumers of `available-models.models` keep working.
+ *
+ * The structured return shape (`provider`, `label`, `running`, `baseUrl`,
+ * `models: [{id, ref, label, loaded?}]`) is what the dashboard's
+ * `normalizeLocalModelRuntimes` expects in `localRuntimes` — it powers the
+ * Consciousness Kernel "Local model" dropdown so the user can pick from
+ * models that are *currently loaded*, not just statically configured.
+ *
+ * For LM Studio specifically (GH #220) each model entry now carries
+ * `loaded: boolean | null` — true/false when the v0 REST API reports state,
+ * null when only the legacy v1 catalog endpoint is available.
+ *
+ * @param {object} config — argent.json contents.
+ * @param {object} configuredProviders — `config.models.providers || {}`.
+ * @param {(id: string) => void} pushModel — flat-catalog inserter (deduped).
+ * @returns {Promise<Array<{provider:string,label:string,running:boolean,baseUrl:string,models:Array<{id:string,ref:string,label:string,loaded?:boolean|null}>}>>}
+ */
+async function probeLocalModelRuntimes(config, configuredProviders, pushModel) {
+  const lmStudioBaseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
+  const lmStudioBaseUrl = String(lmStudioBaseUrlRaw || "").replace(/\/+$/, "");
+  const ollamaBaseUrl =
+    typeof configuredProviders?.ollama?.baseUrl === "string" &&
+    configuredProviders.ollama.baseUrl.trim().length > 0
+      ? configuredProviders.ollama.baseUrl.trim().replace(/\/+$/, "")
+      : "http://127.0.0.1:11434";
+
+  const runtimes = [
+    {
+      provider: "ollama",
+      label: "Ollama (Local)",
+      baseUrl: ollamaBaseUrl,
+      running: false,
+      models: [],
+    },
+    {
+      provider: "lmstudio",
+      label: "LM Studio (Local)",
+      baseUrl: lmStudioBaseUrl,
+      running: false,
+      models: [],
+    },
+  ];
+
+  const probeWithTimeout = async (url, ms = 3000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+      return await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // Ollama probe — `/api/tags` returns `{models: [{name, ...}]}`.
+  try {
+    const ollamaTagsUrl = `${ollamaBaseUrl}/api/tags`;
+    const res = await probeWithTimeout(ollamaTagsUrl);
+    if (res.ok) {
+      const data = await res.json();
+      const ollamaRuntime = runtimes[0];
+      ollamaRuntime.running = true;
+      for (const entry of Array.isArray(data?.models) ? data.models : []) {
+        const id =
+          typeof entry?.name === "string" && entry.name.trim().length > 0 ? entry.name.trim() : "";
+        if (!id) continue;
+        const ref = `ollama/${id}`;
+        pushModel(ref, null, { liveRuntime: "ollama" });
+        ollamaRuntime.models.push({ id, ref, label: ref });
+      }
+    }
+  } catch {
+    /* Ollama not reachable */
+  }
+
+  // LM Studio probe — prefer `/api/v0/models` (newer endpoint exposing
+  // `state: 'loaded' | 'not-loaded'`, GH #220) and fall back to the legacy
+  // OpenAI-compatible `/v1/models` catalog endpoint when v0 is unavailable.
+  //
+  // Every catalogued model is surfaced in the runtime entry so the dropdown
+  // can render the full list with a visual distinction between loaded vs
+  // not-loaded. We only stamp `liveRuntime: "lmstudio"` on the FLAT catalog
+  // for models that are actually resident in memory, so the background-model
+  // suggestion engine never recommends an unloaded model (preventing the
+  // on-demand load OOM scenario this issue was filed for).
+  try {
+    const lmProbe = await probeLmStudioCatalogWithState(lmStudioBaseUrl);
+    if (lmProbe.ok) {
+      const lmStudioRuntime = runtimes[1];
+      lmStudioRuntime.running = true;
+      lmStudioRuntime.source = lmProbe.source;
+      for (const entry of lmProbe.models) {
+        const ref = `lmstudio/${entry.id}`;
+        const isLive =
+          // v0 reports definitive load state — honor it.
+          entry.loaded === true ||
+          // v1-only fallback can't distinguish; treat as live for back-compat
+          // (matches pre-#220 behavior so we don't silently strip provenance
+          // on older LM Studio versions or proxies that only expose v1).
+          entry.loaded === null;
+        if (isLive) {
+          pushModel(ref, null, { liveRuntime: "lmstudio" });
+        }
+        lmStudioRuntime.models.push({
+          id: entry.id,
+          ref,
+          label: ref,
+          loaded: entry.loaded,
+        });
+      }
+    }
+  } catch {
+    /* LM Studio not reachable */
+  }
+
+  return runtimes;
 }
 
 function buildBackgroundModelRecommendations(config, catalog) {
@@ -10717,23 +10974,101 @@ function buildBackgroundModelRecommendations(config, catalog) {
     catalog.models.map((entry) => [String(entry.id).trim().toLowerCase(), entry]),
   );
 
-  const resolveSuggested = (preferredRefs, fallbackCurrentRef = "") => {
+  // Local-runtime providers — track which ones probed as running so we can
+  // filter suggestions to currently-loaded models and skip suggesting from
+  // a runtime that isn't responding.
+  const localProviderRunning = new Map();
+  for (const runtime of Array.isArray(catalog.localRuntimes) ? catalog.localRuntimes : []) {
+    if (typeof runtime?.provider === "string" && runtime.provider.trim()) {
+      localProviderRunning.set(runtime.provider.trim().toLowerCase(), runtime.running === true);
+    }
+  }
+  const isLocalRuntimeProvider = (provider) =>
+    localProviderRunning.has(String(provider).trim().toLowerCase());
+  const isLocalRuntimeUp = (provider) =>
+    localProviderRunning.get(String(provider).trim().toLowerCase()) === true;
+
+  /**
+   * Resolve a suggested model for a lane.
+   *
+   * @param {string[]} preferredRefs — preference-ordered candidate refs.
+   * @param {string} fallbackCurrentRef — current saved value to fall back to.
+   * @param {object} [opts]
+   * @param {boolean} [opts.requireLiveLocal] — if true, candidates that resolve
+   *   to a local-runtime provider (ollama, lmstudio) must come from a live
+   *   probe (params.liveRuntime present) AND that runtime must be running.
+   *   Used for kernel inner-reflection where the suggestion is *only* useful
+   *   if the model is currently loaded.
+   * @param {boolean} [opts.skipDownLocalRuntimes] — if true (default), any
+   *   candidate that points at a local-runtime provider that isn't currently
+   *   running is skipped (but configured-only non-local candidates remain
+   *   valid).
+   */
+  const resolveSuggested = (preferredRefs, fallbackCurrentRef = "", opts = {}) => {
+    const requireLiveLocal = opts.requireLiveLocal === true;
+    const skipDownLocalRuntimes = opts.skipDownLocalRuntimes !== false; // default: skip
     for (const ref of preferredRefs) {
       const hit = availableByLower.get(String(ref).trim().toLowerCase());
-      if (hit) {
-        const parsed = parseProviderModelRef(hit.id);
-        if (parsed) {
-          return {
-            provider: parsed.provider,
-            model: parsed.model,
-            ref: parsed.ref,
-            label: hit.alias ? `${parsed.ref} (${hit.alias})` : parsed.ref,
-          };
-        }
+      if (!hit) continue;
+      const parsed = parseProviderModelRef(hit.id);
+      if (!parsed) continue;
+      // Filter: never suggest from a local runtime that isn't running.
+      if (
+        skipDownLocalRuntimes &&
+        isLocalRuntimeProvider(parsed.provider) &&
+        !isLocalRuntimeUp(parsed.provider)
+      ) {
+        continue;
       }
+      // Filter: kernel lane wants currently-loaded models only.
+      if (requireLiveLocal && isLocalRuntimeProvider(parsed.provider)) {
+        const live =
+          hit.params &&
+          typeof hit.params === "object" &&
+          typeof hit.params.liveRuntime === "string";
+        if (!live) continue;
+      }
+      return {
+        provider: parsed.provider,
+        model: parsed.model,
+        ref: parsed.ref,
+        label: hit.alias ? `${parsed.ref} (${hit.alias})` : parsed.ref,
+      };
+    }
+    // For kernel inner reflection, prefer any *live* local model over a stale
+    // saved value so the suggestion engine never points at an unloaded model.
+    if (requireLiveLocal) {
+      for (const entry of catalog.models) {
+        const parsed = parseProviderModelRef(entry.id);
+        if (!parsed) continue;
+        if (!isLocalRuntimeProvider(parsed.provider)) continue;
+        if (!isLocalRuntimeUp(parsed.provider)) continue;
+        const live =
+          entry.params &&
+          typeof entry.params === "object" &&
+          typeof entry.params.liveRuntime === "string";
+        if (!live) continue;
+        return {
+          provider: parsed.provider,
+          model: parsed.model,
+          ref: parsed.ref,
+          label: entry.alias ? `${parsed.ref} (${entry.alias})` : parsed.ref,
+        };
+      }
+      // No live local model available — surface empty so dashboard can hide
+      // the card or show "No higher-confidence local model available".
+      return { provider: "", model: "", ref: "", label: "" };
     }
     const currentParsed = parseProviderModelRef(fallbackCurrentRef);
     if (currentParsed) {
+      // Don't fall back to a saved value that targets a down local runtime.
+      if (
+        skipDownLocalRuntimes &&
+        isLocalRuntimeProvider(currentParsed.provider) &&
+        !isLocalRuntimeUp(currentParsed.provider)
+      ) {
+        return { provider: "", model: "", ref: "", label: "" };
+      }
       return {
         provider: currentParsed.provider,
         model: currentParsed.model,
@@ -10779,12 +11114,20 @@ function buildBackgroundModelRecommendations(config, catalog) {
       current: current.kernel,
       suggested: resolveSuggested(
         [
+          // Currently-loaded LM Studio models (Qwen 3.6 family) — preferred
+          // when the runtime is live.
+          "lmstudio/qwen/qwen3.6-35b-a3b",
+          "lmstudio/qwen/qwen3.6-27b",
+          "lmstudio/nvidia/nemotron-3-super",
+          "lmstudio/google/gemma-4-31b",
+          "lmstudio/google/gemma-4-26b-a4b",
           "lmstudio/qwen/qwen3.5-35b-a3b",
-          "lmstudio/qwen/qwen3.5-9b",
+          // Ollama fallbacks (only honored when Ollama is actually running).
           "ollama/qwen3:30b-a3b-instruct-2507-q4_K_M",
           "ollama/qwen3.5:27b",
         ],
         current.kernel.ref,
+        { requireLiveLocal: true },
       ),
       reason:
         "Kernel inner reflection should prefer an available low-cost local model so continuity stays private and resilient during autonomous shadow work.",
@@ -14554,15 +14897,16 @@ app.put("/api/settings/alignment/:agent/:file", (req, res) => {
   }
 });
 
-// GET /api/settings/models — Returns model config + Ollama status
-app.get("/api/settings/models", (req, res) => {
+// GET /api/settings/models — Returns model config + local-runtime status
+app.get("/api/settings/models", async (req, res) => {
   try {
     const config = readArgentConfig();
+    const configuredProviders = config.models?.providers || {};
     const agentDefaults = config.agents?.defaults || {};
     const subagentModel =
       typeof agentDefaults?.subagents?.model === "string" ? agentDefaults.subagents.model : null;
 
-    // Try Ollama status
+    // Try Ollama status — best-effort, doesn't break the response if down.
     let ollamaModels = [];
     try {
       const ollamaRes = execSync("curl -s http://127.0.0.1:11434/api/tags", { timeout: 3000 });
@@ -14572,11 +14916,45 @@ app.get("/api/settings/models", (req, res) => {
       /* Ollama not running */
     }
 
+    // Try LM Studio status — prefer `/api/v0/models` (exposes `state` field
+    // so we can distinguish currently-loaded from catalog-only models, see
+    // GH #220) and fall back to the legacy `/v1/models` catalog endpoint when
+    // v0 is unavailable. Mirrors the Ollama probe so the dashboard can render
+    // a parallel "LM Studio Models" section with model id + size + load state.
+    let lmStudioModels = [];
+    let lmStudioRunning = false;
+    let lmStudioSource = null; // "v0" | "v1" | null — tells the UI whether
+    // it can trust the `loaded` flag or has to display catalog-only.
+    try {
+      const baseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
+      const lmProbe = await probeLmStudioCatalogWithState(baseUrlRaw);
+      if (lmProbe.ok) {
+        lmStudioRunning = true;
+        lmStudioSource = lmProbe.source;
+        for (const entry of lmProbe.models) {
+          lmStudioModels.push({
+            name: entry.id,
+            ownedBy: entry.ownedBy,
+            size: entry.size,
+            // null when only the legacy v1 endpoint is available — UI should
+            // suppress the badge in that case rather than mislabel models.
+            loaded: entry.loaded,
+            state: entry.state,
+          });
+        }
+      }
+    } catch {
+      /* LM Studio not running */
+    }
+
     res.json({
       model: agentDefaults.model || null,
       modelRouter: agentDefaults.modelRouter || null,
       subagentModel,
       ollamaModels,
+      lmStudioModels,
+      lmStudioRunning,
+      lmStudioSource,
     });
   } catch (err) {
     console.error("[Models] Error reading:", err);
@@ -15126,6 +15504,11 @@ app.get("/api/settings/provider-models", async (req, res) => {
       const verified = options?.verified === true;
       const source = typeof options?.source === "string" ? options.source : "configured";
       const reasoning = typeof options?.reasoning === "boolean" ? options.reasoning : undefined;
+      // GH #220: LM Studio rows carry an extra `loaded` field — true/false from
+      // `/api/v0/models`, null when only `/v1/models` catalog is available.
+      // The UI uses this to render currently-loaded models normally and gray
+      // out (or annotate) registered-but-not-loaded models.
+      const loaded = typeof options?.loaded === "boolean" ? options.loaded : undefined;
       if (seen.has(model)) {
         // Upgrade existing rows when a live verification arrives after static/config seeding.
         const idx = rowIndexByModel.get(model);
@@ -15138,6 +15521,11 @@ app.get("/api/settings/provider-models", async (req, res) => {
           // `reasoning` flag; promote it onto rows seeded earlier without it.
           if (reasoning !== undefined && rows[idx].reasoning === undefined) {
             rows[idx].reasoning = reasoning;
+          }
+          // Same pattern for the LM Studio `loaded` flag — a later v0 probe
+          // can promote it onto rows seeded by configured/registry sources.
+          if (loaded !== undefined && rows[idx].loaded === undefined) {
+            rows[idx].loaded = loaded;
           }
         }
         return;
@@ -15153,6 +15541,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
         verified,
         source,
         ...(reasoning !== undefined ? { reasoning } : {}),
+        ...(loaded !== undefined ? { loaded } : {}),
       });
     };
 
@@ -15385,8 +15774,19 @@ app.get("/api/settings/provider-models", async (req, res) => {
           }
         }
       } else if (provider === "lmstudio") {
+        // GH #220: Prefer `/api/v0/models` to capture per-model load state.
+        // Falls back to `/v1/models` (catalog-only) internally.
         const baseUrlRaw = resolveLmStudioDiscoveryBaseUrl(config, configuredProviders);
-        await fetchOpenAICompatModels(baseUrlRaw, "", false);
+        const lmProbe = await probeLmStudioCatalogWithState(baseUrlRaw);
+        if (lmProbe.ok) {
+          for (const entry of lmProbe.models) {
+            pushRow(entry.id, null, {
+              verified: true,
+              source: "live",
+              ...(typeof entry.loaded === "boolean" ? { loaded: entry.loaded } : {}),
+            });
+          }
+        }
       } else if (provider === "openrouter") {
         await fetchOpenAICompatModels(
           configuredProviders?.openrouter?.baseUrl || "https://openrouter.ai/api/v1",
@@ -18531,6 +18931,16 @@ if (require.main === module) {
       setPgSqlClientForTests,
       setReminderDeliveryHooksForTests,
       runSchedulerTick,
+      // Exposed for local-model-dropdown-fix-3 tests: probe + suggestion logic
+      // must be unit-testable independently of a running Ollama/LM Studio
+      // because CI hosts don't run either daemon.
+      collectAvailableModelsCatalog,
+      buildBackgroundModelRecommendations,
+      probeLocalModelRuntimes,
+      // GH #220: distinguishes loaded vs registered-but-not-loaded LM Studio
+      // models via `/api/v0/models`. Exposed so the probe can be unit-tested
+      // against stubbed responses.
+      probeLmStudioCatalogWithState,
       getStorageInfo() {
         return {
           backend: STORAGE_BACKEND,

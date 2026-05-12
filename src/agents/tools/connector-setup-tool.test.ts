@@ -60,6 +60,32 @@ describe("connector_setup tool", () => {
     expect(args[0]).not.toBe("/tools/aos/aos-google/installer/preflight_gws.py");
   });
 
+  it("returns a structured payload when the preflight helper is missing (GH #128)", async () => {
+    // Simulate an install where the helper script is not on disk (e.g. a
+    // broken package or stale dist). We assert we return a structured payload
+    // *without* shelling out to python3 — which would otherwise crash with
+    // `[Errno 2] No such file or directory` and surface a raw trace to the
+    // operator. See GH #128.
+    const runCommand = vi.fn();
+    const tool = createConnectorSetupTool({
+      runCommand,
+      preflightPath: "/var/empty/argent/preflight_gws.py",
+    });
+
+    const result = await tool.execute("call-1", {
+      action: "status",
+      connector: "aos-google",
+    });
+    const details = result.details as Record<string, unknown>;
+
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(details.ok).toBe(false);
+    expect(details.connector).toBe("aos-google");
+    const checks = details.checks as Array<Record<string, unknown>>;
+    expect(checks.some((c) => c.name === "gws_binary" && c.ok === false)).toBe(true);
+    expect(JSON.stringify(details)).toContain("Install the local Google Workspace helper");
+  });
+
   it("requires explicit confirmation before opening Google login", async () => {
     const runCommand = vi.fn();
     const tool = createConnectorSetupTool({ runCommand });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterConfigNavSections,
   isConfigTabAllowed,
+  isOpsSubTabAllowed,
   isRawConfigEditorAllowed,
   isWorkforceSurfaceAllowed,
   parseDashboardSurfaceProfile,
@@ -79,5 +80,25 @@ describe("dashboard surface profile", () => {
     expect(isRawConfigEditorAllowed("public-core")).toBe(false);
     expect(isWorkforceSurfaceAllowed("public-core")).toBe(false);
     expect(isWorkforceSurfaceAllowed("full")).toBe(false);
+  });
+
+  // GH #105 — workforce-only ops sub-tabs (Workloads / Org Chart) call jobs.*
+  // and org.* gateway methods that only exist with the Business overlay.
+  // Public Core must hide them so a fresh install does not surface tiles whose
+  // first poll fails (jobs.overview 500, missing org tables, etc.).
+  it("hides workforce-only operations sub-tabs in public-core", () => {
+    expect(isOpsSubTabAllowed("jobs", "public-core")).toBe(false);
+    expect(isOpsSubTabAllowed("org", "public-core")).toBe(false);
+    // Same gate also applies to "full" today because workforce is fully
+    // gated until Business overlay supplies an explicit enablement path.
+    expect(isOpsSubTabAllowed("jobs", "full")).toBe(false);
+    expect(isOpsSubTabAllowed("org", "full")).toBe(false);
+  });
+
+  it("keeps Core operations sub-tabs visible in public-core", () => {
+    for (const tab of ["map", "workflows", "tasks", "schedule"]) {
+      expect(isOpsSubTabAllowed(tab, "public-core")).toBe(true);
+      expect(isOpsSubTabAllowed(tab, "full")).toBe(true);
+    }
   });
 });

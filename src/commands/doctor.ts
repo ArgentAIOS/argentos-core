@@ -35,6 +35,7 @@ import {
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
+import { noteLaunchAgentInstallPathDrift } from "./doctor-launchagent-paths.js";
 import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
@@ -193,6 +194,7 @@ export async function doctorCommand(
   });
   await noteMacLaunchAgentOverrides();
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
+  await noteLaunchAgentInstallPathDrift();
 
   await noteSecurityWarnings(cfg);
 
@@ -267,7 +269,7 @@ export async function doctorCommand(
     nonInteractive: options.nonInteractive,
   });
 
-  const { healthOk } = await checkGatewayHealth({
+  const { healthOk, transitionState } = await checkGatewayHealth({
     runtime,
     cfg,
     timeoutMs: options.nonInteractive === true ? 3000 : 10_000,
@@ -279,6 +281,7 @@ export async function doctorCommand(
     options,
     gatewayDetailsMessage: gatewayDetails.message,
     healthOk,
+    transitionState,
     configPath: configResult.path ?? CONFIG_PATH,
   });
 

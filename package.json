@@ -1,6 +1,6 @@
 {
   "name": "argentos",
-  "version": "2026.5.6-dev.36",
+  "version": "2026.5.6.1",
   "description": "The Operating System for Personal AI",
   "keywords": [
     "agent",
@@ -60,7 +60,7 @@
     "argent:rpc": "node scripts/run-node.mjs agent --mode rpc --json",
     "argentos": "node scripts/run-node.mjs",
     "argentos:rpc": "node scripts/run-node.mjs agent --mode rpc --json",
-    "build": "pnpm canvas:a2ui:bundle && tsdown && node --import tsx scripts/canvas-a2ui-copy.ts && node --import tsx scripts/copy-hook-metadata.ts && node --import tsx scripts/write-build-info.ts && node --import tsx scripts/write-cli-compat.ts",
+    "build": "pnpm tsc:since && pnpm canvas:a2ui:bundle && tsdown && node --import tsx scripts/canvas-a2ui-copy.ts && node --import tsx scripts/copy-hook-metadata.ts && node --import tsx scripts/write-build-info.ts && node --import tsx scripts/write-cli-compat.ts",
     "canvas:a2ui:bundle": "bash scripts/bundle-a2ui.sh",
     "check": "pnpm check:repo-lane && pnpm check-invariants && pnpm tsgo && pnpm lint && pnpm format",
     "check-invariants": "node scripts/check-invariants.mjs",

@@ -78,6 +78,73 @@ function coerceLegacyStore(raw: unknown): LegacyAuthStore | null {
   return Object.keys(entries).length > 0 ? entries : null;
 }
 
+/**
+ * Self-heal `order` entries that point to profile IDs not present in `profiles`.
+ *
+ * Background (GH #193): a "gutted" auth-profiles.json — e.g. one where the
+ * `profiles` map has been partially rewritten or stripped while `order` still
+ * references the removed IDs — would silently break credential resolution.
+ * The loader filtered the dangling refs at read-time but did not heal them on
+ * disk, so every subsequent load logged the same confusing
+ * `No API key found for provider "openai-codex"` error even after a successful
+ * OAuth login wrote a new profile under a different ID.
+ *
+ * This helper removes any order entries that reference missing profiles and
+ * returns `true` when it mutated the store, so the caller can persist the
+ * cleaned-up shape. A warning is emitted per pruned reference so operators
+ * can see why their cached order changed.
+ */
+export function pruneDanglingOrderEntries(store: AuthProfileStore): boolean {
+  if (!store.order) {
+    return false;
+  }
+  let mutated = false;
+  const profileIds = new Set(Object.keys(store.profiles));
+  const next: Record<string, string[]> = {};
+  for (const [provider, ids] of Object.entries(store.order)) {
+    if (!Array.isArray(ids)) {
+      mutated = true;
+      continue;
+    }
+    const kept: string[] = [];
+    for (const id of ids) {
+      if (typeof id !== "string") {
+        mutated = true;
+        continue;
+      }
+      const trimmed = id.trim();
+      if (!trimmed) {
+        mutated = true;
+        continue;
+      }
+      if (!profileIds.has(trimmed)) {
+        log.warn("removed dangling auth-profile order entry that references missing profile", {
+          provider,
+          missingProfileId: trimmed,
+        });
+        mutated = true;
+        continue;
+      }
+      if (!kept.includes(trimmed)) {
+        kept.push(trimmed);
+      } else {
+        mutated = true;
+      }
+    }
+    if (kept.length > 0) {
+      next[provider] = kept;
+    } else if (ids.length > 0) {
+      // We had entries but all were dangling — drop the whole provider key.
+      mutated = true;
+    }
+  }
+  if (!mutated) {
+    return false;
+  }
+  store.order = Object.keys(next).length > 0 ? next : undefined;
+  return true;
+}
+
 function coerceAuthStore(raw: unknown): AuthProfileStore | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -245,7 +312,8 @@ export function loadAuthProfileStore(): AuthProfileStore {
   if (asStore) {
     // Sync from external CLI tools on every load
     const synced = syncExternalCliCredentials(asStore);
-    if (synced) {
+    const pruned = pruneDanglingOrderEntries(asStore);
+    if (synced || pruned) {
       saveJsonFile(authPath, asStore);
     }
     return asStore;
@@ -308,7 +376,8 @@ function loadAuthProfileStoreForAgent(
   if (asStore) {
     // Sync from external CLI tools on every load
     const synced = syncExternalCliCredentials(asStore);
-    if (synced) {
+    const pruned = pruneDanglingOrderEntries(asStore);
+    if (synced || pruned) {
       saveJsonFile(authPath, asStore);
     }
     return asStore;
@@ -413,6 +482,10 @@ export function ensureAuthProfileStore(
 
 export function saveAuthProfileStore(store: AuthProfileStore, agentDir?: string): void {
   const authPath = resolveAuthStorePath(agentDir);
+  // Defense in depth (GH #193): never persist `order` entries that point at
+  // missing profiles. Mutating the live store here is intentional — callers
+  // that hold the reference should see the normalized shape too.
+  pruneDanglingOrderEntries(store);
   const payload = {
     version: AUTH_STORE_VERSION,
     profiles: store.profiles,

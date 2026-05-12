@@ -92,6 +92,22 @@ export function isWorkforceSurfaceAllowed(surfaceProfile: DashboardSurfaceProfil
   return false;
 }
 
+/**
+ * Operations sub-tabs that depend on workforce APIs (jobs.*, org.*).
+ * Hidden in public Core because the underlying gateway methods only
+ * exist when the Business overlay is active — see GH #105 / fresh
+ * install dashboard residual fix.
+ */
+export const WORKFORCE_ONLY_OPS_TABS = new Set<string>(["jobs", "org"]);
+
+export function isOpsSubTabAllowed(
+  tabId: string,
+  surfaceProfile: DashboardSurfaceProfile,
+): boolean {
+  if (!WORKFORCE_ONLY_OPS_TABS.has(tabId)) return true;
+  return isWorkforceSurfaceAllowed(surfaceProfile);
+}
+
 export function isDashboardModeAllowed(
   mode: DashboardMode,
   surfaceProfile: DashboardSurfaceProfile,

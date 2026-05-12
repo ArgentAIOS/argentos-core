@@ -14,6 +14,8 @@ import {
   resolveUpdateAvailability,
 } from "../commands/status.update.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
+import { ensureDashboardLaunchAgents } from "../daemon/dashboard-launchagent-install.js";
+import { cleanLegacyGitDirEnvFromPlistFile } from "../daemon/plist-legacy-cleanup.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
 import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { trimLogTail } from "../infra/restart-sentinel.js";
@@ -64,6 +66,15 @@ export type UpdateCommandOptions = {
   tag?: string;
   timeout?: string;
   yes?: boolean;
+  /**
+   * Opt-in: allow `argent update` to regenerate `gateway.auth.token`.
+   *
+   * Default (false) preserves the existing token across updates so dashboard
+   * sessions, saved tokenized URLs, and long-running connections survive.
+   * Fresh installs (no token configured) still generate one regardless of
+   * this flag. See GH #167.
+   */
+  rotateGatewayToken?: boolean;
 };
 export type UpdateStatusOptions = {
   json?: boolean;
@@ -230,17 +241,67 @@ async function tryWriteCompletionCache(root: string, jsonMode: boolean): Promise
   }
 }
 
-async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
+async function ensureAndRestartMacDashboardServices(jsonMode: boolean): Promise<void> {
   if (process.platform !== "darwin") return;
   const uid = typeof process.getuid === "function" ? process.getuid() : null;
   if (uid == null) return;
 
+  // First: install missing / stale dashboard LaunchAgent plists so launchd has
+  // them to manage. This is the fix for ArgentAIOS/argentos-core#175 — after an
+  // install path migration, the dashboard plists could go missing and `argent
+  // update` had no way to restore them. Idempotent: matching plists are a
+  // no-op, so the common path is cheap.
+  let ensureResult: Awaited<ReturnType<typeof ensureDashboardLaunchAgents>>;
+  try {
+    ensureResult = await ensureDashboardLaunchAgents({
+      env: process.env as Record<string, string | undefined>,
+      stdout: process.stdout,
+    });
+  } catch (err) {
+    if (!jsonMode) {
+      defaultRuntime.log(theme.warn(`Dashboard LaunchAgent install failed: ${String(err)}`));
+    }
+    ensureResult = {
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: MACOS_DASHBOARD_SERVICE_LABELS.slice(),
+      reason: "install-failed",
+    };
+  }
+
+  if (!jsonMode) {
+    if (ensureResult.installed.length > 0) {
+      defaultRuntime.log(
+        theme.success(`Dashboard LaunchAgents installed: ${ensureResult.installed.join(", ")}.`),
+      );
+    }
+    if (ensureResult.updated.length > 0) {
+      defaultRuntime.log(
+        theme.success(`Dashboard LaunchAgents updated: ${ensureResult.updated.join(", ")}.`),
+      );
+    }
+    if (ensureResult.skipped.length > 0 && ensureResult.reason === "dashboard-dir-not-found") {
+      defaultRuntime.log(
+        theme.warn(
+          "Dashboard directory not found; skipped dashboard LaunchAgent install. Run `argent cs install` once the dashboard is available.",
+        ),
+      );
+    }
+  }
+
+  // Restart only the labels that were already canonical — install/update flows
+  // already bootstrap + kickstart the plist, so an extra kickstart would just
+  // be churn. The team-lead spec asked us to "track the diff to avoid
+  // restarting unnecessarily"; this is what enforces it.
+  const installedOrUpdated = new Set([...ensureResult.installed, ...ensureResult.updated]);
   const domain = `gui/${uid}`;
   const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
   const restarted: string[] = [];
   const failed: string[] = [];
 
   for (const label of MACOS_DASHBOARD_SERVICE_LABELS) {
+    if (installedOrUpdated.has(label)) continue;
     const plistPath = path.join(launchAgentsDir, `${label}.plist`);
     if (!(await pathExists(plistPath))) continue;
     const result = spawnSync("/bin/launchctl", ["kickstart", "-k", `${domain}/${label}`], {
@@ -254,12 +315,148 @@ async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
     }
   }
 
-  if (jsonMode || (restarted.length === 0 && failed.length === 0)) return;
+  if (jsonMode) return;
   if (restarted.length > 0) {
     defaultRuntime.log(theme.success(`Dashboard services restarted: ${restarted.join(", ")}.`));
   }
   if (failed.length > 0) {
     defaultRuntime.log(theme.warn(`Dashboard service restart failed: ${failed.join(", ")}.`));
+  }
+}
+
+/**
+ * Walk `~/Library/LaunchAgents` and strip legacy ARGENT_GIT_DIR /
+ * ARGENTOS_GIT_DIR env-var entries from any `ai.argent.*.plist` that still
+ * references `$HOME/argentos`. Idempotent: the common path is a no-op.
+ *
+ * Covers every gateway plist label (canonical + legacy + profile-suffixed) so
+ * a single update sweep handles operators running with `ARGENT_PROFILE` set.
+ * See GH #169.
+ */
+async function cleanLegacyGitDirEnvFromGatewayPlist(jsonMode: boolean): Promise<void> {
+  if (process.platform !== "darwin") {
+    return;
+  }
+  const home = os.homedir();
+  if (!home) {
+    return;
+  }
+
+  const launchAgentsDir = path.join(home, "Library", "LaunchAgents");
+  let entries: string[];
+  try {
+    entries = await fs.readdir(launchAgentsDir);
+  } catch {
+    // No LaunchAgents directory yet (fresh install on a clean machine).
+    return;
+  }
+
+  const cleaned: { label: string; removedKeys: string[] }[] = [];
+  for (const entry of entries) {
+    if (!entry.startsWith("ai.argent.") || !entry.endsWith(".plist")) {
+      continue;
+    }
+    const label = entry.slice(0, -".plist".length);
+    const plistPath = path.join(launchAgentsDir, entry);
+    try {
+      const result = await cleanLegacyGitDirEnvFromPlistFile(plistPath, { home });
+      if (result.changed) {
+        cleaned.push({ label, removedKeys: result.removedKeys });
+      }
+    } catch (err) {
+      if (!jsonMode) {
+        defaultRuntime.log(
+          theme.warn(`Could not clean legacy env vars from ${plistPath}: ${String(err)}`),
+        );
+      }
+    }
+  }
+
+  if (!jsonMode && cleaned.length > 0) {
+    for (const { label, removedKeys } of cleaned) {
+      defaultRuntime.log(
+        theme.muted(`Removed legacy env vars (${removedKeys.join(", ")}) from ${label}.plist.`),
+      );
+    }
+  }
+}
+
+type GatewayTokenSnapshot = {
+  /** Token captured before update ran; null if no token was configured. */
+  token: string | null;
+  /** Whether `gateway.auth.mode` was already "token" before the update. */
+  modeWasToken: boolean;
+};
+
+/** Capture the existing gateway.auth.token (and mode) before update runs. */
+function captureGatewayTokenSnapshot(
+  config: { gateway?: { auth?: { mode?: string; token?: string } } } | null | undefined,
+): GatewayTokenSnapshot {
+  const rawToken = config?.gateway?.auth?.token;
+  const token = typeof rawToken === "string" && rawToken.trim().length > 0 ? rawToken : null;
+  const modeWasToken =
+    typeof config?.gateway?.auth?.mode === "string" &&
+    config.gateway.auth.mode.trim().toLowerCase() === "token";
+  return { token, modeWasToken };
+}
+
+/**
+ * After the update flow finishes, restore the pre-update gateway.auth.token if
+ * it was clobbered by any post-update step (e.g. doctor --repair re-generating
+ * a token when the mode was reset). When `rotate=true` the caller has opted in
+ * to rotation and we leave whatever the update wrote in place. When no token
+ * existed before (fresh-install path) we also leave the new value alone.
+ *
+ * See GH #167.
+ */
+async function preserveGatewayAuthToken(params: {
+  snapshot: GatewayTokenSnapshot;
+  rotate: boolean;
+  jsonMode: boolean;
+}): Promise<void> {
+  if (params.rotate) {
+    return;
+  }
+  if (!params.snapshot.token) {
+    // Fresh install: no token to preserve. Whatever the update generated stays.
+    return;
+  }
+
+  const after = await readConfigFileSnapshot();
+  if (!after.valid) {
+    return;
+  }
+  const currentToken = after.config.gateway?.auth?.token;
+  const currentTrimmed =
+    typeof currentToken === "string" && currentToken.trim().length > 0 ? currentToken : null;
+  if (currentTrimmed === params.snapshot.token) {
+    // Token unchanged — nothing to restore.
+    return;
+  }
+
+  const restored = {
+    ...after.config,
+    gateway: {
+      ...after.config.gateway,
+      auth: {
+        ...after.config.gateway?.auth,
+        // If the operator's pre-update config had mode=token, preserve that;
+        // otherwise leave whatever mode the update wrote.
+        mode: params.snapshot.modeWasToken
+          ? "token"
+          : (after.config.gateway?.auth?.mode ?? "token"),
+        token: params.snapshot.token,
+      },
+    },
+  };
+  await writeConfigFile(restored);
+
+  if (!params.jsonMode) {
+    defaultRuntime.log(
+      theme.muted(
+        "Preserved existing gateway.auth.token (run `argent update --rotate-gateway-token` to regenerate).",
+      ),
+    );
   }
 }
 
@@ -857,6 +1054,11 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
 
   const configSnapshot = await readConfigFileSnapshot();
   let activeConfig = configSnapshot.valid ? configSnapshot.config : null;
+  // GH #167: snapshot gateway.auth.token BEFORE any update step runs so we can
+  // restore it afterwards. Default behavior is to preserve the operator's
+  // existing token; `--rotate-gateway-token` opts in to rotation.
+  const gatewayTokenSnapshot = captureGatewayTokenSnapshot(activeConfig);
+  const rotateGatewayToken = Boolean(opts.rotateGatewayToken);
   const storedChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
     : null;
@@ -1124,6 +1326,15 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     return;
   }
 
+  // GH #169: strip stale ARGENT_GIT_DIR / ARGENTOS_GIT_DIR env vars from any
+  // gateway LaunchAgent plist that still references the legacy
+  // `$HOME/argentos` path. The new canonical plist template no longer emits
+  // these (service-env.ts), but pre-existing user plists carry them forward
+  // until update rewrites them. Cleanup runs before the daemon restart so
+  // launchd picks up the cleaned plist on the next bootstrap; safe + idempotent
+  // when there's nothing to clean.
+  await cleanLegacyGitDirEnvFromGatewayPlist(Boolean(opts.json));
+
   if (activeConfig) {
     const pluginLogger = opts.json
       ? {}
@@ -1236,7 +1447,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
         if (!opts.json) {
           defaultRuntime.log(theme.success("Daemon restarted successfully."));
         }
-        await restartMacDashboardServices(Boolean(opts.json));
+        await ensureAndRestartMacDashboardServices(Boolean(opts.json));
       }
       if (!opts.json && restarted) {
         defaultRuntime.log("");
@@ -1270,6 +1481,23 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
         theme.muted(
           `Tip: Run \`${replaceCliName(formatCliCommand("argent gateway restart"), CLI_NAME)}\` to apply updates to a running gateway.`,
         ),
+      );
+    }
+  }
+
+  // GH #167: restore the pre-update gateway.auth.token if any post-update step
+  // (e.g. doctor --repair, plugin sync, daemon install) clobbered it. Opt-in
+  // rotation via `--rotate-gateway-token` skips this restore.
+  try {
+    await preserveGatewayAuthToken({
+      snapshot: gatewayTokenSnapshot,
+      rotate: rotateGatewayToken,
+      jsonMode: Boolean(opts.json),
+    });
+  } catch (err) {
+    if (!opts.json) {
+      defaultRuntime.log(
+        theme.warn(`Could not preserve gateway.auth.token across update: ${String(err)}`),
       );
     }
   }
@@ -1428,6 +1656,11 @@ export function registerUpdateCli(program: Command) {
     .option("--tag <dist-tag|version>", "Legacy package-install override for this update")
     .option("--timeout <seconds>", "Timeout for each update step in seconds (default: 1200)")
     .option("--yes", "Skip confirmation prompts (non-interactive)", false)
+    .option(
+      "--rotate-gateway-token",
+      "Allow update to regenerate gateway.auth.token (default: preserve existing token)",
+      false,
+    )
     .addHelpText("after", () => {
       const examples = [
         ["argent update", "Update a source checkout (git)"],
@@ -1437,6 +1670,10 @@ export function registerUpdateCli(program: Command) {
         ["argent update --no-restart", "Update without restarting the service"],
         ["argent update --json", "Output result as JSON"],
         ["argent update --yes", "Non-interactive (accept downgrade prompts)"],
+        [
+          "argent update --rotate-gateway-token",
+          "Regenerate gateway.auth.token during update (opt-in)",
+        ],
         ["argent update wizard", "Interactive update wizard"],
         ["argent --update", "Shorthand for argent update"],
       ] as const;
@@ -1477,6 +1714,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/update", "docs.argent.ai/cli/upda
           tag: opts.tag as string | undefined,
           timeout: opts.timeout as string | undefined,
           yes: Boolean(opts.yes),
+          rotateGatewayToken: Boolean(opts.rotateGatewayToken),
         });
       } catch (err) {
         defaultRuntime.error(String(err));

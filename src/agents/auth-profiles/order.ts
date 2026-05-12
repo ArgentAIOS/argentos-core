@@ -1,6 +1,7 @@
 import type { ArgentConfig } from "../../config/config.js";
 import type { AuthProfileStore } from "./types.js";
 import { normalizeProviderId } from "../model-selection.js";
+import { log } from "./constants.js";
 import { listProfilesForProvider } from "./profiles.js";
 import {
   clearExpiredCooldowns,
@@ -62,6 +63,16 @@ export function resolveAuthProfileOrder(params: {
   const filtered = baseOrder.filter((profileId) => {
     const cred = store.profiles[profileId];
     if (!cred) {
+      // Defense in depth (GH #193): the loader/save path normally prunes
+      // dangling order entries, but other code paths can hand us a store
+      // shape where `order` references a profile that no longer exists.
+      // Skip it loudly so operators can see the gutted state.
+      if (explicitOrder?.includes(profileId)) {
+        log.warn("skipping auth-profile order entry that references missing profile", {
+          provider,
+          missingProfileId: profileId,
+        });
+      }
       return false;
     }
     if (normalizeProviderId(cred.provider) !== providerKey) {

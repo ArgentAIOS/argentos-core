@@ -67,4 +67,47 @@ describe("formatAssistantErrorText", () => {
         "The transcript was protected for the next retry; try again or switch models if it repeats.",
     );
   });
+
+  // GH #224 — preserve the actionable `Re-authenticate with `<command>``
+  // hint that the runtime emits inside OAuth refresh errors (see
+  // parseCodexRefreshError in src/agents/openai-codex-auth.ts). When the
+  // hint is missing from raw, leave the formatted output alone — synthesis
+  // is intentionally out of scope (team-lead spec).
+  it("preserves Re-authenticate hint when present, falls back to generic when not (GH #224)", () => {
+    // Case 1: raw contains the hint inline — output must still contain it.
+    const withHint = makeAssistantError(
+      "OAuth token refresh failed for openai-codex: Codex refresh token was already " +
+        "consumed by another client. " +
+        "Re-authenticate with `argent models auth login --provider openai-codex`. " +
+        "Re-authentication is required.. Please try again or re-authenticate.",
+    );
+    const withHintResult = formatAssistantErrorText(withHint);
+    expect(withHintResult).toBeTruthy();
+    expect(withHintResult).toContain(
+      "Re-authenticate with `argent models auth login --provider openai-codex`",
+    );
+
+    // Case 1b: raw is a JSON-wrapped API payload whose inner message
+    // already contains the hint — preservation still required, defensively.
+    const wrapped = makeAssistantError(
+      '{"type":"error","error":{"type":"invalid_request_error",' +
+        '"message":"Your authentication token has been invalidated. ' +
+        'Re-authenticate with `argent models auth login --provider openai-codex`."}}',
+    );
+    const wrappedResult = formatAssistantErrorText(wrapped);
+    expect(wrappedResult).toContain(
+      "Re-authenticate with `argent models auth login --provider openai-codex`",
+    );
+
+    // Case 2: raw has no hint (different auth failure) — generic message
+    // passes through unchanged; we don't fabricate a command.
+    const withoutHint = makeAssistantError(
+      '{"type":"error","error":{"type":"invalid_request_error",' +
+        '"message":"Your authentication token has been invalidated. Please try signing in again."}}',
+    );
+    const withoutHintResult = formatAssistantErrorText(withoutHint);
+    expect(withoutHintResult).toBeTruthy();
+    expect(withoutHintResult).toContain("Your authentication token has been invalidated");
+    expect(withoutHintResult).not.toContain("Re-authenticate with");
+  });
 });
