@@ -169,7 +169,7 @@ export class StreamAdapter implements AssistantMessageEventStream {
         }
 
         case "error": {
-          const errPartial = event.error as TurnResponse;
+          const errPartial = event.error;
           this.finalMessage = this.turnResponseToMessage(errPartial);
           yield {
             type: "error",
@@ -183,7 +183,9 @@ export class StreamAdapter implements AssistantMessageEventStream {
   }
 
   async result(): Promise<AssistantMessage> {
-    if (this.finalMessage) return this.finalMessage;
+    if (this.finalMessage) {
+      return this.finalMessage;
+    }
 
     // If result() is called before iteration, consume the stream
     for await (const _ of this) {
@@ -222,7 +224,7 @@ export class StreamAdapter implements AssistantMessageEventStream {
   private appendText(msg: AssistantMessage, delta: string): void {
     const lastBlock = msg.content[msg.content.length - 1];
     if (lastBlock && lastBlock.type === "text") {
-      (lastBlock as TextContent).text += delta;
+      lastBlock.text += delta;
     } else {
       msg.content.push({ type: "text", text: delta });
     }
@@ -231,7 +233,7 @@ export class StreamAdapter implements AssistantMessageEventStream {
   private appendThinking(msg: AssistantMessage, delta: string): void {
     const lastBlock = msg.content[msg.content.length - 1];
     if (lastBlock && lastBlock.type === "thinking") {
-      (lastBlock as ThinkingContent).thinking += delta;
+      lastBlock.thinking += delta;
     } else {
       msg.content.push({ type: "thinking", thinking: delta });
     }
@@ -538,13 +540,17 @@ export class ProviderRegistry {
     const override = this.modelOverrides.get(modelId);
     if (override) {
       const provider = this.providers.get(override)?.provider;
-      if (provider) return provider;
+      if (provider) {
+        return provider;
+      }
     }
 
     // Use provider hint
     if (providerHint) {
       const provider = this.providers.get(providerHint)?.provider;
-      if (provider) return provider;
+      if (provider) {
+        return provider;
+      }
     }
 
     return undefined;
@@ -798,7 +804,7 @@ export async function collectResponse(
     if (event.type === "done") {
       response = event.response;
     } else if (event.type === "error") {
-      response = event.error as TurnResponse;
+      response = event.error;
     }
   }
   return response;

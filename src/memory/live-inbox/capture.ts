@@ -156,7 +156,9 @@ const AUDIO_TRANSCRIPT_MARKER_RE = /\[(?:AUDIO_ENABLED|DEEP_THINK|VOICE|TTS|MOOD
  */
 export function isAudioTranscriptPollution(factText: string): boolean {
   const trimmed = factText.trim();
-  if (!trimmed) return false;
+  if (!trimmed) {
+    return false;
+  }
 
   // Explicit opt-in always wins.
   if (
@@ -216,7 +218,7 @@ export function isAudioTranscriptPollutedSkill(candidate: {
   // "operator rule:" whose body is a question are also pollution.
   if (
     /^operator\s+(?:correction|rule)\s*:/i.test(candidate.title) &&
-    /\?$/.test(candidate.summary.trim())
+    candidate.summary.trim().endsWith("?")
   ) {
     return true;
   }
@@ -251,18 +253,24 @@ export function buildPersonalSkillCandidateInputFromLiveInboxCandidate(params: {
   promotedMemoryItemId: string;
 }): CreatePersonalSkillCandidateInput | null {
   const { candidate, promotedMemoryItemId } = params;
-  if (candidate.role !== "user") return null;
+  if (candidate.role !== "user") {
+    return null;
+  }
   if (candidate.candidateType !== "correction" && candidate.candidateType !== "commitment") {
     return null;
   }
-  if (!PROCEDURAL_CORRECTION_RE.test(candidate.factText)) return null;
+  if (!PROCEDURAL_CORRECTION_RE.test(candidate.factText)) {
+    return null;
+  }
 
   // Filter audio-transcript pollution: raw voice corrections and one-shot
   // questions should never become durable Personal Skills. Without this
   // filter, `[AUDIO_ENABLED]` dictation snippets were being saved verbatim as
   // skill bodies and then fuzz-matching on common operator phrases for the
   // rest of the session — leading to runaway usage counts.
-  if (isAudioTranscriptPollution(candidate.factText)) return null;
+  if (isAudioTranscriptPollution(candidate.factText)) {
+    return null;
+  }
 
   const label = candidate.candidateType === "correction" ? "operator correction" : "operator rule";
   return {
@@ -285,7 +293,9 @@ const ENTITY_RE = /\b(?:@\w+|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
 
 function extractEntities(text: string): string[] {
   const matches = text.match(ENTITY_RE);
-  if (!matches) return [];
+  if (!matches) {
+    return [];
+  }
   return [...new Set(matches)].slice(0, 5);
 }
 
@@ -416,7 +426,9 @@ export function captureFromMessage(params: {
 
   for (const pattern of ALL_PATTERNS) {
     const match = pattern.regex.exec(text);
-    if (!match) continue;
+    if (!match) {
+      continue;
+    }
 
     // Extract the fact: use the full sentence containing the match
     const factText = extractFactSentence(text, match.index);
@@ -509,7 +521,9 @@ export function captureAndPromote(params: {
   config?: CaptureAndPromoteConfig;
 }): void {
   const config = params.config ?? {};
-  if (config.enabled === false) return;
+  if (config.enabled === false) {
+    return;
+  }
 
   const { candidates, hardTriggers } = captureFromMessage({
     sessionKey: params.sessionKey,
@@ -519,7 +533,9 @@ export function captureAndPromote(params: {
     ttlHours: config.ttlHours ?? 24,
   });
 
-  if (candidates.length === 0) return;
+  if (candidates.length === 0) {
+    return;
+  }
 
   void (async () => {
     let store: MemoryAdapter;

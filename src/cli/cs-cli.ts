@@ -34,12 +34,16 @@ function hasDependencies(dir: string): boolean {
 function resolveViteEntrypoint(dir: string): string | null {
   // Primary: direct path to vite's JS entrypoint
   const direct = path.join(dir, "node_modules", "vite", "bin", "vite.js");
-  if (fs.existsSync(direct)) return direct;
+  if (fs.existsSync(direct)) {
+    return direct;
+  }
   // Fallback: resolve through .bin symlink to find the real JS target
   const binWrapper = path.join(dir, "node_modules", ".bin", "vite");
   try {
     const resolved = fs.realpathSync(binWrapper);
-    if (resolved.endsWith(".js") && fs.existsSync(resolved)) return resolved;
+    if (resolved.endsWith(".js") && fs.existsSync(resolved)) {
+      return resolved;
+    }
   } catch {}
   return null;
 }

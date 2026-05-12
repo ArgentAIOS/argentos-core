@@ -108,7 +108,9 @@ export class LcmContextEngine {
     content: string,
     tokenCount: number,
   ): Promise<string | null> {
-    if (!this.largeFiles.isLargeFile(tokenCount)) return null;
+    if (!this.largeFiles.isLargeFile(tokenCount)) {
+      return null;
+    }
     return this.largeFiles.store(this.currentSessionId, filePath, content, tokenCount);
   }
 }

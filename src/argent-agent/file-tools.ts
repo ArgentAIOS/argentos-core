@@ -33,14 +33,14 @@ const DEFAULT_MAX_LINES = 2000;
 /** Line length truncation threshold */
 const MAX_LINE_LENGTH = 2000;
 
-function textResult(text: string, details?: unknown): AgentToolResult<unknown> {
+function textResult(text: string, details?: unknown): AgentToolResult {
   return {
     content: [{ type: "text", text } as TextContent],
     details: details ?? {},
   };
 }
 
-function errorResult(message: string): AgentToolResult<unknown> {
+function errorResult(message: string): AgentToolResult {
   return textResult(`Error: ${message}`, { error: true });
 }
 
@@ -135,8 +135,8 @@ export function createReadTool(
       _toolCallId: string,
       params: ReadInput,
       _signal?: AbortSignal,
-      _onUpdate?: AgentToolUpdateCallback<unknown>,
-    ): Promise<AgentToolResult<unknown>> => {
+      _onUpdate?: AgentToolUpdateCallback,
+    ): Promise<AgentToolResult> => {
       try {
         const filePath = resolvePath(cwd, params.path);
         await ops.access(filePath);
@@ -290,8 +290,8 @@ export function createWriteTool(
       _toolCallId: string,
       params: WriteInput,
       _signal?: AbortSignal,
-      _onUpdate?: AgentToolUpdateCallback<unknown>,
-    ): Promise<AgentToolResult<unknown>> => {
+      _onUpdate?: AgentToolUpdateCallback,
+    ): Promise<AgentToolResult> => {
       try {
         const filePath = resolvePath(cwd, params.path);
         const dir = dirname(filePath);
@@ -366,8 +366,8 @@ export function createEditTool(
       _toolCallId: string,
       params: EditInput,
       _signal?: AbortSignal,
-      _onUpdate?: AgentToolUpdateCallback<unknown>,
-    ): Promise<AgentToolResult<unknown>> => {
+      _onUpdate?: AgentToolUpdateCallback,
+    ): Promise<AgentToolResult> => {
       try {
         const filePath = resolvePath(cwd, params.path);
         await ops.access(filePath);
@@ -536,8 +536,8 @@ export function createBashTool(
       _toolCallId: string,
       params: BashInput,
       signal?: AbortSignal,
-      onUpdate?: AgentToolUpdateCallback<unknown>,
-    ): Promise<AgentToolResult<unknown>> => {
+      onUpdate?: AgentToolUpdateCallback,
+    ): Promise<AgentToolResult> => {
       try {
         const command = prefix ? `${prefix}\n${params.command}` : params.command;
 
@@ -582,9 +582,11 @@ export function createBashTool(
           const kept: string[] = [];
           let size = 0;
           for (let i = lines.length - 1; i >= 0; i--) {
-            const lineSize = Buffer.byteLength(lines[i]!, "utf-8") + 1;
-            if (size + lineSize > DEFAULT_MAX_BYTES) break;
-            kept.unshift(lines[i]!);
+            const lineSize = Buffer.byteLength(lines[i], "utf-8") + 1;
+            if (size + lineSize > DEFAULT_MAX_BYTES) {
+              break;
+            }
+            kept.unshift(lines[i]);
             size += lineSize;
           }
           output =
@@ -623,10 +625,10 @@ export function createCodingTools(
     bash?: BashToolOptions;
   },
 ): [
-  AgentTool<typeof readSchema, unknown>,
-  AgentTool<typeof bashSchema, unknown>,
-  AgentTool<typeof editSchema, unknown>,
-  AgentTool<typeof writeSchema, unknown>,
+  AgentTool<typeof readSchema>,
+  AgentTool<typeof bashSchema>,
+  AgentTool<typeof editSchema>,
+  AgentTool<typeof writeSchema>,
 ] {
   return [
     createReadTool(cwd, options?.read),

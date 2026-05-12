@@ -90,7 +90,9 @@ export async function fetchLlmsTxt(baseUrl: string): Promise<LlmsManifest | null
       signal: AbortSignal.timeout(5000),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return null;
+    }
 
     const raw = await res.text();
     const manifest = parseLlmsTxt(raw);
@@ -116,11 +118,15 @@ export function parseLlmsTxt(raw: string): LlmsManifest {
 
   // Extract H1 as title
   const h1 = lines.find((l) => l.startsWith("# "));
-  if (h1) manifest.title = h1.slice(2).trim();
+  if (h1) {
+    manifest.title = h1.slice(2).trim();
+  }
 
   // Extract blockquote as description
   const blockquote = lines.find((l) => l.startsWith("> "));
-  if (blockquote) manifest.description = blockquote.slice(2).trim();
+  if (blockquote) {
+    manifest.description = blockquote.slice(2).trim();
+  }
 
   // Extract API endpoints (lines containing /api/ or starting with - /)
   manifest.apiEndpoints = lines

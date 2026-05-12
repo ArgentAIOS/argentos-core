@@ -30,7 +30,9 @@ function collectMarkdownFiles(dir: string, prefix = ""): { relPath: string; absP
     const abs = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       // Skip node_modules, .git, assets, images
-      if (["node_modules", ".git", "assets", "images", "scripts"].includes(entry.name)) continue;
+      if (["node_modules", ".git", "assets", "images", "scripts"].includes(entry.name)) {
+        continue;
+      }
       results.push(...collectMarkdownFiles(abs, rel));
     } else if (entry.isFile() && (entry.name.endsWith(".md") || entry.name.endsWith(".mdx"))) {
       results.push({ relPath: rel, absPath: abs });
@@ -43,8 +45,12 @@ function collectMarkdownFiles(dir: string, prefix = ""): { relPath: string; absP
 function extractTitle(content: string): string {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("# ")) return trimmed.slice(2).trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (trimmed.startsWith("# ")) {
+      return trimmed.slice(2).trim();
+    }
     return trimmed;
   }
   return "(untitled)";
@@ -56,7 +62,9 @@ function extractDescription(content: string): string {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) {
-      if (pastTitle) continue;
+      if (pastTitle) {
+        continue;
+      }
       continue;
     }
     if (trimmed.startsWith("# ") && !pastTitle) {
@@ -77,7 +85,9 @@ function extractDescription(content: string): string {
       const desc = trimmed.slice(2).trim();
       return desc.length > 120 ? `${desc.slice(0, 117)}...` : desc;
     }
-    if (pastTitle) continue;
+    if (pastTitle) {
+      continue;
+    }
   }
   return "";
 }
@@ -144,12 +154,14 @@ export function createOsDocsTool(): AnyAgentTool {
           for (const file of allFiles) {
             const dir = path.dirname(file.relPath);
             const group = dir === "." ? "(root)" : dir;
-            if (!byDir.has(group)) byDir.set(group, []);
+            if (!byDir.has(group)) {
+              byDir.set(group, []);
+            }
             byDir.get(group)!.push(file);
           }
-          for (const [dir, files] of [...byDir.entries()].sort()) {
+          for (const [dir, files] of [...byDir.entries()].toSorted()) {
             lines.push(`## ${dir}`, "");
-            for (const file of files.sort((a, b) => a.relPath.localeCompare(b.relPath))) {
+            for (const file of files.toSorted((a, b) => a.relPath.localeCompare(b.relPath))) {
               try {
                 const content = fs.readFileSync(file.absPath, "utf-8");
                 const title = extractTitle(content);
@@ -170,13 +182,21 @@ export function createOsDocsTool(): AnyAgentTool {
 
           // Try exact match first, then fuzzy
           let match = allFiles.find((f) => f.relPath === doc);
-          if (!match) match = allFiles.find((f) => f.relPath === `${doc}.md`);
-          if (!match) match = allFiles.find((f) => f.relPath === `argent/${doc}.md`);
-          if (!match) match = allFiles.find((f) => f.relPath.toLowerCase() === doc.toLowerCase());
-          if (!match)
+          if (!match) {
+            match = allFiles.find((f) => f.relPath === `${doc}.md`);
+          }
+          if (!match) {
+            match = allFiles.find((f) => f.relPath === `argent/${doc}.md`);
+          }
+          if (!match) {
+            match = allFiles.find((f) => f.relPath.toLowerCase() === doc.toLowerCase());
+          }
+          if (!match) {
             match = allFiles.find((f) => f.relPath.toLowerCase() === `${doc.toLowerCase()}.md`);
-          if (!match)
+          }
+          if (!match) {
             match = allFiles.find((f) => f.relPath.toLowerCase().includes(doc.toLowerCase()));
+          }
 
           if (!match) {
             const suggestions = allFiles
@@ -217,7 +237,9 @@ export function createOsDocsTool(): AnyAgentTool {
               const contentLower = content.toLowerCase();
 
               // Check if all query words appear
-              if (!queryWords.every((word) => contentLower.includes(word))) continue;
+              if (!queryWords.every((word) => contentLower.includes(word))) {
+                continue;
+              }
 
               const title = extractTitle(content);
               const lines = content.split("\n");

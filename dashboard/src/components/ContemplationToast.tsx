@@ -44,7 +44,9 @@ export function ContemplationToast({ onWakeup, enabled = true }: ContemplationTo
 
   // Connect to SSE endpoint — only depends on `enabled`, not callback identity
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
 
     const eventSource = new EventSource("/api/contemplation/events");
 
@@ -81,7 +83,9 @@ export function ContemplationToast({ onWakeup, enabled = true }: ContemplationTo
 
   // Auto-dismiss timer
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      return;
+    }
     const timer = setTimeout(dismiss, TOAST_DURATION_MS);
     return () => clearTimeout(timer);
   }, [visible, dismiss]);

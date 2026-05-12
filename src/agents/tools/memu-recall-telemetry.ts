@@ -239,7 +239,7 @@ function sanitizeEntry(entry: MemoryRecallTelemetryEntry): MemoryRecallTelemetry
     answer: sanitizeAnswer(entry.answer),
     recallFallback: entry.recallFallback
       ? {
-          used: entry.recallFallback.used === true,
+          used: entry.recallFallback.used,
           type: truncateText(entry.recallFallback.type, 32),
           reason: truncateText(entry.recallFallback.reason, 80),
           added:

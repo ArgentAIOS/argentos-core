@@ -127,7 +127,9 @@ export function ConnectorBuilderPanel(props: ConnectorBuilderPanelProps) {
   }, []);
 
   useEffect(() => {
-    if (disabled) return;
+    if (disabled) {
+      return;
+    }
     void loadRoots();
   }, [disabled, loadRoots]);
 

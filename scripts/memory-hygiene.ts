@@ -156,7 +156,7 @@ function latestTimestamp(values: Array<string | null | undefined>): string | nul
 }
 
 function selectCanonicalItem(rows: ProfileItemRow[]): ProfileItemRow {
-  const sorted = [...rows].sort((a, b) => {
+  const sorted = [...rows].toSorted((a, b) => {
     const reinforcementDelta = b.reinforcement_count - a.reinforcement_count;
     if (reinforcementDelta !== 0) {
       return reinforcementDelta;

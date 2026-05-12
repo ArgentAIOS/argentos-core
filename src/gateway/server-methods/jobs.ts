@@ -15,8 +15,12 @@ function isDevLikeRuntime(env: NodeJS.ProcessEnv): boolean {
 
 function enforceWorkforceStoragePolicy(env: NodeJS.ProcessEnv = process.env): void {
   const cfg = resolveRuntimeStorageConfig(env);
-  if (isStrictPostgresOnly(cfg)) return;
-  if (isDevLikeRuntime(env) || env.ARGENT_ALLOW_NON_PG_WORKFORCE === "1") return;
+  if (isStrictPostgresOnly(cfg)) {
+    return;
+  }
+  if (isDevLikeRuntime(env) || env.ARGENT_ALLOW_NON_PG_WORKFORCE === "1") {
+    return;
+  }
 
   const writeTo = cfg.writeTo.join(",");
   throw new Error(
@@ -40,7 +44,9 @@ async function getWorkforceStorageAdapter() {
 
 function readOptionalString(params: Record<string, unknown>, key: string): string | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -58,7 +64,9 @@ function readRequiredString(params: Record<string, unknown>, key: string): strin
 
 function readOptionalNumber(params: Record<string, unknown>, key: string): number | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`${key} must be a number`);
   }
@@ -67,7 +75,9 @@ function readOptionalNumber(params: Record<string, unknown>, key: string): numbe
 
 function readOptionalBoolean(params: Record<string, unknown>, key: string): boolean | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "boolean") {
     throw new Error(`${key} must be a boolean`);
   }
@@ -79,7 +89,9 @@ function readOptionalStringArray(
   key: string,
 ): string[] | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (!Array.isArray(value)) {
     throw new Error(`${key} must be an array`);
   }
@@ -95,7 +107,9 @@ function readOptionalJobEventSource(
   key: string,
 ): "internal_hook" | "webhook" | "manual" | "system" | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -144,7 +158,9 @@ function readOptionalObject(
   key: string,
 ): Record<string, unknown> | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${key} must be an object`);
   }
@@ -156,7 +172,9 @@ function readOptionalDeploymentStage(
   key: string,
 ): "simulate" | "shadow" | "limited-live" | "live" | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -177,7 +195,9 @@ function readOptionalPromotionState(
   key: string,
 ): "draft" | "in-review" | "approved-next-stage" | "held" | "rolled-back" | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -199,7 +219,9 @@ function readOptionalReviewStatus(
   key: string,
 ): "pending" | "approved" | "held" | "rolled-back" | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -220,7 +242,9 @@ function readOptionalRunOutcomeStatus(
   key: string,
 ): "completed" | "blocked" | "failed" | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -247,7 +271,9 @@ async function emitAuditEvent(
 ): Promise<void> {
   try {
     const enqueue = (storage.jobs as { enqueueEvent?: unknown }).enqueueEvent;
-    if (typeof enqueue !== "function") return;
+    if (typeof enqueue !== "function") {
+      return;
+    }
     await enqueue.call(storage.jobs, {
       eventType: input.eventType,
       source: input.source ?? "manual",
@@ -490,7 +516,7 @@ export const jobsHandlers: GatewayRequestHandlers = {
             enabled: false,
             promotionState: "held",
             metadata: {
-              ...(assignment.metadata ?? {}),
+              ...assignment.metadata,
               retired: {
                 retiredAt,
                 retiredBy,
@@ -506,7 +532,7 @@ export const jobsHandlers: GatewayRequestHandlers = {
       const retiredAt = new Date().toISOString();
       const retired = await storage.jobs.updateTemplate(templateId, {
         metadata: {
-          ...((template.metadata as Record<string, unknown> | undefined) ?? {}),
+          ...(template.metadata ?? {}),
           lifecycleStatus: "retired",
           retired: {
             retiredAt,
@@ -684,7 +710,7 @@ export const jobsHandlers: GatewayRequestHandlers = {
         enabled: false,
         promotionState: "held",
         metadata: {
-          ...(assignment.metadata ?? {}),
+          ...assignment.metadata,
           retired: {
             retiredAt,
             retiredBy,
@@ -819,13 +845,25 @@ export const jobsHandlers: GatewayRequestHandlers = {
         limit: readOptionalNumber(params, "limit"),
       });
       const filtered = events.filter((event) => {
-        if (source && event.source !== source) return false;
-        if (targetAgentId && event.targetAgentId !== targetAgentId) return false;
+        if (source && event.source !== source) {
+          return false;
+        }
+        if (targetAgentId && event.targetAgentId !== targetAgentId) {
+          return false;
+        }
         const linkValues = eventLinkValues(event);
-        if (runId && !linkValues.has(runId)) return false;
-        if (taskId && !linkValues.has(taskId)) return false;
-        if (assignmentId && !linkValues.has(assignmentId)) return false;
-        if (templateId && !linkValues.has(templateId)) return false;
+        if (runId && !linkValues.has(runId)) {
+          return false;
+        }
+        if (taskId && !linkValues.has(taskId)) {
+          return false;
+        }
+        if (assignmentId && !linkValues.has(assignmentId)) {
+          return false;
+        }
+        if (templateId && !linkValues.has(templateId)) {
+          return false;
+        }
         return true;
       });
       respond(true, { events: filtered }, undefined);
@@ -855,19 +893,27 @@ export const jobsHandlers: GatewayRequestHandlers = {
       ]);
       const assignmentRuns = runs
         .filter((item) => item.assignmentId === run.assignmentId)
-        .sort((left, right) => right.startedAt - left.startedAt)
+        .toSorted((left, right) => right.startedAt - left.startedAt)
         .slice(0, 15);
 
       const relatedEvents = events
         .filter((event) => {
           const linkValues = eventLinkValues(event);
-          if (linkValues.has(run.id)) return true;
-          if (linkValues.has(run.taskId)) return true;
-          if (linkValues.has(run.assignmentId)) return true;
-          if (linkValues.has(run.templateId)) return true;
+          if (linkValues.has(run.id)) {
+            return true;
+          }
+          if (linkValues.has(run.taskId)) {
+            return true;
+          }
+          if (linkValues.has(run.assignmentId)) {
+            return true;
+          }
+          if (linkValues.has(run.templateId)) {
+            return true;
+          }
           return false;
         })
-        .sort((left, right) => right.createdAt - left.createdAt);
+        .toSorted((left, right) => right.createdAt - left.createdAt);
 
       respond(
         true,
@@ -1119,8 +1165,12 @@ export const jobsHandlers: GatewayRequestHandlers = {
           nextDueAt: null,
         };
         entry.total += 1;
-        if (assignment.enabled) entry.enabled += 1;
-        if (assignment.nextRunAt && assignment.nextRunAt <= now) entry.dueNow += 1;
+        if (assignment.enabled) {
+          entry.enabled += 1;
+        }
+        if (assignment.nextRunAt && assignment.nextRunAt <= now) {
+          entry.dueNow += 1;
+        }
         if (assignment.nextRunAt) {
           entry.nextDueAt =
             entry.nextDueAt == null
@@ -1130,9 +1180,13 @@ export const jobsHandlers: GatewayRequestHandlers = {
         byAgent.set(assignment.agentId, entry);
       }
       for (const task of tasks) {
-        if (task.status !== "blocked" || !task.agentId) continue;
+        if (task.status !== "blocked" || !task.agentId) {
+          continue;
+        }
         const entry = byAgent.get(task.agentId);
-        if (entry) entry.blockedTasks += 1;
+        if (entry) {
+          entry.blockedTasks += 1;
+        }
       }
 
       respond(

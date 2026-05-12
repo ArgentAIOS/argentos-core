@@ -13,7 +13,7 @@ export async function tryHandleDiscordMessageActionGuildAdmin(params: {
   ctx: Ctx;
   resolveChannelId: () => string;
   readParentIdParam: (params: Record<string, unknown>) => string | null | undefined;
-}): Promise<AgentToolResult<unknown> | undefined> {
+}): Promise<AgentToolResult | undefined> {
   const { ctx, resolveChannelId, readParentIdParam } = params;
   const { action, params: actionParams, cfg } = ctx;
   const accountId = ctx.accountId ?? readStringParam(actionParams, "accountId");

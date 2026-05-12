@@ -118,7 +118,9 @@ function decryptPayload(
   const nonce = new Uint8Array(Buffer.from(nonceBase64, "base64"));
   const key = new Uint8Array(Buffer.from(sharedKeyBase64, "base64"));
   const result = nacl.secretbox.open(cipher, nonce, key);
-  if (!result) return null;
+  if (!result) {
+    return null;
+  }
   return new TextDecoder().decode(result);
 }
 
@@ -209,7 +211,9 @@ export class RelayClient extends EventEmitter {
 
   /** Connect to the relay server. */
   connect(): void {
-    if (this.ws) return;
+    if (this.ws) {
+      return;
+    }
     this.shuttingDown = false;
 
     try {
@@ -275,8 +279,12 @@ export class RelayClient extends EventEmitter {
   /** Send a data frame to a specific device through the relay. */
   sendToDevice(deviceId: string, message: unknown): boolean {
     const device = this.pairedDevices.get(deviceId);
-    if (!device) return false;
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    if (!device) {
+      return false;
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
 
     const plaintext = JSON.stringify(message);
     const { payload, nonce } = encryptPayload(plaintext, device.sharedKey);
@@ -351,7 +359,9 @@ export class RelayClient extends EventEmitter {
   // -------------------------------------------------------------------------
 
   private sendRegistration(): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     const timestamp = Math.floor(Date.now() / 1000);
     const signData = `${this.config.gatewayId}${timestamp}`;
@@ -396,7 +406,7 @@ export class RelayClient extends EventEmitter {
         break;
 
       case "data":
-        this.handleDataFrame(frame as DataFrame);
+        this.handleDataFrame(frame);
         break;
 
       default:
@@ -469,7 +479,9 @@ export class RelayClient extends EventEmitter {
   }
 
   private scheduleReconnect(): void {
-    if (this.shuttingDown || this.reconnectTimer) return;
+    if (this.shuttingDown || this.reconnectTimer) {
+      return;
+    }
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.ws = null;

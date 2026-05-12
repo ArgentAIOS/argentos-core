@@ -45,12 +45,12 @@ export function decryptSecret(value: string): string {
 
   const [ivHex, authTagHex, cipherHex] = parts;
   const key = getMasterKey();
-  const iv = Buffer.from(ivHex!, "hex");
-  const authTag = Buffer.from(authTagHex!, "hex");
+  const iv = Buffer.from(ivHex, "hex");
+  const authTag = Buffer.from(authTagHex, "hex");
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
 
-  let decrypted = decipher.update(cipherHex!, "hex", "utf8");
+  let decrypted = decipher.update(cipherHex, "hex", "utf8");
   decrypted += decipher.final("utf8");
   return decrypted;
 }

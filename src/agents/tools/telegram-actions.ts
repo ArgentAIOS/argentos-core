@@ -72,7 +72,7 @@ export function readTelegramButtons(
 export async function handleTelegramAction(
   params: Record<string, unknown>,
   cfg: ArgentConfig,
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   const action = readStringParam(params, "action", { required: true });
   const accountId = readStringParam(params, "accountId");
   const isActionEnabled = createActionGate(cfg.channels?.telegram?.actions);

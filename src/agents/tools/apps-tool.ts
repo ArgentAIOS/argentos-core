@@ -140,10 +140,18 @@ EXAMPLES:
 
           try {
             const body: Record<string, string> = {};
-            if (name) body.name = name;
-            if (code) body.code = code;
-            if (description) body.description = description;
-            if (icon) body.icon = icon;
+            if (name) {
+              body.name = name;
+            }
+            if (code) {
+              body.code = code;
+            }
+            if (description) {
+              body.description = description;
+            }
+            if (icon) {
+              body.icon = icon;
+            }
 
             const res = await fetch(`${DASHBOARD_API}/api/apps/${appId}`, {
               method: "PATCH",

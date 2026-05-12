@@ -245,7 +245,9 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
 // ── Helpers ──
 
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "—";
+  if (!dateStr) {
+    return "—";
+  }
   try {
     return new Date(dateStr).toLocaleDateString("en-US", {
       month: "short",
@@ -258,7 +260,9 @@ function formatDate(dateStr: string | null): string {
 }
 
 function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return "—";
+  if (!dateStr) {
+    return "—";
+  }
   try {
     return new Date(dateStr).toLocaleString("en-US", {
       month: "short",
@@ -272,14 +276,22 @@ function formatDateTime(dateStr: string | null): string {
 }
 
 function emotionDot(valence: number, _arousal: number): string {
-  if (valence > 0.2) return "bg-green-400";
-  if (valence < -0.2) return "bg-red-400";
+  if (valence > 0.2) {
+    return "bg-green-400";
+  }
+  if (valence < -0.2) {
+    return "bg-red-400";
+  }
   return "bg-zinc-400";
 }
 
 function emotionSize(arousal: number): string {
-  if (arousal > 0.7) return "w-3 h-3";
-  if (arousal > 0.3) return "w-2.5 h-2.5";
+  if (arousal > 0.7) {
+    return "w-3 h-3";
+  }
+  if (arousal > 0.3) {
+    return "w-2.5 h-2.5";
+  }
   return "w-2 h-2";
 }
 
@@ -294,7 +306,9 @@ function Badge({ text, colorClass }: { text: string; colorClass?: string }) {
 }
 
 function parseJson(str: string | null | undefined): unknown[] {
-  if (!str) return [];
+  if (!str) {
+    return [];
+  }
   try {
     const parsed = JSON.parse(str);
     return Array.isArray(parsed) ? parsed : [];
@@ -307,22 +321,28 @@ function parseJson(str: string | null | undefined): unknown[] {
 
 async function fetchApi<T>(path: string): Promise<T> {
   const res = await fetch(path);
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: ${await res.text()}`);
+  }
   return res.json();
 }
 
 async function postApi<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: "POST" });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: ${await res.text()}`);
+  }
   return res.json();
 }
 
 async function downloadApi(path: string, filenameFallback: string) {
   const res = await fetch(path);
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: ${await res.text()}`);
+  }
   const blob = await res.blob();
   const disposition = res.headers.get("content-disposition") || "";
-  const match = disposition.match(/filename=\"?([^"]+)\"?/i);
+  const match = disposition.match(/filename="?([^"]+)"?/i);
   const filename = match?.[1] || filenameFallback;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -343,7 +363,9 @@ async function downloadApi(path: string, filenameFallback: string) {
  * memory migrations. GH #105.
  */
 function isMemoryUninitializedError(message: string | null | undefined): boolean {
-  if (!message) return false;
+  if (!message) {
+    return false;
+  }
   const m = message.toLowerCase();
   return (
     /api 5\d\d/.test(m) ||
@@ -463,7 +485,9 @@ function StatsView({ onError }: { onError: (e: string | null) => void }) {
   }, [load]);
 
   const applyRepair = useCallback(async () => {
-    if (!quality) return;
+    if (!quality) {
+      return;
+    }
     const previewTotal =
       quality.repairPreview.categoryMergeCandidates +
       quality.repairPreview.categoryRenameCandidates +
@@ -477,7 +501,9 @@ function StatsView({ onError }: { onError: (e: string | null) => void }) {
         `Reflection prunes: ${quality.repairPreview.duplicateEmptySisCandidates}\n\n` +
         `This rewrites historical memory records in PostgreSQL.`,
     );
-    if (!confirmed || previewTotal === 0) return;
+    if (!confirmed || previewTotal === 0) {
+      return;
+    }
     try {
       setRepairing(true);
       await postApi("/api/memory/repair/apply");
@@ -724,7 +750,7 @@ function StatsView({ onError }: { onError: (e: string | null) => void }) {
           Items by Type
         </h3>
         {Object.entries(stats.byType)
-          .sort((a, b) => b[1] - a[1])
+          .toSorted((a, b) => b[1] - a[1])
           .map(([type, count]) => (
             <div key={type} className="flex items-center gap-2">
               <span className="text-zinc-400 text-xs w-20 truncate">{type}</span>
@@ -792,9 +818,15 @@ function BrowserView({ onError }: { onError: (e: string | null) => void }) {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (query) params.set("q", query);
-      if (typeFilter) params.set("type", typeFilter);
-      if (sigFilter) params.set("significance", sigFilter);
+      if (query) {
+        params.set("q", query);
+      }
+      if (typeFilter) {
+        params.set("type", typeFilter);
+      }
+      if (sigFilter) {
+        params.set("significance", sigFilter);
+      }
       params.set("sort", sort);
       params.set("limit", String(pageSize));
       params.set("offset", String(page * pageSize));

@@ -22,7 +22,9 @@ function resolveRelativeImport(fromFile, spec) {
   const base = path.resolve(path.dirname(fromFile), spec);
   const candidates = [base, `${base}.js`, `${base}.mjs`, path.join(base, "index.js")];
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
   }
   return null;
 }
@@ -35,10 +37,14 @@ const bareSpecs = new Set();
 
 while (queue.length > 0) {
   const file = queue.pop();
-  if (!file || visited.has(file)) continue;
+  if (!file || visited.has(file)) {
+    continue;
+  }
   visited.add(file);
 
-  if (!file.endsWith(".js") && !file.endsWith(".mjs")) continue;
+  if (!file.endsWith(".js") && !file.endsWith(".mjs")) {
+    continue;
+  }
   if (!fs.existsSync(file)) {
     console.error(`Runtime dependency verification failed. Missing local module file: ${file}`);
     process.exit(1);
@@ -54,9 +60,13 @@ while (queue.length > 0) {
   }
 
   for (const im of imports) {
-    if (im.n == null) continue;
+    if (im.n == null) {
+      continue;
+    }
     const spec = im.n;
-    if (spec.startsWith("node:") || spec.startsWith("data:")) continue;
+    if (spec.startsWith("node:") || spec.startsWith("data:")) {
+      continue;
+    }
     if (spec.startsWith(".") || spec.startsWith("/")) {
       const resolved = resolveRelativeImport(file, spec);
       if (resolved == null) {
@@ -69,7 +79,9 @@ while (queue.length > 0) {
       continue;
     }
     // Skip bare dynamic imports. They are often optional and guarded by runtime conditions.
-    if (im.d !== -1) continue;
+    if (im.d !== -1) {
+      continue;
+    }
     bareSpecs.add(spec);
   }
 }
@@ -95,7 +107,7 @@ function resolvesFromRuntimeContext(spec) {
   }
 }
 const missing = [];
-for (const spec of [...bareSpecs].sort()) {
+for (const spec of [...bareSpecs].toSorted()) {
   const runtimeResolved = resolvesFromRuntimeContext(spec);
   let requireResolved = false;
   try {
@@ -111,7 +123,9 @@ for (const spec of [...bareSpecs].sort()) {
 
 if (missing.length > 0) {
   console.error("Runtime dependency verification failed. Missing packages:");
-  for (const spec of missing) console.error(`- ${spec}`);
+  for (const spec of missing) {
+    console.error(`- ${spec}`);
+  }
   process.exit(1);
 }
 
@@ -123,10 +137,14 @@ function listExtensionDependencyChecks(rootDir) {
 
   const checks = [];
   for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
     const extDir = path.join(extensionsDir, entry.name);
     const packageJsonPath = path.join(extDir, "package.json");
-    if (!fs.existsSync(packageJsonPath)) continue;
+    if (!fs.existsSync(packageJsonPath)) {
+      continue;
+    }
 
     let manifest;
     try {
@@ -148,7 +166,9 @@ function listExtensionDependencyChecks(rootDir) {
       ...Object.keys(manifest?.optionalDependencies ?? {}),
     ];
     for (const dep of deps) {
-      if (dep.startsWith("node:")) continue;
+      if (dep.startsWith("node:")) {
+        continue;
+      }
       checks.push({ extensionId: entry.name, packageJsonPath, dep });
     }
   }
@@ -169,7 +189,9 @@ for (const check of extensionChecks) {
 
 if (extensionMissing.length > 0) {
   console.error("Runtime dependency verification failed. Missing extension packages:");
-  for (const spec of extensionMissing.sort()) console.error(`- ${spec}`);
+  for (const spec of extensionMissing.toSorted()) {
+    console.error(`- ${spec}`);
+  }
   process.exit(1);
 }
 

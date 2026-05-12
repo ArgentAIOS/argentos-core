@@ -295,41 +295,61 @@ export function resetFamilyDelegationTelemetry() {
 }
 
 function readToolResultOk(result: unknown): boolean | undefined {
-  if (!result || typeof result !== "object") return undefined;
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
   const details = (result as { details?: unknown }).details;
-  if (!details || typeof details !== "object") return undefined;
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
   const ok = (details as { ok?: unknown }).ok;
   return typeof ok === "boolean" ? ok : undefined;
 }
 
 function readToolResultError(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
   const details = (result as { details?: unknown }).details;
-  if (!details || typeof details !== "object") return undefined;
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
   const error = (details as { error?: unknown }).error;
   return typeof error === "string" ? error : undefined;
 }
 
 function readToolResultSessionKey(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
   const details = (result as { details?: unknown }).details;
-  if (!details || typeof details !== "object") return undefined;
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
   const value = (details as { sessionKey?: unknown }).sessionKey;
   return typeof value === "string" ? value : undefined;
 }
 
 function readToolResultRunId(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
   const details = (result as { details?: unknown }).details;
-  if (!details || typeof details !== "object") return undefined;
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
   const value = (details as { runId?: unknown }).runId;
   return typeof value === "string" ? value : undefined;
 }
 
 function readToolResultAgent(result: unknown): Record<string, unknown> | undefined {
-  if (!result || typeof result !== "object") return undefined;
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
   const details = (result as { details?: unknown }).details;
-  if (!details || typeof details !== "object") return undefined;
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
   const agent = (details as { agent?: unknown }).agent;
   return agent && typeof agent === "object" && !Array.isArray(agent)
     ? (agent as Record<string, unknown>)
@@ -512,9 +532,11 @@ function serializeDispatchContractEvent(event: DispatchContractEvent) {
 }
 
 function sortDispatchContractEvents<T extends { id: number; eventAt: Date }>(events: T[]): T[] {
-  return events.slice().sort((a, b) => {
+  return events.slice().toSorted((a, b) => {
     const timeDiff = a.eventAt.getTime() - b.eventAt.getTime();
-    if (timeDiff !== 0) return timeDiff;
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
     return a.id - b.id;
   });
 }
@@ -779,11 +801,15 @@ const SUBAGENT_STRICT_DEFAULT_TOOLS = [
 const SUBAGENT_STRICT_DEFAULT_DENY_TOOLS = ["atera_ticket"];
 
 function normalizeToolGrantList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
   const deduped = new Set<string>();
   for (const item of value) {
     const normalized = typeof item === "string" ? item.trim().toLowerCase() : "";
-    if (!normalized) continue;
+    if (!normalized) {
+      continue;
+    }
     deduped.add(normalized);
   }
   return deduped.size > 0 ? Array.from(deduped) : [];
@@ -794,7 +820,9 @@ function isThinkTankAgent(agent: {
   role: string;
   config?: Record<string, unknown>;
 }): boolean {
-  if (THINK_TANK_AGENT_IDS.has(agent.id.toLowerCase())) return true;
+  if (THINK_TANK_AGENT_IDS.has(agent.id.toLowerCase())) {
+    return true;
+  }
   const role = String(agent.role ?? "").toLowerCase();
   const team = String(agent.config?.team ?? "").toLowerCase();
   return role.includes("think_tank") || role.includes("think-tank") || team === "think-tank";
@@ -859,7 +887,9 @@ function isTechnicalResearchTask(task: string): boolean {
     "evaluate",
     "least-privilege",
   ];
-  if (!researchHints.some((hint) => text.includes(hint))) return false;
+  if (!researchHints.some((hint) => text.includes(hint))) {
+    return false;
+  }
   return isDevTask(task);
 }
 
@@ -875,9 +905,12 @@ function scoreDispatchCandidate(
   let score = 0;
 
   if (preferredTeam === "think-tank") {
-    if (role.includes("think_tank") || role.includes("think-tank")) score += 40;
-    if (text.includes("strategy") || text.includes("recommend") || text.includes("options"))
+    if (role.includes("think_tank") || role.includes("think-tank")) {
+      score += 40;
+    }
+    if (text.includes("strategy") || text.includes("recommend") || text.includes("options")) {
       score += 20;
+    }
     return score;
   }
 
@@ -893,30 +926,54 @@ function scoreDispatchCandidate(
   const mentionsTest = text.includes("test") || text.includes("qa");
 
   if (mentionsResearch) {
-    if (role.includes("research")) score += 40;
-    if (role.includes("analyst")) score += 35;
-    if (role.includes("software_engineer")) score += 20;
+    if (role.includes("research")) {
+      score += 40;
+    }
+    if (role.includes("analyst")) {
+      score += 35;
+    }
+    if (role.includes("software_engineer")) {
+      score += 20;
+    }
   }
   if (mentionsBuild) {
-    if (role.includes("software_engineer")) score += 40;
-    if (role.includes("integration")) score += 30;
-    if (role.includes("frontend") || role.includes("backend")) score += 25;
+    if (role.includes("software_engineer")) {
+      score += 40;
+    }
+    if (role.includes("integration")) {
+      score += 30;
+    }
+    if (role.includes("frontend") || role.includes("backend")) {
+      score += 25;
+    }
   }
   if (mentionsTest) {
-    if (role.includes("qa")) score += 35;
-    if (role.includes("software_engineer")) score += 15;
+    if (role.includes("qa")) {
+      score += 35;
+    }
+    if (role.includes("software_engineer")) {
+      score += 15;
+    }
   }
 
   if (score === 0) {
-    if (role.includes("software_engineer")) score += 10;
-    if (role.includes("research")) score += 8;
-    if (role.includes("analyst")) score += 6;
+    if (role.includes("software_engineer")) {
+      score += 10;
+    }
+    if (role.includes("research")) {
+      score += 8;
+    }
+    if (role.includes("analyst")) {
+      score += 6;
+    }
   }
   return score;
 }
 
 function isModelSelectionFailure(errorText: string | undefined): boolean {
-  if (!errorText) return false;
+  if (!errorText) {
+    return false;
+  }
   const text = errorText.toLowerCase();
   return text.includes("model not allowed") || text.includes("invalid model");
 }
@@ -946,10 +1003,14 @@ function isExecutionTask(task: string): boolean {
 function mergeToolLists(primary?: string[], secondary?: string[]): string[] | undefined {
   const merged = new Set<string>();
   for (const list of [primary, secondary]) {
-    if (!list) continue;
+    if (!list) {
+      continue;
+    }
     for (const item of list) {
       const normalized = item.trim().toLowerCase();
-      if (!normalized) continue;
+      if (!normalized) {
+        continue;
+      }
       merged.add(normalized);
     }
   }
@@ -957,7 +1018,9 @@ function mergeToolLists(primary?: string[], secondary?: string[]): string[] | un
 }
 
 function intersectWithSafeTools(requested: string[] | undefined, safeTools: string[]): string[] {
-  if (!requested || requested.length === 0) return safeTools;
+  if (!requested || requested.length === 0) {
+    return safeTools;
+  }
   const safeSet = new Set(safeTools.map((tool) => tool.toLowerCase()));
   const filtered = requested.filter((tool) => safeSet.has(tool.toLowerCase()));
   return filtered.length > 0 ? filtered : safeTools;
@@ -1107,7 +1170,9 @@ async function handleDispatch(
     const seenIds = new Set<string>();
     const pushCandidate = (id: string, role: string, team?: string) => {
       const normalizedId = id.trim().toLowerCase();
-      if (!normalizedId || seenIds.has(normalizedId)) return;
+      if (!normalizedId || seenIds.has(normalizedId)) {
+        return;
+      }
       seenIds.add(normalizedId);
       candidates.push({ id, role, team });
     };

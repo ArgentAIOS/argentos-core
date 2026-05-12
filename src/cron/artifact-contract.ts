@@ -22,7 +22,9 @@ function stripCitation(summary: string): string {
 }
 
 function stringContains(haystack: string, needle: string): boolean {
-  if (!needle) return true;
+  if (!needle) {
+    return true;
+  }
   return haystack.toLowerCase().includes(needle.toLowerCase());
 }
 
@@ -108,8 +110,10 @@ function matchesTaskRequirement(task: Task, requirement: CronTaskArtifactRequire
   }
   const wantedTags = normalizeStringList(requirement.tags);
   if (wantedTags.length > 0) {
-    const taskTags = (task.tags ?? []).map((entry) => normalizeOptionalString(entry).toLowerCase());
-    const missing = wantedTags.some((entry) => !taskTags.includes(entry.toLowerCase()));
+    const taskTags = new Set(
+      (task.tags ?? []).map((entry) => normalizeOptionalString(entry).toLowerCase()),
+    );
+    const missing = wantedTags.some((entry) => !taskTags.has(entry.toLowerCase()));
     if (missing) {
       return false;
     }
@@ -119,8 +123,12 @@ function matchesTaskRequirement(task: Task, requirement: CronTaskArtifactRequire
 
 function describeDocPanelRequirement(requirement: CronDocPanelArtifactRequirement): string {
   const parts: string[] = [];
-  if (requirement.documentId) parts.push(`documentId=${requirement.documentId.trim()}`);
-  if (requirement.titleIncludes) parts.push(`title includes "${requirement.titleIncludes.trim()}"`);
+  if (requirement.documentId) {
+    parts.push(`documentId=${requirement.documentId.trim()}`);
+  }
+  if (requirement.titleIncludes) {
+    parts.push(`title includes "${requirement.titleIncludes.trim()}"`);
+  }
   if (requirement.collection) {
     parts.push(`collection=${normalizeStringList(requirement.collection).join(",")}`);
   }
@@ -132,17 +140,33 @@ function describeDocPanelRequirement(requirement: CronDocPanelArtifactRequiremen
 
 function describeTaskRequirement(requirement: CronTaskArtifactRequirement): string {
   const parts: string[] = [];
-  if (requirement.taskId) parts.push(`taskId=${requirement.taskId.trim()}`);
-  if (requirement.titleIncludes) parts.push(`title includes "${requirement.titleIncludes.trim()}"`);
-  if (requirement.assignee) parts.push(`assignee=${requirement.assignee.trim()}`);
-  if (requirement.agentId) parts.push(`agentId=${requirement.agentId.trim()}`);
+  if (requirement.taskId) {
+    parts.push(`taskId=${requirement.taskId.trim()}`);
+  }
+  if (requirement.titleIncludes) {
+    parts.push(`title includes "${requirement.titleIncludes.trim()}"`);
+  }
+  if (requirement.assignee) {
+    parts.push(`assignee=${requirement.assignee.trim()}`);
+  }
+  if (requirement.agentId) {
+    parts.push(`agentId=${requirement.agentId.trim()}`);
+  }
   const statuses = normalizeStringList(requirement.status as string | string[]);
-  if (statuses.length > 0) parts.push(`status=${statuses.join("/")}`);
+  if (statuses.length > 0) {
+    parts.push(`status=${statuses.join("/")}`);
+  }
   const sources = normalizeStringList(requirement.source as string | string[]);
-  if (sources.length > 0) parts.push(`source=${sources.join("/")}`);
+  if (sources.length > 0) {
+    parts.push(`source=${sources.join("/")}`);
+  }
   const tags = normalizeStringList(requirement.tags);
-  if (tags.length > 0) parts.push(`tags=${tags.join(",")}`);
-  if (requirement.parentTaskId) parts.push(`parentTaskId=${requirement.parentTaskId.trim()}`);
+  if (tags.length > 0) {
+    parts.push(`tags=${tags.join(",")}`);
+  }
+  if (requirement.parentTaskId) {
+    parts.push(`parentTaskId=${requirement.parentTaskId.trim()}`);
+  }
   return parts.join(", ");
 }
 

@@ -188,7 +188,7 @@ export async function readCrossChannelContextEvents(params: {
       }
     }
 
-    return events.sort((a, b) => a.timestampMs - b.timestampMs);
+    return events.toSorted((a, b) => a.timestampMs - b.timestampMs);
   } catch (err) {
     log.debug("shared context: read failed", { error: String(err), agentId });
     return [];

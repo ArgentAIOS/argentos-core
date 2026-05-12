@@ -258,7 +258,7 @@ export class OpenAIResponsesProvider implements Provider {
         if (eventType === "response.output_text.delta") {
           if (thinkingStarted && partial.thinking) {
             thinkingStarted = false;
-            yield { type: "thinking_end", thinking: partial.thinking!, partial };
+            yield { type: "thinking_end", thinking: partial.thinking, partial };
           }
           if (!textStarted) {
             textStarted = true;

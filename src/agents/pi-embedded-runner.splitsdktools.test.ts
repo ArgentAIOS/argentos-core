@@ -99,13 +99,13 @@ const _readSessionMessages = async (sessionFile: string) => {
     .map((entry) => entry.message as { role?: string; content?: unknown });
 };
 
-function createStubTool(name: string): AgentTool<unknown, unknown> {
+function createStubTool(name: string): AgentTool<unknown> {
   return {
     name,
     label: name,
     description: "",
     parameters: {},
-    execute: async () => ({}) as AgentToolResult<unknown>,
+    execute: async () => ({}) as AgentToolResult,
   };
 }
 

@@ -63,7 +63,9 @@ async function main() {
       const code = url.searchParams.get("code");
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end("<html><body><h1>Success! You can close this tab.</h1></body></html>");
-      if (code) resolveCode(code);
+      if (code) {
+        resolveCode(code);
+      }
     }
   });
 
@@ -121,7 +123,7 @@ async function main() {
     process.exit(1);
   }
 
-  const tokenData = (await tokenRes.json()) as any;
+  const tokenData = await tokenRes.json();
   console.log(`\nToken received!`);
   console.log(`  Scope: ${tokenData.scope}`);
   console.log(`  Expires in: ${tokenData.expires_in}s`);

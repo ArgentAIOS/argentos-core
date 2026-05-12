@@ -137,7 +137,9 @@ function readMessages() {
       try {
         return JSON.parse(line);
       } catch (err) {
-        throw new Error(`Invalid JSONL in ${messagesPath} at line ${index + 1}: ${err.message}`);
+        throw new Error(`Invalid JSONL in ${messagesPath} at line ${index + 1}: ${err.message}`, {
+          cause: err,
+        });
       }
     });
 }

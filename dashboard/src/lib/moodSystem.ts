@@ -657,7 +657,9 @@ export const MOOD_NAMES = Object.keys(MOODS) as MoodName[];
 export function parseMoodName(raw: string): MoodName | null {
   const lower = raw.toLowerCase().trim();
   // Exact match against the 9 MoodNames
-  if (MOODS[lower as MoodName]) return lower as MoodName;
+  if (MOODS[lower as MoodName]) {
+    return lower as MoodName;
+  }
   // Alias lookup (ElevenLabs emotions, SIS states, adverbial forms)
   return MOOD_ALIASES[lower] ?? null;
 }

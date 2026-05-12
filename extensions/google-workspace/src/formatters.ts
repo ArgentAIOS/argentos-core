@@ -2,7 +2,9 @@ import type { EmailUsageReport, GmailActivityEvent, WorkspaceUser, EmailSummary 
 
 /** Tabular email stats: date | sent | received | spam */
 export function formatEmailStats(reports: EmailUsageReport[]): string {
-  if (reports.length === 0) return "No email usage data found for the specified range.";
+  if (reports.length === 0) {
+    return "No email usage data found for the specified range.";
+  }
 
   const lines = ["Date         | Sent | Received | Spam", "------------ | ---- | -------- | ----"];
   for (const r of reports) {
@@ -43,7 +45,9 @@ export function formatUserInfo(user: WorkspaceUser): string {
 
 /** Compact user list */
 export function formatUserList(users: WorkspaceUser[]): string {
-  if (users.length === 0) return "No users found.";
+  if (users.length === 0) {
+    return "No users found.";
+  }
 
   const lines = [`${users.length} user(s) found:\n`];
   for (const u of users) {
@@ -79,13 +83,19 @@ export function formatEmailSummary(summary: EmailSummary): string {
 
 /** Activity events: timestamp, actor, event type */
 export function formatActivityEvents(events: GmailActivityEvent[]): string {
-  if (events.length === 0) return "No activity events found for the specified criteria.";
+  if (events.length === 0) {
+    return "No activity events found for the specified criteria.";
+  }
 
   const lines = [`${events.length} event(s):\n`];
   for (const e of events) {
     const parts = [e.timestamp, e.actor, e.eventType];
-    if (e.recipient) parts.push(`→ ${e.recipient}`);
-    if (e.subject) parts.push(`"${e.subject}"`);
+    if (e.recipient) {
+      parts.push(`→ ${e.recipient}`);
+    }
+    if (e.subject) {
+      parts.push(`"${e.subject}"`);
+    }
     lines.push(`  ${parts.join(" | ")}`);
   }
   return lines.join("\n");

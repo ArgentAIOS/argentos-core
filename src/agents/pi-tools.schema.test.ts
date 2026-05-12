@@ -24,6 +24,6 @@ describe("normalizeToolParameters strict validation", () => {
     } as any;
 
     const normalized = normalizeToolParameters(invalidTool);
-    expect((normalized.parameters as any).type).toBe("object");
+    expect(normalized.parameters.type).toBe("object");
   });
 });

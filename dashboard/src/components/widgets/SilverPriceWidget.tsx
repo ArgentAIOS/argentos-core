@@ -90,9 +90,13 @@ export function SilverPriceWidget({ size = "small" }: SilverPriceWidgetProps) {
     const fetchPrices = async () => {
       try {
         const response = await corsFetch("https://api.silverintel.report/api/prices/ticker");
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
         const result = await response.json();
-        if (!result?.items) throw new Error("Invalid response: missing items");
+        if (!result?.items) {
+          throw new Error("Invalid response: missing items");
+        }
         setData(result);
         setLoading(false);
       } catch (err) {

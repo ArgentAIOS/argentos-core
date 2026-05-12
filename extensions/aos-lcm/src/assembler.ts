@@ -24,7 +24,9 @@ export class ContextAssembler {
    */
   assemble(sessionId: string): string {
     const items = this.summaryStore.assembleContext(sessionId);
-    if (items.length === 0) return "";
+    if (items.length === 0) {
+      return "";
+    }
 
     const parts: string[] = [];
     const summaries = items.filter((i) => i.kind === "summary");
@@ -34,7 +36,9 @@ export class ContextAssembler {
       parts.push("[LCM Context — Compressed History]");
       parts.push("");
       for (const item of summaries) {
-        if (item.kind !== "summary") continue;
+        if (item.kind !== "summary") {
+          continue;
+        }
         const s = item.summary;
         const depthLabel =
           s.depth === 0 ? "leaf" : s.depth === 1 ? "condensed" : `depth-${s.depth}`;

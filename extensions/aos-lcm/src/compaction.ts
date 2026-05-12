@@ -44,7 +44,9 @@ export class CompactionEngine {
    * Returns the result of the compaction, or null if no compaction was needed.
    */
   async compact(sessionId: string, maxContextTokens: number): Promise<CompactionResult | null> {
-    if (!this.needsCompaction(sessionId, maxContextTokens)) return null;
+    if (!this.needsCompaction(sessionId, maxContextTokens)) {
+      return null;
+    }
 
     const tokensBefore = this.summaryStore.contextTokenCount(sessionId);
 
@@ -85,7 +87,9 @@ export class CompactionEngine {
       }
     }
 
-    if (rawMessages.length === 0) return null;
+    if (rawMessages.length === 0) {
+      return null;
+    }
 
     // Chunk raw messages into groups of ~leafChunkTokens
     const chunks = this.chunkMessages(rawMessages, this.config.leafChunkTokens);
@@ -123,7 +127,9 @@ export class CompactionEngine {
    */
   private async condenseSummaries(sessionId: string): Promise<CompactionResult | null> {
     const maxDepth = this.summaryStore.maxDepth(sessionId);
-    if (maxDepth < 0) return null;
+    if (maxDepth < 0) {
+      return null;
+    }
 
     const depthLimit =
       this.config.incrementalMaxDepth === -1
@@ -136,7 +142,9 @@ export class CompactionEngine {
 
     for (let depth = 0; depth < depthLimit; depth++) {
       const uncondensed = this.summaryStore.getUncondensedAtDepth(sessionId, depth);
-      if (uncondensed.length < MIN_CONDENSATION_FANOUT) continue;
+      if (uncondensed.length < MIN_CONDENSATION_FANOUT) {
+        continue;
+      }
 
       // Summarize the group of summaries into a higher-depth node
       const pseudoMessages: StoredMessage[] = uncondensed.map((s) => ({
@@ -167,7 +175,9 @@ export class CompactionEngine {
       highestDepth = depth + 1;
     }
 
-    if (totalCreated === 0) return null;
+    if (totalCreated === 0) {
+      return null;
+    }
 
     return {
       summariesCreated: totalCreated,

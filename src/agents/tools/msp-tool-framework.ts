@@ -63,7 +63,7 @@ export type MSPActionHandler<TConfig extends MSPToolConfig> = (
   params: Record<string, unknown>,
   config: TConfig,
   ctx: MSPToolCallContext,
-) => Promise<AgentToolResult<unknown>>;
+) => Promise<AgentToolResult>;
 
 export interface MSPToolDefinition<TConfig extends MSPToolConfig> {
   /** Tool name exposed to the agent (e.g. "atera_tickets"). */
@@ -235,7 +235,9 @@ export async function mspFetch(params: {
     }
 
     const text = await res.text();
-    if (!text.trim()) return {};
+    if (!text.trim()) {
+      return {};
+    }
     try {
       return JSON.parse(text);
     } catch {
@@ -294,11 +296,11 @@ function decryptServiceKey(val: string): string | undefined {
     const parts = val.slice(7).split(":");
     if (parts.length === 3) {
       const [ivHex, authTagHex, cipherHex] = parts;
-      const iv = Buffer.from(ivHex!, "hex");
-      const authTag = Buffer.from(authTagHex!, "hex");
+      const iv = Buffer.from(ivHex, "hex");
+      const authTag = Buffer.from(authTagHex, "hex");
       const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
       decipher.setAuthTag(authTag);
-      let decrypted = decipher.update(cipherHex!, "hex", "utf8");
+      let decrypted = decipher.update(cipherHex, "hex", "utf8");
       decrypted += decipher.final("utf8");
       return decrypted;
     }
@@ -352,7 +354,9 @@ export function getAuditStats(): Record<
       stats[key] = { calls: 0, errors: 0, totalMs: 0 };
     }
     stats[key].calls++;
-    if (!entry.success) stats[key].errors++;
+    if (!entry.success) {
+      stats[key].errors++;
+    }
     stats[key].totalMs += entry.durationMs;
   }
 
@@ -476,11 +480,11 @@ export function createMSPTool<TConfig extends MSPToolConfig>(
 // Helpers
 // ────────────────────────────────────────────────────────────────
 
-function textResult(text: string): AgentToolResult<unknown> {
+function textResult(text: string): AgentToolResult {
   return { content: [{ type: "text", text }] };
 }
 
-function truncateResultSummary(result: AgentToolResult<unknown>): string {
+function truncateResultSummary(result: AgentToolResult): string {
   const firstText = result.content?.find((c) => c.type === "text");
   if (firstText && "text" in firstText) {
     return String(firstText.text).slice(0, 100);

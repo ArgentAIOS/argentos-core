@@ -82,7 +82,7 @@ export async function handleSlackAction(
   params: Record<string, unknown>,
   cfg: ArgentConfig,
   context?: SlackActionContext,
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   const resolveChannelId = () =>
     resolveSlackChannelId(
       readStringParam(params, "channelId", {

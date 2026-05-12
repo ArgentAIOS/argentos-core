@@ -271,7 +271,7 @@ async function readConfigLikeFile(
       return undefined;
     }
     const raw = await fs.readFile(filePath, "utf-8");
-    return JSON5.parse(raw) as unknown;
+    return JSON5.parse(raw);
   } catch {
     return undefined;
   }

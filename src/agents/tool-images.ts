@@ -3,7 +3,7 @@ import type { AgentToolResult } from "../agent-core/core.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getImageMetadata, resizeToJpeg } from "../media/image-ops.js";
 
-type ToolContentBlock = AgentToolResult<unknown>["content"][number];
+type ToolContentBlock = AgentToolResult["content"][number];
 type ImageContentBlock = Extract<ToolContentBlock, { type: "image" }>;
 type TextContentBlock = Extract<ToolContentBlock, { type: "text" }>;
 
@@ -209,10 +209,10 @@ export async function sanitizeImageBlocks(
 }
 
 export async function sanitizeToolResultImages(
-  result: AgentToolResult<unknown>,
+  result: AgentToolResult,
   label: string,
   opts: { maxDimensionPx?: number; maxBytes?: number } = {},
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   const content = Array.isArray(result.content) ? result.content : [];
   if (!content.some((b) => isImageBlock(b) || isTextBlock(b))) {
     return result;

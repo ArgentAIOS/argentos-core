@@ -15,24 +15,36 @@ import type { VisemeCategory } from "../types/agentState";
 const CHAR_VISEME: Record<string, VisemeCategory> = {};
 
 // rest: space, punctuation, silence
-for (const c of " .,;:!?-–—'\"()[]{}…\n\t\r") CHAR_VISEME[c] = "rest";
+for (const c of " .,;:!?-–—'\"()[]{}…\n\t\r") {
+  CHAR_VISEME[c] = "rest";
+}
 
 // open: a, ah, aa
-for (const c of "aAàáâãäåæ") CHAR_VISEME[c] = "open";
+for (const c of "aAàáâãäåæ") {
+  CHAR_VISEME[c] = "open";
+}
 CHAR_VISEME["h"] = "open";
 CHAR_VISEME["H"] = "open";
 
 // round: o, u, w, oo
-for (const c of "oOòóôõöøuUùúûüwW") CHAR_VISEME[c] = "round";
+for (const c of "oOòóôõöøuUùúûüwW") {
+  CHAR_VISEME[c] = "round";
+}
 
 // wide: e, i, ee
-for (const c of "eEèéêëiIìíîïyY") CHAR_VISEME[c] = "wide";
+for (const c of "eEèéêëiIìíîïyY") {
+  CHAR_VISEME[c] = "wide";
+}
 
 // closed: m, b, p
-for (const c of "mMbBpP") CHAR_VISEME[c] = "closed";
+for (const c of "mMbBpP") {
+  CHAR_VISEME[c] = "closed";
+}
 
 // teeth: f, v, s, z, th
-for (const c of "fFvVsSzZtTdDnNlLrRcCgGjJkKqQxX") CHAR_VISEME[c] = "teeth";
+for (const c of "fFvVsSzZtTdDnNlLrRcCgGjJkKqQxX") {
+  CHAR_VISEME[c] = "teeth";
+}
 
 function charToViseme(ch: string): VisemeCategory {
   return CHAR_VISEME[ch] ?? "rest";
@@ -66,7 +78,9 @@ export class AmplitudeTracker {
   }
 
   private tick = (): void => {
-    if (!this.running || !this.analyser || !this.dataArray) return;
+    if (!this.running || !this.analyser || !this.dataArray) {
+      return;
+    }
     this.rafId = requestAnimationFrame(this.tick);
 
     this.analyser.getByteFrequencyData(this.dataArray);
@@ -96,7 +110,9 @@ export class VisemeScheduler {
   start(text: string, durationMs: number): void {
     this.stop();
 
-    if (!text || durationMs <= 0) return;
+    if (!text || durationMs <= 0) {
+      return;
+    }
 
     const chars = [...text];
     const charDuration = durationMs / chars.length;
@@ -128,7 +144,9 @@ export class VisemeScheduler {
   }
 
   stop(): void {
-    for (const t of this.timeouts) clearTimeout(t);
+    for (const t of this.timeouts) {
+      clearTimeout(t);
+    }
     this.timeouts = [];
   }
 }

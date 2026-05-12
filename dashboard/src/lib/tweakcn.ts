@@ -82,7 +82,9 @@ export function parseTweakCNCSS(raw: string): Record<string, string> | null {
   // Merge: dark overrides root
   const merged = { ...rootVars, ...darkVars };
 
-  if (Object.keys(merged).length === 0) return null;
+  if (Object.keys(merged).length === 0) {
+    return null;
+  }
   return merged;
 }
 

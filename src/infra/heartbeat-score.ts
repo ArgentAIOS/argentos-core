@@ -585,10 +585,14 @@ export function buildScorePromptSection(state: ScoreState): string {
  */
 export function getScoreIntervalOverride(state: ScoreState): number | null {
   const penalty = resolvePenalty(state);
-  if (penalty.intervalOverrideMs) return penalty.intervalOverrideMs;
+  if (penalty.intervalOverrideMs) {
+    return penalty.intervalOverrideMs;
+  }
 
   const reward = resolveReward(state);
-  if (reward.intervalOverrideMs) return reward.intervalOverrideMs;
+  if (reward.intervalOverrideMs) {
+    return reward.intervalOverrideMs;
+  }
 
   return null;
 }
@@ -710,7 +714,7 @@ export async function recomputeScoreStateFromJournal(
   const dateFiles = files
     .map((name) => ({ name, date: parseDateFromFilename(name) }))
     .filter((entry): entry is { name: string; date: string } => Boolean(entry.date))
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .toSorted((a, b) => a.date.localeCompare(b.date));
 
   const daily: JournalDayAggregate[] = [];
   let entriesProcessed = 0;
@@ -727,7 +731,9 @@ export async function recomputeScoreStateFromJournal(
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    if (lines.length === 0) continue;
+    if (lines.length === 0) {
+      continue;
+    }
 
     let currentScore = 0;
     let peakScore = 0;
@@ -772,7 +778,9 @@ export async function recomputeScoreStateFromJournal(
       }
     }
 
-    if (!initialized) continue;
+    if (!initialized) {
+      continue;
+    }
     daily.push({
       date: file.date,
       score: currentScore,
@@ -795,12 +803,12 @@ export async function recomputeScoreStateFromJournal(
   }
 
   const today = todayDateStr();
-  const asc = [...daily].sort((a, b) => a.date.localeCompare(b.date));
+  const asc = [...daily].toSorted((a, b) => a.date.localeCompare(b.date));
   const historyAsc = asc.filter((d) => d.date !== today);
   const todayAggregate = asc.find((d) => d.date === today);
 
   const historyDescDaily: DailyScore[] = [...historyAsc]
-    .sort((a, b) => b.date.localeCompare(a.date))
+    .toSorted((a, b) => b.date.localeCompare(a.date))
     .slice(0, MAX_HISTORY_DAYS)
     .map((d) => ({
       date: d.date,
@@ -831,7 +839,9 @@ export async function recomputeScoreStateFromJournal(
   for (const d of asc) {
     if (d.targetReached) {
       streak += 1;
-      if (streak > longestStreak) longestStreak = streak;
+      if (streak > longestStreak) {
+        longestStreak = streak;
+      }
     } else {
       streak = 0;
     }

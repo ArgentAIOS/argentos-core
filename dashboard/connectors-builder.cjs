@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const MODE_ORDER = ["readonly", "write", "full", "admin"];
+const MODE_ORDER = new Set(["readonly", "write", "full", "admin"]);
 const CATEGORY_OPTIONS = new Set([
   "general",
   "inbox",
@@ -128,8 +128,8 @@ function normalizeActionRows(actions) {
       const requiredMode = String(entry.requiredMode || "readonly")
         .trim()
         .toLowerCase();
-      if (!MODE_ORDER.includes(requiredMode)) {
-        throw new Error(`Invalid mode \"${requiredMode}\" for ${resource}.${action}.`);
+      if (!MODE_ORDER.has(requiredMode)) {
+        throw new Error(`Invalid mode "${requiredMode}" for ${resource}.${action}.`);
       }
       const summary = String(entry.summary || "").trim() || `${action} ${resource}`;
       return {
@@ -297,7 +297,9 @@ function renderConnectorMeta(params) {
 function renderCliModule(params) {
   const groupMap = new Map();
   for (const action of params.actions) {
-    if (!groupMap.has(action.resource)) groupMap.set(action.resource, []);
+    if (!groupMap.has(action.resource)) {
+      groupMap.set(action.resource, []);
+    }
     groupMap.get(action.resource).push(action);
   }
   const lines = [];
@@ -492,7 +494,7 @@ function renderTests(params) {
     "def test_capabilities_json():",
     '    result = CliRunner().invoke(cli, ["--json", "capabilities"])',
     "    assert result.exit_code == 0",
-    `    assert '\"tool\": \"${params.toolName}\"' in result.output`,
+    `    assert '"tool": "${params.toolName}"' in result.output`,
     "",
     "",
     "def test_permission_denied_for_write_path_in_readonly():",

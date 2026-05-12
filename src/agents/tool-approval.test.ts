@@ -61,9 +61,9 @@ describe("tool approval policy", () => {
 
     callGatewayToolMock.mockResolvedValue({ decision: "allow-once" });
 
-    const result = (await wrapped.execute?.("call-1", {
+    const result = await wrapped.execute?.("call-1", {
       action: "send_resend",
-    })) as AgentToolResult<unknown>;
+    });
     expect(result.details).toMatchObject({ status: "approval-pending", tool: "email_delivery" });
 
     await flushAsyncWork();

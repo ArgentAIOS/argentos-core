@@ -433,7 +433,9 @@ export async function* coreLoop(config: CoreLoopConfig): AsyncGenerator<CoreEven
   // We intercept loop events for state persistence and Redis publishing
   for await (const event of agentLoopV2(loopConfig)) {
     // Check abort
-    if (signal?.aborted) break;
+    if (signal?.aborted) {
+      break;
+    }
 
     // ── Persist & publish based on event type ──
     switch (event.type) {
@@ -532,7 +534,7 @@ export async function* coreLoop(config: CoreLoopConfig): AsyncGenerator<CoreEven
       }
 
       case "tool_end": {
-        const toolEvent = event as Extract<LoopV2Event, { type: "tool_end" }>;
+        const toolEvent = event;
 
         if (state) {
           try {
@@ -569,7 +571,7 @@ export async function* coreLoop(config: CoreLoopConfig): AsyncGenerator<CoreEven
 
       case "error": {
         if (events) {
-          const errorEvent = event as Extract<LoopV2Event, { type: "error" }>;
+          const errorEvent = event;
           const errorMsg = (errorEvent as any).error?.errorMessage ?? "Unknown error";
           await safePublish(events, {
             type: "agent:error",
@@ -708,7 +710,9 @@ export class InMemoryStateManager implements StateManager {
   ): Promise<void> {
     const turn = this.turns.get(turnId);
     if (turn) {
-      if (!turn.toolResults) turn.toolResults = [];
+      if (!turn.toolResults) {
+        turn.toolResults = [];
+      }
       turn.toolResults.push({ toolCallId, result, isError, durationMs });
     }
   }
@@ -727,7 +731,7 @@ export class InMemoryStateManager implements StateManager {
   async getTurnHistory(sessionId: string, limit = 50): Promise<TurnRecord[]> {
     return Array.from(this.turns.values())
       .filter((t) => t.sessionId === sessionId)
-      .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+      .toSorted((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
       .slice(-limit);
   }
 
@@ -784,6 +788,8 @@ async function safePublish(bus: EventBus, event: AgentLifecycleEvent): Promise<v
  * Format an error to string.
  */
 function formatError(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    return error.message;
+  }
   return String(error);
 }

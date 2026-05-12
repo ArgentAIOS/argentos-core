@@ -18,7 +18,7 @@ function buildValidPayload(overrides?: Record<string, unknown>): string {
       growth_arc: "moving from reactive to deliberate execution",
       self_insights: ["bias toward speed caused misses"],
       recommendations: ["add explicit verification checkpoint"],
-      ...(overrides || {}),
+      ...overrides,
     },
     null,
     2,
@@ -32,7 +32,9 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     expect(parsed.fallbackUsed).toBe(false);
     expect(parsed.result.patterns[0]?.name).toBe("verification-rigor");
 
@@ -48,7 +50,9 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     expect(parsed.fallbackUsed).toBe(true);
 
     const metrics = getSisConsolidationMetricsSnapshot();
@@ -61,7 +65,9 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     expect(parsed.fallbackUsed).toBe(true);
   });
 
@@ -90,7 +96,9 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
+    if (parsed.ok) {
+      return;
+    }
     expect(parsed.reason).toBe("missing-recommendations");
 
     const metrics = getSisConsolidationMetricsSnapshot();
@@ -103,7 +111,9 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
+    if (parsed.ok) {
+      return;
+    }
     expect(parsed.reason).toBe("json-parse-failed");
 
     const metrics = getSisConsolidationMetricsSnapshot();
@@ -156,7 +166,7 @@ describe("sis runner consolidation parser", () => {
       })}\n[/SIS_PATTERNS]`,
       `${buildValidPayload({ recommendations: ["focus", "verify"] })}`,
       `context\n[SIS_PATTERNS]\n${base}\n[/SIS_PATTERNS]\npost`,
-      `[SIS_PATTERNS]\n{\"patterns\": [}\n[/SIS_PATTERNS]`,
+      `[SIS_PATTERNS]\n{"patterns": [}\n[/SIS_PATTERNS]`,
     ];
 
     let successCount = 0;

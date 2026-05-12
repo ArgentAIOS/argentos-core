@@ -65,7 +65,9 @@ function now(): string {
 
 /** Clean up MIMO summaries — strip markdown noise, message IDs, very short lines */
 function cleanSummary(raw: string): string | null {
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
 
   let text = raw
     // Strip [message_id: ...] lines
@@ -75,7 +77,9 @@ function cleanSummary(raw: string): string | null {
     .trim();
 
   // Skip if too short after cleaning
-  if (text.length < MIN_LENGTH) return null;
+  if (text.length < MIN_LENGTH) {
+    return null;
+  }
 
   // Truncate very long entries to first meaningful chunk (500 chars)
   if (text.length > 500) {
@@ -233,10 +237,14 @@ async function main() {
 
   for (const obs of observations) {
     const cleaned = cleanSummary(obs.summary);
-    if (!cleaned) continue;
+    if (!cleaned) {
+      continue;
+    }
 
     const hash = contentHash(cleaned);
-    if (seenHashes.has(hash)) continue; // dedup within migration
+    if (seenHashes.has(hash)) {
+      continue;
+    } // dedup within migration
     seenHashes.add(hash);
 
     const memuType = MIMO_TO_MEMU_TYPE[obs.type] || "knowledge";
@@ -263,7 +271,7 @@ async function main() {
     typeCounts[item.memuType] = (typeCounts[item.memuType] || 0) + 1;
   }
   console.log("Type distribution:");
-  for (const [type, count] of Object.entries(typeCounts).sort((a, b) => b[1] - a[1])) {
+  for (const [type, count] of Object.entries(typeCounts).toSorted((a, b) => b[1] - a[1])) {
     console.log(`  ${type}: ${count}`);
   }
   console.log();
@@ -314,7 +322,9 @@ async function main() {
   const categoryCache = new Map<string, string>(); // name → id
 
   function getOrCreateCategory(name: string): string {
-    if (categoryCache.has(name)) return categoryCache.get(name)!;
+    if (categoryCache.has(name)) {
+      return categoryCache.get(name)!;
+    }
 
     const existing = memu.query("SELECT id FROM memory_categories WHERE name = ?").get(name) as {
       id: string;

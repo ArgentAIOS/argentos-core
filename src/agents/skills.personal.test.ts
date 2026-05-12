@@ -834,12 +834,12 @@ describe("purgeAudioTranscriptPersonalSkills", () => {
     });
 
     expect(result.scanned).toBe(7);
-    expect(result.matched.map((r) => r.id).sort()).toEqual(["p1", "p2", "p3", "p4", "p5"]);
+    expect(result.matched.map((r) => r.id).toSorted()).toEqual(["p1", "p2", "p3", "p4", "p5"]);
     expect(result.archived).toBe(5);
     expect(result.dryRun).toBe(false);
     // All updates set state=deprecated, none touch the clean rows.
     expect(updates.every((u) => u.fields.state === "deprecated")).toBe(true);
-    expect(updates.map((u) => u.id).sort()).toEqual(["p1", "p2", "p3", "p4", "p5"]);
+    expect(updates.map((u) => u.id).toSorted()).toEqual(["p1", "p2", "p3", "p4", "p5"]);
     // A review event is recorded per archived row, with previousState preserved.
     expect(events).toHaveLength(5);
     expect(events.every((e) => e.action === "deleted")).toBe(true);

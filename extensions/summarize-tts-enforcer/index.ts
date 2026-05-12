@@ -16,14 +16,20 @@ export default function register(api: any) {
     "agent:bootstrap",
     (event: any) => {
       // Inline type guard (matching canvas-docs-enforcer pattern)
-      if (event.type !== "agent" || event.action !== "bootstrap") return;
+      if (event.type !== "agent" || event.action !== "bootstrap") {
+        return;
+      }
       const ctx = event.context;
-      if (!ctx || !Array.isArray(ctx.bootstrapFiles)) return;
+      if (!ctx || !Array.isArray(ctx.bootstrapFiles)) {
+        return;
+      }
 
       // Only enforce when TTS is actually on
       const ttsAuto = ctx.cfg?.messages?.tts?.auto;
       const ttsEnabled = ctx.cfg?.messages?.tts?.enabled;
-      if (ttsAuto === "off" || ttsEnabled === false) return;
+      if (ttsAuto === "off" || ttsEnabled === false) {
+        return;
+      }
 
       const content = [
         "## MANDATORY: Spoken Summary [TTS:] Required",

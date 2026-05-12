@@ -242,9 +242,13 @@ async function tryWriteCompletionCache(root: string, jsonMode: boolean): Promise
 }
 
 async function ensureAndRestartMacDashboardServices(jsonMode: boolean): Promise<void> {
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin") {
+    return;
+  }
   const uid = typeof process.getuid === "function" ? process.getuid() : null;
-  if (uid == null) return;
+  if (uid == null) {
+    return;
+  }
 
   // First: install missing / stale dashboard LaunchAgent plists so launchd has
   // them to manage. This is the fix for ArgentAIOS/argentos-core#175 — after an
@@ -301,9 +305,13 @@ async function ensureAndRestartMacDashboardServices(jsonMode: boolean): Promise<
   const failed: string[] = [];
 
   for (const label of MACOS_DASHBOARD_SERVICE_LABELS) {
-    if (installedOrUpdated.has(label)) continue;
+    if (installedOrUpdated.has(label)) {
+      continue;
+    }
     const plistPath = path.join(launchAgentsDir, `${label}.plist`);
-    if (!(await pathExists(plistPath))) continue;
+    if (!(await pathExists(plistPath))) {
+      continue;
+    }
     const result = spawnSync("/bin/launchctl", ["kickstart", "-k", `${domain}/${label}`], {
       env: process.env,
       encoding: "utf-8",
@@ -315,7 +323,9 @@ async function ensureAndRestartMacDashboardServices(jsonMode: boolean): Promise<
     }
   }
 
-  if (jsonMode) return;
+  if (jsonMode) {
+    return;
+  }
   if (restarted.length > 0) {
     defaultRuntime.log(theme.success(`Dashboard services restarted: ${restarted.join(", ")}.`));
   }
@@ -465,7 +475,9 @@ async function runPostUpdateDoctor(params: {
   jsonMode: boolean;
   interactive: boolean;
 }): Promise<void> {
-  if (params.jsonMode) return;
+  if (params.jsonMode) {
+    return;
+  }
   const cliPath = path.join(params.root, "argent.mjs");
   if (!(await pathExists(cliPath))) {
     defaultRuntime.log(theme.warn(`Doctor skipped: CLI entry not found at ${cliPath}.`));
@@ -980,11 +992,18 @@ function printResult(result: UpdateRunResult, opts: PrintResultOptions) {
   const formatVersionInfo = (
     info: { sha?: string | null; version?: string | null; tag?: string | null } | undefined,
   ) => {
-    if (!info) return null;
+    if (!info) {
+      return null;
+    }
     const parts: string[] = [];
-    if (info.tag) parts.push(info.tag);
-    else if (info.version) parts.push(info.version);
-    if (info.sha) parts.push(info.sha.slice(0, 8));
+    if (info.tag) {
+      parts.push(info.tag);
+    } else if (info.version) {
+      parts.push(info.version);
+    }
+    if (info.sha) {
+      parts.push(info.sha.slice(0, 8));
+    }
     return parts.length > 0 ? parts.join(" / ") : null;
   };
 

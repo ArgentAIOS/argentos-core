@@ -518,7 +518,9 @@ export function buildModelChoicesFromApi(
     const mergedLocal = (rows || [])
       .map((row): ProviderModelChoice | null => {
         const rawId = String(row?.id || "").trim();
-        if (!rawId) return null;
+        if (!rawId) {
+          return null;
+        }
         return {
           id: rawId,
           name: String(row?.alias || row?.model || rawId).trim() || rawId,

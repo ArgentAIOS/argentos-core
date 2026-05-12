@@ -179,7 +179,7 @@ export class ExecutiveShadowClient {
           { status: response.status, body: text },
         );
       }
-      return schema.parse(JSON.parse(text)) as T;
+      return schema.parse(JSON.parse(text));
     } finally {
       clearTimeout(timer);
     }

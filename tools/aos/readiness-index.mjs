@@ -51,7 +51,7 @@ function readJson(filePath) {
 }
 
 function stableUnique(values) {
-  return [...new Set(values.filter(Boolean))].sort();
+  return [...new Set(values.filter(Boolean))].toSorted();
 }
 
 function hasFile(filePath) {
@@ -76,14 +76,16 @@ function connectorDirs(rootDir) {
     .filter((entry) => entry.isDirectory() && entry.name.startsWith("aos-"))
     .map((entry) => path.join(rootDir, entry.name))
     .filter((dir) => hasFile(path.join(dir, "connector.json")))
-    .sort();
+    .toSorted();
 }
 
 function extractServiceKeys(manifest) {
   const tokens = JSON.stringify(manifest).match(SECRETISH_TOKEN) ?? [];
   return stableUnique(
     tokens.filter((token) => {
-      if (["JSON", "REST", "HTTP", "HTTPS", "OAuth", "API"].includes(token)) return false;
+      if (["JSON", "REST", "HTTP", "HTTPS", "OAuth", "API"].includes(token)) {
+        return false;
+      }
       return (
         SERVICE_KEY_EXACT.has(token) ||
         SERVICE_KEY_SUFFIXES.some((suffix) => token.endsWith(suffix))
@@ -130,19 +132,31 @@ function classifyConnector({ manifest, harness }) {
       serialized.includes("scaffolded write") ||
       previewWriteCommands.length === writeCommands.length);
 
-  if (!harness.present || commands.length === 0) return "manifest-only";
-  if (scope.scaffold_only === true || manifest.scaffold_only === true) return "scaffold/deferred";
-  if (hasPreviewWrites) return "preview-only";
-  if (writeCommands.length > 0 && scope.write_bridge_available === true) return "live-ready";
+  if (!harness.present || commands.length === 0) {
+    return "manifest-only";
+  }
+  if (scope.scaffold_only === true || manifest.scaffold_only === true) {
+    return "scaffold/deferred";
+  }
+  if (hasPreviewWrites) {
+    return "preview-only";
+  }
+  if (writeCommands.length > 0 && scope.write_bridge_available === true) {
+    return "live-ready";
+  }
   if (
     writeCommands.length > 0 &&
     scope.live_backend_available === true &&
     scope.write_bridge_available !== false
-  )
+  ) {
     return "live-ready";
-  if (writeCommands.length > 0 && harness.tests && scope.write_bridge_available !== false)
+  }
+  if (writeCommands.length > 0 && harness.tests && scope.write_bridge_available !== false) {
     return "live-ready";
-  if (readCommands.length > 0) return "read-only";
+  }
+  if (readCommands.length > 0) {
+    return "read-only";
+  }
   return "manifest-only";
 }
 
@@ -152,20 +166,34 @@ function commandReadiness({ command, connectorReadiness, manifest }) {
   }
   const actionClass = commandClass(command);
   if (actionClass === "read") {
-    if (connectorReadiness === "manifest-only") return "manifest-only";
-    if (connectorReadiness === "scaffold/deferred") return "scaffold/deferred";
+    if (connectorReadiness === "manifest-only") {
+      return "manifest-only";
+    }
+    if (connectorReadiness === "scaffold/deferred") {
+      return "scaffold/deferred";
+    }
     return "read-only";
   }
 
-  if (connectorReadiness === "preview-only") return "preview-only";
-  if (connectorReadiness === "live-ready") return "live-ready";
-  if (connectorReadiness === "manifest-only") return "manifest-only";
-  if (manifest.scope?.write_bridge_available === false) return "preview-only";
+  if (connectorReadiness === "preview-only") {
+    return "preview-only";
+  }
+  if (connectorReadiness === "live-ready") {
+    return "live-ready";
+  }
+  if (connectorReadiness === "manifest-only") {
+    return "manifest-only";
+  }
+  if (manifest.scope?.write_bridge_available === false) {
+    return "preview-only";
+  }
   return "scaffold/deferred";
 }
 
 function commandSideEffect(command, readiness) {
-  if (command.side_effect_level) return command.side_effect_level;
+  if (command.side_effect_level) {
+    return command.side_effect_level;
+  }
   if (commandClass(command) === "write") {
     return readiness === "preview-only" ? "preview_or_scaffold_only" : "external_mutation";
   }
@@ -302,10 +330,15 @@ function parseArgs(argv) {
   const options = { rootDir: DEFAULT_ROOT, outputPath: DEFAULT_OUTPUT, check: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--root") options.rootDir = argv[++index];
-    else if (arg === "--output") options.outputPath = argv[++index];
-    else if (arg === "--check") options.check = true;
-    else throw new Error(`Unknown argument: ${arg}`);
+    if (arg === "--root") {
+      options.rootDir = argv[++index];
+    } else if (arg === "--output") {
+      options.outputPath = argv[++index];
+    } else if (arg === "--check") {
+      options.check = true;
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
   }
   return options;
 }

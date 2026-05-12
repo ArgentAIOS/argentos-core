@@ -46,7 +46,9 @@ export const terminalSessions = new Map<string, TerminalSession>();
 let cachedSpawnPty: PtySpawn | null = null;
 
 async function getSpawnPty(): Promise<PtySpawn> {
-  if (cachedSpawnPty) return cachedSpawnPty;
+  if (cachedSpawnPty) {
+    return cachedSpawnPty;
+  }
   const ptyModule = (await import("@lydell/node-pty")) as unknown as {
     spawn?: PtySpawn;
     default?: { spawn?: PtySpawn };
@@ -69,7 +71,9 @@ function appendBuffer(session: TerminalSession, chunk: string): void {
 }
 
 function resetIdleTimer(session: TerminalSession): void {
-  if (session.idleTimer) clearTimeout(session.idleTimer);
+  if (session.idleTimer) {
+    clearTimeout(session.idleTimer);
+  }
   session.idleTimer = setTimeout(() => {
     killSession(session.id);
   }, IDLE_TIMEOUT_MS);
@@ -77,8 +81,12 @@ function resetIdleTimer(session: TerminalSession): void {
 
 function killSession(id: string): void {
   const session = terminalSessions.get(id);
-  if (!session) return;
-  if (session.idleTimer) clearTimeout(session.idleTimer);
+  if (!session) {
+    return;
+  }
+  if (session.idleTimer) {
+    clearTimeout(session.idleTimer);
+  }
   if (!session.exited) {
     try {
       session.pty.kill();
@@ -103,14 +111,19 @@ export async function createTerminalSession(opts: {
   const home = os.homedir();
   // Resolve ~ and ~/ to absolute home path (tilde is shell expansion, not OS path)
   let cwd = opts.cwd || home || "/tmp";
-  if (cwd === "~") cwd = home;
-  else if (cwd.startsWith("~/")) cwd = path.join(home, cwd.slice(2));
+  if (cwd === "~") {
+    cwd = home;
+  } else if (cwd.startsWith("~/")) {
+    cwd = path.join(home, cwd.slice(2));
+  }
   const id = `term-${crypto.randomUUID().slice(0, 8)}`;
 
   // Build clean env — filter out undefined values that break node-pty
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (v != null) env[k] = v;
+    if (v != null) {
+      env[k] = v;
+    }
   }
   env.TERM = env.TERM || "xterm-256color";
 
@@ -150,7 +163,9 @@ export async function createTerminalSession(opts: {
   pty.onExit(({ exitCode }) => {
     session.exited = true;
     session.exitCode = exitCode;
-    if (session.idleTimer) clearTimeout(session.idleTimer);
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer);
+    }
     opts.broadcast?.("terminal", { id, stream: "exit", code: exitCode });
     // Clean up after a delay so dashboard can receive the exit event
     setTimeout(() => terminalSessions.delete(id), 5000);

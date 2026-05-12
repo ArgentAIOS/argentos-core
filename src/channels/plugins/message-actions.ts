@@ -37,7 +37,7 @@ export function supportsChannelMessageCards(cfg: ArgentConfig): boolean {
 
 export async function dispatchChannelMessageAction(
   ctx: ChannelMessageActionContext,
-): Promise<AgentToolResult<unknown> | null> {
+): Promise<AgentToolResult | null> {
   const plugin = getChannelPlugin(ctx.channel);
   if (!plugin?.actions?.handleAction) {
     return null;

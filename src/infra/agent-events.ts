@@ -53,7 +53,7 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   }
   if (context.timings) {
     existing.timings = {
-      ...(existing.timings ?? {}),
+      ...existing.timings,
       ...context.timings,
     };
   }

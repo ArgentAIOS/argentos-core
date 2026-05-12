@@ -62,7 +62,9 @@ function makeFetchStub(handlers) {
     const u = String(url);
     for (const [pattern, response] of Object.entries(handlers)) {
       if (u.includes(pattern)) {
-        if (response instanceof Error) throw response;
+        if (response instanceof Error) {
+          throw response;
+        }
         return response;
       }
     }
@@ -110,7 +112,7 @@ describe("probeLocalModelRuntimes", () => {
     assert.strictEqual(lm.running, true, "LM Studio reports running");
     assert.strictEqual(lm.source, "v1", "fell back to legacy v1 endpoint");
     assert.strictEqual(lm.models.length, 2);
-    assert.deepStrictEqual(lm.models.map((m) => m.ref).sort(), [
+    assert.deepStrictEqual(lm.models.map((m) => m.ref).toSorted(), [
       "lmstudio/google/gemma-4-31b",
       "lmstudio/qwen/qwen3.6-35b-a3b",
     ]);
@@ -177,17 +179,16 @@ describe("probeLocalModelRuntimes", () => {
     // never recommends a not-loaded model. The not-loaded gemma must not
     // appear with liveRuntime provenance.
     const lmPushed = pushed.filter((p) => p.id.startsWith("lmstudio/"));
-    const liveRefs = lmPushed.filter((p) => p.params?.liveRuntime === "lmstudio").map((p) => p.id);
-    assert.ok(
-      liveRefs.includes("lmstudio/qwen/qwen3.6-35b-a3b"),
-      "loaded qwen model is marked live",
+    const liveRefs = new Set(
+      lmPushed.filter((p) => p.params?.liveRuntime === "lmstudio").map((p) => p.id),
     );
+    assert.ok(liveRefs.has("lmstudio/qwen/qwen3.6-35b-a3b"), "loaded qwen model is marked live");
     assert.ok(
-      liveRefs.includes("lmstudio/nvidia/nemotron-3-super"),
+      liveRefs.has("lmstudio/nvidia/nemotron-3-super"),
       "loaded nemotron model is marked live",
     );
     assert.ok(
-      !liveRefs.includes("lmstudio/google/gemma-4-31b"),
+      !liveRefs.has("lmstudio/google/gemma-4-31b"),
       "not-loaded gemma must NOT be stamped liveRuntime (would mislead suggestion engine)",
     );
   });
@@ -376,11 +377,15 @@ describe("buildBackgroundModelRecommendations (Bug 3: suggestion filter)", () =>
         })),
       },
     ];
-    for (const id of liveLmStudio)
+    for (const id of liveLmStudio) {
       models.push({ id: `lmstudio/${id}`, alias: null, params: { liveRuntime: "lmstudio" } });
-    for (const id of liveOllama)
+    }
+    for (const id of liveOllama) {
       models.push({ id: `ollama/${id}`, alias: null, params: { liveRuntime: "ollama" } });
-    for (const id of configuredOnly) models.push({ id, alias: null, params: null });
+    }
+    for (const id of configuredOnly) {
+      models.push({ id, alias: null, params: null });
+    }
     return { models, providers: [], localRuntimes };
   }
 
@@ -445,7 +450,9 @@ describe("buildBackgroundModelRecommendations (Bug 3: suggestion filter)", () =>
     const recs = api.buildBackgroundModelRecommendations(config, catalog);
     for (const laneName of ["contemplation", "sis", "heartbeat", "executionWorker"]) {
       const ref = recs.lanes[laneName].suggested.ref;
-      if (!ref) continue;
+      if (!ref) {
+        continue;
+      }
       assert.ok(
         !ref.startsWith("ollama/"),
         `lane ${laneName} should not suggest Ollama when daemon is down (got ${ref})`,

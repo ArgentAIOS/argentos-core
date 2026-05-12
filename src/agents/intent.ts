@@ -103,8 +103,8 @@ function mergePolicy(parent: IntentPolicyConfig, child: IntentPolicyConfig): Int
   const normalizedParent = normalizePolicy(parent);
   const normalizedChild = normalizePolicy(child);
   const mergedEscalation = {
-    ...(normalizedParent.escalation ?? {}),
-    ...(normalizedChild.escalation ?? {}),
+    ...normalizedParent.escalation,
+    ...normalizedChild.escalation,
   };
 
   const merged: IntentPolicyConfig = {
@@ -123,7 +123,7 @@ function mergePolicy(parent: IntentPolicyConfig, child: IntentPolicyConfig): Int
     normalizedChild.escalation?.customerTiersAlwaysEscalate
   ) {
     merged.escalation = {
-      ...(merged.escalation ?? {}),
+      ...merged.escalation,
       customerTiersAlwaysEscalate: mergeList(
         normalizedParent.escalation?.customerTiersAlwaysEscalate,
         normalizedChild.escalation?.customerTiersAlwaysEscalate,

@@ -160,13 +160,17 @@ const HeygenVideoSchema = Type.Object({
 type AspectRatio = "16:9" | "9:16" | "1:1";
 
 function parseObjectParam(raw: unknown, label: string): Record<string, unknown> | undefined {
-  if (raw === undefined || raw === null) return undefined;
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     return raw as Record<string, unknown>;
   }
   if (typeof raw === "string") {
     const text = raw.trim();
-    if (!text) return undefined;
+    if (!text) {
+      return undefined;
+    }
     try {
       const parsed = JSON.parse(text) as unknown;
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -176,6 +180,7 @@ function parseObjectParam(raw: unknown, label: string): Record<string, unknown> 
     } catch (err) {
       throw new Error(
         `${label} must be valid JSON object: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
       );
     }
   }
@@ -184,7 +189,9 @@ function parseObjectParam(raw: unknown, label: string): Record<string, unknown> 
 
 function readOptionalString(rec: Record<string, unknown>, key: string): string | undefined {
   const raw = rec[key];
-  if (typeof raw !== "string") return undefined;
+  if (typeof raw !== "string") {
+    return undefined;
+  }
   const trimmed = raw.trim();
   return trimmed || undefined;
 }
@@ -200,29 +207,47 @@ function readOptionalNumber(
   pathLabel: string,
 ): number | undefined {
   const raw = rec[key];
-  if (raw === undefined || raw === null || raw === "") return undefined;
+  if (raw === undefined || raw === null || raw === "") {
+    return undefined;
+  }
   if (typeof raw === "number" && Number.isFinite(raw)) {
     return raw;
   }
   if (typeof raw === "string") {
     const parsed = Number(raw);
-    if (Number.isFinite(parsed)) return parsed;
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
   }
   throw new Error(`${pathLabel}.${key} must be a number`);
 }
 
 function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  if (value < min) return min;
-  if (value > max) return max;
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
   return value;
 }
 
 function resolveAspectDimensions(aspect?: string): { width: number; height: number } | undefined {
-  if (!aspect) return undefined;
-  if (aspect === "16:9") return { width: 1280, height: 720 };
-  if (aspect === "9:16") return { width: 720, height: 1280 };
-  if (aspect === "1:1") return { width: 1080, height: 1080 };
+  if (!aspect) {
+    return undefined;
+  }
+  if (aspect === "16:9") {
+    return { width: 1280, height: 720 };
+  }
+  if (aspect === "9:16") {
+    return { width: 720, height: 1280 };
+  }
+  if (aspect === "1:1") {
+    return { width: 1080, height: 1080 };
+  }
   return undefined;
 }
 
@@ -236,27 +261,39 @@ function resolveOutputDir(raw?: string): string {
 
 function extractVideoId(payload: Record<string, unknown>): string | undefined {
   const direct = payload.video_id;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
   const data = payload.data;
   if (data && typeof data === "object") {
     const nested = (data as Record<string, unknown>).video_id;
-    if (typeof nested === "string" && nested.trim()) return nested.trim();
+    if (typeof nested === "string" && nested.trim()) {
+      return nested.trim();
+    }
   }
   return undefined;
 }
 
 function extractVideoUrl(payload: Record<string, unknown>): string | undefined {
   const direct = payload.video_url;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
   const url = payload.url;
-  if (typeof url === "string" && url.trim()) return url.trim();
+  if (typeof url === "string" && url.trim()) {
+    return url.trim();
+  }
   const data = payload.data;
   if (data && typeof data === "object") {
     const nestedData = data as Record<string, unknown>;
     const nestedVideoUrl = nestedData.video_url;
-    if (typeof nestedVideoUrl === "string" && nestedVideoUrl.trim()) return nestedVideoUrl.trim();
+    if (typeof nestedVideoUrl === "string" && nestedVideoUrl.trim()) {
+      return nestedVideoUrl.trim();
+    }
     const nestedUrl = nestedData.url;
-    if (typeof nestedUrl === "string" && nestedUrl.trim()) return nestedUrl.trim();
+    if (typeof nestedUrl === "string" && nestedUrl.trim()) {
+      return nestedUrl.trim();
+    }
   }
   return undefined;
 }
@@ -445,7 +482,9 @@ function buildBackgroundInput(
   if (!backgroundType && backgroundValue) {
     throw new Error(`${pathLabel}.background_type required when background_value is provided`);
   }
-  if (!backgroundType || !backgroundValue) return undefined;
+  if (!backgroundType || !backgroundValue) {
+    return undefined;
+  }
 
   return {
     type: backgroundType,

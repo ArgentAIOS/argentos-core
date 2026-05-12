@@ -36,17 +36,23 @@ function textResult(text: string) {
 }
 
 function shouldUseAppleScriptBridge(): boolean {
-  if (process.platform !== "darwin") return false;
+  if (process.platform !== "darwin") {
+    return false;
+  }
   const override = String(process.env.ARGENT_MEETING_USE_OSASCRIPT ?? "")
     .trim()
     .toLowerCase();
-  if (override === "1" || override === "true" || override === "yes") return true;
-  if (override === "0" || override === "false" || override === "no") return false;
+  if (override === "1" || override === "true" || override === "yes") {
+    return true;
+  }
+  if (override === "0" || override === "false" || override === "no") {
+    return false;
+  }
   return Boolean(process.env.ARGENT_LAUNCHD_LABEL);
 }
 
 function shellEscape(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 async function runAppleScriptShell(command: string, timeout = 20_000): Promise<string> {
@@ -323,7 +329,9 @@ function resolveBinaryPath(preferredPath?: string): { resolved?: string; attempt
   for (const candidate of attempted) {
     try {
       const stat = fsSync.statSync(candidate);
-      if (stat.isFile()) return { resolved: candidate, attempted };
+      if (stat.isFile()) {
+        return { resolved: candidate, attempted };
+      }
     } catch {
       // continue
     }
@@ -343,7 +351,9 @@ async function fileSize(filePath: string): Promise<number> {
 async function readTail(filePath: string, maxChars = 1600): Promise<string> {
   try {
     const text = await fs.readFile(filePath, "utf-8");
-    if (text.length <= maxChars) return text;
+    if (text.length <= maxChars) {
+      return text;
+    }
     return text.slice(-maxChars);
   } catch {
     return "";
@@ -351,7 +361,9 @@ async function readTail(filePath: string, maxChars = 1600): Promise<string> {
 }
 
 function processExists(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false;
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
   try {
     process.kill(pid, 0);
     return true;
@@ -445,7 +457,7 @@ async function ffmpegSplit(
   const files = await fs.readdir(outputDir);
   return files
     .filter((f) => f.startsWith(`${baseName}-chunk-`) && f.endsWith(".m4a"))
-    .sort()
+    .toSorted()
     .map((f) => path.join(outputDir, f));
 }
 
@@ -455,17 +467,25 @@ function readBooleanLikeParam(
   defaultValue = false,
 ): boolean {
   const raw = params[key];
-  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "boolean") {
+    return raw;
+  }
   if (typeof raw === "string") {
     const value = raw.trim().toLowerCase();
-    if (value === "true" || value === "1" || value === "yes" || value === "on") return true;
-    if (value === "false" || value === "0" || value === "no" || value === "off") return false;
+    if (value === "true" || value === "1" || value === "yes" || value === "on") {
+      return true;
+    }
+    if (value === "false" || value === "0" || value === "no" || value === "off") {
+      return false;
+    }
   }
   return defaultValue;
 }
 
 function normalizeOptionalString(value: string | null | undefined): string | undefined {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
@@ -492,7 +512,9 @@ function splitTranscriptSentences(transcript: string): string[] {
     .replace(/\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!normalized) return [];
+  if (!normalized) {
+    return [];
+  }
   return normalized
     .split(/(?<=[.!?])\s+/)
     .map((part) => part.trim())
@@ -507,18 +529,26 @@ function extractActionItems(lines: string[], sentences: string[]): MeetingAction
   const trigger =
     /\b(action item|todo|to-?do|next step|follow[\s-]?up|assigned|owner|need to|needs to|must|should|will)\b/i;
   const ownerPattern = /(?:owner|assignee|assigned to)[:\s]+([A-Za-z][A-Za-z .'-]{1,40})/i;
-  const duePattern = /(?:due|by)\s+([A-Za-z0-9,\/\- ]{2,30})/i;
+  const duePattern = /(?:due|by)\s+([A-Za-z0-9,/\- ]{2,30})/i;
 
   const seen = new Set<string>();
   const out: MeetingActionItem[] = [];
   const candidates = [...lines, ...sentences];
   for (const raw of candidates) {
     const text = normalizeExtractionLine(raw);
-    if (text.length < 18 || text.length > 260) continue;
-    if (!trigger.test(text)) continue;
-    if (/\?$/.test(text)) continue;
+    if (text.length < 18 || text.length > 260) {
+      continue;
+    }
+    if (!trigger.test(text)) {
+      continue;
+    }
+    if (text.endsWith("?")) {
+      continue;
+    }
     const key = text.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     const owner = ownerPattern.exec(text)?.[1]?.trim();
     const due = duePattern.exec(text)?.[1]?.trim();
@@ -528,7 +558,9 @@ function extractActionItems(lines: string[], sentences: string[]): MeetingAction
       due,
       priority: inferTaskPriority(text),
     });
-    if (out.length >= 12) break;
+    if (out.length >= 12) {
+      break;
+    }
   }
   return out;
 }
@@ -539,13 +571,21 @@ function extractDecisions(lines: string[], sentences: string[]): string[] {
   const out: string[] = [];
   for (const raw of [...lines, ...sentences]) {
     const text = normalizeExtractionLine(raw);
-    if (text.length < 16 || text.length > 260) continue;
-    if (!trigger.test(text)) continue;
+    if (text.length < 16 || text.length > 260) {
+      continue;
+    }
+    if (!trigger.test(text)) {
+      continue;
+    }
     const key = text.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
     seen.add(key);
     out.push(text.replace(/\s*\.+\s*$/, "").trim());
-    if (out.length >= 8) break;
+    if (out.length >= 8) {
+      break;
+    }
   }
   return out;
 }
@@ -709,7 +749,9 @@ async function createTasksFromActionItems(
   let failed = 0;
   for (const item of actionItems.slice(0, requested)) {
     const title = item.text.replace(/\s+/g, " ").trim().slice(0, 160);
-    if (!title) continue;
+    if (!title) {
+      continue;
+    }
     const detailsParts = [
       `Auto-created from meeting "${entry.title}" (${meetingId})`,
       item.owner ? `Owner hint: ${item.owner}` : null,
@@ -782,7 +824,9 @@ async function publishLiveTranscriptDoc(
 }
 
 async function runLiveTranscriptTick(session: LiveTranscriptSession): Promise<void> {
-  if (session.inFlight) return;
+  if (session.inFlight) {
+    return;
+  }
   session.inFlight = true;
   try {
     const active = await readActive();
@@ -816,9 +860,13 @@ async function runLiveTranscriptTick(session: LiveTranscriptSession): Promise<vo
 
     const result = await transcribeChunk(tempPath);
     const text = result.text.trim().replace(/\s+/g, " ");
-    if (!text) return;
+    if (!text) {
+      return;
+    }
     const normalized = normalizeLiveTranscript(text);
-    if (!normalized || normalized === session.lastNormalized) return;
+    if (!normalized || normalized === session.lastNormalized) {
+      return;
+    }
     session.lastNormalized = normalized;
 
     const stamp = new Date().toISOString().slice(11, 19);
@@ -844,7 +892,9 @@ async function startLiveTranscriptSession(options: {
 }): Promise<void> {
   const existing = liveTranscriptSessions.get(options.meetingId);
   if (existing) {
-    if (existing.timer) clearInterval(existing.timer);
+    if (existing.timer) {
+      clearInterval(existing.timer);
+    }
     liveTranscriptSessions.delete(options.meetingId);
   }
   const session: LiveTranscriptSession = {
@@ -864,7 +914,9 @@ async function startLiveTranscriptSession(options: {
   await runLiveTranscriptTick(session);
   session.timer = setInterval(() => {
     const current = liveTranscriptSessions.get(session.meetingId);
-    if (!current) return;
+    if (!current) {
+      return;
+    }
     void runLiveTranscriptTick(current);
   }, session.intervalSec * 1000);
 }
@@ -874,8 +926,12 @@ async function stopLiveTranscriptSession(
   status: "recording" | "stopped" = "stopped",
 ): Promise<void> {
   const session = liveTranscriptSessions.get(meetingId);
-  if (!session) return;
-  if (session.timer) clearInterval(session.timer);
+  if (!session) {
+    return;
+  }
+  if (session.timer) {
+    clearInterval(session.timer);
+  }
   liveTranscriptSessions.delete(meetingId);
   try {
     await publishLiveTranscriptDoc(session, status);
@@ -911,7 +967,9 @@ async function listCaptureDevices(params?: Record<string, unknown>): Promise<str
   try {
     // Keep --output-dir for compatibility with older capture binaries that still require it.
     const args = ["--output-dir", AUDIO_DIR, "--list-mic-devices"];
-    if (requestPermissions) args.push("--request-permissions");
+    if (requestPermissions) {
+      args.push("--request-permissions");
+    }
     let text = "";
     if (shouldUseAppleScriptBridge()) {
       const cmd = `${shellEscape(binaryPath)} ${args.map(shellEscape).join(" ")}`;
@@ -946,7 +1004,9 @@ async function listCaptureDevices(params?: Record<string, unknown>): Promise<str
 function parseCaptureDeviceReport(text: string): CaptureDeviceReport | null {
   try {
     const parsed = JSON.parse(text) as CaptureDeviceReport;
-    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
     return parsed;
   } catch {
     return null;
@@ -1003,7 +1063,7 @@ async function startRecording(
       requestPermissions,
     }),
   );
-  if (!devicesReport || devicesReport.ok !== true) {
+  if (!devicesReport || !devicesReport.ok) {
     const message =
       devicesReport?.message || devicesReport?.error || "Unable to read capture devices.";
     return `Capture preflight failed before recording start: ${message}`;
@@ -1049,9 +1109,15 @@ async function startRecording(
     "--log-file",
     captureLogPath,
   ];
-  if (captureSystem) args.push("--system-audio");
-  if (captureMic) args.push("--mic");
-  if (captureMic && micDeviceId) args.push("--mic-device-id", micDeviceId);
+  if (captureSystem) {
+    args.push("--system-audio");
+  }
+  if (captureMic) {
+    args.push("--mic");
+  }
+  if (captureMic && micDeviceId) {
+    args.push("--mic-device-id", micDeviceId);
+  }
 
   // Clean up any stale active file
   try {
@@ -1270,7 +1336,9 @@ async function processRecording(
       for (const chunk of chunks) {
         const result = await transcribeChunk(chunk);
         parts.push(result.text);
-        if (!transcriptModel) transcriptModel = result.model;
+        if (!transcriptModel) {
+          transcriptModel = result.model;
+        }
       }
       transcript = parts.join("\n\n");
 
@@ -1342,7 +1410,7 @@ async function processRecording(
 
   const wordCount = transcript.split(/\s+/).length;
   const failedStr = taskSummary.failed > 0 ? ` (${taskSummary.failed} failed)` : "";
-  return `Meeting processing complete for **${entry!.title}**:
+  return `Meeting processing complete for **${entry.title}**:
 - Words: ~${wordCount}
 - Provider: openai (${transcriptModel || "default"})
 - Local summary: ${summaryMdPath}
@@ -1352,7 +1420,7 @@ async function processRecording(
 
 Use \`meeting_record action=process meetingId=${meetingId} createTasks=true\` to auto-create task entries from action items.
 
-MEDIA:${entry!.audioPath}`;
+MEDIA:${entry.audioPath}`;
 }
 
 async function transcribeChunk(audioPath: string): Promise<{ text: string; model?: string }> {

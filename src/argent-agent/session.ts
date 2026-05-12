@@ -45,7 +45,7 @@ export class Session {
   async append(message: SessionMessage): Promise<void> {
     const entry: SessionEntry = {
       id: crypto.randomUUID(),
-      parentId: this.entries.length > 0 ? this.entries[this.entries.length - 1]!.id : null,
+      parentId: this.entries.length > 0 ? this.entries[this.entries.length - 1].id : null,
       type: "message",
       message,
       timestamp: message.timestamp ?? Date.now(),
@@ -71,12 +71,14 @@ export class Session {
    */
   async compact(config: CompactionConfig): Promise<boolean> {
     const result = await compactMessages(this.activeMessages, config);
-    if (!result.compacted) return false;
+    if (!result.compacted) {
+      return false;
+    }
 
     // Store a compaction entry with the summary
     const entry: SessionEntry = {
       id: crypto.randomUUID(),
-      parentId: this.entries.length > 0 ? this.entries[this.entries.length - 1]!.id : null,
+      parentId: this.entries.length > 0 ? this.entries[this.entries.length - 1].id : null,
       type: "compaction",
       compactionSummary: result.summary,
       metadata: {
@@ -92,7 +94,7 @@ export class Session {
     for (const msg of result.messages) {
       const msgEntry: SessionEntry = {
         id: crypto.randomUUID(),
-        parentId: this.entries[this.entries.length - 1]!.id,
+        parentId: this.entries[this.entries.length - 1].id,
         type: "message",
         message: msg,
         timestamp: msg.timestamp ?? Date.now(),
@@ -122,7 +124,7 @@ export class Session {
       id: this.id,
       entryCount: this.entries.length,
       tokenCount: this.getTokenCount(),
-      createdAt: this.entries.length > 0 ? this.entries[0]!.timestamp : Date.now(),
+      createdAt: this.entries.length > 0 ? this.entries[0].timestamp : Date.now(),
     };
   }
 
@@ -137,7 +139,7 @@ export class Session {
     // Find the last compaction entry
     let startIndex = 0;
     for (let i = this.entries.length - 1; i >= 0; i--) {
-      if (this.entries[i]!.type === "compaction") {
+      if (this.entries[i].type === "compaction") {
         startIndex = i + 1;
         break;
       }
@@ -145,7 +147,7 @@ export class Session {
 
     this.activeMessages = [];
     for (let i = startIndex; i < this.entries.length; i++) {
-      const entry = this.entries[i]!;
+      const entry = this.entries[i];
       if (entry.type === "message" && entry.message) {
         this.activeMessages.push(entry.message);
       }

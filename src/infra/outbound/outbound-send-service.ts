@@ -35,7 +35,7 @@ export type OutboundSendContext = {
   abortSignal?: AbortSignal;
 };
 
-function extractToolPayload(result: AgentToolResult<unknown>): unknown {
+function extractToolPayload(result: AgentToolResult): unknown {
   if (result.details !== undefined) {
     return result.details;
   }
@@ -78,7 +78,7 @@ export async function executeSendAction(params: {
 }): Promise<{
   handledBy: "plugin" | "core";
   payload: unknown;
-  toolResult?: AgentToolResult<unknown>;
+  toolResult?: AgentToolResult;
   sendResult?: MessageSendResult;
 }> {
   throwIfAborted(params.ctx.abortSignal);
@@ -150,7 +150,7 @@ export async function executePollAction(params: {
 }): Promise<{
   handledBy: "plugin" | "core";
   payload: unknown;
-  toolResult?: AgentToolResult<unknown>;
+  toolResult?: AgentToolResult;
   pollResult?: MessagePollResult;
 }> {
   if (!params.ctx.dryRun) {

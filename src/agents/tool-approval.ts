@@ -23,15 +23,19 @@ function createApprovalSlug(id: string) {
 
 function truncate(value: string, max = 220): string {
   const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= max) return normalized;
+  if (normalized.length <= max) {
+    return normalized;
+  }
   return `${normalized.slice(0, Math.max(0, max - 1))}…`;
 }
 
-function extractResultText(result: AgentToolResult<unknown>): string {
+function extractResultText(result: AgentToolResult): string {
   const content = Array.isArray(result?.content) ? result.content : [];
   const parts: string[] = [];
   for (const block of content) {
-    if (!block || typeof block !== "object") continue;
+    if (!block || typeof block !== "object") {
+      continue;
+    }
     const rec = block as { type?: unknown; text?: unknown };
     if (rec.type === "text" && typeof rec.text === "string" && rec.text.trim()) {
       parts.push(rec.text.trim());
@@ -69,7 +73,9 @@ function summarizeToolParams(toolName: string, params: unknown): string {
 
 export function toolPolicyRequiresApproval(toolName: string, params: unknown): boolean {
   const normalized = toolName.trim().toLowerCase();
-  if (normalized === "exec") return true;
+  if (normalized === "exec") {
+    return true;
+  }
   if (!params || typeof params !== "object" || Array.isArray(params)) {
     return APPROVAL_BACKED_TOOLS.has(normalized) && normalized !== "exec";
   }
@@ -100,7 +106,9 @@ export function toolPolicyRequiresApproval(toolName: string, params: unknown): b
 
 function emitToolApprovalEvent(text: string, sessionKey?: string, contextKey?: string) {
   const normalized = sessionKey?.trim();
-  if (!normalized) return;
+  if (!normalized) {
+    return;
+  }
   enqueueSystemEvent(text, { sessionKey: normalized, contextKey });
   requestHeartbeatNow({ reason: "tool-approval-event" });
 }
@@ -136,7 +144,7 @@ export function wrapToolWithApprovalPolicy(
         try {
           const decisionResult = await callGatewayTool<{ decision: string }>(
             "exec.approval.request",
-            { ...(opts.gateway || {}), timeoutMs: DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS },
+            { ...opts.gateway, timeoutMs: DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS },
             {
               id: approvalId,
               command: `[TOOL_APPROVAL] ${summary}`,
@@ -209,7 +217,7 @@ export function wrapToolWithApprovalPolicy(
           tool: tool.name,
           summary,
         },
-      } satisfies AgentToolResult<unknown>;
+      } satisfies AgentToolResult;
     },
   };
 }

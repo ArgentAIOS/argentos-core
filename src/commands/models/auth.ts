@@ -469,12 +469,12 @@ export function applyTieredRecommendedModel(
 
   let nextRouter = existingRouter;
   if (activeProfile) {
-    const profiles = { ...(existingRouter.profiles ?? {}) };
+    const profiles = { ...existingRouter.profiles };
     const existingProfile = profiles[activeProfile] ?? { tiers: {} };
     profiles[activeProfile] = {
       ...existingProfile,
       tiers: {
-        ...(existingProfile.tiers ?? {}),
+        ...existingProfile.tiers,
         [tier]: mapping,
       },
     };
@@ -483,7 +483,7 @@ export function applyTieredRecommendedModel(
     nextRouter = {
       ...existingRouter,
       tiers: {
-        ...(existingRouter.tiers ?? {}),
+        ...existingRouter.tiers,
         [tier]: mapping,
       },
     };

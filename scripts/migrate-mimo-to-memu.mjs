@@ -54,12 +54,16 @@ function now() {
 }
 
 function cleanSummary(raw) {
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   let text = raw
     .replace(/\[message_id:[^\]]+\]/g, "")
     .replace(/^(?:Morning|Hey|Hi|Hello|Good morning|Good evening)[^.!?\n]*[.!?\n]/i, "")
     .trim();
-  if (text.length < MIN_LENGTH) return null;
+  if (text.length < MIN_LENGTH) {
+    return null;
+  }
   if (text.length > 500) {
     const cut = text.lastIndexOf(".", 500);
     text = cut > 100 ? text.slice(0, cut + 1) : text.slice(0, 500) + "...";
@@ -144,9 +148,13 @@ function main() {
 
   for (const obs of observations) {
     const cleaned = cleanSummary(obs.summary);
-    if (!cleaned) continue;
+    if (!cleaned) {
+      continue;
+    }
     const hash = contentHash(cleaned);
-    if (seenHashes.has(hash)) continue;
+    if (seenHashes.has(hash)) {
+      continue;
+    }
     seenHashes.add(hash);
 
     items.push({
@@ -164,18 +172,22 @@ function main() {
   console.log(`After cleaning & dedup: ${items.length} items\n`);
 
   const typeCounts = {};
-  for (const item of items) typeCounts[item.memuType] = (typeCounts[item.memuType] || 0) + 1;
+  for (const item of items) {
+    typeCounts[item.memuType] = (typeCounts[item.memuType] || 0) + 1;
+  }
   console.log("Type distribution:");
-  for (const [t, c] of Object.entries(typeCounts).sort((a, b) => b[1] - a[1]))
+  for (const [t, c] of Object.entries(typeCounts).toSorted((a, b) => b[1] - a[1])) {
     console.log(`  ${t}: ${c}`);
+  }
   console.log();
 
   if (DRY_RUN) {
     console.log("[DRY RUN] Sample:");
-    for (const item of items.slice(0, 10))
+    for (const item of items.slice(0, 10)) {
       console.log(
         `  #${item.mimoId} [${item.mimoType}→${item.memuType}] ${item.summary.slice(0, 80)}`,
       );
+    }
     console.log(`\nRun without --dry-run to execute.`);
     mimo.close();
     return;
@@ -205,7 +217,9 @@ function main() {
   );
 
   function getOrCreateCat(name) {
-    if (catCache.has(name)) return catCache.get(name);
+    if (catCache.has(name)) {
+      return catCache.get(name);
+    }
     const row = getCatStmt.get(name);
     if (row) {
       catCache.set(name, row.id);
@@ -261,7 +275,9 @@ function main() {
         item.createdAt,
         ts,
       );
-      for (const catName of item.categories) insCatItem.run(itemId, getOrCreateCat(catName));
+      for (const catName of item.categories) {
+        insCatItem.run(itemId, getOrCreateCat(catName));
+      }
       inserted++;
     }
     memu.exec("COMMIT");

@@ -86,7 +86,9 @@ export class TasksModule {
    * Initialize the tasks schema
    */
   async init(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {
+      return;
+    }
 
     const db = this.conn.getDatabase("dashboard");
     db.exec(TASKS_SCHEMA);
@@ -187,7 +189,9 @@ export class TasksModule {
     const db = this.conn.getDatabase("dashboard");
     // Try exact match first
     const row = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as TaskRow | undefined;
-    if (row) return this.rowToTask(row);
+    if (row) {
+      return this.rowToTask(row);
+    }
 
     // Try prefix match (for short IDs like first 8 chars)
     if (id.length >= 4 && id.length < 36) {
@@ -205,7 +209,9 @@ export class TasksModule {
    */
   update(id: string, input: TaskUpdateInput): Task | null {
     const existing = this.get(id);
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
 
     const now = Date.now();
     const updates: string[] = ["updated_at = ?"];
@@ -278,7 +284,9 @@ export class TasksModule {
    */
   delete(id: string): boolean {
     const existing = this.get(id);
-    if (!existing) return false;
+    if (!existing) {
+      return false;
+    }
     const result = this.conn.execute("dashboard", "DELETE FROM tasks WHERE id = ?", [existing.id]);
     return result.changes > 0;
   }
@@ -389,13 +397,15 @@ export class TasksModule {
    */
   start(id: string): Task | null {
     const task = this.get(id);
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
 
     if (this.hasUnresolvedDependencies(task)) {
       return this.update(task.id, {
         status: "blocked",
         metadata: {
-          ...(task.metadata ?? {}),
+          ...task.metadata,
           blockedReason: "Waiting on dependencies",
         },
       });
@@ -409,7 +419,9 @@ export class TasksModule {
    */
   complete(id: string): Task | null {
     const task = this.markCompleted(id);
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
     this.resolveUnblockedDependents(task);
     return task;
   }
@@ -420,7 +432,9 @@ export class TasksModule {
    */
   completeAndResolve(id: string): { task: Task | null; unblockedTasks: Task[] } {
     const task = this.markCompleted(id);
-    if (!task) return { task: null, unblockedTasks: [] };
+    if (!task) {
+      return { task: null, unblockedTasks: [] };
+    }
 
     const unblockedTasks = this.resolveUnblockedDependents(task);
     return { task, unblockedTasks };
@@ -446,14 +460,20 @@ export class TasksModule {
 
     for (const row of candidateRows) {
       const candidate = this.rowToTask(row);
-      if (!candidate.dependsOn || candidate.dependsOn.length === 0) continue;
+      if (!candidate.dependsOn || candidate.dependsOn.length === 0) {
+        continue;
+      }
 
       // Check if the completed task ID is actually in the depends_on array
-      if (!candidate.dependsOn.includes(completedTask.id)) continue;
+      if (!candidate.dependsOn.includes(completedTask.id)) {
+        continue;
+      }
 
       // Check if ALL dependencies are now completed
       const allDepsCompleted = candidate.dependsOn.every((depId) => {
-        if (depId === completedTask.id) return true;
+        if (depId === completedTask.id) {
+          return true;
+        }
         const dep = this.get(depId);
         return dep?.status === "completed";
       });
@@ -474,7 +494,9 @@ export class TasksModule {
   }
 
   private hasUnresolvedDependencies(task: Task): boolean {
-    if (!task.dependsOn || task.dependsOn.length === 0) return false;
+    if (!task.dependsOn || task.dependsOn.length === 0) {
+      return false;
+    }
     return task.dependsOn.some((depId) => {
       const dep = this.get(depId);
       return dep?.status !== "completed";
@@ -486,7 +508,9 @@ export class TasksModule {
    */
   block(id: string, reason?: string): Task | null {
     const task = this.get(id);
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
 
     const metadata = { ...task.metadata, blockedReason: reason };
     return this.update(id, { status: "blocked", metadata });
@@ -497,7 +521,9 @@ export class TasksModule {
    */
   fail(id: string, reason?: string): Task | null {
     const task = this.get(id);
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
 
     const metadata = { ...task.metadata, failureReason: reason };
     return this.update(id, { status: "failed", metadata });
@@ -626,7 +652,9 @@ export class TasksModule {
    */
   getProjectWithChildren(projectId: string): ProjectWithChildren | null {
     const project = this.get(projectId);
-    if (!project) return null;
+    if (!project) {
+      return null;
+    }
 
     const db = this.conn.getDatabase("dashboard");
     const childRows = db

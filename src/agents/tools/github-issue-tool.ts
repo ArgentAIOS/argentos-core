@@ -49,10 +49,10 @@ async function runGh(args: string[]): Promise<{ stdout: string; stderr: string }
   } catch (err) {
     const error = err as { code?: string; stderr?: string; message?: string };
     if (error.code === "ENOENT") {
-      throw new Error("gh CLI not found. Install it from https://cli.github.com/");
+      throw new Error("gh CLI not found. Install it from https://cli.github.com/", { cause: err });
     }
     const stderr = error.stderr?.trim() || error.message || "Unknown error";
-    throw new Error(`gh command failed: ${stderr}`);
+    throw new Error(`gh command failed: ${stderr}`, { cause: err });
   }
 }
 

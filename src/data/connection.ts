@@ -16,7 +16,9 @@ type BetterSqlite3Constructor = typeof import("better-sqlite3").default;
 let cachedSqliteConstructor: BetterSqlite3Constructor | null = null;
 
 function loadBetterSqlite3(): BetterSqlite3Constructor {
-  if (cachedSqliteConstructor) return cachedSqliteConstructor;
+  if (cachedSqliteConstructor) {
+    return cachedSqliteConstructor;
+  }
   const require = createRequire(import.meta.url);
   cachedSqliteConstructor = require("better-sqlite3") as BetterSqlite3Constructor;
   return cachedSqliteConstructor;
@@ -42,7 +44,9 @@ export class ConnectionManager {
    * Initialize all database connections
    */
   async init(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {
+      return;
+    }
 
     // Ensure directories exist
     for (const dbPath of Object.values(this.config.paths)) {

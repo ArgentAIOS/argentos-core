@@ -35,8 +35,11 @@ async function fetchWithTimeout(
 
   const onParentAbort = () => controller.abort();
   if (parentSignal) {
-    if (parentSignal.aborted) controller.abort();
-    else parentSignal.addEventListener("abort", onParentAbort, { once: true });
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener("abort", onParentAbort, { once: true });
+    }
   }
 
   try {
@@ -51,7 +54,9 @@ async function fetchWithTimeout(
     throw err;
   } finally {
     clearTimeout(timeoutId);
-    if (parentSignal) parentSignal.removeEventListener("abort", onParentAbort);
+    if (parentSignal) {
+      parentSignal.removeEventListener("abort", onParentAbort);
+    }
   }
 }
 
@@ -97,7 +102,9 @@ export function useTTS(options: UseTTSOptions = {}) {
     (text: string, startTime: number) => {
       // Strip ElevenLabs audio tags like [laughs], [whispers], etc.
       const cleanText = text.replace(/\[[^\]]*\]/g, "").trim();
-      if (!cleanText) return;
+      if (!cleanText) {
+        return;
+      }
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
       webSpeechUtteranceRef.current = utterance;
@@ -108,8 +115,11 @@ export function useTTS(options: UseTTSOptions = {}) {
         (v) => v.name.includes("Samantha") || v.name.includes("Zoe") || v.name.includes("Karen"),
       );
       const englishFallback = voices.find((v) => v.lang.startsWith("en") && v.localService);
-      if (preferred) utterance.voice = preferred;
-      else if (englishFallback) utterance.voice = englishFallback;
+      if (preferred) {
+        utterance.voice = preferred;
+      } else if (englishFallback) {
+        utterance.voice = englishFallback;
+      }
 
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
@@ -134,7 +144,9 @@ export function useTTS(options: UseTTSOptions = {}) {
 
       utterance.onerror = (ev) => {
         webSpeechUtteranceRef.current = null;
-        if (ev.error === "canceled" || ev.error === "interrupted") return;
+        if (ev.error === "canceled" || ev.error === "interrupted") {
+          return;
+        }
         console.error("[TTS] Web Speech error:", ev.error);
         onError?.(new Error(`Web Speech failed: ${ev.error}`));
       };
@@ -153,14 +165,18 @@ export function useTTS(options: UseTTSOptions = {}) {
         mood ?? "neutral",
       );
       console.log("[TTS] Output device ID:", outputDeviceId);
-      if (!text.trim()) return;
+      if (!text.trim()) {
+        return;
+      }
 
       // Cancel any ongoing speech
       stop();
 
       const provider = profile?.provider ?? "elevenlabs";
       const ttsText = sanitizeTextForProvider(text, profile);
-      if (!ttsText.trim()) return;
+      if (!ttsText.trim()) {
+        return;
+      }
 
       // Per-mood voice preset overrides the user-selected voice for ElevenLabs only.
       const moodConfig = getMood(mood ?? "neutral");
@@ -397,7 +413,9 @@ export function useTTS(options: UseTTSOptions = {}) {
                 let streamDone = false;
 
                 const flushPending = () => {
-                  if (sourceBuffer.updating || pendingChunks.length === 0) return;
+                  if (sourceBuffer.updating || pendingChunks.length === 0) {
+                    return;
+                  }
                   const chunk = pendingChunks.shift()!;
                   // Force conversion to a clean ArrayBuffer to satisfy BufferSource type
                   const cleanBuffer = new Uint8Array(chunk).buffer;
@@ -419,7 +437,9 @@ export function useTTS(options: UseTTSOptions = {}) {
                     const durationMs = ttsText.length * 60; // estimate; real duration unknown until stream ends
                     onSpeechStart?.(ttsText, durationMs);
                     audio.play().catch((e) => {
-                      if (e.name !== "AbortError") reject(e);
+                      if (e.name !== "AbortError") {
+                        reject(e);
+                      }
                     });
                   }
                   if (streamDone && pendingChunks.length === 0) {
@@ -694,9 +714,13 @@ export function useTTS(options: UseTTSOptions = {}) {
 
   const isSpeaking = useCallback(() => {
     // Check Web Speech API
-    if (webSpeechUtteranceRef.current && window.speechSynthesis.speaking) return true;
+    if (webSpeechUtteranceRef.current && window.speechSynthesis.speaking) {
+      return true;
+    }
     // Check Audio element first (primary path), then AudioContext (playUrl path)
-    if (audioRef.current && !audioRef.current.paused && !audioRef.current.ended) return true;
+    if (audioRef.current && !audioRef.current.paused && !audioRef.current.ended) {
+      return true;
+    }
     return audioCtxRef.current !== null && audioCtxRef.current.state === "running";
   }, []);
 

@@ -26,17 +26,23 @@ PIXI.settings.PREFER_ENV = PIXI.ENV.WEBGL2;
 let clippingPatched = false;
 
 function patchClippingManager(model: Live2DModel) {
-  if (clippingPatched) return;
+  if (clippingPatched) {
+    return;
+  }
   clippingPatched = true;
 
   try {
     const internalModel = model.internalModel as any;
     const renderer = internalModel?.renderer;
     const clippingManager = renderer?._clippingManager;
-    if (!clippingManager) return;
+    if (!clippingManager) {
+      return;
+    }
 
     const proto = Object.getPrototypeOf(clippingManager);
-    if (!proto.setupLayoutBounds) return;
+    if (!proto.setupLayoutBounds) {
+      return;
+    }
 
     proto.setupLayoutBounds = function (usingClipCount: number) {
       const ColorChannelCount = 4;
@@ -46,17 +52,27 @@ function patchClippingManager(model: Live2DModel) {
 
       for (let channelNo = 0; channelNo < ColorChannelCount; channelNo++) {
         const layoutCount = div + (channelNo < mod ? 1 : 0);
-        if (layoutCount === 0) continue;
+        if (layoutCount === 0) {
+          continue;
+        }
 
         // Determine smallest NxN grid that fits layoutCount
         let gridSize: number;
-        if (layoutCount <= 1) gridSize = 1;
-        else if (layoutCount <= 4) gridSize = 2;
-        else if (layoutCount <= 9) gridSize = 3;
-        else if (layoutCount <= 16) gridSize = 4;
-        else if (layoutCount <= 25) gridSize = 5;
-        else if (layoutCount <= 36) gridSize = 6;
-        else gridSize = Math.ceil(Math.sqrt(layoutCount));
+        if (layoutCount <= 1) {
+          gridSize = 1;
+        } else if (layoutCount <= 4) {
+          gridSize = 2;
+        } else if (layoutCount <= 9) {
+          gridSize = 3;
+        } else if (layoutCount <= 16) {
+          gridSize = 4;
+        } else if (layoutCount <= 25) {
+          gridSize = 5;
+        } else if (layoutCount <= 36) {
+          gridSize = 6;
+        } else {
+          gridSize = Math.ceil(Math.sqrt(layoutCount));
+        }
 
         for (let i = 0; i < layoutCount; i++) {
           const cc = this._clippingContextListForMask[curClipIndex++];
@@ -88,15 +104,21 @@ function patchClippingManager(model: Live2DModel) {
 let colorPatched = false;
 
 function patchRendererColors(model: Live2DModel) {
-  if (colorPatched) return;
+  if (colorPatched) {
+    return;
+  }
   colorPatched = true;
 
   try {
     const renderer = (model.internalModel as any)?.renderer;
-    if (!renderer) return;
+    if (!renderer) {
+      return;
+    }
 
     const _model = renderer.getModel?.();
-    if (!_model) return;
+    if (!_model) {
+      return;
+    }
 
     // Store original drawMesh
     const origDrawMesh = renderer.drawMesh.bind(renderer);
@@ -290,7 +312,9 @@ let initHeight: number | null = null;
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     console.log("[Live2D] HMR dispose - cleaning up");
-    if (lipSyncAnimationId) cancelAnimationFrame(lipSyncAnimationId);
+    if (lipSyncAnimationId) {
+      cancelAnimationFrame(lipSyncAnimationId);
+    }
     lipSyncAnimationId = null;
     globalModel = null;
     globalCanvas?.remove();
@@ -316,7 +340,9 @@ if (import.meta.hot) {
 
 // Lip sync function using pre-created analyser (preferred - from TTS AudioContext)
 function startLipSyncWithAnalyser(externalAnalyser: AnalyserNode) {
-  if (!globalModel) return;
+  if (!globalModel) {
+    return;
+  }
 
   // Stop any existing lip sync
   if (lipSyncAnimationId) {
@@ -329,7 +355,9 @@ function startLipSyncWithAnalyser(externalAnalyser: AnalyserNode) {
 
   // Animation loop for lip sync
   const animate = () => {
-    if (!analyser || !globalModel) return;
+    if (!analyser || !globalModel) {
+      return;
+    }
 
     analyser.getByteFrequencyData(dataArray);
 
@@ -383,7 +411,9 @@ function stopLipSync() {
 
 // Legacy lip sync function - analyzes audio element directly
 function startLipSync(audio: HTMLAudioElement) {
-  if (!globalModel) return;
+  if (!globalModel) {
+    return;
+  }
 
   // Create audio context if needed
   if (!audioContext) {
@@ -409,7 +439,9 @@ function startLipSync(audio: HTMLAudioElement) {
 
   // Animation loop for lip sync
   const animate = () => {
-    if (!analyser || !globalModel) return;
+    if (!analyser || !globalModel) {
+      return;
+    }
 
     analyser.getByteFrequencyData(dataArray);
 
@@ -458,9 +490,13 @@ let tickerRegistered = false;
 
 /** Per-frame ticker callback — applies customization params after model update */
 function customizationTicker() {
-  if (!globalModel) return;
+  if (!globalModel) {
+    return;
+  }
   const coreModel = (globalModel.internalModel as any)?.coreModel;
-  if (!coreModel?.setParameterValueById) return;
+  if (!coreModel?.setParameterValueById) {
+    return;
+  }
 
   for (const [paramId, value] of Object.entries(activeCustomization)) {
     try {
@@ -471,7 +507,9 @@ function customizationTicker() {
 
 /** Register the per-frame ticker on the PIXI app */
 function ensureTickerRegistered() {
-  if (tickerRegistered || !globalApp) return;
+  if (tickerRegistered || !globalApp) {
+    return;
+  }
   globalApp.ticker.add(customizationTicker);
   tickerRegistered = true;
 }
@@ -516,9 +554,13 @@ function getModelParameters(): Record<
   string,
   { value: number; min: number; max: number; default: number }
 > {
-  if (!globalModel) return {};
+  if (!globalModel) {
+    return {};
+  }
   const coreModel = (globalModel.internalModel as any)?.coreModel;
-  if (!coreModel) return {};
+  if (!coreModel) {
+    return {};
+  }
 
   const result: Record<string, { value: number; min: number; max: number; default: number }> = {};
   try {
@@ -571,9 +613,13 @@ let activeMoodName: MoodName = "neutral";
 
 /** Per-frame ticker callback — smoothly interpolates pose parameters toward target */
 function moodPoseTicker() {
-  if (!globalModel) return;
+  if (!globalModel) {
+    return;
+  }
   const coreModel = (globalModel.internalModel as any)?.coreModel;
-  if (!coreModel?.setParameterValueById) return;
+  if (!coreModel?.setParameterValueById) {
+    return;
+  }
 
   // Safety net: ensure cursor tracking stays disabled when a mood is active.
   // The FocusController writes to the same ParamAngle* params we control.
@@ -583,7 +629,9 @@ function moodPoseTicker() {
 
   // When neutral, let the FocusController handle pose params (cursor tracking).
   // Only override pose params when a non-neutral mood is active.
-  if (activeMoodName === "neutral") return;
+  if (activeMoodName === "neutral") {
+    return;
+  }
 
   for (const paramId of MOOD_POSE_PARAM_IDS) {
     const target = targetMoodPose[paramId] ?? 0;
@@ -598,7 +646,9 @@ function moodPoseTicker() {
 
 /** Set the active mood — triggers expression + begins pose transition */
 function setMood(mood: MoodName) {
-  if (mood === activeMoodName) return;
+  if (mood === activeMoodName) {
+    return;
+  }
   const config = getMood(mood);
   const prevMood = activeMoodName;
   activeMoodName = mood;
@@ -668,7 +718,9 @@ function setMood(mood: MoodName) {
 let moodTickerRegistered = false;
 
 function ensureMoodTickerRegistered() {
-  if (moodTickerRegistered || !globalApp) return;
+  if (moodTickerRegistered || !globalApp) {
+    return;
+  }
   globalApp.ticker.add(moodPoseTicker);
   moodTickerRegistered = true;
 }
@@ -745,10 +797,14 @@ if (typeof window !== "undefined") {
     MOODS,
     // Debug: expose internal model references
     debugModel: () => {
-      if (!globalModel) return { error: "no globalModel" };
+      if (!globalModel) {
+        return { error: "no globalModel" };
+      }
       const im = globalModel.internalModel as any;
       const cm = im?.coreModel;
-      if (!cm) return { error: "no coreModel" };
+      if (!cm) {
+        return { error: "no coreModel" };
+      }
       return {
         model: globalModel,
         internalModel: im,
@@ -758,9 +814,13 @@ if (typeof window !== "undefined") {
       };
     },
     getParamRanges: (paramIds: string[]) => {
-      if (!globalModel) return {};
+      if (!globalModel) {
+        return {};
+      }
       const cm = (globalModel.internalModel as any)?.coreModel;
-      if (!cm?._model?.parameters) return {};
+      if (!cm?._model?.parameters) {
+        return {};
+      }
       const p = cm._model.parameters;
       const ids = Array.from(p.ids as string[]);
       const mins = p.minimumValues as Float32Array;
@@ -818,7 +878,9 @@ const ZOOM_CALIBRATION_KEY = "argent-avatar-zoom-calibration";
 function loadCalibratedZoom(): Record<string, { scale: number; x: number; y: number }> {
   try {
     const stored = localStorage.getItem(ZOOM_CALIBRATION_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      return JSON.parse(stored);
+    }
   } catch {}
   return {};
 }
@@ -840,7 +902,9 @@ const ZOOM_LERP_SPEED = 0.08; // 0-1, higher = faster
 
 /** Per-frame zoom animation — lerps model toward target position */
 function zoomAnimationTicker() {
-  if (!globalModel || !zoomTarget) return;
+  if (!globalModel || !zoomTarget) {
+    return;
+  }
 
   const dx = zoomTarget.x - globalModel.x;
   const dy = zoomTarget.y - globalModel.y;
@@ -863,7 +927,9 @@ function zoomAnimationTicker() {
 let zoomTickerRegistered = false;
 
 function ensureZoomTickerRegistered() {
-  if (zoomTickerRegistered || !globalApp) return;
+  if (zoomTickerRegistered || !globalApp) {
+    return;
+  }
   globalApp.ticker.add(zoomAnimationTicker);
   zoomTickerRegistered = true;
 }
@@ -872,9 +938,13 @@ function ensureZoomTickerRegistered() {
  *  Only zooms if the tab has a calibrated position.
  *  Uncalibrated tabs stay at the current position (no jump). */
 function setCustomizerZoom(tabKey: string) {
-  if (customizerZoomDebug) return; // Don't auto-zoom in calibration mode
+  if (customizerZoomDebug) {
+    return;
+  } // Don't auto-zoom in calibration mode
   const target = customizerZoomMap[tabKey];
-  if (!target) return; // No calibrated position — don't move
+  if (!target) {
+    return;
+  } // No calibrated position — don't move
   zoomTarget = { ...target };
   ensureZoomTickerRegistered();
 }
@@ -895,7 +965,9 @@ function setCustomizerZoomDebug(enabled: boolean) {
 
 /** Get the current model position (for calibration readout). */
 function getAvatarPosition(): { scale: number; x: number; y: number } | null {
-  if (!globalModel) return null;
+  if (!globalModel) {
+    return null;
+  }
   return {
     scale: globalModel.scale.x,
     x: Math.round(globalModel.x),
@@ -916,7 +988,9 @@ function setCustomizerZoomEntry(tabKey: string, pos: { scale: number; x: number;
 
 /** Directly set model position/scale (for calibration sliders). No animation. */
 function setAvatarPosition(pos: { scale: number; x: number; y: number }) {
-  if (!globalModel) return;
+  if (!globalModel) {
+    return;
+  }
   zoomTarget = null; // Cancel any animation
   globalModel.scale.set(pos.scale);
   globalModel.x = pos.x;
@@ -956,7 +1030,9 @@ export function Live2DAvatar({
   const canvasHeight = mode === "bubble" ? Math.min(width, height) - 32 : height;
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current) {
+      return;
+    }
 
     const container = containerRef.current;
     const needsReinit =
@@ -1030,7 +1106,7 @@ export function Live2DAvatar({
         });
 
         globalApp = app;
-        globalCanvas = app.view as HTMLCanvasElement;
+        globalCanvas = app.view;
         globalCanvas.style.position = "absolute";
         globalCanvas.style.left = "0";
         globalCanvas.style.top = "0";
@@ -1128,7 +1204,7 @@ export function Live2DAvatar({
         });
 
         // Two-finger scroll/pinch to zoom (trackpad friendly)
-        globalCanvas!.addEventListener(
+        globalCanvas.addEventListener(
           "wheel",
           (e) => {
             e.preventDefault();
@@ -1167,7 +1243,9 @@ export function Live2DAvatar({
   // ResizeObserver: resize PIXI canvas when container dimensions change
   // (happens when CanvasPanel slides in/out and causes layout reflow)
   useEffect(() => {
-    if (!containerRef.current || !isLoaded) return;
+    if (!containerRef.current || !isLoaded) {
+      return;
+    }
     const container = containerRef.current;
 
     const observer = new ResizeObserver(() => {
@@ -1194,7 +1272,9 @@ export function Live2DAvatar({
 
   // Handle AI-driven mood changes (takes priority over state-based expressions)
   useEffect(() => {
-    if (!globalModel || !isLoaded || !mood) return;
+    if (!globalModel || !isLoaded || !mood) {
+      return;
+    }
     console.log("[Live2D] AI mood set:", mood);
     setMood(mood);
     ensureMoodTickerRegistered();
@@ -1203,7 +1283,9 @@ export function Live2DAvatar({
   // Handle state-based motions and expressions (fallback when no AI mood is active)
   useEffect(() => {
     console.log("[Live2D] State changed to:", state, "isLoaded:", isLoaded);
-    if (!globalModel || !isLoaded) return;
+    if (!globalModel || !isLoaded) {
+      return;
+    }
 
     // Trigger motion
     try {
@@ -1235,7 +1317,9 @@ export function Live2DAvatar({
 
   // Handle zoom changes (full mode)
   useEffect(() => {
-    if (!isLoaded || !globalModel || mode !== "full") return;
+    if (!isLoaded || !globalModel || mode !== "full") {
+      return;
+    }
 
     const preset =
       activePresets[zoomPreset === "custom" ? "full" : zoomPreset] || activePresets.full;
@@ -1249,7 +1333,9 @@ export function Live2DAvatar({
 
   // Handle bubble position changes (bubble mode)
   useEffect(() => {
-    if (!isLoaded || !globalModel || mode !== "bubble") return;
+    if (!isLoaded || !globalModel || mode !== "bubble") {
+      return;
+    }
 
     console.log("[Live2D] Bubble position change:", bubbleOffsetX, bubbleOffsetY, bubbleScale);
     globalModel.scale.set(bubbleScale);

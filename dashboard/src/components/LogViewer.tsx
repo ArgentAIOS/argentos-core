@@ -152,10 +152,15 @@ function parseLogLine(raw: string, id: number): ParsedLogLine | null {
     // Extract message from numbered keys
     const parts: string[] = [];
     for (const key of Object.keys(parsed)) {
-      if (!/^\d+$/.test(key)) continue;
+      if (!/^\d+$/.test(key)) {
+        continue;
+      }
       const item = parsed[key];
-      if (typeof item === "string") parts.push(item);
-      else if (item != null) parts.push(JSON.stringify(item));
+      if (typeof item === "string") {
+        parts.push(item);
+      } else if (item != null) {
+        parts.push(JSON.stringify(item));
+      }
     }
 
     return {
@@ -164,7 +169,7 @@ function parseLogLine(raw: string, id: number): ParsedLogLine | null {
         typeof parsed.time === "string"
           ? parsed.time
           : typeof meta?.date === "string"
-            ? (meta.date as string)
+            ? meta.date
             : undefined,
       level: levelRaw ? levelRaw.toLowerCase() : undefined,
       subsystem,
@@ -177,7 +182,9 @@ function parseLogLine(raw: string, id: number): ParsedLogLine | null {
 }
 
 function formatTime(timeStr?: string): string {
-  if (!timeStr) return "";
+  if (!timeStr) {
+    return "";
+  }
   try {
     return new Date(timeStr).toISOString().slice(11, 23); // HH:MM:SS.mmm
   } catch {
@@ -186,19 +193,27 @@ function formatTime(timeStr?: string): string {
 }
 
 function getSubsystemGroup(subsystem?: string): string | null {
-  if (!subsystem) return null;
+  if (!subsystem) {
+    return null;
+  }
   for (const [key, config] of Object.entries(SUBSYSTEM_GROUPS)) {
-    if (config.match(subsystem)) return key;
+    if (config.match(subsystem)) {
+      return key;
+    }
   }
   return null;
 }
 
 function formatSubsystemDisplay(subsystem?: string): string {
-  if (!subsystem) return "";
+  if (!subsystem) {
+    return "";
+  }
   // Drop redundant prefixes
   const parts = subsystem.split("/").filter(Boolean);
   const drop = new Set(["gateway", "channels", "providers"]);
-  while (parts.length > 1 && drop.has(parts[0])) parts.shift();
+  while (parts.length > 1 && drop.has(parts[0])) {
+    parts.shift();
+  }
   return parts.join("/");
 }
 
@@ -233,7 +248,9 @@ export function LogViewer(_props: LogViewerProps) {
 
   // Detect user scrolling up → pause follow
   const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current) {
+      return;
+    }
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     const atBottom = scrollHeight - scrollTop - clientHeight < 40;
     if (!atBottom && following) {
@@ -265,9 +282,13 @@ export function LogViewer(_props: LogViewerProps) {
       if (res.lines && res.lines.length > 0) {
         const newLines: ParsedLogLine[] = [];
         for (const raw of res.lines) {
-          if (!raw.trim()) continue;
+          if (!raw.trim()) {
+            continue;
+          }
           const parsed = parseLogLine(raw, lineIdRef.current++);
-          if (parsed) newLines.push(parsed);
+          if (parsed) {
+            newLines.push(parsed);
+          }
         }
 
         if (newLines.length > 0) {
@@ -290,7 +311,9 @@ export function LogViewer(_props: LogViewerProps) {
     fetchLogs();
 
     const poll = () => {
-      if (!following) return;
+      if (!following) {
+        return;
+      }
       pollTimerRef.current = setTimeout(async () => {
         await fetchLogs();
         poll();
@@ -302,7 +325,9 @@ export function LogViewer(_props: LogViewerProps) {
     }
 
     return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+      }
     };
   }, [following, fetchLogs]);
 
@@ -348,23 +373,31 @@ export function LogViewer(_props: LogViewerProps) {
     return lines.filter((line) => {
       // Level filter
       const level = line.level as LogLevel;
-      if (level && !levelFilters.has(level)) return false;
+      if (level && !levelFilters.has(level)) {
+        return false;
+      }
       // Don't show trace/fatal if they're not in the set
       if (!level || !["error", "warn", "info", "debug"].includes(level)) {
         // Show unknown levels only if all main levels are enabled
-        if (levelFilters.size < 4) return false;
+        if (levelFilters.size < 4) {
+          return false;
+        }
       }
 
       // Subsystem filter
       if (subsystemFilter !== "all") {
         const group = getSubsystemGroup(line.subsystem);
-        if (group !== subsystemFilter) return false;
+        if (group !== subsystemFilter) {
+          return false;
+        }
       }
 
       // Text filter
       if (textFilterLower) {
         const searchable = `${line.message} ${line.subsystem || ""}`.toLowerCase();
-        if (!searchable.includes(textFilterLower)) return false;
+        if (!searchable.includes(textFilterLower)) {
+          return false;
+        }
       }
 
       return true;
@@ -376,9 +409,11 @@ export function LogViewer(_props: LogViewerProps) {
     const groups = new Set<string>();
     for (const line of lines) {
       const group = getSubsystemGroup(line.subsystem);
-      if (group) groups.add(group);
+      if (group) {
+        groups.add(group);
+      }
     }
-    return Array.from(groups).sort();
+    return Array.from(groups).toSorted();
   }, [lines]);
 
   return (
@@ -583,10 +618,14 @@ function LogLine({ line, textFilter }: { line: ParsedLogLine; textFilter: string
 // ── Text Highlighting ──
 
 function highlightText(text: string, filter: string): React.ReactNode {
-  if (!filter) return text;
+  if (!filter) {
+    return text;
+  }
   const lower = text.toLowerCase();
   const idx = lower.indexOf(filter);
-  if (idx === -1) return text;
+  if (idx === -1) {
+    return text;
+  }
 
   return (
     <>

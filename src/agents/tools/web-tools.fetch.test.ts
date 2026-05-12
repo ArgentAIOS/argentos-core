@@ -359,7 +359,7 @@ describe("web_fetch extraction fallbacks", () => {
           firecrawlResponse("proxy firecrawl fallback", "https://example.com/proxy"),
         ) as Promise<Response>;
       }
-      return Promise.reject(new TypeError("fetch failed")) as Promise<Response>;
+      return Promise.reject(new TypeError("fetch failed"));
     });
     // @ts-expect-error mock fetch
     global.fetch = mockFetch;

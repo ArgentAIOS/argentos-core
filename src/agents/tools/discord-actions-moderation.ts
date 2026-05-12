@@ -7,7 +7,7 @@ export async function handleDiscordModerationAction(
   action: string,
   params: Record<string, unknown>,
   isActionEnabled: ActionGate<DiscordActionConfig>,
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   const accountId = readStringParam(params, "accountId");
   switch (action) {
     case "timeout": {

@@ -143,7 +143,7 @@ export function createTalkHandlers(
           return;
         }
 
-        const p = params as TalkRealtimeSessionParams;
+        const p = params;
         const requestedProviderId = p.provider ?? realtimeConfig?.provider;
         const model = p.model ?? realtimeConfig?.model;
         const voice = p.voice ?? realtimeConfig?.voice;
@@ -233,7 +233,7 @@ export function createTalkHandlers(
         return;
       }
       try {
-        const p = params as TalkRealtimeAudioParams;
+        const p = params;
         sendTalkRealtimeRelayAudio({
           relaySessionId: p.relaySessionId,
           connId: client.connId,
@@ -266,7 +266,7 @@ export function createTalkHandlers(
         return;
       }
       try {
-        const p = params as TalkRealtimeMarkParams;
+        const p = params;
         acknowledgeTalkRealtimeRelayMark({
           relaySessionId: p.relaySessionId,
           connId: client.connId,
@@ -297,7 +297,7 @@ export function createTalkHandlers(
         return;
       }
       try {
-        const p = params as TalkRealtimeToolResultParams;
+        const p = params;
         submitTalkRealtimeRelayToolResult({
           relaySessionId: p.relaySessionId,
           connId: client.connId,
@@ -331,7 +331,7 @@ export function createTalkHandlers(
         return;
       }
       try {
-        const p = params as TalkRealtimeStopParams;
+        const p = params;
         stopTalkRealtimeRelaySession({ relaySessionId: p.relaySessionId, connId: client.connId });
         respond(true, { relaySessionId: p.relaySessionId, stopped: true });
       } catch (error) {

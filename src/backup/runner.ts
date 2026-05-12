@@ -189,14 +189,18 @@ export async function runBackup(options: BackupOptions = {}): Promise<BackupResu
     const obsDbPath = expandPath("~/.argentos/observations.db");
     if (fs.existsSync(obsDbPath)) {
       backupSqliteDatabase(obsDbPath, path.join(dbBackupDir, "observations.db"));
-      if (options.verbose) console.log("  Backed up observations database");
+      if (options.verbose) {
+        console.log("  Backed up observations database");
+      }
     }
 
     // Legacy argent-mem database (for migration)
     const legacyDbPath = expandPath("~/.argent-mem/memory.db");
     if (fs.existsSync(legacyDbPath)) {
       backupSqliteDatabase(legacyDbPath, path.join(dbBackupDir, "argent-mem.db"));
-      if (options.verbose) console.log("  Backed up legacy memory database");
+      if (options.verbose) {
+        console.log("  Backed up legacy memory database");
+      }
     }
 
     // Backup included files
@@ -223,7 +227,9 @@ export async function runBackup(options: BackupOptions = {}): Promise<BackupResu
       });
       fs.rmSync(backupPath, { recursive: true });
       finalPath = tarPath;
-      if (options.verbose) console.log(`  Compressed backup: ${tarPath}`);
+      if (options.verbose) {
+        console.log(`  Compressed backup: ${tarPath}`);
+      }
     }
 
     // Upload to cloud targets
@@ -240,7 +246,9 @@ export async function runBackup(options: BackupOptions = {}): Promise<BackupResu
           stdio: options.verbose ? "inherit" : "ignore",
         });
         targetResults.s3 = true;
-        if (options.verbose) console.log(`  Uploaded to S3: ${s3Path}`);
+        if (options.verbose) {
+          console.log(`  Uploaded to S3: ${s3Path}`);
+        }
       } catch (error) {
         console.error("S3 upload failed:", error);
         targetResults.s3 = false;
@@ -265,7 +273,9 @@ export async function runBackup(options: BackupOptions = {}): Promise<BackupResu
           env,
         });
         targetResults.r2 = true;
-        if (options.verbose) console.log(`  Uploaded to R2: ${r2Path}`);
+        if (options.verbose) {
+          console.log(`  Uploaded to R2: ${r2Path}`);
+        }
       } catch (error) {
         console.error("R2 upload failed:", error);
         targetResults.r2 = false;
@@ -320,7 +330,7 @@ export async function runBackup(options: BackupOptions = {}): Promise<BackupResu
  */
 function applyRetention(backupDir: string, keepCount: number, compressed: boolean): void {
   const pattern = compressed ? "*.tar.gz" : "*/";
-  const files = fs.readdirSync(backupDir).sort().reverse();
+  const files = fs.readdirSync(backupDir).toSorted().toReversed();
 
   let count = 0;
   for (const file of files) {
@@ -342,10 +352,14 @@ function applyRetention(backupDir: string, keepCount: number, compressed: boolea
  */
 export function listBackups(configPath?: string): BackupInfo[] {
   const config = loadConfig(configPath);
-  if (!config) return [];
+  if (!config) {
+    return [];
+  }
 
   const backupDir = expandPath(config.backupDir);
-  if (!fs.existsSync(backupDir)) return [];
+  if (!fs.existsSync(backupDir)) {
+    return [];
+  }
 
   const files = fs.readdirSync(backupDir);
   const backups: BackupInfo[] = [];
@@ -366,7 +380,7 @@ export function listBackups(configPath?: string): BackupInfo[] {
     }
   }
 
-  return backups.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return backups.toSorted((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
 /**
@@ -394,7 +408,9 @@ function getDirSize(dir: string): number {
  * Format bytes as human-readable string
  */
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (bytes === 0) {
+    return "0 B";
+  }
 
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
@@ -408,7 +424,9 @@ function formatBytes(bytes: number): string {
  */
 export function getLastBackupState(): BackupState | null {
   const stateFile = expandPath(STATE_FILE);
-  if (!fs.existsSync(stateFile)) return null;
+  if (!fs.existsSync(stateFile)) {
+    return null;
+  }
 
   try {
     const content = fs.readFileSync(stateFile, "utf-8");
@@ -523,7 +541,9 @@ export async function runRestore(options: RestoreOptions = {}): Promise<BackupRe
     // Restore files
     const files = fs.readdirSync(extractPath);
     for (const file of files) {
-      if (file === ".databases") continue;
+      if (file === ".databases") {
+        continue;
+      }
 
       const src = path.join(extractPath, file);
       const dest = path.join(workspace, file);

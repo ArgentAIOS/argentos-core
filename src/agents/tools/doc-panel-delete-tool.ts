@@ -54,11 +54,17 @@ PARAMETERS:
 
       try {
         const query = new URLSearchParams();
-        if (hard) query.set("hard", "true");
-        if (!removeFromKnowledge) query.set("removeFromKnowledge", "false");
-        if (knowledgeCollection) query.set("collection", knowledgeCollection);
+        if (hard) {
+          query.set("hard", "true");
+        }
+        if (!removeFromKnowledge) {
+          query.set("removeFromKnowledge", "false");
+        }
+        if (knowledgeCollection) {
+          query.set("collection", knowledgeCollection);
+        }
         const suffix = query.toString();
-        const url = `${DASHBOARD_API}/api/canvas/document/${encodeURIComponent(id!)}${suffix ? `?${suffix}` : ""}`;
+        const url = `${DASHBOARD_API}/api/canvas/document/${encodeURIComponent(id)}${suffix ? `?${suffix}` : ""}`;
         const res = await fetch(url, {
           method: "DELETE",
           headers: dashboardApiHeaders(

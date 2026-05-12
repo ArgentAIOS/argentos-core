@@ -103,13 +103,17 @@ function parseArgs(argv: string[]): CliArgs {
     }
     if (arg === "--limit" && argv[i + 1]) {
       const next = Number.parseInt(argv[i + 1], 10);
-      if (Number.isFinite(next) && next > 0) limit = next;
+      if (Number.isFinite(next) && next > 0) {
+        limit = next;
+      }
       i += 1;
       continue;
     }
     if (arg.startsWith("--limit=")) {
       const next = Number.parseInt(arg.slice("--limit=".length), 10);
-      if (Number.isFinite(next) && next > 0) limit = next;
+      if (Number.isFinite(next) && next > 0) {
+        limit = next;
+      }
       continue;
     }
     if (arg === "--scope" && argv[i + 1]) {
@@ -169,7 +173,9 @@ function resolveCanvasDbPath(explicitPath?: string): string | null {
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
   return null;
 }
@@ -183,7 +189,9 @@ function sanitizeTagValue(value: string | undefined, fallback = "unknown"): stri
 }
 
 function parseJsonObject(raw: unknown): Record<string, unknown> {
-  if (!raw) return {};
+  if (!raw) {
+    return {};
+  }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     return raw as Record<string, unknown>;
   }
@@ -216,26 +224,36 @@ function parseTags(raw: unknown): string[] {
 }
 
 function parseFloat32Buffer(buf: Buffer | null): number[] | null {
-  if (!buf || buf.length === 0 || buf.length % 4 !== 0) return null;
+  if (!buf || buf.length === 0 || buf.length % 4 !== 0) {
+    return null;
+  }
   const out: number[] = [];
   for (let i = 0; i < buf.length; i += 4) {
     const value = buf.readFloatLE(i);
-    if (!Number.isFinite(value)) return null;
+    if (!Number.isFinite(value)) {
+      return null;
+    }
     out.push(value);
   }
   return out.length > 0 ? out : null;
 }
 
 function parseCreatedAtIso(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) {
+    return null;
+  }
   const numeric = typeof value === "number" ? value : Number.parseInt(String(value), 10);
   if (Number.isFinite(numeric)) {
     const d = new Date(numeric);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString();
+    }
   }
 
   const d = new Date(String(value));
-  if (!Number.isNaN(d.getTime())) return d.toISOString();
+  if (!Number.isNaN(d.getTime())) {
+    return d.toISOString();
+  }
   return null;
 }
 
@@ -254,10 +272,18 @@ function isKnowledgeRow(
   tags: string[],
   metadata: Record<string, unknown>,
 ): boolean {
-  if (typeValue === "knowledge") return true;
-  if (tags.some((tag) => tag.toLowerCase() === "knowledge")) return true;
-  if (tags.some((tag) => tag.toLowerCase().startsWith("kb:"))) return true;
-  if (String(metadata.source || "").toLowerCase() === "knowledge_ingest") return true;
+  if (typeValue === "knowledge") {
+    return true;
+  }
+  if (tags.some((tag) => tag.toLowerCase() === "knowledge")) {
+    return true;
+  }
+  if (tags.some((tag) => tag.toLowerCase().startsWith("kb:"))) {
+    return true;
+  }
+  if (String(metadata.source || "").toLowerCase() === "knowledge_ingest") {
+    return true;
+  }
   return false;
 }
 
@@ -300,18 +326,24 @@ function resolveSourceFileForRow(
 ): string {
   const metadataSourceFile =
     typeof metadata.sourceFile === "string" ? metadata.sourceFile.trim() : "";
-  if (isKnowledge && metadataSourceFile) return metadataSourceFile;
+  if (isKnowledge && metadataSourceFile) {
+    return metadataSourceFile;
+  }
   return `docpanel-${sanitizeTagValue(rowId, "doc")}.md`;
 }
 
 function normalizeLegacyRow(row: LegacyDocRow, docpaneCollection: string): ParsedLegacyDoc | null {
   const id = String(row.id || "").trim();
-  if (!id) return null;
+  if (!id) {
+    return null;
+  }
 
   const content = String(row.content || "")
     .replace(/\r\n/g, "\n")
     .trim();
-  if (!content) return null;
+  if (!content) {
+    return null;
+  }
 
   const title = String(row.title || "").trim() || id;
   const tags = parseTags(row.tags);
@@ -437,11 +469,12 @@ async function main() {
       if (typeof item.contentHash === "string" && item.contentHash.trim()) {
         existingHashes.add(item.contentHash.trim());
       }
-      const extra =
-        item.extra && typeof item.extra === "object" ? (item.extra as Record<string, unknown>) : {};
+      const extra = item.extra && typeof item.extra === "object" ? item.extra : {};
       const migratedDocId =
         typeof extra.migratedFromDocId === "string" ? extra.migratedFromDocId.trim() : "";
-      if (migratedDocId) existingMigratedDocIds.add(migratedDocId);
+      if (migratedDocId) {
+        existingMigratedDocIds.add(migratedDocId);
+      }
 
       const sourceFile = typeof extra.sourceFile === "string" ? extra.sourceFile.trim() : "";
       const collection =

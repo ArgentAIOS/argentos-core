@@ -87,7 +87,9 @@ export class AEVPRenderer {
       premultipliedAlpha: false,
       antialias: false,
     });
-    if (!gl) throw new Error("WebGL2 not supported");
+    if (!gl) {
+      throw new Error("WebGL2 not supported");
+    }
     this.gl = gl;
 
     // Context loss handling
@@ -122,7 +124,9 @@ export class AEVPRenderer {
 
   /** Start the render loop. */
   start(): void {
-    if (this.running) return;
+    if (this.running) {
+      return;
+    }
     this.running = true;
     this.lastFrameTime = performance.now();
     this.tick(this.lastFrameTime);
@@ -196,7 +200,9 @@ export class AEVPRenderer {
     this.canvas.removeEventListener("webglcontextlost", this.onContextLost);
     this.canvas.removeEventListener("webglcontextrestored", this.onContextRestored);
 
-    if (this.contextLost) return;
+    if (this.contextLost) {
+      return;
+    }
 
     gl.deleteProgram(this.ambientProgram);
     gl.deleteProgram(this.particleProgram);
@@ -268,10 +274,14 @@ export class AEVPRenderer {
   // ── Private: Render Loop ────────────────────────────────────────────────
 
   private tick = (now: number): void => {
-    if (!this.running) return;
+    if (!this.running) {
+      return;
+    }
     this.rafId = requestAnimationFrame(this.tick);
 
-    if (this.contextLost) return;
+    if (this.contextLost) {
+      return;
+    }
 
     // Pi profile: throttle ticks to >= frameIntervalMs between renders.
     const frameInterval = getFrameIntervalMs();
@@ -283,7 +293,9 @@ export class AEVPRenderer {
     this.lastFrameTime = now;
 
     // Early-out: no state yet
-    if (!this.targetState || !this.currentState) return;
+    if (!this.targetState || !this.currentState) {
+      return;
+    }
 
     // Phase 3: Lerp currentState toward targetState (~1s transition)
     this.lerpState(dt);

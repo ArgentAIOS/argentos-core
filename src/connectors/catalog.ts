@@ -578,7 +578,7 @@ export async function runConnectorCommandJson(params: {
 function titleCaseWords(input: string): string {
   return input
     .split(/[-_\s]+/)
-    .map((part) => (part ? part[0]!.toUpperCase() + part.slice(1) : ""))
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : ""))
     .join(" ");
 }
 

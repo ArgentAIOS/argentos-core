@@ -250,7 +250,7 @@ async function extractDocxContent(buffer: Buffer): Promise<string> {
 
   const docParts = Object.keys(zip.files)
     .filter((name) => /^word\/(document|header\d+|footer\d+|footnotes|endnotes)\.xml$/i.test(name))
-    .sort();
+    .toSorted();
 
   if (docParts.length === 0) {
     return "";
@@ -352,7 +352,7 @@ async function extractXlsxContent(buffer: Buffer): Promise<string> {
 
   const sheetFiles = Object.keys(zip.files)
     .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
-    .sort();
+    .toSorted();
   if (sheetFiles.length === 0) {
     return "";
   }

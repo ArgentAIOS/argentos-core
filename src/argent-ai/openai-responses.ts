@@ -93,7 +93,7 @@ function convertMessagesToInput(messages: Message[]): InputItem[] {
       input.push({ type: "message", role: "user", content });
     } else if (msg.role === "assistant") {
       // Process assistant content blocks — replay reasoning + text + tool calls
-      const assistantMsg = msg as AssistantMessage;
+      const assistantMsg = msg;
       const assistantBlocks = Array.isArray(assistantMsg.content) ? assistantMsg.content : [];
       for (const block of assistantBlocks) {
         if (block.type === "thinking" && block.thinkingSignature) {
@@ -124,7 +124,7 @@ function convertMessagesToInput(messages: Message[]): InputItem[] {
           });
         } else if (block.type === "toolCall") {
           // Tool call → function_call item
-          const toolCall = block as ToolCall;
+          const toolCall = block;
           // Pi stores "call_id|fc_id" in the toolCall.id field
           const [callId, fcId] = splitToolCallId(toolCall.id);
           input.push({
@@ -166,7 +166,9 @@ function convertMessagesToInput(messages: Message[]): InputItem[] {
  */
 function splitToolCallId(id: string): [string, string] {
   const pipeIdx = id.indexOf("|");
-  if (pipeIdx === -1) return [id, id];
+  if (pipeIdx === -1) {
+    return [id, id];
+  }
   return [id.slice(0, pipeIdx), id.slice(pipeIdx + 1)];
 }
 
@@ -255,7 +257,7 @@ function createInitialState(): StreamState {
   };
 }
 
-function buildPartialMessage(state: StreamState, model: Model<Api>): AssistantMessage {
+function buildPartialMessage(state: StreamState, model: Model): AssistantMessage {
   return {
     role: "assistant",
     content: [
@@ -278,7 +280,7 @@ function buildPartialMessage(state: StreamState, model: Model<Api>): AssistantMe
 function processSSEEvent(
   sseEvent: SSEEvent,
   state: StreamState,
-  model: Model<Api>,
+  model: Model,
   stream: {
     push: (event: AssistantMessageEvent) => void;
   },
@@ -521,8 +523,8 @@ export function streamOpenAIResponses(
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         Accept: "text/event-stream",
-        ...(model.headers || {}),
-        ...(options?.headers || {}),
+        ...model.headers,
+        ...options?.headers,
       };
 
       // Fire onPayload callback if present
@@ -558,7 +560,9 @@ export function streamOpenAIResponses(
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
 
@@ -567,7 +571,9 @@ export function streamOpenAIResponses(
         buffer = parts.pop() || "";
 
         for (const part of parts) {
-          if (!part.trim()) continue;
+          if (!part.trim()) {
+            continue;
+          }
           for (const sseEvent of parseSSE(part + "\n\n")) {
             processSSEEvent(sseEvent, state, model, eventStream);
           }

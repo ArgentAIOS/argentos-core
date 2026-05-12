@@ -27,7 +27,7 @@ import { LCM_DEFAULTS } from "./src/types.js";
 let engine: LcmContextEngine | null = null;
 
 export default function register(api: ArgentPluginApi) {
-  const pluginConfig = (api.pluginConfig ?? {}) as Record<string, unknown>;
+  const pluginConfig = api.pluginConfig ?? {};
   const config: LcmConfig = {
     ...LCM_DEFAULTS,
     ...pluginConfig,
@@ -57,7 +57,9 @@ export default function register(api: ArgentPluginApi) {
   // NOTE: session_start hook is defined in the type system but never fired by the
   // gateway. We derive session ID from the hook context (sessionKey) instead.
   api.on("before_agent_start", (_event, ctx) => {
-    if (!engine) return;
+    if (!engine) {
+      return;
+    }
 
     // Initialize session if not already set (or if session changed)
     const sessionKey = (ctx as Record<string, unknown>)?.sessionKey as string | undefined;
@@ -78,7 +80,9 @@ export default function register(api: ArgentPluginApi) {
   // This is the main ingestion point — we get the full message history
   // and diff against what we've already captured.
   api.on("agent_end", async (event, ctx) => {
-    if (!engine) return;
+    if (!engine) {
+      return;
+    }
 
     // Ensure session is set (in case before_agent_start didn't fire)
     const sessionKey = (ctx as Record<string, unknown>)?.sessionKey as string | undefined;
@@ -86,10 +90,14 @@ export default function register(api: ArgentPluginApi) {
       engine.setSession(sessionKey);
       api.logger.info(`[aos-lcm] Session initialized from agent_end: ${sessionKey}`);
     }
-    if (!engine.sessionId) return;
+    if (!engine.sessionId) {
+      return;
+    }
 
     const messages = (event as Record<string, unknown>).messages as unknown[];
-    if (!Array.isArray(messages)) return;
+    if (!Array.isArray(messages)) {
+      return;
+    }
 
     try {
       const ingested = await ingestFromAgentEnd(engine, messages, config);

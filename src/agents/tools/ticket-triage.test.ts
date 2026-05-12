@@ -210,7 +210,9 @@ describe("Category Classification", () => {
     let correct = 0;
     for (const ticket of REAL_TICKETS) {
       const result = triageTicket(ticket.input);
-      if (result.category === ticket.expected.category) correct++;
+      if (result.category === ticket.expected.category) {
+        correct++;
+      }
     }
     const accuracy = correct / REAL_TICKETS.length;
     expect(accuracy).toBeGreaterThanOrEqual(0.9);
@@ -227,37 +229,37 @@ describe("Category Classification", () => {
 
 describe("Urgency Scoring", () => {
   it("scores server offline 17+ hours as critical", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input);
+    const result = triageTicket(REAL_TICKETS[0].input);
     expect(result.urgencyScore).toBeGreaterThanOrEqual(80);
     expect(result.urgencyLevel).toBe("critical");
   });
 
   it("scores disk alert as medium or higher urgency", () => {
-    const result = triageTicket(REAL_TICKETS[1]!.input);
+    const result = triageTicket(REAL_TICKETS[1].input);
     expect(result.urgencyScore).toBeGreaterThanOrEqual(40);
     // Disk at capacity + alert-generated signals push this to high
     expect(URGENCY_ORDER[result.urgencyLevel]).toBeGreaterThanOrEqual(URGENCY_ORDER["medium"]);
   });
 
   it("scores ThreatLocker requests as low/informational", () => {
-    const result = triageTicket(REAL_TICKETS[5]!.input);
+    const result = triageTicket(REAL_TICKETS[5].input);
     expect(result.urgencyScore).toBeLessThanOrEqual(25);
   });
 
   it("boosts urgency for repeated issues", () => {
-    const result = triageTicket(REAL_TICKETS[6]!.input); // "third email received late"
+    const result = triageTicket(REAL_TICKETS[6].input); // "third email received late"
     const signals = result.urgencySignals.map((s) => s.name);
     expect(signals).toContain("repeated_issue");
   });
 
   it("boosts urgency for alert-generated tickets", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input); // server offline from Api
+    const result = triageTicket(REAL_TICKETS[0].input); // server offline from Api
     const signals = result.urgencySignals.map((s) => s.name);
     expect(signals).toContain("alert_generated");
   });
 
   it("detects extended downtime signal from description", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input); // 17+ hours
+    const result = triageTicket(REAL_TICKETS[0].input); // 17+ hours
     const signals = result.urgencySignals.map((s) => s.name);
     expect(signals).toContain("extended_downtime");
   });
@@ -276,22 +278,22 @@ describe("Urgency Scoring", () => {
 
 describe("Tier Routing", () => {
   it("routes server down + extended downtime to T3", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input);
+    const result = triageTicket(REAL_TICKETS[0].input);
     expect(result.tier).toBe("tier3");
   });
 
   it("routes simple email forwarding to T1", () => {
-    const result = triageTicket(REAL_TICKETS[4]!.input);
+    const result = triageTicket(REAL_TICKETS[4].input);
     expect(result.tier).toBe("tier1");
   });
 
   it("routes ThreatLocker to T1", () => {
-    const result = triageTicket(REAL_TICKETS[5]!.input);
+    const result = triageTicket(REAL_TICKETS[5].input);
     expect(result.tier).toBe("tier1");
   });
 
   it("routes ethernet/network to T2", () => {
-    const result = triageTicket(REAL_TICKETS[2]!.input);
+    const result = triageTicket(REAL_TICKETS[2].input);
     expect(result.tier).toBe("tier2");
   });
 
@@ -320,24 +322,24 @@ describe("Tier Routing", () => {
 
 describe("Confidence & Reasoning", () => {
   it("provides high confidence for clear matches", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input); // server offline
+    const result = triageTicket(REAL_TICKETS[0].input); // server offline
     expect(result.confidence).toBeGreaterThanOrEqual(0.9);
   });
 
   it("provides reasoning string", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input);
+    const result = triageTicket(REAL_TICKETS[0].input);
     expect(result.reasoning).toBeTruthy();
     expect(result.reasoning).toContain("Category:");
     expect(result.reasoning).toContain("server_offline");
   });
 
   it("includes urgency signal breakdown in reasoning", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input);
+    const result = triageTicket(REAL_TICKETS[0].input);
     expect(result.reasoning).toContain("Urgency signals:");
   });
 
   it("ThreatLocker has highest confidence (pattern-specific)", () => {
-    const result = triageTicket(REAL_TICKETS[5]!.input);
+    const result = triageTicket(REAL_TICKETS[5].input);
     expect(result.confidence).toBeGreaterThanOrEqual(0.95);
   });
 });
@@ -346,13 +348,13 @@ describe("Confidence & Reasoning", () => {
 
 describe("Auto-Resolve Detection", () => {
   it("marks ThreatLocker as auto-resolvable", () => {
-    const result = triageTicket(REAL_TICKETS[5]!.input);
+    const result = triageTicket(REAL_TICKETS[5].input);
     expect(result.autoResolvable).toBe(true);
     expect(result.autoAction).toBeTruthy();
   });
 
   it("marks server offline as NOT auto-resolvable", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input);
+    const result = triageTicket(REAL_TICKETS[0].input);
     expect(result.autoResolvable).toBe(false);
   });
 });
@@ -361,12 +363,12 @@ describe("Auto-Resolve Detection", () => {
 
 describe("SLA Suggestion", () => {
   it("suggests 15 min SLA for critical tickets", () => {
-    const result = triageTicket(REAL_TICKETS[0]!.input);
+    const result = triageTicket(REAL_TICKETS[0].input);
     expect(result.suggestedSlaMinutes).toBe(15);
   });
 
   it("suggests longer SLA for low priority", () => {
-    const result = triageTicket(REAL_TICKETS[5]!.input); // ThreatLocker
+    const result = triageTicket(REAL_TICKETS[5].input); // ThreatLocker
     expect(result.suggestedSlaMinutes).toBeGreaterThanOrEqual(480);
   });
 });
@@ -385,7 +387,7 @@ describe("Batch Triage", () => {
     expect(batch.prioritizedOrder.length).toBe(REAL_TICKETS.length);
 
     // First item should be highest urgency (server offline)
-    expect(batch.prioritizedOrder[0]!.category).toBe("server_offline");
+    expect(batch.prioritizedOrder[0].category).toBe("server_offline");
 
     // Summary should have correct total
     expect(batch.summary.total).toBe(REAL_TICKETS.length);
@@ -400,8 +402,8 @@ describe("Batch Triage", () => {
 
     const batch = triageBatch(ticketMap);
     for (let i = 1; i < batch.prioritizedOrder.length; i++) {
-      expect(batch.prioritizedOrder[i - 1]!.urgencyScore).toBeGreaterThanOrEqual(
-        batch.prioritizedOrder[i]!.urgencyScore,
+      expect(batch.prioritizedOrder[i - 1].urgencyScore).toBeGreaterThanOrEqual(
+        batch.prioritizedOrder[i].urgencyScore,
       );
     }
   });

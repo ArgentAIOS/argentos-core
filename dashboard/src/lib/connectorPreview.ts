@@ -35,7 +35,7 @@ export async function runConnectorPreview(
     timeoutMs,
   );
   const payload = (await response.json().catch(() => ({}))) as ConnectorPreviewResponse;
-  if (!response.ok || payload.ok === false) {
+  if (!response.ok || !payload.ok) {
     throw new Error(payload.details || payload.error || `HTTP ${response.status}`);
   }
   return payload;

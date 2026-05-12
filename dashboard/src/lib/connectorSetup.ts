@@ -91,10 +91,10 @@ export async function fetchConnectorSetupStatus(
     error?: string;
     details?: string;
   };
-  if (response.status === 404 && payload.supported === false) {
+  if (response.status === 404 && !payload.supported) {
     return null;
   }
-  if (!response.ok || payload.supported === false) {
+  if (!response.ok || !payload.supported) {
     throw new Error(payload.details || payload.error || `HTTP ${response.status}`);
   }
   return payload;
@@ -118,7 +118,7 @@ export async function runConnectorSetupCheck(
     error?: string;
     details?: string;
   };
-  if (!response.ok || payload.supported === false) {
+  if (!response.ok || !payload.supported) {
     throw new Error(payload.details || payload.error || `HTTP ${response.status}`);
   }
   return payload;

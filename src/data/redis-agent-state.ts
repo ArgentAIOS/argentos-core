@@ -57,7 +57,9 @@ export async function onHeartbeatCycleComplete(data: {
   pointsDelta: number;
   trend: "up" | "down" | "flat";
 }): Promise<void> {
-  if (!_redis) return;
+  if (!_redis) {
+    return;
+  }
   try {
     await setAgentState(_redis, _agentId, {
       status: "idle",
@@ -94,7 +96,9 @@ export async function onHeartbeatCycleComplete(data: {
  * Updates agent status to "contemplating".
  */
 export async function onContemplationStart(): Promise<void> {
-  if (!_redis) return;
+  if (!_redis) {
+    return;
+  }
   try {
     await setAgentState(_redis, _agentId, {
       status: "contemplating",
@@ -120,7 +124,9 @@ export async function onContemplationEpisode(episode: {
   arousal: number;
   lesson?: string;
 }): Promise<void> {
-  if (!_redis) return;
+  if (!_redis) {
+    return;
+  }
   try {
     await setAgentState(_redis, _agentId, {
       status: "idle",
@@ -171,7 +177,9 @@ export async function onContemplationEpisode(episode: {
  * Ensures status returns to idle.
  */
 export async function onContemplationComplete(): Promise<void> {
-  if (!_redis) return;
+  if (!_redis) {
+    return;
+  }
   try {
     await setAgentState(_redis, _agentId, {
       status: "idle",
@@ -193,7 +201,9 @@ export async function onSisLessonsExtracted(data: {
   lessonCount: number;
   reflectionId?: string;
 }): Promise<void> {
-  if (!_redis) return;
+  if (!_redis) {
+    return;
+  }
   try {
     await publishDashboardEvent(_redis, {
       type: "agent_status",
@@ -222,7 +232,9 @@ export async function onMemoryStored(data: {
   memoryType: string;
   significance?: string;
 }): Promise<void> {
-  if (!_redis) return;
+  if (!_redis) {
+    return;
+  }
   try {
     await publishDashboardEvent(_redis, {
       type: "memory_stored",

@@ -143,7 +143,9 @@ async function generateKling(
 
   const submitJson = (await submitRes.json()) as { data?: { task_id?: string } };
   const taskId = submitJson.data?.task_id;
-  if (!taskId) throw new Error("Kling returned no task_id");
+  if (!taskId) {
+    throw new Error("Kling returned no task_id");
+  }
 
   // Poll for completion
   const startTime = Date.now();
@@ -165,7 +167,9 @@ async function generateKling(
       continue;
     }
 
-    if (!pollRes.ok) continue;
+    if (!pollRes.ok) {
+      continue;
+    }
 
     // PIAPI response: { code, data: { status, output: { works: [{ video: { resource } }] } } }
     const pollJson = (await pollRes.json()) as {
@@ -185,7 +189,9 @@ async function generateKling(
     if (status === "completed") {
       const work = pollJson.data?.output?.works?.[0];
       const videoUrl = work?.video?.resource_without_watermark || work?.video?.resource;
-      if (!videoUrl) throw new Error("Kling completed but returned no video URL in output.works");
+      if (!videoUrl) {
+        throw new Error("Kling completed but returned no video URL in output.works");
+      }
 
       // Download video
       const videoRes = await fetchWithTimeout(
@@ -194,7 +200,9 @@ async function generateKling(
         timeoutBudget(remainingMs(), DOWNLOAD_TIMEOUT_MS),
         "KLING_DOWNLOAD_TIMEOUT",
       );
-      if (!videoRes.ok) throw new Error(`Failed to download video: ${videoRes.status}`);
+      if (!videoRes.ok) {
+        throw new Error(`Failed to download video: ${videoRes.status}`);
+      }
 
       const buf = Buffer.from(await videoRes.arrayBuffer());
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vidgen-"));
@@ -230,8 +238,12 @@ async function generateMinimax(
   const model = hasImage ? "I2V-01-HD" : "T2V-01-HD";
 
   const body: Record<string, unknown> = { model, prompt };
-  if (opts.duration === 10) body.duration = 10;
-  if (opts.aspect_ratio) body.aspect_ratio = opts.aspect_ratio;
+  if (opts.duration === 10) {
+    body.duration = 10;
+  }
+  if (opts.aspect_ratio) {
+    body.aspect_ratio = opts.aspect_ratio;
+  }
   if (opts.image) {
     if (opts.image.startsWith("http://") || opts.image.startsWith("https://")) {
       body.first_frame_image = opts.image;
@@ -273,7 +285,9 @@ async function generateMinimax(
     throw new Error(`MiniMax video error: ${submitJson.base_resp.status_msg}`);
   }
   const taskId = submitJson.task_id;
-  if (!taskId) throw new Error("MiniMax returned no task_id");
+  if (!taskId) {
+    throw new Error("MiniMax returned no task_id");
+  }
 
   // Poll for completion
   const startTime = Date.now();
@@ -292,7 +306,9 @@ async function generateMinimax(
     } catch {
       continue;
     }
-    if (!pollRes.ok) continue;
+    if (!pollRes.ok) {
+      continue;
+    }
 
     const pollJson = (await pollRes.json()) as {
       status?: string;
@@ -303,14 +319,18 @@ async function generateMinimax(
 
     if (pollJson.status === "Success") {
       const videoUrl = pollJson.download_url;
-      if (!videoUrl) throw new Error("MiniMax completed but no download URL");
+      if (!videoUrl) {
+        throw new Error("MiniMax completed but no download URL");
+      }
       const videoRes = await fetchWithTimeout(
         videoUrl,
         undefined,
         timeoutBudget(remainingMs(), DOWNLOAD_TIMEOUT_MS),
         "MINIMAX_DOWNLOAD_TIMEOUT",
       );
-      if (!videoRes.ok) throw new Error(`Failed to download MiniMax video: ${videoRes.status}`);
+      if (!videoRes.ok) {
+        throw new Error(`Failed to download MiniMax video: ${videoRes.status}`);
+      }
       const buf = Buffer.from(await videoRes.arrayBuffer());
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vidgen-mm-"));
       const filePath = path.join(dir, `video-${Date.now()}.mp4`);

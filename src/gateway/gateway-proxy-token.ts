@@ -63,7 +63,9 @@ export interface GatewayConfigOnDisk {
 export function readGatewayConfigFromDisk(pathOverride?: string): GatewayConfigOnDisk {
   const target = pathOverride || DEFAULT_ARGENT_CONFIG_PATH;
   try {
-    if (!fs.existsSync(target)) return { token: null, bind: null };
+    if (!fs.existsSync(target)) {
+      return { token: null, bind: null };
+    }
     const cfg = JSON.parse(fs.readFileSync(target, "utf-8")) as {
       gateway?: { auth?: { token?: unknown }; bind?: unknown };
     };
@@ -101,7 +103,9 @@ export function dashboardApiTokenFromRequest(req: IncomingMessage): string | nul
     const fromUrl = (
       selfUrl.searchParams.get("api_token") ?? selfUrl.searchParams.get("token")
     )?.trim();
-    if (fromUrl) return fromUrl;
+    if (fromUrl) {
+      return fromUrl;
+    }
   } catch {
     // ignore malformed URL
   }
@@ -113,7 +117,9 @@ export function dashboardApiTokenFromRequest(req: IncomingMessage): string | nul
       const fromReferer = (
         refererUrl.searchParams.get("api_token") ?? refererUrl.searchParams.get("token")
       )?.trim();
-      if (fromReferer) return fromReferer;
+      if (fromReferer) {
+        return fromReferer;
+      }
     } catch {
       // ignore malformed referer
     }
@@ -141,7 +147,9 @@ export function resolveProxyAuthToken(
   configPathOverride?: string,
 ): string | null {
   const fromRequest = dashboardApiTokenFromRequest(req);
-  if (fromRequest) return fromRequest;
+  if (fromRequest) {
+    return fromRequest;
+  }
   const cfg = readGatewayConfigFromDisk(configPathOverride);
   return cfg.token;
 }
@@ -172,9 +180,15 @@ export function injectGatewayTokenIntoIndexHtml(
   opts: InjectGatewayTokenOpts,
 ): string {
   const { token, bind } = opts;
-  if (!token) return html;
-  if (!bindIsLoopback(bind)) return html;
-  if (html.includes("__ARGENT_GATEWAY_TOKEN__")) return html;
+  if (!token) {
+    return html;
+  }
+  if (!bindIsLoopback(bind)) {
+    return html;
+  }
+  if (html.includes("__ARGENT_GATEWAY_TOKEN__")) {
+    return html;
+  }
   // JSON.stringify escapes any embedded quote/`</script>` so a hostile token
   // can't break out of the script tag.
   const script = `<script>window.__ARGENT_GATEWAY_TOKEN__=${JSON.stringify(token)};</script>`;
@@ -259,9 +273,13 @@ export async function proxyApiRequest(
   const proxyHeaders: Record<string, string> = {};
   let clientSentAuthorization = false;
   for (const [name, value] of Object.entries(req.headers)) {
-    if (value === undefined) continue;
+    if (value === undefined) {
+      continue;
+    }
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lower)) continue;
+    if (HOP_BY_HOP_HEADERS.has(lower)) {
+      continue;
+    }
     const flat = Array.isArray(value) ? value.join(", ") : value;
     proxyHeaders[name] = flat;
     if (lower === "authorization") {
@@ -283,7 +301,9 @@ export async function proxyApiRequest(
   if (method !== "GET" && method !== "HEAD") {
     try {
       body = await readRawBody(req, maxBodyBytes);
-      if (body.length === 0) body = undefined;
+      if (body.length === 0) {
+        body = undefined;
+      }
     } catch (err) {
       if (err instanceof Error && err.message === "PAYLOAD_TOO_LARGE") {
         res.statusCode = 413;
@@ -317,7 +337,9 @@ export async function proxyApiRequest(
   // hop-by-hop on the way back out too (host etc. won't appear, but be safe).
   proxyRes.headers.forEach((value, name) => {
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lower)) return;
+    if (HOP_BY_HOP_HEADERS.has(lower)) {
+      return;
+    }
     res.setHeader(name, value);
   });
   const responseBody = Buffer.from(await proxyRes.arrayBuffer());

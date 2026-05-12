@@ -12,7 +12,7 @@ export type ChannelId = ChatChannelId | (string & {});
 
 export type ChannelOutboundTargetMode = "explicit" | "implicit" | "heartbeat";
 
-export type ChannelAgentTool = AgentTool<TSchema, unknown>;
+export type ChannelAgentTool = AgentTool<TSchema>;
 
 export type ChannelAgentToolFactory = (params: { cfg?: ArgentConfig }) => ChannelAgentTool[];
 
@@ -331,7 +331,7 @@ export type ChannelMessageActionAdapter = {
   supportsButtons?: (params: { cfg: ArgentConfig }) => boolean;
   supportsCards?: (params: { cfg: ArgentConfig }) => boolean;
   extractToolSend?: (params: { args: Record<string, unknown> }) => ChannelToolSend | null;
-  handleAction?: (ctx: ChannelMessageActionContext) => Promise<AgentToolResult<unknown>>;
+  handleAction?: (ctx: ChannelMessageActionContext) => Promise<AgentToolResult>;
 };
 
 export type ChannelPollResult = {

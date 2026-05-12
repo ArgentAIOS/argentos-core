@@ -53,7 +53,7 @@ export function buildLiveInboxLedger(params: {
     const importantItems = store.listItems({ significance: "important", limit: 10 });
 
     const highSig = [...coreItems, ...importantItems]
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, Math.floor(maxItems / 2));
 
     if (highSig.length > 0) {
@@ -71,7 +71,9 @@ export function buildLiveInboxLedger(params: {
     // Non-fatal
   }
 
-  if (lines.length === 0) return null;
+  if (lines.length === 0) {
+    return null;
+  }
 
   return [
     "# Live Inbox Ledger",

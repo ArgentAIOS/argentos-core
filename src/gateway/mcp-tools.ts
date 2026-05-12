@@ -19,9 +19,15 @@ function ok(name: string, allowed?: string[]): boolean {
 
 /** Map a 1-10 numeric significance to the MemU Significance enum. */
 function toSignificance(n: number): "routine" | "noteworthy" | "important" | "core" {
-  if (n >= 8) return "core";
-  if (n >= 6) return "important";
-  if (n >= 4) return "noteworthy";
+  if (n >= 8) {
+    return "core";
+  }
+  if (n >= 6) {
+    return "important";
+  }
+  if (n >= 4) {
+    return "noteworthy";
+  }
   return "routine";
 }
 
@@ -53,7 +59,9 @@ export function registerMcpTools(
         const limit = params.limit ?? 10;
         const fetchLimit = params.type ? limit * 3 : limit;
         let results = await adapter.memory.searchByKeyword(params.query, fetchLimit);
-        if (params.type) results = results.filter((r) => r.item.memoryType === params.type);
+        if (params.type) {
+          results = results.filter((r) => r.item.memoryType === params.type);
+        }
         results = results.slice(0, limit);
 
         if (results.length === 0) {
@@ -181,8 +189,9 @@ export function registerMcpTools(
           status: params.status,
           limit: params.limit ?? 20,
         });
-        if (tasks.length === 0)
+        if (tasks.length === 0) {
           return { content: [{ type: "text" as const, text: "No tasks found." }] };
+        }
         const formatted = tasks
           .map((t) => `- [${t.status}] ${t.title} (id=${t.id}, priority=${t.priority})`)
           .join("\n");
@@ -459,7 +468,7 @@ export function registerMcpTools(
 
         let jobs = store.jobs;
         if (!params.includeDisabled) {
-          jobs = jobs.filter((j) => j.enabled !== false);
+          jobs = jobs.filter((j) => j.enabled);
         }
 
         if (jobs.length === 0) {
@@ -474,7 +483,7 @@ export function registerMcpTools(
                 ? `every ${sched.intervalMinutes}m`
                 : (sched?.at ?? "unknown");
             const agent = j.agentId ?? "default";
-            const enabled = j.enabled !== false ? "on" : "off";
+            const enabled = j.enabled ? "on" : "off";
             return `- [${enabled}] ${j.name} (id=${j.id}, schedule=${schedStr}, agent=${agent})\n    ${j.description ?? ""}`;
           })
           .join("\n");

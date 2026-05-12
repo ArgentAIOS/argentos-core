@@ -26,14 +26,18 @@ const COPILOT_DOMAINS: CopilotDomain[] = [
 
 function readString(params: Record<string, unknown>, key: string): string | undefined {
   const value = params[key];
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function readNumber(params: Record<string, unknown>, key: string): number | undefined {
   const value = params[key];
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
   return undefined;
 }
 
@@ -207,8 +211,8 @@ export const copilotHandlers: GatewayRequestHandlers = {
         storage.jobs.listRuns({ assignmentId: run.assignmentId, limit: 12 }),
       ]);
       const linkedEvents = events.filter((event) => {
-        const payload = (event.payload ?? {}) as Record<string, unknown>;
-        const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+        const payload = event.payload ?? {};
+        const metadata = event.metadata ?? {};
         return (
           payload.runId === run.id ||
           payload.assignmentId === run.assignmentId ||

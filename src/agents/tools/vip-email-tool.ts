@@ -355,9 +355,9 @@ async function saveState(statePath: string, state: VipEmailState) {
     accounts: dedupeAccounts(state.accounts),
     vipSenders: dedupeSenders(state.vipSenders),
     alerts: {
-      ttsEnabled: state.alerts.ttsEnabled !== false,
+      ttsEnabled: state.alerts.ttsEnabled,
       channelRoutes: normalizeChannelRoutes(state.alerts.channelRoutes),
-      mainSessionAudioAlert: state.alerts.mainSessionAudioAlert === true,
+      mainSessionAudioAlert: state.alerts.mainSessionAudioAlert,
     },
     updatedAt: new Date().toISOString(),
   };

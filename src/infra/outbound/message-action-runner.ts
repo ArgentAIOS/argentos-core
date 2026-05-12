@@ -77,7 +77,7 @@ export type MessageActionRunResult =
       to: string;
       handledBy: "plugin" | "core";
       payload: unknown;
-      toolResult?: AgentToolResult<unknown>;
+      toolResult?: AgentToolResult;
       sendResult?: MessageSendResult;
       dryRun: boolean;
     }
@@ -104,7 +104,7 @@ export type MessageActionRunResult =
       to: string;
       handledBy: "plugin" | "core";
       payload: unknown;
-      toolResult?: AgentToolResult<unknown>;
+      toolResult?: AgentToolResult;
       pollResult?: MessagePollResult;
       dryRun: boolean;
     }
@@ -114,17 +114,15 @@ export type MessageActionRunResult =
       action: Exclude<ChannelMessageActionName, "send" | "poll">;
       handledBy: "plugin" | "dry-run";
       payload: unknown;
-      toolResult?: AgentToolResult<unknown>;
+      toolResult?: AgentToolResult;
       dryRun: boolean;
     };
 
-export function getToolResult(
-  result: MessageActionRunResult,
-): AgentToolResult<unknown> | undefined {
+export function getToolResult(result: MessageActionRunResult): AgentToolResult | undefined {
   return "toolResult" in result ? result.toolResult : undefined;
 }
 
-function extractToolPayload(result: AgentToolResult<unknown>): unknown {
+function extractToolPayload(result: AgentToolResult): unknown {
   if (result.details !== undefined) {
     return result.details;
   }

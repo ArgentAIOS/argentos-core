@@ -64,7 +64,9 @@ export class KeyManager {
       this.cacheTime = now;
       return this.cache!;
     } catch (error) {
-      throw new Error(`Failed to load service keys from ${this.keysPath}: ${error}`);
+      throw new Error(`Failed to load service keys from ${this.keysPath}: ${error}`, {
+        cause: error,
+      });
     }
   }
 
@@ -126,7 +128,9 @@ export class KeyManager {
     // If variable specified, try that first
     if (mapping.variable) {
       const key = await this.getKey(mapping.variable);
-      if (key) return key;
+      if (key) {
+        return key;
+      }
     }
 
     // Otherwise get first key for service

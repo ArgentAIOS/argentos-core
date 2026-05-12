@@ -122,7 +122,7 @@ export function nextWakeAtMs(state: CronServiceState) {
   if (wakeTimes.length === 0) {
     return undefined;
   }
-  return wakeTimes.reduce((min, next) => Math.min(min, next), wakeTimes[0] as number);
+  return wakeTimes.reduce((min, next) => Math.min(min, next), wakeTimes[0]);
 }
 
 export function createJob(state: CronServiceState, input: CronJobCreate): CronJob {

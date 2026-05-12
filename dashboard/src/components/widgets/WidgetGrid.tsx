@@ -44,7 +44,9 @@ function loadGridItems(): GridItem[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
     }
   } catch {}
   return DEFAULT_ITEMS;
@@ -87,7 +89,9 @@ export function WidgetGrid({ onPickerOpen, customWidgets }: WidgetGridProps) {
       setItems((prev) =>
         prev.map((item) => {
           const updated = newLayout.find((l) => l.i === item.i);
-          if (!updated) return item;
+          if (!updated) {
+            return item;
+          }
           return { ...item, x: updated.x, y: updated.y, w: updated.w, h: updated.h };
         }),
       );
@@ -104,9 +108,10 @@ export function WidgetGrid({ onPickerOpen, customWidgets }: WidgetGridProps) {
       const customId = item.type.slice(7);
       return <CustomWidget widgetId={customId} />;
     }
-    const def = widgetRegistry[item.type as BuiltinWidgetType];
-    if (!def?.component)
+    const def = widgetRegistry[item.type];
+    if (!def?.component) {
       return <div className="text-[hsl(var(--muted-foreground))] text-sm p-3">Unknown widget</div>;
+    }
     const Comp = def.component;
     return <Comp />;
   };

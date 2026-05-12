@@ -143,9 +143,9 @@ export interface AgentTool<
  */
 export interface AgentState {
   systemPrompt: string;
-  model: Model<Api>;
+  model: Model;
   thinkingLevel: AgentThinkingLevel;
-  tools: AgentTool<TSchema, unknown>[];
+  tools: AgentTool<TSchema>[];
   messages: AgentMessage[];
   isStreaming: boolean;
   streamMessage: AgentMessage | null;
@@ -163,7 +163,7 @@ export interface AgentState {
 export interface AgentContext {
   systemPrompt: string;
   messages: AgentMessage[];
-  tools?: AgentTool<TSchema, unknown>[];
+  tools?: AgentTool<TSchema>[];
 }
 
 // ============================================================================
@@ -214,7 +214,7 @@ export type PiAgentEvent =
  * Configuration for the agent loop.
  */
 export interface AgentLoopConfig extends SimpleStreamOptions {
-  model: Model<Api>;
+  model: Model;
 
   /**
    * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.

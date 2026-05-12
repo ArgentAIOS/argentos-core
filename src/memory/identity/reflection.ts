@@ -71,7 +71,9 @@ export async function runReflection(params: ReflectionParams): Promise<Reflectio
   const recentLessons: string[] = [];
   const selfMemories = store.listItems({ memoryType: "self", limit: 10 });
   for (const m of selfMemories) {
-    if (m.lesson) recentLessons.push(m.lesson);
+    if (m.lesson) {
+      recentLessons.push(m.lesson);
+    }
   }
 
   // Gather entity names for context
@@ -122,7 +124,9 @@ export async function processReflectionOutput(
 
   // Store each lesson as a self-type memory
   for (const lesson of reflection.lessonsExtracted) {
-    if (!lesson.trim()) continue;
+    if (!lesson.trim()) {
+      continue;
+    }
 
     store.createItem({
       memoryType: "self",
@@ -135,7 +139,9 @@ export async function processReflectionOutput(
 
   // Store self-insights as self-type memories
   for (const insight of reflection.selfInsights) {
-    if (!insight.trim()) continue;
+    if (!insight.trim()) {
+      continue;
+    }
 
     store.createItem({
       memoryType: "self",
@@ -191,20 +197,26 @@ function parseReflectionOutput(response: string): ParsedReflection {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed) {
+      continue;
+    }
 
     // Check for structured prefixes
     if (trimmed.startsWith("SUMMARY:")) {
       inSummary = true;
       const text = trimmed.slice("SUMMARY:".length).trim();
-      if (text) summaryLines.push(text);
+      if (text) {
+        summaryLines.push(text);
+      }
       continue;
     }
 
     if (trimmed.startsWith("LESSON:")) {
       inSummary = false;
       const text = trimmed.slice("LESSON:".length).trim();
-      if (text) result.lessons.push(text);
+      if (text) {
+        result.lessons.push(text);
+      }
       continue;
     }
 
@@ -230,7 +242,9 @@ function parseReflectionOutput(response: string): ParsedReflection {
     if (trimmed.startsWith("SELF:")) {
       inSummary = false;
       const text = trimmed.slice("SELF:".length).trim();
-      if (text) result.selfInsights.push(text);
+      if (text) {
+        result.selfInsights.push(text);
+      }
       continue;
     }
 

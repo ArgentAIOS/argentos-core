@@ -163,7 +163,9 @@ function buildRecallDecompositionPlan(query: string): RecallDecompositionStep[] 
   const steps: RecallDecompositionStep[] = [];
   const pushStep = (regex: RegExp, step: Omit<RecallDecompositionStep, "matchIndex">): void => {
     const match = regex.exec(query);
-    if (!match || match.index < 0) return;
+    if (!match || match.index < 0) {
+      return;
+    }
     steps.push({ ...step, matchIndex: match.index });
   };
 
@@ -202,10 +204,12 @@ function buildRecallDecompositionPlan(query: string): RecallDecompositionStep[] 
   );
 
   const deduped = new Map<string, RecallDecompositionStep>();
-  for (const step of steps.sort((a, b) => a.matchIndex - b.matchIndex)) {
-    if (!deduped.has(step.key)) deduped.set(step.key, step);
+  for (const step of steps.toSorted((a, b) => a.matchIndex - b.matchIndex)) {
+    if (!deduped.has(step.key)) {
+      deduped.set(step.key, step);
+    }
   }
-  const ordered = [...deduped.values()].sort((a, b) => a.matchIndex - b.matchIndex);
+  const ordered = [...deduped.values()].toSorted((a, b) => a.matchIndex - b.matchIndex);
   return ordered.length > 1 ? ordered : [];
 }
 
@@ -227,7 +231,9 @@ function classifyRecallDecompositionState(
   detail: Record<string, unknown>,
   factKey?: string,
 ): RecallDecompositionState {
-  if (typeof detail.error === "string" && detail.error.trim()) return "error";
+  if (typeof detail.error === "string" && detail.error.trim()) {
+    return "error";
+  }
 
   const answer =
     detail.answer && typeof detail.answer === "object"
@@ -240,12 +246,18 @@ function classifyRecallDecompositionState(
     : [];
   const topSummary = String(results[0]?.summary ?? answer?.sourceSummary ?? "").trim();
 
-  if (!topSummary && results.length === 0) return "missing";
-  if (topSummary && isNegativePropertyResult(topSummary)) return "missing";
+  if (!topSummary && results.length === 0) {
+    return "missing";
+  }
+  if (topSummary && isNegativePropertyResult(topSummary)) {
+    return "missing";
+  }
   if (factKey === "first_conversation") {
     return "weak_recall";
   }
-  if (strategy && strategy !== "summary-best-hit" && confidence >= 0.8) return "confirmed";
+  if (strategy && strategy !== "summary-best-hit" && confidence >= 0.8) {
+    return "confirmed";
+  }
   return "weak_recall";
 }
 
@@ -453,7 +465,9 @@ function normalizeEntityName(value: string): string {
 
 function extractTemporalEntitySubject(query: string): string | null {
   const trimmed = query.trim().replace(/[?!.\s]+$/g, "");
-  if (!trimmed) return null;
+  if (!trimmed) {
+    return null;
+  }
 
   const patterns = [
     /\b(?:show|give|list|pull|find)(?:\s+me)?\s+(?:all\s+)?(?:memories?|memory|timeline|events?)\s+about\s+(.+?)(?=\s+(?:from|over|during|within|for)\b|$)/i,
@@ -467,9 +481,15 @@ function extractTemporalEntitySubject(query: string): string | null {
       ?.trim()
       .replace(/^(?:the|my)\s+/i, "")
       .trim();
-    if (!candidate) continue;
-    if (candidate.length < 2 || candidate.length > 80) continue;
-    if (/\b(?:last|past|week|month|today|yesterday)\b/i.test(candidate)) continue;
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.length < 2 || candidate.length > 80) {
+      continue;
+    }
+    if (/\b(?:last|past|week|month|today|yesterday)\b/i.test(candidate)) {
+      continue;
+    }
     return candidate;
   }
 
@@ -507,7 +527,9 @@ async function resolveEntityFilterContext(params: {
   if (parts.length === 1) {
     const single = normalizeEntityName(parts[0] ?? "");
     const canonicalMatches = allEntities.filter((entity) => {
-      if (!isStrongCanonicalEntityName(entity.name)) return false;
+      if (!isStrongCanonicalEntityName(entity.name)) {
+        return false;
+      }
       const first = normalizeEntityName(entity.name.split(/\s+/)[0] ?? "");
       return first === single;
     });
@@ -523,7 +545,9 @@ async function resolveEntityFilterContext(params: {
         (entity.name.split(/\s+/).length === 1 && normalizeEntityName(entity.name) === first),
     );
     const competingCanonicals = allEntities.filter((entity) => {
-      if (!isStrongCanonicalEntityName(entity.name)) return false;
+      if (!isStrongCanonicalEntityName(entity.name)) {
+        return false;
+      }
       const candidateFirst = normalizeEntityName(entity.name.split(/\s+/)[0] ?? "");
       return candidateFirst === first;
     });
@@ -572,14 +596,18 @@ function itemMatchesEntityTerms(
   },
   matchTerms: string[],
 ): boolean {
-  if (matchTerms.length === 0) return false;
+  if (matchTerms.length === 0) {
+    return false;
+  }
   const haystack = `${String(item.summary ?? "")} ${String(item.reflection ?? "")} ${String(item.lesson ?? "")}`;
   return matchTerms.some((term) => containsAliasTerm(haystack.toLowerCase(), term.toLowerCase()));
 }
 
 function hasWebsiteProjectCue(text: string): boolean {
   const normalized = text.trim().toLowerCase();
-  if (!normalized) return false;
+  if (!normalized) {
+    return false;
+  }
   const websiteSurface = hasWebsiteProjectSurface(normalized);
   const deliverySurface = hasWebsiteProjectDeliverySurface(normalized);
   return (
@@ -590,7 +618,9 @@ function hasWebsiteProjectCue(text: string): boolean {
 }
 
 function isWebsiteProjectIntent(intent: RecallIntentSignal | null): boolean {
-  if (!intent || intent.queryClass !== "decision_project") return false;
+  if (!intent || intent.queryClass !== "decision_project") {
+    return false;
+  }
   return intent.slotTerms.some((term) =>
     [
       "website",
@@ -672,7 +702,9 @@ const GENERIC_DECISION_PROJECT_TERMS = new Set([
 ]);
 
 function extractSpecificDecisionProjectTerms(intent: RecallIntentSignal): string[] {
-  if (intent.queryClass !== "decision_project") return [];
+  if (intent.queryClass !== "decision_project") {
+    return [];
+  }
   return intent.slotTerms.filter(
     (term) => term.length >= 4 && !GENERIC_DECISION_PROJECT_TERMS.has(term),
   );
@@ -713,15 +745,23 @@ const FAVORITE_SLOT_BOUNDARY_TERMS = new Set([
 
 function sanitizeFavoriteSlotKey(rawSlotKey: string): string {
   const cleaned = rawSlotKey.trim().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "");
-  if (!cleaned) return "";
+  if (!cleaned) {
+    return "";
+  }
 
   const kept: string[] = [];
   for (const token of cleaned.split(/\s+/)) {
     const normalizedToken = token.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "");
-    if (!normalizedToken) continue;
-    if (kept.length > 0 && FAVORITE_SLOT_BOUNDARY_TERMS.has(normalizedToken)) break;
+    if (!normalizedToken) {
+      continue;
+    }
+    if (kept.length > 0 && FAVORITE_SLOT_BOUNDARY_TERMS.has(normalizedToken)) {
+      break;
+    }
     kept.push(normalizedToken);
-    if (kept.length >= 3) break;
+    if (kept.length >= 3) {
+      break;
+    }
   }
 
   return kept.join(" ").trim();
@@ -779,7 +819,9 @@ function buildDecisionProjectIntentSignal(params: {
 
 function detectRecallIntentSignal(query: string): RecallIntentSignal | null {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
   const temporalEntitySubject = extractTemporalEntitySubject(query);
   const accomplishmentQuery =
     /\b(?:accomplished|accomplishment|completed|finished|shipped|built|implemented|worked on|get done|got done|done)\b/i.test(
@@ -1007,9 +1049,13 @@ function inferLatentProjectIntentFromHits(params: {
     score: number;
   }>;
 }): RecallIntentSignal | null {
-  if (params.currentIntent) return null;
+  if (params.currentIntent) {
+    return null;
+  }
   const normalized = params.query.trim();
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
   if (
     /\b(?:what|who|where|when|why|how|did|do|does|is|are|can|could|should|would|please|last|week|today|yesterday)\b/i.test(
       normalized,
@@ -1019,34 +1065,44 @@ function inferLatentProjectIntentFromHits(params: {
   }
 
   const queryTerms = tokenizeIntentTerms(normalized).filter((term) => term.length >= 3);
-  if (queryTerms.length < 2 || queryTerms.length > 6) return null;
+  if (queryTerms.length < 2 || queryTerms.length > 6) {
+    return null;
+  }
 
   let strongProjectHits = 0;
   let websiteProjectHits = 0;
   let docBackedHits = 0;
   for (const result of params.results.slice(0, 12)) {
     const summary = String(result.item.summary ?? "");
-    if (!summary) continue;
+    if (!summary) {
+      continue;
+    }
     const lowered = stripCitation(summary).toLowerCase();
     const overlap = queryTerms.filter((term) => containsAliasTerm(lowered, term)).length;
-    if (overlap < Math.min(2, queryTerms.length)) continue;
+    if (overlap < Math.min(2, queryTerms.length)) {
+      continue;
+    }
 
     const extra =
-      result.item.extra && typeof result.item.extra === "object"
-        ? (result.item.extra as Record<string, unknown>)
-        : {};
+      result.item.extra && typeof result.item.extra === "object" ? result.item.extra : {};
     const source = typeof extra.source === "string" ? extra.source : undefined;
     const hasProjectTitle = extractRecentProjectTitle(summary) !== null;
     const websiteProject = isWebsiteProjectSupport(summary);
     const docBacked = isKnowledgeCollectionScopedSource(source);
     if (hasProjectTitle || websiteProject || docBacked) {
       strongProjectHits += 1;
-      if (websiteProject) websiteProjectHits += 1;
-      if (docBacked) docBackedHits += 1;
+      if (websiteProject) {
+        websiteProjectHits += 1;
+      }
+      if (docBacked) {
+        docBackedHits += 1;
+      }
     }
   }
 
-  if (strongProjectHits === 0) return null;
+  if (strongProjectHits === 0) {
+    return null;
+  }
 
   return buildDecisionProjectIntentSignal({
     query: normalized,
@@ -1062,14 +1118,24 @@ function buildIntentQueryVariants(
   intent: RecallIntentSignal | null,
   timelineWindow?: TimelineWindow | null,
 ): string[] {
-  if (!intent) return [query];
+  if (!intent) {
+    return [query];
+  }
   const variants = new Set<string>([query]);
   const parts = new Set<string>();
 
-  if (intent.slotKey) parts.add(intent.slotKey);
-  for (const term of intent.slotTerms) parts.add(term);
-  for (const cue of intent.preferenceCueTerms ?? []) parts.add(cue);
-  if (intent.operatorBias) parts.add("Jason");
+  if (intent.slotKey) {
+    parts.add(intent.slotKey);
+  }
+  for (const term of intent.slotTerms) {
+    parts.add(term);
+  }
+  for (const cue of intent.preferenceCueTerms ?? []) {
+    parts.add(cue);
+  }
+  if (intent.operatorBias) {
+    parts.add("Jason");
+  }
 
   const compact = [...parts].filter(Boolean).join(" ").trim();
   if (compact) {
@@ -1249,7 +1315,9 @@ async function collectManualPropertyCandidates(params: {
   intent: RecallIntentSignal | null;
   limit: number;
 }): Promise<RecallResultRow[]> {
-  if (!params.intent || params.intent.queryClass !== "identity_property") return [];
+  if (!params.intent || params.intent.queryClass !== "identity_property") {
+    return [];
+  }
   const candidateTypes: Array<MemoryType> =
     params.intent.preferredMode === "identity" ? ["profile", "behavior"] : ["profile", "behavior"];
   const merged = new Map<string, RecallResultRow>();
@@ -1263,7 +1331,9 @@ async function collectManualPropertyCandidates(params: {
         limit: pageSize,
         offset: page * pageSize,
       });
-      if (items.length === 0) break;
+      if (items.length === 0) {
+        break;
+      }
 
       for (const item of items) {
         const score = scoreManualPropertyCandidate({
@@ -1271,7 +1341,9 @@ async function collectManualPropertyCandidates(params: {
           memoryType: item.memoryType,
           intent: params.intent,
         });
-        if (score < 4.5) continue;
+        if (score < 4.5) {
+          continue;
+        }
         const existing = merged.get(item.id);
         const candidate: RecallResultRow = {
           item,
@@ -1283,11 +1355,13 @@ async function collectManualPropertyCandidates(params: {
         }
       }
 
-      if (merged.size >= params.limit) break;
+      if (merged.size >= params.limit) {
+        break;
+      }
     }
   }
 
-  return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, params.limit);
+  return [...merged.values()].toSorted((a, b) => b.score - a.score).slice(0, params.limit);
 }
 
 function scoreManualTimelineCandidate(params: {
@@ -1303,9 +1377,13 @@ function scoreManualTimelineCandidate(params: {
   const lowered = summary.toLowerCase();
   let score = 0;
 
-  if (params.item.memoryType === "event") score += 5.5;
-  else if (params.item.memoryType === "episode") score += 4.2;
-  else if (params.item.memoryType === "knowledge") score += 2;
+  if (params.item.memoryType === "event") {
+    score += 5.5;
+  } else if (params.item.memoryType === "episode") {
+    score += 4.2;
+  } else if (params.item.memoryType === "knowledge") {
+    score += 2;
+  }
 
   if (
     params.timelineWindow.granularity === "day" &&
@@ -1314,7 +1392,9 @@ function scoreManualTimelineCandidate(params: {
   ) {
     score += 0.8;
   }
-  if (lowered.includes(params.timelineWindow.isoDate)) score += 1.2;
+  if (lowered.includes(params.timelineWindow.isoDate)) {
+    score += 1.2;
+  }
   if (
     /\b(?:did|worked|built|fixed|deployed|planned|decided|created|drafted|shaped|completed|finished|implemented|shipped|merged|wired)\b/i.test(
       summary,
@@ -1361,14 +1441,18 @@ async function collectManualTimelineCandidates(params: {
         limit: pageSize,
         offset: page * pageSize,
       });
-      if (items.length === 0) break;
+      if (items.length === 0) {
+        break;
+      }
 
       for (const item of items) {
         const score = scoreManualTimelineCandidate({
           item,
           timelineWindow: params.timelineWindow,
         });
-        if (score < 4.5) continue;
+        if (score < 4.5) {
+          continue;
+        }
         const existing = merged.get(item.id);
         const candidate: RecallResultRow = {
           item,
@@ -1380,16 +1464,22 @@ async function collectManualTimelineCandidates(params: {
         }
       }
 
-      if (merged.size >= params.limit) break;
+      if (merged.size >= params.limit) {
+        break;
+      }
     }
-    if (merged.size >= params.limit) break;
+    if (merged.size >= params.limit) {
+      break;
+    }
   }
 
-  return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, params.limit);
+  return [...merged.values()].toSorted((a, b) => b.score - a.score).slice(0, params.limit);
 }
 
 function parseCreatedAtEpoch(value: string | undefined): number {
-  if (!value) return 0;
+  if (!value) {
+    return 0;
+  }
   const epoch = Date.parse(value);
   return Number.isFinite(epoch) ? epoch : 0;
 }
@@ -1399,11 +1489,17 @@ function parseItemTimelineEpoch(item: { happenedAt?: string | null; createdAt?: 
 }
 
 function extractTimelineIsoDate(value: string | null | undefined): string | null {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
   const directMatch = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
-  if (directMatch?.[1]) return directMatch[1];
+  if (directMatch?.[1]) {
+    return directMatch[1];
+  }
   const epoch = Date.parse(value);
-  if (!Number.isFinite(epoch)) return null;
+  if (!Number.isFinite(epoch)) {
+    return null;
+  }
   return new Date(epoch).toISOString().slice(0, 10);
 }
 
@@ -1484,7 +1580,9 @@ function buildTimelineMonthWindow(
 
 function detectTimelineWindow(query: string, now: Date = new Date()): TimelineWindow | null {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
 
   const today = startOfLocalDay(now);
   if (/\btoday\b/i.test(normalized)) {
@@ -1549,7 +1647,9 @@ function extractRecentProjectTitle(summary: string): string | null {
     .split("\n")
     .map((line) => line.trim())
     .find(Boolean);
-  if (!firstLine) return null;
+  if (!firstLine) {
+    return null;
+  }
 
   const normalizedLine = firstLine
     .replace(
@@ -1577,7 +1677,9 @@ function extractRecentProjectTitle(summary: string): string | null {
       /^(.*?)(?:\s+[—-]\s+(?:V1 PRD Draft|PRP Planning Draft|Conversational Discovery Brief|Tech Stack|Planning PRP|Base PRP|Initial Task Breakdown|Revision Packet.*|Build-Ready Source Matrix.*))$/i,
     )?.[1] ?? normalizedLine;
   const title = headingBase.trim();
-  if (!title) return null;
+  if (!title) {
+    return null;
+  }
   if (
     /^(?:built|building|defined|defining|granted|granting|locked|locking|shaped|shaping|created|creating|deployed|deploying|fixed|fixing|implemented|implementing|separated|separating|scheduled|scheduling|designed|designing|wired|wiring)\b/i.test(
       title,
@@ -1592,7 +1694,9 @@ function extractRecentProjectTitle(summary: string): string | null {
   ) {
     return null;
   }
-  if (title.length > 120) return null;
+  if (title.length > 120) {
+    return null;
+  }
   return title;
 }
 
@@ -1615,16 +1719,23 @@ function scoreManualProjectCandidate(params: {
       summary,
     );
 
-  if (params.item.memoryType === "knowledge") score += 3.8;
-  if (params.item.memoryType === "event" || params.item.memoryType === "episode") score += 1.8;
-  if (params.item.memoryType === "profile") score += 0.4;
+  if (params.item.memoryType === "knowledge") {
+    score += 3.8;
+  }
+  if (params.item.memoryType === "event" || params.item.memoryType === "episode") {
+    score += 1.8;
+  }
+  if (params.item.memoryType === "profile") {
+    score += 0.4;
+  }
 
-  const extra =
-    params.item.extra && typeof params.item.extra === "object"
-      ? (params.item.extra as Record<string, unknown>)
-      : {};
-  if (params.intent.docBias && extra.source === "knowledge_ingest") score += 2.8;
-  if (params.intent.docBias && extra.collection === "docpane") score += 3.4;
+  const extra = params.item.extra && typeof params.item.extra === "object" ? params.item.extra : {};
+  if (params.intent.docBias && extra.source === "knowledge_ingest") {
+    score += 2.8;
+  }
+  if (params.intent.docBias && extra.collection === "docpane") {
+    score += 3.4;
+  }
 
   const slotMatches = params.intent.slotTerms.filter((term) => summaryTerms.has(term)).length;
   const specificProjectTerms = extractSpecificDecisionProjectTerms(params.intent);
@@ -1702,11 +1813,17 @@ function scoreManualProjectCandidate(params: {
   }
 
   if (params.intent.recencyBias) {
-    if (ageDays <= 2) score += 5;
-    else if (ageDays <= 5) score += 3.5;
-    else if (ageDays <= 10) score += 2;
-    else if (ageDays <= 21) score += 0.6;
-    else score -= 1.2;
+    if (ageDays <= 2) {
+      score += 5;
+    } else if (ageDays <= 5) {
+      score += 3.5;
+    } else if (ageDays <= 10) {
+      score += 2;
+    } else if (ageDays <= 21) {
+      score += 0.6;
+    } else {
+      score -= 1.2;
+    }
   }
 
   if (params.timelineWindow && itemAt > 0) {
@@ -1732,7 +1849,9 @@ async function collectManualProjectCandidates(params: {
   timelineWindow?: TimelineWindow | null;
   limit: number;
 }): Promise<RecallResultRow[]> {
-  if (!params.intent || params.intent.queryClass !== "decision_project") return [];
+  if (!params.intent || params.intent.queryClass !== "decision_project") {
+    return [];
+  }
 
   const candidateTypes: Array<MemoryType> = ["knowledge", "event", "episode", "profile"];
   const pageConfig: Record<MemoryType, { pageSize: number; maxPages: number }> = {
@@ -1755,7 +1874,9 @@ async function collectManualProjectCandidates(params: {
         limit: config.pageSize,
         offset: page * config.pageSize,
       });
-      if (items.length === 0) break;
+      if (items.length === 0) {
+        break;
+      }
 
       for (const item of items) {
         const score = scoreManualProjectCandidate({
@@ -1763,7 +1884,9 @@ async function collectManualProjectCandidates(params: {
           intent: params.intent,
           timelineWindow: params.timelineWindow,
         });
-        if (score < 5) continue;
+        if (score < 5) {
+          continue;
+        }
         const existing = merged.get(item.id);
         const candidate: RecallResultRow = {
           item,
@@ -1777,7 +1900,7 @@ async function collectManualProjectCandidates(params: {
     }
   }
 
-  return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, params.limit);
+  return [...merged.values()].toSorted((a, b) => b.score - a.score).slice(0, params.limit);
 }
 
 function normalizeRecallResultSignature(summary: string): string {
@@ -1791,7 +1914,9 @@ function normalizeRecallResultSignature(summary: string): string {
 function summaryMentionsIntentSlot(summary: string, intent: RecallIntentSignal): boolean {
   const lowered = summary.toLowerCase();
   if (intent.slotKey) {
-    if (new RegExp(`\\b${escapeRegExp(intent.slotKey)}\\b`, "i").test(summary)) return true;
+    if (new RegExp(`\\b${escapeRegExp(intent.slotKey)}\\b`, "i").test(summary)) {
+      return true;
+    }
     if ((intent.preferenceCueTerms ?? []).includes("favorite")) {
       if (new RegExp(`\\bfavorite\\s+${escapeRegExp(intent.slotKey)}\\b`, "i").test(summary)) {
         return true;
@@ -1804,8 +1929,12 @@ function summaryMentionsIntentSlot(summary: string, intent: RecallIntentSignal):
 function isDirectPropertySupport(summary: string, intent: RecallIntentSignal): boolean {
   if (intent.slotKey) {
     const slot = escapeRegExp(intent.slotKey);
-    if (new RegExp(`\\bfavorite\\s+${slot}\\s+(?:is|was)\\b`, "i").test(summary)) return true;
-    if (new RegExp(`\\b${slot}\\s+(?:is|was)\\b`, "i").test(summary)) return true;
+    if (new RegExp(`\\bfavorite\\s+${slot}\\s+(?:is|was)\\b`, "i").test(summary)) {
+      return true;
+    }
+    if (new RegExp(`\\b${slot}\\s+(?:is|was)\\b`, "i").test(summary)) {
+      return true;
+    }
   }
 
   if (intent.slotKey === "dog name") {
@@ -1853,8 +1982,12 @@ function isConversationalPropertyEcho(summary: string): boolean {
 }
 
 function isGenericPropertyNoise(summary: string, intent: RecallIntentSignal): boolean {
-  if (!intent.slotKey) return false;
-  if (summaryMentionsIntentSlot(summary, intent)) return false;
+  if (!intent.slotKey) {
+    return false;
+  }
+  if (summaryMentionsIntentSlot(summary, intent)) {
+    return false;
+  }
   return /\b(?:preference|prefers|communication|warmth|voice|style|automation|integration|collaboration|teamwork|expressive|expressiveness)\b/i.test(
     summary,
   );
@@ -1907,11 +2040,15 @@ function pruneDecisionProjectNoiseResults(
   results: RecallResultRow[],
   intent: RecallIntentSignal | null,
 ): RecallResultRow[] {
-  if (!intent || intent.queryClass !== "decision_project") return results;
+  if (!intent || intent.queryClass !== "decision_project") {
+    return results;
+  }
   const strongProjectExists = results.some((result) =>
     isRecentProjectSupport(String(result.item.summary ?? "")),
   );
-  if (!strongProjectExists) return results;
+  if (!strongProjectExists) {
+    return results;
+  }
 
   const filtered = results.filter((result) => {
     const summary = String(result.item.summary ?? "");
@@ -1949,11 +2086,15 @@ function pruneTimelineNoiseResults(
   results: RecallResultRow[],
   intent: RecallIntentSignal | null,
 ): RecallResultRow[] {
-  if (!intent || intent.queryClass !== "timeline_episodic") return results;
+  if (!intent || intent.queryClass !== "timeline_episodic") {
+    return results;
+  }
   const strongTimelineExists = results.some((result) =>
     isAccomplishmentTimelineSupport(String(result.item.summary ?? "")),
   );
-  if (!strongTimelineExists) return results;
+  if (!strongTimelineExists) {
+    return results;
+  }
 
   const filtered = results.filter((result) => {
     const summary = String(result.item.summary ?? "");
@@ -2007,25 +2148,37 @@ function applyTimelineEntityFocus(
 
   return focused
     .map(({ directMention: _directMention, linkedEntity: _linkedEntity, ...result }) => result)
-    .sort((a, b) => b.score - a.score);
+    .toSorted((a, b) => b.score - a.score);
 }
 
 function prunePropertyNoiseResults(
   results: RecallResultRow[],
   intent: RecallIntentSignal | null,
 ): RecallResultRow[] {
-  if (!intent || intent.queryClass !== "identity_property" || !intent.slotKey) return results;
+  if (!intent || intent.queryClass !== "identity_property" || !intent.slotKey) {
+    return results;
+  }
   const directSupportExists = results.some((result) =>
     isDirectPropertySupport(String(result.item.summary ?? ""), intent),
   );
-  if (!directSupportExists) return results;
+  if (!directSupportExists) {
+    return results;
+  }
 
   const filtered = results.filter((result) => {
     const summary = String(result.item.summary ?? "");
-    if (isNegativePropertyResult(summary)) return false;
-    if (isMetaMemoryPropertyResult(summary)) return false;
-    if (isConversationalPropertyEcho(summary)) return false;
-    if (isGenericPropertyNoise(summary, intent)) return false;
+    if (isNegativePropertyResult(summary)) {
+      return false;
+    }
+    if (isMetaMemoryPropertyResult(summary)) {
+      return false;
+    }
+    if (isConversationalPropertyEcho(summary)) {
+      return false;
+    }
+    if (isGenericPropertyNoise(summary, intent)) {
+      return false;
+    }
     return true;
   });
 
@@ -2041,7 +2194,9 @@ function applyDuplicateRecallPressure(results: RecallResultRow[]): RecallResultR
       deduped.push(result);
       continue;
     }
-    if (seen.has(signature)) continue;
+    if (seen.has(signature)) {
+      continue;
+    }
     seen.add(signature);
     deduped.push(result);
   }
@@ -2064,7 +2219,9 @@ function extractRecallAnswerCandidate(params: {
   }>;
 }): RecallAnswerCandidate | null {
   const top = params.finalResults[0];
-  if (!top) return null;
+  if (!top) {
+    return null;
+  }
   const queryTerms = tokenizeIntentTerms(params.query).filter((term) => term.length >= 3);
   const specificProjectTerms =
     params.intent?.queryClass === "decision_project"
@@ -2115,9 +2272,13 @@ function extractRecallAnswerCandidate(params: {
   if (params.intent?.slotKey === "dog name") {
     for (const source of summaries) {
       const a = /^(.+?)\s+is\s+(?:Jason'?s|my)\s+dog\b/i.exec(source.summary);
-      if (a?.[1]) return makeCandidate(source, a[1], "dog-name", 0.97);
+      if (a?.[1]) {
+        return makeCandidate(source, a[1], "dog-name", 0.97);
+      }
       const b = /\b(?:dog'?s name is|pet name is)\s+(.+?)(?:[.?!]|$)/i.exec(source.summary);
-      if (b?.[1]) return makeCandidate(source, b[1], "dog-name", 0.95);
+      if (b?.[1]) {
+        return makeCandidate(source, b[1], "dog-name", 0.95);
+      }
     }
   }
 
@@ -2144,7 +2305,7 @@ function extractRecallAnswerCandidate(params: {
   if (params.intent?.queryClass === "timeline_episodic" && params.timelineWindow) {
     const windowSummaries = summaries
       .filter((source) => itemFallsWithinTimelineWindow(source, params.timelineWindow!))
-      .sort((a, b) => a.eventAt - b.eventAt);
+      .toSorted((a, b) => a.eventAt - b.eventAt);
     if (windowSummaries.length > 0) {
       const uniqueSummaries = [...new Set(windowSummaries.map((source) => source.summary.trim()))]
         .filter(Boolean)
@@ -2196,7 +2357,9 @@ function extractRecallAnswerCandidate(params: {
     >();
     for (const source of projectSources) {
       const projectName = extractRecentProjectTitle(source.summary);
-      if (!projectName) continue;
+      if (!projectName) {
+        continue;
+      }
       const overlapTerms = specificProjectTerms.length > 0 ? specificProjectTerms : queryTerms;
       const overlap = overlapTerms.filter((term) =>
         containsAliasTerm(`${projectName} ${source.summary}`.toLowerCase(), term),
@@ -2219,13 +2382,19 @@ function extractRecallAnswerCandidate(params: {
     }
     const rankedProjects = [...projectNames.entries()];
     const preferOverlap = rankedProjects.some((entry) => entry[1].overlap > 0);
-    const rankedProject = rankedProjects.sort((a, b) => {
+    const rankedProject = rankedProjects.toSorted((a, b) => {
       if (params.intent?.recencyBias && b[1].latestAt !== a[1].latestAt) {
         return b[1].latestAt - a[1].latestAt;
       }
-      if (preferOverlap && b[1].overlap !== a[1].overlap) return b[1].overlap - a[1].overlap;
-      if (b[1].count !== a[1].count) return b[1].count - a[1].count;
-      if (!preferOverlap && b[1].overlap !== a[1].overlap) return b[1].overlap - a[1].overlap;
+      if (preferOverlap && b[1].overlap !== a[1].overlap) {
+        return b[1].overlap - a[1].overlap;
+      }
+      if (b[1].count !== a[1].count) {
+        return b[1].count - a[1].count;
+      }
+      if (!preferOverlap && b[1].overlap !== a[1].overlap) {
+        return b[1].overlap - a[1].overlap;
+      }
       return b[1].source.score - a[1].source.score;
     })[0];
     if (rankedProject) {
@@ -2256,7 +2425,9 @@ function applyIntentAwareRecallRerank(
   }>,
   intent: RecallIntentSignal | null,
 ): void {
-  if (!intent || results.length <= 1) return;
+  if (!intent || results.length <= 1) {
+    return;
+  }
   const slotTerms = new Set(intent.slotTerms);
 
   for (const result of results) {
@@ -2343,7 +2514,9 @@ function reorderPropertySlotResults(
   };
   score: number;
 }> {
-  if (!intent?.slotKey) return results;
+  if (!intent?.slotKey) {
+    return results;
+  }
 
   const direct: typeof results = [];
   const contextual: typeof results = [];
@@ -2409,14 +2582,30 @@ function scoreEntityAliasMatch(params: {
   const query = params.query.toLowerCase();
 
   let score = 0;
-  if (containsAliasTerm(relationship, params.canonical)) score += 6;
-  if (containsAliasTerm(relationship, params.alias)) score += 4;
-  if (containsAliasTerm(profile, params.canonical)) score += 2;
-  if (containsAliasTerm(profile, params.alias)) score += 2;
-  if (containsAliasTerm(query, name)) score += 2;
-  if (params.entity.bondStrength >= 0.8) score += 2;
-  if (params.entity.bondStrength >= 0.6) score += 1;
-  if (params.entity.memoryCount >= 10) score += 1;
+  if (containsAliasTerm(relationship, params.canonical)) {
+    score += 6;
+  }
+  if (containsAliasTerm(relationship, params.alias)) {
+    score += 4;
+  }
+  if (containsAliasTerm(profile, params.canonical)) {
+    score += 2;
+  }
+  if (containsAliasTerm(profile, params.alias)) {
+    score += 2;
+  }
+  if (containsAliasTerm(query, name)) {
+    score += 2;
+  }
+  if (params.entity.bondStrength >= 0.8) {
+    score += 2;
+  }
+  if (params.entity.bondStrength >= 0.6) {
+    score += 1;
+  }
+  if (params.entity.memoryCount >= 10) {
+    score += 1;
+  }
   return score;
 }
 
@@ -2482,7 +2671,9 @@ async function resolveAliasExpansionContext(params: {
         alias: aliasHit.alias,
         query,
       });
-      if (score <= 0) continue;
+      if (score <= 0) {
+        continue;
+      }
       const prev = candidateScores.get(entity.id) ?? 0;
       candidateScores.set(entity.id, Math.max(prev, score));
       entityById.set(entity.id, entity);
@@ -2492,8 +2683,10 @@ async function resolveAliasExpansionContext(params: {
   const resolvedEntities = [...candidateScores.entries()]
     .map(([id, score]) => ({ entity: entityById.get(id)!, score }))
     .filter((entry) => Boolean(entry.entity))
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
+    .toSorted((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
       if (b.entity.bondStrength !== a.entity.bondStrength) {
         return b.entity.bondStrength - a.entity.bondStrength;
       }
@@ -2559,8 +2752,12 @@ function applyFamilyCareRankingBoost(
     const hasCareCue = FAMILY_CARE_CONTEXT_RE.test(text);
     const hasEntity = entityNames.some((name) => containsAliasTerm(text, name));
 
-    if (hasEntity) boost *= 1.7;
-    if (hasCareCue) boost *= 1.35;
+    if (hasEntity) {
+      boost *= 1.7;
+    }
+    if (hasCareCue) {
+      boost *= 1.35;
+    }
     if (result.item.memoryType === "profile" || result.item.memoryType === "event") {
       boost *= 1.1;
     }
@@ -2590,7 +2787,9 @@ function operationalProfileSignature(summary: string): string {
 }
 
 function normalizeCollectionValue(value: unknown): string | null {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string") {
+    return null;
+  }
   const trimmed = value.trim().toLowerCase();
   return trimmed || null;
 }
@@ -2623,19 +2822,25 @@ async function findOperationalProfileDuplicate(memory: MemoryAdapter, fact: stri
 function detectMemoryInjectionReasons(text: string): MemorySanitizerReasonCode[] {
   const reasons = new Set<MemorySanitizerReasonCode>();
   for (const pattern of MEMORY_WRITE_SANITIZER_PATTERNS) {
-    if (pattern.regex.test(text)) reasons.add(pattern.code);
+    if (pattern.regex.test(text)) {
+      reasons.add(pattern.code);
+    }
   }
   return [...reasons];
 }
 
 function normalizeSanitizerPolicy(raw: unknown): MemoryWriteSanitizerPolicy {
-  if (raw === "log_only" || raw === "drop" || raw === "drop_and_alert") return raw;
+  if (raw === "log_only" || raw === "drop" || raw === "drop_and_alert") {
+    return raw;
+  }
   return "drop";
 }
 
 function resolveMemoryWriteSanitizerPolicy(cfg: ArgentConfig): MemoryWriteSanitizerPolicy {
   const envPolicy = process.env.ARGENT_MEMU_SANITIZER_POLICY;
-  if (envPolicy) return normalizeSanitizerPolicy(envPolicy);
+  if (envPolicy) {
+    return normalizeSanitizerPolicy(envPolicy);
+  }
   return normalizeSanitizerPolicy(cfg.memory?.memu?.sanitizer?.policy);
 }
 
@@ -2651,8 +2856,12 @@ function incrementSanitizerCounters(params: {
         (memoryWriteSanitizerCounters.reasonCodes[reason] ?? 0) + 1;
     }
   }
-  if (params.action === "drop") memoryWriteSanitizerCounters.dropped += 1;
-  if (params.action === "alert") memoryWriteSanitizerCounters.alerts += 1;
+  if (params.action === "drop") {
+    memoryWriteSanitizerCounters.dropped += 1;
+  }
+  if (params.action === "alert") {
+    memoryWriteSanitizerCounters.alerts += 1;
+  }
 }
 
 function logMemoryWriteSanitizerAudit(params: {
@@ -2689,7 +2898,9 @@ async function runRecallVectorFallback(params: {
   const merged = new Map<string, { item: any; score: number; categories: string[] }>();
   for (const queryVariant of params.queryVariants.slice(0, 4)) {
     const embedding = await embedder.embed(queryVariant);
-    if (!embedding || embedding.length === 0) continue;
+    if (!embedding || embedding.length === 0) {
+      continue;
+    }
     const hits = await params.memory.searchByVector(
       Float32Array.from(embedding),
       params.fetchLimit,
@@ -2703,7 +2914,7 @@ async function runRecallVectorFallback(params: {
       }
     }
   }
-  return [...merged.values()].sort((a, b) => b.score - a.score);
+  return [...merged.values()].toSorted((a, b) => b.score - a.score);
 }
 
 function hasKnowledgeBackedProjectSupport(
@@ -2711,16 +2922,15 @@ function hasKnowledgeBackedProjectSupport(
   intent: RecallIntentSignal | null,
 ): boolean {
   const summary = String(result.item.summary ?? "");
-  const extra =
-    result.item.extra && typeof result.item.extra === "object"
-      ? (result.item.extra as Record<string, unknown>)
-      : {};
+  const extra = result.item.extra && typeof result.item.extra === "object" ? result.item.extra : {};
   const source = typeof extra.source === "string" ? extra.source : undefined;
   const docBacked =
     isKnowledgeCollectionScopedSource(source) ||
     typeof extra.collection === "string" ||
     typeof extra.citation === "string";
-  if (!docBacked) return false;
+  if (!docBacked) {
+    return false;
+  }
   if (isWebsiteProjectIntent(intent)) {
     return isWebsiteProjectSupport(summary) || hasWebsiteProjectSurface(summary);
   }
@@ -2732,10 +2942,14 @@ function shouldTriggerKnowledgeProjectFallback(params: {
   answerCandidate: RecallAnswerCandidate | null;
   results: RecallResultRow[];
 }): boolean {
-  if (!params.intent || params.intent.queryClass !== "decision_project") return false;
+  if (!params.intent || params.intent.queryClass !== "decision_project") {
+    return false;
+  }
 
   const topResults = params.results.slice(0, 5);
-  if (topResults.length === 0) return true;
+  if (topResults.length === 0) {
+    return true;
+  }
 
   const specificProjectTerms = extractSpecificDecisionProjectTerms(params.intent);
   const hasSpecificTermSupport =
@@ -2832,7 +3046,7 @@ async function runKnowledgeProjectFallback(params: {
   }
 
   return {
-    results: [...merged.values()].sort((a, b) => b.score - a.score).slice(0, params.limit),
+    results: [...merged.values()].toSorted((a, b) => b.score - a.score).slice(0, params.limit),
     queryVariants: fallbackQueries,
   };
 }
@@ -3132,13 +3346,11 @@ export function createMemoryRecallTool(options: {
         return jsonResult({ results: [], error: message });
       }
       const skipDecomposition =
-        Boolean(params) &&
-        typeof params === "object" &&
-        (params as Record<string, unknown>).__decomposition_skip === true;
+        Boolean(params) && typeof params === "object" && params.__decomposition_skip === true;
       const entityFilter = readStringParam(params, "entity");
       const explicitCollectionFilter = readStringParam(params, "collection");
       const includeCoverage = params.include_coverage === true;
-      const requestedMode = (readStringParam(params, "mode") ?? "general") as RecallMode;
+      const requestedMode = readStringParam(params, "mode") ?? "general";
 
       if (!skipDecomposition) {
         const decompositionPlan = buildRecallDecompositionPlan(query);
@@ -3147,13 +3359,13 @@ export function createMemoryRecallTool(options: {
           const facts = await Promise.all(
             decompositionPlan.map(async (step, index) => {
               const factParams: Record<string, unknown> = {
-                ...(params && typeof params === "object"
-                  ? (params as Record<string, unknown>)
-                  : {}),
+                ...(params && typeof params === "object" ? params : {}),
                 query: step.query,
                 __decomposition_skip: true,
               };
-              if (step.mode) factParams.mode = step.mode;
+              if (step.mode) {
+                factParams.mode = step.mode;
+              }
 
               const factResult = await tool.execute(
                 `${_toolCallId}::fact-${index + 1}`,
@@ -3171,7 +3383,9 @@ export function createMemoryRecallTool(options: {
                   typeof row.id === "string" && row.id.trim()
                     ? row.id
                     : `${step.key}:${String(row.summary ?? "")}`;
-                if (!mergedResults.has(key)) mergedResults.set(key, row);
+                if (!mergedResults.has(key)) {
+                  mergedResults.set(key, row);
+                }
               }
 
               const state = classifyRecallDecompositionState(factDetail, step.key);
@@ -3445,7 +3659,7 @@ export function createMemoryRecallTool(options: {
             }
           }
 
-          adapterResults = [...merged.values()].sort((a, b) => b.score - a.score);
+          adapterResults = [...merged.values()].toSorted((a, b) => b.score - a.score);
           const latentProjectIntent = inferLatentProjectIntentFromHits({
             query,
             currentIntent: intentSignal,
@@ -3477,7 +3691,7 @@ export function createMemoryRecallTool(options: {
                 }
               }
             }
-            adapterResults = [...merged.values()].sort((a, b) => b.score - a.score);
+            adapterResults = [...merged.values()].toSorted((a, b) => b.score - a.score);
           }
 
           const sparseThreshold = Math.max(2, Math.ceil(limit * 0.3));
@@ -3501,7 +3715,9 @@ export function createMemoryRecallTool(options: {
               if (vectorFallback.length > 0) {
                 const existingIds = new Set(adapterResults.map((hit) => hit.item.id));
                 for (const hit of vectorFallback) {
-                  if (existingIds.has(hit.item.id)) continue;
+                  if (existingIds.has(hit.item.id)) {
+                    continue;
+                  }
                   adapterResults.push(hit);
                   existingIds.add(hit.item.id);
                   vectorFallbackAdded += 1;
@@ -3554,7 +3770,7 @@ export function createMemoryRecallTool(options: {
               mergedById.set(candidate.item.id, candidate);
             }
           }
-          results = [...mergedById.values()].sort((a, b) => b.score - a.score);
+          results = [...mergedById.values()].toSorted((a, b) => b.score - a.score);
         }
         if (manualProjectCandidates.length > 0) {
           const mergedById = new Map(results.map((result) => [result.item.id, result] as const));
@@ -3564,7 +3780,7 @@ export function createMemoryRecallTool(options: {
               mergedById.set(candidate.item.id, candidate);
             }
           }
-          results = [...mergedById.values()].sort((a, b) => b.score - a.score);
+          results = [...mergedById.values()].toSorted((a, b) => b.score - a.score);
         }
         if (manualTimelineCandidates.length > 0) {
           const mergedById = new Map(results.map((result) => [result.item.id, result] as const));
@@ -3574,7 +3790,7 @@ export function createMemoryRecallTool(options: {
               mergedById.set(candidate.item.id, candidate);
             }
           }
-          results = [...mergedById.values()].sort((a, b) => b.score - a.score);
+          results = [...mergedById.values()].toSorted((a, b) => b.score - a.score);
         }
 
         const aclAutoCreateCollections = includeShared
@@ -3586,7 +3802,9 @@ export function createMemoryRecallTool(options: {
                     ? (r.item.extra as Record<string, unknown>)
                     : {};
                 const source = typeof extra.source === "string" ? extra.source : undefined;
-                if (!isKnowledgeCollectionScopedSource(source)) return null;
+                if (!isKnowledgeCollectionScopedSource(source)) {
+                  return null;
+                }
                 if (typeof extra.collection === "string" && extra.collection.trim()) {
                   return extra.collection;
                 }
@@ -3609,7 +3827,9 @@ export function createMemoryRecallTool(options: {
                 ? (r.item.extra as Record<string, unknown>)
                 : {};
             const source = typeof extra.source === "string" ? extra.source : undefined;
-            if (!isKnowledgeCollectionScopedSource(source)) return true;
+            if (!isKnowledgeCollectionScopedSource(source)) {
+              return true;
+            }
             const collectionValue =
               typeof extra.collection === "string" && extra.collection.trim()
                 ? extra.collection
@@ -3647,7 +3867,7 @@ export function createMemoryRecallTool(options: {
                 }
               }
             }
-            results = [...mergedById.values()].sort((a, b) => b.score - a.score);
+            results = [...mergedById.values()].toSorted((a, b) => b.score - a.score);
           }
         }
 
@@ -3669,7 +3889,9 @@ export function createMemoryRecallTool(options: {
                 entityFilterContext.entityItemIds !== null &&
                 entityFilterContext.entityItemIds.has(r.item.id);
               const textMatch = itemMatchesEntityTerms(r.item, entityFilterContext.matchTerms);
-              if (!linkedMatch && !textMatch) return false;
+              if (!linkedMatch && !textMatch) {
+                return false;
+              }
             }
 
             // Collection filter (for ingested knowledge silos)
@@ -3692,13 +3914,17 @@ export function createMemoryRecallTool(options: {
               const tagMatch = itemCollectionTag
                 ? normalizedCollectionTagFilters.has(itemCollectionTag)
                 : false;
-              if (!rawMatch && !tagMatch) return false;
+              if (!rawMatch && !tagMatch) {
+                return false;
+              }
             }
 
             // Significance filter
             if (minSigLevel > 0) {
               const itemSig = sigPriority[r.item.significance ?? "routine"] ?? 1;
-              if (itemSig < minSigLevel) return false;
+              if (itemSig < minSigLevel) {
+                return false;
+              }
             }
 
             // Emotional filter
@@ -3707,16 +3933,24 @@ export function createMemoryRecallTool(options: {
               const a = r.item.emotionalArousal ?? 0;
               switch (emotionalFilter) {
                 case "positive":
-                  if (v <= 0) return false;
+                  if (v <= 0) {
+                    return false;
+                  }
                   break;
                 case "negative":
-                  if (v >= 0) return false;
+                  if (v >= 0) {
+                    return false;
+                  }
                   break;
                 case "intense":
-                  if (a <= 0.5) return false;
+                  if (a <= 0.5) {
+                    return false;
+                  }
                   break;
                 case "calm":
-                  if (a >= 0.3) return false;
+                  if (a >= 0.3) {
+                    return false;
+                  }
                   break;
               }
             }
@@ -3763,7 +3997,9 @@ export function createMemoryRecallTool(options: {
               .filter((w) => w.length > 2);
             for (const word of queryWords) {
               const entity = await memory.findEntityByName(word);
-              if (entity) discoveredEntityIds.add(entity.id);
+              if (entity) {
+                discoveredEntityIds.add(entity.id);
+              }
             }
 
             // Fetch memories linked to discovered entities
@@ -3840,7 +4076,7 @@ export function createMemoryRecallTool(options: {
               for (const queryVariant of queryVariants) {
                 const pass2Hits = await memory.searchByKeyword(queryVariant, pass2FetchLimit);
                 for (const hit of pass2Hits) {
-                  if (!missingTypes.includes(hit.item.memoryType as MemoryType)) {
+                  if (!missingTypes.includes(hit.item.memoryType)) {
                     continue;
                   }
                   const existing = pass2Merged.get(hit.item.id);
@@ -3981,7 +4217,7 @@ export function createMemoryRecallTool(options: {
                 })),
               }));
               if (!answerCandidate || answerCandidate.confidence < 0.8) {
-                const topObservation = observationHits[0]!.observation;
+                const topObservation = observationHits[0].observation;
                 answerCandidate = {
                   value: topObservation.summary,
                   strategy: "summary-best-hit",
@@ -4021,7 +4257,7 @@ export function createMemoryRecallTool(options: {
                 mergedById.set(candidate.item.id, candidate);
               }
             }
-            results = [...mergedById.values()].sort((a, b) => b.score - a.score);
+            results = [...mergedById.values()].toSorted((a, b) => b.score - a.score);
             results = pruneDecisionProjectNoiseResults(results, intentSignal);
             results = applyDuplicateRecallPressure(results);
             finalResults = results.slice(0, effectiveLimit);
@@ -4071,7 +4307,7 @@ export function createMemoryRecallTool(options: {
         }
         const formatted = await Promise.all(
           finalResults.map(async (r) => {
-            const base = formatResult(r, tz) as Record<string, unknown>;
+            const base = formatResult(r, tz);
             try {
               const entities = await memory.getItemEntities(r.item.id);
               if (entities.length > 0) {
@@ -4197,16 +4433,24 @@ export function createMemoryRecallTool(options: {
           };
         }
 
-        if (effectiveEntityFilter) response.entityFilter = effectiveEntityFilter;
-        if (inferredEntityFilter && !entityFilter) response.entityFilterInferred = true;
+        if (effectiveEntityFilter) {
+          response.entityFilter = effectiveEntityFilter;
+        }
+        if (inferredEntityFilter && !entityFilter) {
+          response.entityFilterInferred = true;
+        }
         if (effectiveEntityFilter) {
           response.entityFilterResolved = {
             matchTerms: entityFilterContext?.matchTerms ?? [],
             entities: (entityFilterContext?.resolvedEntities ?? []).map((entity) => entity.name),
           };
         }
-        if (collectionFilters.length === 1) response.collection = collectionFilters[0];
-        if (collectionFilters.length > 1) response.collections = collectionFilters;
+        if (collectionFilters.length === 1) {
+          response.collection = collectionFilters[0];
+        }
+        if (collectionFilters.length > 1) {
+          response.collections = collectionFilters;
+        }
         if (
           !explicitCollectionFilter &&
           collectionFilters.length > 0 &&
@@ -4217,8 +4461,12 @@ export function createMemoryRecallTool(options: {
             departmentId: resolvedIntent.departmentId,
           };
         }
-        if (minSignificance) response.minSignificance = minSignificance;
-        if (emotionalFilter) response.emotionalFilter = emotionalFilter;
+        if (minSignificance) {
+          response.minSignificance = minSignificance;
+        }
+        if (emotionalFilter) {
+          response.emotionalFilter = emotionalFilter;
+        }
 
         // Coverage metadata
         if (includeCoverage && coverageSnapshot) {
@@ -4289,7 +4537,7 @@ export function createMemoryRecallTool(options: {
           readiness: recallReadiness,
           coverage: includeCoverage
             ? {
-                ...(coverageSnapshot ?? {}),
+                ...coverageSnapshot,
                 ...((response.coverage as Record<string, unknown> | undefined) ?? {}),
               }
             : undefined,
@@ -4735,7 +4983,9 @@ export function createMemoryForgetTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Forget",
@@ -4855,7 +5105,9 @@ export function createMemoryEntityTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Entity",
@@ -4886,14 +5138,17 @@ export function createMemoryEntityTool(options: {
 
         switch (action) {
           case "get": {
-            if (!name) return jsonResult({ error: "name is required for 'get' action" });
+            if (!name) {
+              return jsonResult({ error: "name is required for 'get' action" });
+            }
             const entity = await memory.findEntityByName(name);
-            if (!entity)
+            if (!entity) {
               return jsonResult({
                 found: false,
                 name,
                 message: `No entity found with name "${name}"`,
               });
+            }
 
             const memories = await memory.getEntityItems(entity.id, 10);
             return jsonResult({
@@ -4950,7 +5205,9 @@ export function createMemoryEntityTool(options: {
           }
 
           case "create": {
-            if (!name) return jsonResult({ error: "name is required for 'create' action" });
+            if (!name) {
+              return jsonResult({ error: "name is required for 'create' action" });
+            }
 
             const existing = await memory.findEntityByName(name);
             if (existing) {
@@ -4999,10 +5256,14 @@ export function createMemoryEntityTool(options: {
           }
 
           case "update": {
-            if (!name) return jsonResult({ error: "name is required for 'update' action" });
+            if (!name) {
+              return jsonResult({ error: "name is required for 'update' action" });
+            }
 
             const entity = await memory.findEntityByName(name);
-            if (!entity) return jsonResult({ error: `No entity found with name "${name}"` });
+            if (!entity) {
+              return jsonResult({ error: `No entity found with name "${name}"` });
+            }
 
             const updates: Record<string, unknown> = {};
             const relationship = readStringParam(params, "relationship");
@@ -5010,10 +5271,18 @@ export function createMemoryEntityTool(options: {
             const emotionalTexture = readStringParam(params, "emotional_texture");
             const entityType = readStringParam(params, "entity_type");
 
-            if (relationship !== undefined) updates.relationship = relationship;
-            if (bondStrength !== undefined) updates.bondStrength = bondStrength;
-            if (emotionalTexture !== undefined) updates.emotionalTexture = emotionalTexture;
-            if (entityType !== undefined) updates.entityType = entityType;
+            if (relationship !== undefined) {
+              updates.relationship = relationship;
+            }
+            if (bondStrength !== undefined) {
+              updates.bondStrength = bondStrength;
+            }
+            if (emotionalTexture !== undefined) {
+              updates.emotionalTexture = emotionalTexture;
+            }
+            if (entityType !== undefined) {
+              updates.entityType = entityType;
+            }
 
             if (Object.keys(updates).length === 0) {
               return jsonResult({ error: "No update fields provided" });
@@ -5075,7 +5344,9 @@ export function createMemoryReflectTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Reflect",
@@ -5208,7 +5479,9 @@ export function createMemoryReflectTool(options: {
         // Auto-create self-type memories from lessons
         let selfMemoriesCreated = 0;
         for (const lesson of filteredLessons) {
-          if (!lesson.trim()) continue;
+          if (!lesson.trim()) {
+            continue;
+          }
           await memory.createItem({
             memoryType: "self",
             summary: lesson,
@@ -5221,7 +5494,9 @@ export function createMemoryReflectTool(options: {
 
         // Auto-create self-type memories from insights
         for (const insight of filteredInsights) {
-          if (!insight.trim()) continue;
+          if (!insight.trim()) {
+            continue;
+          }
           await memory.createItem({
             memoryType: "self",
             summary: insight,
@@ -5271,10 +5546,14 @@ export function createMemoryReflectTool(options: {
 
 /** Convert UTC ISO timestamp to user's local time string */
 function toLocalTime(utcIso: string | null, tz: string): string | null {
-  if (!utcIso) return null;
+  if (!utcIso) {
+    return null;
+  }
   try {
     const d = new Date(utcIso);
-    if (isNaN(d.getTime())) return utcIso;
+    if (isNaN(d.getTime())) {
+      return utcIso;
+    }
     return d.toLocaleString("en-US", {
       timeZone: tz,
       weekday: "short",
@@ -5291,9 +5570,13 @@ function toLocalTime(utcIso: string | null, tz: string): string | null {
 }
 
 function extractCitation(summary: string, fallback?: unknown): string | null {
-  if (typeof fallback === "string" && fallback.trim()) return fallback.trim();
+  if (typeof fallback === "string" && fallback.trim()) {
+    return fallback.trim();
+  }
   const match = /^\s*\[\[citation:([^\]]+)\]\]/i.exec(summary);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return match[1]?.trim() || null;
 }
 
@@ -5336,9 +5619,11 @@ function formatResult(
   };
 
   if (r.item.extra && typeof r.item.extra === "object") {
-    const extra = r.item.extra as Record<string, unknown>;
+    const extra = r.item.extra;
     const citation = extractCitation(r.item.summary, extra.citation);
-    if (citation) base.citation = citation;
+    if (citation) {
+      base.citation = citation;
+    }
     if (typeof extra.collection === "string" && extra.collection.trim()) {
       base.collection = extra.collection;
     }
@@ -5361,8 +5646,12 @@ function formatResult(
     };
   }
 
-  if (r.item.reflection) base.reflection = r.item.reflection;
-  if (r.item.lesson) base.lesson = r.item.lesson;
+  if (r.item.reflection) {
+    base.reflection = r.item.reflection;
+  }
+  if (r.item.lesson) {
+    base.lesson = r.item.lesson;
+  }
 
   return base;
 }

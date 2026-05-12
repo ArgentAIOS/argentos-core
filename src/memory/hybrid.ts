@@ -134,7 +134,7 @@ export async function mergeHybridResults(params: {
     workspaceDir: params.workspaceDir,
     nowMs: params.nowMs,
   });
-  const sorted = decayed.sort((a, b) => b.score - a.score);
+  const sorted = decayed.toSorted((a, b) => b.score - a.score);
 
   const mmrConfig = { ...DEFAULT_MMR_CONFIG, ...params.mmr };
   if (mmrConfig.enabled) {

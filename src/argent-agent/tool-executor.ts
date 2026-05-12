@@ -298,8 +298,8 @@ export class ToolExecutor {
   constructor(config: ToolExecutorConfig) {
     this.config = config;
     this.policies = [...(config.policies || [])];
-    this.preHooks = [...(config.preHooks || [])].sort((a, b) => a.priority - b.priority);
-    this.postHooks = [...(config.postHooks || [])].sort((a, b) => a.priority - b.priority);
+    this.preHooks = [...(config.preHooks || [])].toSorted((a, b) => a.priority - b.priority);
+    this.postHooks = [...(config.postHooks || [])].toSorted((a, b) => a.priority - b.priority);
   }
 
   // ── Public API ──
@@ -421,7 +421,9 @@ export class ToolExecutor {
       // ── 5. Run pre-execution hooks ──
       let currentArgs = { ...toolCall.arguments };
       for (const hook of this.preHooks) {
-        if (combinedSignal.aborted) break;
+        if (combinedSignal.aborted) {
+          break;
+        }
 
         const hookResult = await hook.execute(
           { ...toolCall, arguments: currentArgs },
@@ -461,8 +463,7 @@ export class ToolExecutor {
       }
 
       // ── 6. Execute the tool handler (with timeout + abort) ──
-      const timeoutMs =
-        (handler as ExtendedToolHandler).timeoutMs ?? this.config.defaultTimeoutMs ?? 0;
+      const timeoutMs = handler.timeoutMs ?? this.config.defaultTimeoutMs ?? 0;
       let result: ToolResult;
 
       const modifiedToolCall = { ...toolCall, arguments: currentArgs };
@@ -479,7 +480,9 @@ export class ToolExecutor {
 
       // ── 7. Run post-execution hooks ──
       for (const hook of this.postHooks) {
-        if (combinedSignal.aborted) break;
+        if (combinedSignal.aborted) {
+          break;
+        }
 
         const hookResult = await hook.execute(modifiedToolCall, result, handler, context);
         this.emit({
@@ -516,7 +519,7 @@ export class ToolExecutor {
         type: "tool_exec_complete",
         toolCall,
         result,
-        durationMs: result.durationMs!,
+        durationMs: result.durationMs,
       });
 
       return result;
@@ -762,8 +765,12 @@ export class ToolExecutor {
    */
   private combineSignals(...signals: (AbortSignal | undefined)[]): AbortSignal {
     const validSignals = signals.filter((s): s is AbortSignal => s !== undefined);
-    if (validSignals.length === 0) return new AbortController().signal;
-    if (validSignals.length === 1) return validSignals[0];
+    if (validSignals.length === 0) {
+      return new AbortController().signal;
+    }
+    if (validSignals.length === 1) {
+      return validSignals[0];
+    }
 
     const controller = new AbortController();
 
@@ -866,7 +873,9 @@ export function createPermissionPolicy(grantedPermissions: Set<ToolPermission>):
     name: "permission",
     evaluate(_toolCall, handler) {
       const required = handler.permission ?? "standard";
-      if (required === "unrestricted") return null;
+      if (required === "unrestricted") {
+        return null;
+      }
 
       if (!grantedPermissions.has(required)) {
         if (required === "destructive") {

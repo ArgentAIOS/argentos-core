@@ -143,7 +143,9 @@ export class OpenAIProvider implements Provider {
           partial.usage.totalTokens = chunk.usage.total_tokens;
         }
 
-        if (!choice) continue;
+        if (!choice) {
+          continue;
+        }
 
         const delta = choice.delta;
 
@@ -171,7 +173,7 @@ export class OpenAIProvider implements Provider {
         if (delta?.content) {
           if (thinkingStarted && partial.thinking) {
             thinkingStarted = false;
-            yield { type: "thinking_end", thinking: partial.thinking!, partial };
+            yield { type: "thinking_end", thinking: partial.thinking, partial };
           }
           if (!textStarted) {
             textStarted = true;
@@ -198,7 +200,9 @@ export class OpenAIProvider implements Provider {
               // Tool call delta
               const pending = pendingToolCalls.get(idx);
               if (pending) {
-                if (tc.function?.name) pending.name += tc.function.name;
+                if (tc.function?.name) {
+                  pending.name += tc.function.name;
+                }
                 if (tc.function?.arguments) {
                   pending.argsJson += tc.function.arguments;
                   yield { type: "tool_call_delta", delta: tc.function.arguments, partial };
@@ -335,8 +339,8 @@ export class OpenAIProvider implements Provider {
     return {
       text: choice?.message.content || "",
       thinking:
-        ((choice?.message as unknown as { reasoning_content?: string } | undefined)
-          ?.reasoning_content as string | undefined) || "",
+        (choice?.message as unknown as { reasoning_content?: string } | undefined)
+          ?.reasoning_content || "",
       toolCalls,
       usage: {
         inputTokens: response.usage?.prompt_tokens || 0,

@@ -37,10 +37,10 @@ export interface ToolDefinition {
   execute: (
     toolCallId: string,
     params: unknown,
-    onUpdate: AgentToolUpdateCallback<unknown> | undefined,
+    onUpdate: AgentToolUpdateCallback | undefined,
     ctx: unknown,
     signal: AbortSignal | undefined,
-  ) => Promise<AgentToolResult<unknown>>;
+  ) => Promise<AgentToolResult>;
 }
 
 /**
@@ -66,7 +66,7 @@ export interface ExtensionContext {
   /** Current working directory */
   cwd: string;
   /** Current model */
-  model: Model<Api>;
+  model: Model;
   /** Current thinking level */
   thinkingLevel: string;
   /** Session messages */
@@ -85,7 +85,7 @@ export interface ExtensionCommandContext extends ExtensionContext {
   /** Append a message to the session */
   appendMessage: (message: AgentMessage) => void;
   /** Set the model */
-  setModel: (model: Model<Api>) => Promise<void>;
+  setModel: (model: Model) => Promise<void>;
   /** Set the thinking level */
   setThinkingLevel: (level: string) => void;
   /** Send a prompt to the agent */

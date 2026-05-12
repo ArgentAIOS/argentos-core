@@ -37,7 +37,9 @@ before(async () => {
 });
 
 after(() => {
-  if (server) server.close();
+  if (server) {
+    server.close();
+  }
   if (prevHome === undefined) {
     delete process.env.HOME;
   } else {
@@ -62,7 +64,9 @@ async function api(method, path, body) {
     method,
     headers: { "Content-Type": "application/json" },
   };
-  if (body) opts.body = JSON.stringify(body);
+  if (body) {
+    opts.body = JSON.stringify(body);
+  }
   const res = await fetch(url, opts);
   const contentType = res.headers.get("content-type") || "";
   let data;
@@ -182,14 +186,18 @@ describe("Canvas", () => {
   });
 
   it("GET /api/canvas/document/:id fetches document", async () => {
-    if (!docId) return;
+    if (!docId) {
+      return;
+    }
     const res = await api("GET", `/api/canvas/document/${docId}`);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.data.title, "Test Doc");
   });
 
   it("DELETE /api/canvas/document/:id deletes document", async () => {
-    if (!docId) return;
+    if (!docId) {
+      return;
+    }
     const res = await api("DELETE", `/api/canvas/document/${docId}`);
     assert.strictEqual(res.status, 200);
   });
@@ -383,7 +391,9 @@ describe("Proxy - missing key handling", () => {
       text: "hello",
     });
     // Restore
-    if (origKey) process.env.ELEVENLABS_API_KEY = origKey;
+    if (origKey) {
+      process.env.ELEVENLABS_API_KEY = origKey;
+    }
     assert.strictEqual(res.status, 503);
     assert.strictEqual(res.data.error, "missing_api_key");
   });
@@ -392,7 +402,9 @@ describe("Proxy - missing key handling", () => {
     const origKey = process.env.BRAVE_API_KEY;
     delete process.env.BRAVE_API_KEY;
     const res = await api("POST", "/api/proxy/search/brave", { query: "test" });
-    if (origKey) process.env.BRAVE_API_KEY = origKey;
+    if (origKey) {
+      process.env.BRAVE_API_KEY = origKey;
+    }
     assert.strictEqual(res.status, 503);
     assert.strictEqual(res.data.error, "missing_api_key");
   });
@@ -401,7 +413,9 @@ describe("Proxy - missing key handling", () => {
     const origKey = process.env.FIRECRAWL_API_KEY;
     delete process.env.FIRECRAWL_API_KEY;
     const res = await api("POST", "/api/proxy/fetch/firecrawl", { url: "https://example.com" });
-    if (origKey) process.env.FIRECRAWL_API_KEY = origKey;
+    if (origKey) {
+      process.env.FIRECRAWL_API_KEY = origKey;
+    }
     assert.strictEqual(res.status, 503);
     assert.strictEqual(res.data.error, "missing_api_key");
   });
@@ -410,8 +424,11 @@ describe("Proxy - missing key handling", () => {
     const origKey = process.env.ELEVENLABS_API_KEY;
     process.env.ELEVENLABS_API_KEY = "test-key";
     const res = await api("POST", "/api/proxy/tts/elevenlabs", {});
-    if (origKey) process.env.ELEVENLABS_API_KEY = origKey;
-    else delete process.env.ELEVENLABS_API_KEY;
+    if (origKey) {
+      process.env.ELEVENLABS_API_KEY = origKey;
+    } else {
+      delete process.env.ELEVENLABS_API_KEY;
+    }
     assert.strictEqual(res.status, 400);
   });
 
@@ -419,8 +436,11 @@ describe("Proxy - missing key handling", () => {
     const origKey = process.env.BRAVE_API_KEY;
     process.env.BRAVE_API_KEY = "test-key";
     const res = await api("POST", "/api/proxy/search/brave", {});
-    if (origKey) process.env.BRAVE_API_KEY = origKey;
-    else delete process.env.BRAVE_API_KEY;
+    if (origKey) {
+      process.env.BRAVE_API_KEY = origKey;
+    } else {
+      delete process.env.BRAVE_API_KEY;
+    }
     assert.strictEqual(res.status, 400);
   });
 });

@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     console.log(`Mode: ${apply ? "apply" : "preview"}`);
     console.log("");
     console.log("Candidates by type:");
-    for (const [memoryType, count] of Object.entries(byType).sort((a, b) => b[1] - a[1])) {
+    for (const [memoryType, count] of Object.entries(byType).toSorted((a, b) => b[1] - a[1])) {
       console.log(`- ${memoryType}: ${count}`);
     }
     if (exampleRows.length > 0) {

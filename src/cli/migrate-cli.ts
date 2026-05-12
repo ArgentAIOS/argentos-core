@@ -297,12 +297,16 @@ async function printDryRunPlan(outPath: string, opts: ExportOptions): Promise<vo
 
   const agents = listAgents();
   console.log(`  Agents to include (${agents.length}):`);
-  for (const a of agents) console.log(`    - ${a}`);
+  for (const a of agents) {
+    console.log(`    - ${a}`);
+  }
 
   const skipped = listAgentsRaw().filter((a) => !agents.includes(a));
   if (skipped.length) {
     console.log(`  Agents skipped (${skipped.length}):`);
-    for (const a of skipped) console.log(`    - ${a}`);
+    for (const a of skipped) {
+      console.log(`    - ${a}`);
+    }
   }
 
   console.log(
@@ -506,19 +510,27 @@ function copyBundleToTarget(bundleDir: string, target: string, opts: ImportOptio
 
   for (const src of walkFiles(bundleDir, { skipGitObjects: false })) {
     const rel = path.relative(bundleDir, src);
-    if (rel === "manifest.json") continue;
+    if (rel === "manifest.json") {
+      continue;
+    }
 
     // Map bundle-layout paths to target-layout paths.
     let dstRel = rel;
-    if (rel === "master-key") dstRel = ".master-key";
-    if (rel === "argent.json.sanitized") dstRel = "argent.json";
+    if (rel === "master-key") {
+      dstRel = ".master-key";
+    }
+    if (rel === "argent.json.sanitized") {
+      dstRel = "argent.json";
+    }
 
     if (opts.skipIdentity && dstRel.startsWith(`identity${path.sep}`)) {
       stats.skippedIdentity += 1;
       continue;
     }
     // pg-dump.sql doesn't belong in the state dir — it's consumed separately.
-    if (dstRel === "pg-dump.sql") continue;
+    if (dstRel === "pg-dump.sql") {
+      continue;
+    }
 
     const dst = path.join(target, dstRel);
     mkdirSync(path.dirname(dst), { recursive: true });
@@ -537,7 +549,9 @@ function copyBundleToTarget(bundleDir: string, target: string, opts: ImportOptio
 }
 
 function targetNonEmpty(target: string): boolean {
-  if (!existsSync(target)) return false;
+  if (!existsSync(target)) {
+    return false;
+  }
   try {
     const entries = readdirSync(target);
     // A lone .DS_Store or empty dir doesn't count.
@@ -554,8 +568,11 @@ async function untarBundle(tarPath: string, extractRoot: string): Promise<void> 
     });
     proc.once("error", reject);
     proc.once("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`tar extract exited with code ${code}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`tar extract exited with code ${code}`));
+      }
     });
   });
 }
@@ -589,8 +606,9 @@ async function runPgRestore(dumpPath: string): Promise<void> {
       // pg_restore returns nonzero on recoverable warnings (missing roles, etc.)
       // We still treat code 0 as success; warn on nonzero but don't hard fail
       // unless the dump clearly couldn't be read.
-      if (code === 0) resolve();
-      else {
+      if (code === 0) {
+        resolve();
+      } else {
         console.warn(
           `[migrate] pg_restore exited with code ${code} — check output above for errors vs. warnings.`,
         );
@@ -651,7 +669,9 @@ const TOP_LEVEL_DIRS = ["cron", "connectors", "credentials", "widgets"] as const
 function stageTopLevelDirs(bundleDir: string, manifest: Manifest): void {
   for (const name of TOP_LEVEL_DIRS) {
     const srcDir = path.join(ARGENTOS_DIR, name);
-    if (!existsSync(srcDir)) continue;
+    if (!existsSync(srcDir)) {
+      continue;
+    }
     const dstDir = path.join(bundleDir, name);
     mkdirSync(dstDir, { recursive: true });
     manifest.ensureDirs.push(name);
@@ -794,7 +814,9 @@ function stageAgents(bundleDir: string, manifest: Manifest, includeSessions: boo
 
 function stageWorkspace(bundleDir: string, manifest: Manifest): void {
   const workspaceSrc = path.join(ARGENTOS_DIR, "workspace");
-  if (!existsSync(workspaceSrc)) return;
+  if (!existsSync(workspaceSrc)) {
+    return;
+  }
   const workspaceDst = path.join(bundleDir, "workspace");
   mkdirSync(workspaceDst, { recursive: true });
 
@@ -815,11 +837,13 @@ function stageWorkspace(bundleDir: string, manifest: Manifest): void {
  * workspace (no .git/objects, no node_modules, no sessions).
  */
 function stagePerAgentWorkspaces(bundleDir: string, manifest: Manifest): void {
-  if (!existsSync(ARGENTOS_DIR)) return;
+  if (!existsSync(ARGENTOS_DIR)) {
+    return;
+  }
   const candidates = readdirSync(ARGENTOS_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory() && d.name.startsWith("workspace-") && d.name !== "workspace")
     .map((d) => d.name)
-    .sort();
+    .toSorted();
 
   for (const name of candidates) {
     const src = path.join(ARGENTOS_DIR, name);
@@ -831,7 +855,9 @@ function stagePerAgentWorkspaces(bundleDir: string, manifest: Manifest): void {
       // Also skip sessions/ inside per-agent workspaces (same policy as
       // agents/<id>/sessions/).
       const rel = path.relative(src, entry);
-      if (rel.startsWith(`sessions${path.sep}`)) continue;
+      if (rel.startsWith(`sessions${path.sep}`)) {
+        continue;
+      }
       const out = path.join(dst, rel);
       mkdirSync(path.dirname(out), { recursive: true });
       copyFileSync(entry, out);
@@ -843,7 +869,9 @@ function stagePerAgentWorkspaces(bundleDir: string, manifest: Manifest): void {
 
 function stageSanitizedConfig(bundleDir: string, manifest: Manifest): void {
   const src = path.join(ARGENTOS_DIR, "argent.json");
-  if (!existsSync(src)) return;
+  if (!existsSync(src)) {
+    return;
+  }
   const raw = readFileSync(src, "utf8");
   let parsed: Record<string, unknown> = {};
   try {
@@ -881,8 +909,11 @@ async function stagePgDump(bundleDir: string, manifest: Manifest): Promise<void>
     );
     proc.once("error", reject);
     proc.once("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`pg_dump exited with code ${code}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`pg_dump exited with code ${code}`));
+      }
     });
   });
 
@@ -904,8 +935,11 @@ async function tarBundle(stageRoot: string, tarPath: string): Promise<void> {
     });
     proc.once("error", reject);
     proc.once("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`tar exited with code ${code}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`tar exited with code ${code}`));
+      }
     });
   });
 }
@@ -998,6 +1032,7 @@ async function decryptStream(srcPath: string, dstPath: string, passphrase: strin
     // GCM authTag failures surface as "Unsupported state or unable to authenticate data".
     throw new Error(
       `Decrypt failed: ${(err as Error).message}. Wrong passphrase or corrupted bundle?`,
+      { cause: err },
     );
   }
 }
@@ -1027,9 +1062,9 @@ function promptPassphraseTTY(): Promise<string> {
     const originalWrite = stdout.write.bind(stdout);
     stdout.write = ((chunk: unknown, ...rest: unknown[]) => {
       if (muted) {
-        return originalWrite("", ...(rest as [])) as boolean;
+        return originalWrite("", ...(rest as []));
       }
-      return originalWrite(chunk as string, ...(rest as [])) as boolean;
+      return originalWrite(chunk as string, ...(rest as []));
     }) as typeof stdout.write;
     process.stdout.write("Passphrase: ");
     muted = true;
@@ -1047,11 +1082,13 @@ function promptPassphraseTTY(): Promise<string> {
 
 function listAgentsRaw(): string[] {
   const agentsDir = path.join(ARGENTOS_DIR, "agents");
-  if (!existsSync(agentsDir)) return [];
+  if (!existsSync(agentsDir)) {
+    return [];
+  }
   return readdirSync(agentsDir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
-    .sort();
+    .toSorted();
 }
 
 function listAgents(): string[] {
@@ -1059,9 +1096,13 @@ function listAgents(): string[] {
 }
 
 function shouldIncludeAgent(id: string): boolean {
-  if (SKIP_AGENT_EXACT.has(id)) return false;
+  if (SKIP_AGENT_EXACT.has(id)) {
+    return false;
+  }
   for (const prefix of SKIP_AGENT_PREFIXES) {
-    if (id.startsWith(prefix)) return false;
+    if (id.startsWith(prefix)) {
+      return false;
+    }
   }
   return true;
 }
@@ -1085,8 +1126,12 @@ function* walkFiles(root: string, opts: WalkOpts): Generator<string> {
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules") continue;
-        if (opts.skipGitObjects && isGitObjectsDir(full)) continue;
+        if (entry.name === "node_modules") {
+          continue;
+        }
+        if (opts.skipGitObjects && isGitObjectsDir(full)) {
+          continue;
+        }
         stack.push(full);
       } else if (entry.isFile()) {
         yield full;
@@ -1115,7 +1160,9 @@ function ensureOutDir(outPath: string): void {
  * Returns true if the copy happened.
  */
 function copyIfExists(src: string, dst: string, manifest: Manifest, manifestPath: string): boolean {
-  if (!existsSync(src)) return false;
+  if (!existsSync(src)) {
+    return false;
+  }
   mkdirSync(path.dirname(dst), { recursive: true });
   copyFileSync(src, dst);
   recordFile(dst, manifest, manifestPath);
@@ -1140,7 +1187,9 @@ function readArgentCoreVersion(): string {
           version?: string;
           name?: string;
         };
-        if (pkg.name === "argentos" && pkg.version) return pkg.version;
+        if (pkg.name === "argentos" && pkg.version) {
+          return pkg.version;
+        }
       } catch {
         // fall through
       }
@@ -1154,7 +1203,9 @@ function readArgentCoreVersion(): string {
  * carries a plaintext gateway auth token.
  */
 function redactTokens(input: unknown): unknown {
-  if (Array.isArray(input)) return input.map(redactTokens);
+  if (Array.isArray(input)) {
+    return input.map(redactTokens);
+  }
   if (input && typeof input === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
@@ -1295,7 +1346,9 @@ function parseImportArgs(args: string[]): ImportOptions {
           process.exit(2);
         }
         // first non-flag positional is the bundle path
-        if (!bundle && arg !== undefined) bundle = arg;
+        if (!bundle && arg !== undefined) {
+          bundle = arg;
+        }
     }
   }
   if (!bundle) {

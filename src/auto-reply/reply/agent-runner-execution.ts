@@ -62,11 +62,11 @@ function withSessionCliMcpServers(
   return {
     ...config,
     agents: {
-      ...(config.agents ?? {}),
+      ...config.agents,
       defaults: {
-        ...(defaults ?? {}),
+        ...defaults,
         cliBackends: {
-          ...(cliBackends ?? {}),
+          ...cliBackends,
           [provider]: {
             ...backend,
             // Session-scoped MCP servers should take precedence over static path config.

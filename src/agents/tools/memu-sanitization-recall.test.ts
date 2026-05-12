@@ -51,8 +51,12 @@ const mockMemoryAdapter: any = {
   getOrCreateEntity: vi.fn(async (name: string) => ({ id: `ent-${name}`, name })),
   linkItemToEntity: vi.fn(async () => undefined),
   searchByKeyword: vi.fn(async (query: string) => {
-    if (query.includes("vector-only")) return [];
-    if (query.includes("sparse")) return [{ item: keywordItem, score: 0.71, categories: [] }];
+    if (query.includes("vector-only")) {
+      return [];
+    }
+    if (query.includes("sparse")) {
+      return [{ item: keywordItem, score: 0.71, categories: [] }];
+    }
     return [{ item: keywordItem, score: 0.86, categories: [] }];
   }),
   searchByVector: vi.fn(async (embedding: Float32Array) => {
@@ -92,8 +96,12 @@ vi.mock("../../memory/memu-embed.js", () => ({
     providerId: "test",
     model: "test-embed",
     embed: async (text: string) => {
-      if (text.includes("vector-only")) return [93, 0, 0];
-      if (text.includes("sparse")) return [94, 0, 0];
+      if (text.includes("vector-only")) {
+        return [93, 0, 0];
+      }
+      if (text.includes("sparse")) {
+        return [94, 0, 0];
+      }
       return [1, 0, 0];
     },
     embedBatch: async () => [[1, 0, 0]],
@@ -253,7 +261,7 @@ describe("MemU memory sanitization and recall fallback", () => {
         ...buildConfig("drop").memory,
         cognee: { enabled: true, retrieval: { enabled: true } },
       },
-    } as any;
+    };
     const tool = createMemoryRecallTool({ config: cfg, agentId: "main" });
     expect(tool).not.toBeNull();
 
@@ -283,7 +291,7 @@ describe("MemU memory sanitization and recall fallback", () => {
         ...buildConfig("drop").memory,
         cognee: { enabled: true, retrieval: { enabled: true } },
       },
-    } as any;
+    };
     const tool = createMemoryRecallTool({ config: cfg, agentId: "main" });
     expect(tool).not.toBeNull();
 

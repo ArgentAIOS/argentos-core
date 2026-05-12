@@ -1263,7 +1263,7 @@ export async function runEmbeddedAttempt(
               ...(params.routingReasoningEffort
                 ? { reasoningEffort: params.routingReasoningEffort }
                 : {}),
-              ...(params.streamParams ?? {}),
+              ...params.streamParams,
             }
           : undefined;
 

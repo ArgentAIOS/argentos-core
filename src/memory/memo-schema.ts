@@ -278,7 +278,9 @@ export function searchObservations(
  * Get observations by IDs
  */
 export function getObservationsByIds(db: DatabaseSync, ids: number[]): Observation[] {
-  if (ids.length === 0) return [];
+  if (ids.length === 0) {
+    return [];
+  }
 
   const placeholders = ids.map(() => "?").join(",");
   return db
@@ -310,7 +312,9 @@ export function getObservationTimeline(
   `)
     .get(observationId) as Observation | undefined;
 
-  if (!anchor) return [];
+  if (!anchor) {
+    return [];
+  }
 
   // Get observations before and after
   const before = db
@@ -329,7 +333,7 @@ export function getObservationTimeline(
   `)
     .all(anchor.session_id, observationId, depthAfter) as Observation[];
 
-  return [...before.reverse(), anchor, ...after];
+  return [...before.toReversed(), anchor, ...after];
 }
 
 /**

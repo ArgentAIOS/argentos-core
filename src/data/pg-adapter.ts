@@ -253,7 +253,9 @@ class PgMemoryAdapter implements MemoryAdapter {
    * has session-level context set in PgAdapter.init().
    */
   private async ensureRlsContext(): Promise<void> {
-    if (!this._isScoped || !this.sqlClient) return;
+    if (!this._isScoped || !this.sqlClient) {
+      return;
+    }
     await this.db.execute(sql`SELECT set_config('app.agent_id', ${this.agentId}, true)`);
   }
 
@@ -536,12 +538,16 @@ class PgMemoryAdapter implements MemoryAdapter {
 
   async getOrCreateCategory(name: string, description?: string): Promise<MemoryCategory> {
     const existing = await this.getCategoryByName(name);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     try {
       return await this.createCategory({ name, description });
     } catch {
       const afterRace = await this.getCategoryByName(name);
-      if (afterRace) return afterRace;
+      if (afterRace) {
+        return afterRace;
+      }
       throw new Error(`failed to getOrCreateCategory: ${name}`);
     }
   }
@@ -752,7 +758,9 @@ class PgMemoryAdapter implements MemoryAdapter {
 
   async getOrCreateEntity(name: string, input?: Partial<CreateEntityInput>): Promise<Entity> {
     const existing = await this.findEntityByName(name);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     try {
       return await this.createEntity({
         name,
@@ -764,7 +772,9 @@ class PgMemoryAdapter implements MemoryAdapter {
       });
     } catch {
       const afterRace = await this.findEntityByName(name);
-      if (afterRace) return afterRace;
+      if (afterRace) {
+        return afterRace;
+      }
       throw new Error(`failed to getOrCreateEntity: ${name}`);
     }
   }
@@ -797,11 +807,21 @@ class PgMemoryAdapter implements MemoryAdapter {
     }>,
   ): Promise<Entity | null> {
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (fields.relationship !== undefined) updates.relationship = fields.relationship;
-    if (fields.bondStrength !== undefined) updates.bondStrength = fields.bondStrength;
-    if (fields.emotionalTexture !== undefined) updates.emotionalTexture = fields.emotionalTexture;
-    if (fields.profileSummary !== undefined) updates.profileSummary = fields.profileSummary;
-    if (fields.entityType !== undefined) updates.entityType = fields.entityType;
+    if (fields.relationship !== undefined) {
+      updates.relationship = fields.relationship;
+    }
+    if (fields.bondStrength !== undefined) {
+      updates.bondStrength = fields.bondStrength;
+    }
+    if (fields.emotionalTexture !== undefined) {
+      updates.emotionalTexture = fields.emotionalTexture;
+    }
+    if (fields.profileSummary !== undefined) {
+      updates.profileSummary = fields.profileSummary;
+    }
+    if (fields.entityType !== undefined) {
+      updates.entityType = fields.entityType;
+    }
 
     const [row] = await this.db
       .update(schema.entities)
@@ -1419,7 +1439,9 @@ class PgMemoryAdapter implements MemoryAdapter {
   ): Promise<KnowledgeObservationEvidence[]> {
     await this.ensureRlsContext();
     const observation = await this.getKnowledgeObservation(observationId);
-    if (!observation) return [];
+    if (!observation) {
+      return [];
+    }
     const rows = await this.db
       .select()
       .from(schema.knowledgeObservationEvidence)
@@ -1585,7 +1607,9 @@ class PgMemoryAdapter implements MemoryAdapter {
   async invalidateKnowledgeObservation(id: string, reason?: string): Promise<void> {
     await this.ensureRlsContext();
     const existing = await this.getKnowledgeObservation(id);
-    if (!existing) return;
+    if (!existing) {
+      return;
+    }
     await this.db
       .update(schema.knowledgeObservations)
       .set({
@@ -1974,7 +1998,9 @@ class PgMemoryAdapter implements MemoryAdapter {
     evidence: CreateKnowledgeObservationEvidenceInput[],
     now: Date,
   ): Promise<void> {
-    if (evidence.length === 0) return;
+    if (evidence.length === 0) {
+      return;
+    }
     const values = evidence.map((entry) => {
       const sourceRefs = [entry.itemId, entry.lessonId, entry.reflectionId, entry.entityId].filter(
         Boolean,
@@ -2167,8 +2193,12 @@ class PgTaskAdapter implements TaskAdapter {
       .where(like(schema.tasks.id, `${id}%`))
       .limit(2);
 
-    if (rows.length === 1) return this.mapTask(rows[0]);
-    if (rows.length === 0) return null;
+    if (rows.length === 1) {
+      return this.mapTask(rows[0]);
+    }
+    if (rows.length === 0) {
+      return null;
+    }
     // Ambiguous prefix — try exact match
     const exact = rows.find((r) => r.id === id);
     return exact ? this.mapTask(exact) : null;
@@ -2176,11 +2206,17 @@ class PgTaskAdapter implements TaskAdapter {
 
   async update(id: string, input: TaskUpdateInput): Promise<Task | null> {
     const existing = await this.get(id);
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
 
     const updates: Record<string, any> = { updatedAt: new Date() };
-    if (input.title !== undefined) updates.title = input.title;
-    if (input.description !== undefined) updates.description = input.description;
+    if (input.title !== undefined) {
+      updates.title = input.title;
+    }
+    if (input.description !== undefined) {
+      updates.description = input.description;
+    }
     if (input.status !== undefined) {
       updates.status = input.status;
       if (input.status === "in_progress" && !existing.startedAt) {
@@ -2190,13 +2226,27 @@ class PgTaskAdapter implements TaskAdapter {
         updates.completedAt = new Date();
       }
     }
-    if (input.priority !== undefined) updates.priority = input.priority;
-    if (input.assignee !== undefined) updates.assignee = input.assignee;
-    if (input.dueAt !== undefined) updates.dueAt = input.dueAt ? new Date(input.dueAt) : null;
-    if (input.dependsOn !== undefined) updates.dependsOn = input.dependsOn;
-    if (input.teamId !== undefined) updates.teamId = input.teamId;
-    if (input.tags !== undefined) updates.tags = input.tags;
-    if (input.metadata !== undefined) updates.metadata = input.metadata;
+    if (input.priority !== undefined) {
+      updates.priority = input.priority;
+    }
+    if (input.assignee !== undefined) {
+      updates.assignee = input.assignee;
+    }
+    if (input.dueAt !== undefined) {
+      updates.dueAt = input.dueAt ? new Date(input.dueAt) : null;
+    }
+    if (input.dependsOn !== undefined) {
+      updates.dependsOn = input.dependsOn;
+    }
+    if (input.teamId !== undefined) {
+      updates.teamId = input.teamId;
+    }
+    if (input.tags !== undefined) {
+      updates.tags = input.tags;
+    }
+    if (input.metadata !== undefined) {
+      updates.metadata = input.metadata;
+    }
 
     const [row] = await this.db
       .update(schema.tasks)
@@ -2208,7 +2258,9 @@ class PgTaskAdapter implements TaskAdapter {
 
   async delete(id: string): Promise<boolean> {
     const existing = await this.get(id);
-    if (!existing) return false;
+    if (!existing) {
+      return false;
+    }
 
     await this.db.delete(schema.tasks).where(eq(schema.tasks.id, existing.id));
     return true;
@@ -2236,10 +2288,18 @@ class PgTaskAdapter implements TaskAdapter {
         conditions.push(eq(schema.tasks.assignee, filter.assignee));
       }
     }
-    if (filter?.agentId) conditions.push(eq(schema.tasks.agentId, filter.agentId));
-    if (filter?.channelId) conditions.push(eq(schema.tasks.channelId, filter.channelId));
-    if (filter?.teamId) conditions.push(eq(schema.tasks.teamId, filter.teamId));
-    if (filter?.parentTaskId) conditions.push(eq(schema.tasks.parentTaskId, filter.parentTaskId));
+    if (filter?.agentId) {
+      conditions.push(eq(schema.tasks.agentId, filter.agentId));
+    }
+    if (filter?.channelId) {
+      conditions.push(eq(schema.tasks.channelId, filter.channelId));
+    }
+    if (filter?.teamId) {
+      conditions.push(eq(schema.tasks.teamId, filter.teamId));
+    }
+    if (filter?.parentTaskId) {
+      conditions.push(eq(schema.tasks.parentTaskId, filter.parentTaskId));
+    }
     if (typeof filter?.dueBefore === "number") {
       conditions.push(lte(schema.tasks.dueAt, new Date(filter.dueBefore)));
     }
@@ -2254,7 +2314,9 @@ class PgTaskAdapter implements TaskAdapter {
       .orderBy(desc(schema.tasks.createdAt))
       .limit(filter?.limit ?? 100);
 
-    if (filter?.offset) (query as any).offset(filter.offset);
+    if (filter?.offset) {
+      (query as any).offset(filter.offset);
+    }
 
     const rows = await query;
     return rows.map((r) => this.mapTask(r));
@@ -2262,12 +2324,14 @@ class PgTaskAdapter implements TaskAdapter {
 
   async start(id: string): Promise<Task | null> {
     const task = await this.get(id);
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
     if (await this.hasUnresolvedDependencies(task)) {
       return this.update(task.id, {
         status: "blocked" as TaskStatus,
         metadata: {
-          ...(task.metadata ?? {}),
+          ...task.metadata,
           blockedReason: "Waiting on dependencies",
         },
       });
@@ -2277,28 +2341,38 @@ class PgTaskAdapter implements TaskAdapter {
 
   async complete(id: string): Promise<Task | null> {
     const task = await this.update(id, { status: "completed" as TaskStatus });
-    if (!task) return null;
+    if (!task) {
+      return null;
+    }
     await this.resolveUnblockedDependents(task);
     return task;
   }
 
   async block(id: string, reason?: string): Promise<Task | null> {
     const updates: TaskUpdateInput = { status: "blocked" as TaskStatus };
-    if (reason) updates.metadata = { blockReason: reason };
+    if (reason) {
+      updates.metadata = { blockReason: reason };
+    }
     return this.update(id, updates);
   }
 
   async fail(id: string, reason?: string): Promise<Task | null> {
     const updates: TaskUpdateInput = { status: "failed" as TaskStatus };
-    if (reason) updates.metadata = { failReason: reason };
+    if (reason) {
+      updates.metadata = { failReason: reason };
+    }
     return this.update(id, updates);
   }
 
   private async hasUnresolvedDependencies(task: Task): Promise<boolean> {
-    if (!task.dependsOn || task.dependsOn.length === 0) return false;
+    if (!task.dependsOn || task.dependsOn.length === 0) {
+      return false;
+    }
     for (const depId of task.dependsOn) {
       const dep = await this.get(depId);
-      if (dep?.status !== "completed") return true;
+      if (dep?.status !== "completed") {
+        return true;
+      }
     }
     return false;
   }
@@ -2311,12 +2385,18 @@ class PgTaskAdapter implements TaskAdapter {
     });
 
     for (const candidate of blockedCandidates) {
-      if (!candidate.dependsOn || candidate.dependsOn.length === 0) continue;
-      if (!candidate.dependsOn.includes(completedTask.id)) continue;
+      if (!candidate.dependsOn || candidate.dependsOn.length === 0) {
+        continue;
+      }
+      if (!candidate.dependsOn.includes(completedTask.id)) {
+        continue;
+      }
       const unresolved = await this.hasUnresolvedDependencies(candidate);
-      if (unresolved) continue;
+      if (unresolved) {
+        continue;
+      }
 
-      const nextMetadata: Record<string, unknown> = { ...(candidate.metadata ?? {}) };
+      const nextMetadata: Record<string, unknown> = { ...candidate.metadata };
       if ("blockedReason" in nextMetadata) {
         delete nextMetadata.blockedReason;
       }
@@ -2396,7 +2476,9 @@ class PgTeamAdapter implements TeamAdapter {
       .from(schema.teams)
       .where(eq(schema.teams.id, id))
       .limit(1);
-    if (!team) return null;
+    if (!team) {
+      return null;
+    }
 
     const members = await this.db
       .select()
@@ -2671,7 +2753,9 @@ class PgJobAdapter implements JobAdapter {
     input: Partial<JobTemplateCreateInput>,
   ): Promise<JobTemplate | null> {
     const existing = await this.getTemplate(id);
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
     const updates: Partial<typeof schema.jobTemplates.$inferInsert> = {
       updatedAt: new Date(),
     };
@@ -2728,7 +2812,9 @@ class PgJobAdapter implements JobAdapter {
 
   async createAssignment(input: JobAssignmentCreateInput): Promise<JobAssignment> {
     const template = await this.getTemplate(input.templateId);
-    if (!template) throw new Error(`job template not found: ${input.templateId}`);
+    if (!template) {
+      throw new Error(`job template not found: ${input.templateId}`);
+    }
     const id = genId();
     const now = new Date();
     const cadenceMinutes =
@@ -2767,7 +2853,9 @@ class PgJobAdapter implements JobAdapter {
     enabled?: boolean;
   }): Promise<JobAssignment[]> {
     const conditions = [];
-    if (filter?.agentId) conditions.push(eq(schema.jobAssignments.agentId, filter.agentId));
+    if (filter?.agentId) {
+      conditions.push(eq(schema.jobAssignments.agentId, filter.agentId));
+    }
     if (typeof filter?.enabled === "boolean") {
       conditions.push(eq(schema.jobAssignments.enabled, filter.enabled));
     }
@@ -2804,27 +2892,43 @@ class PgJobAdapter implements JobAdapter {
     }>,
   ): Promise<JobAssignment | null> {
     const existing = await this.getAssignment(id);
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (typeof input.enabled === "boolean") updates.enabled = input.enabled;
+    if (typeof input.enabled === "boolean") {
+      updates.enabled = input.enabled;
+    }
     if (typeof input.cadenceMinutes === "number" && Number.isFinite(input.cadenceMinutes)) {
       updates.cadenceMinutes = Math.max(1, Math.floor(input.cadenceMinutes));
     }
-    if (input.executionMode) updates.executionMode = input.executionMode;
+    if (input.executionMode) {
+      updates.executionMode = input.executionMode;
+    }
     if (input.deploymentStage) {
       updates.deploymentStage = input.deploymentStage;
       if (!input.executionMode) {
         updates.executionMode = modeFromStage(input.deploymentStage);
       }
     }
-    if (input.promotionState) updates.promotionState = input.promotionState;
-    if (input.scopeLimit !== undefined) updates.scopeLimit = input.scopeLimit;
-    if (typeof input.reviewRequired === "boolean") updates.reviewRequired = input.reviewRequired;
+    if (input.promotionState) {
+      updates.promotionState = input.promotionState;
+    }
+    if (input.scopeLimit !== undefined) {
+      updates.scopeLimit = input.scopeLimit;
+    }
+    if (typeof input.reviewRequired === "boolean") {
+      updates.reviewRequired = input.reviewRequired;
+    }
     if (input.nextRunAt !== undefined) {
       updates.nextRunAt = input.nextRunAt === null ? null : new Date(input.nextRunAt);
     }
-    if (typeof input.title === "string") updates.title = input.title.trim() || existing.title;
-    if (input.metadata !== undefined) updates.metadata = input.metadata;
+    if (typeof input.title === "string") {
+      updates.title = input.title.trim() || existing.title;
+    }
+    if (input.metadata !== undefined) {
+      updates.metadata = input.metadata;
+    }
     const [row] = await this.db
       .update(schema.jobAssignments)
       .set(updates)
@@ -2841,11 +2945,17 @@ class PgJobAdapter implements JobAdapter {
       .from(schema.tasks)
       .where(eq(schema.tasks.id, taskId))
       .limit(1);
-    if (!task?.jobAssignmentId) return null;
+    if (!task?.jobAssignmentId) {
+      return null;
+    }
     const assignment = await this.getAssignment(task.jobAssignmentId);
-    if (!assignment) return null;
+    if (!assignment) {
+      return null;
+    }
     const template = await this.getTemplate(assignment.templateId);
-    if (!template) return null;
+    if (!template) {
+      return null;
+    }
     return { assignment, template };
   }
 
@@ -2861,7 +2971,9 @@ class PgJobAdapter implements JobAdapter {
 
     for (const assignment of assignments) {
       const template = await this.getTemplate(assignment.templateId);
-      if (!template) continue;
+      if (!template) {
+        continue;
+      }
       const [open] = await this.db
         .select({ id: schema.tasks.id })
         .from(schema.tasks)
@@ -2963,12 +3075,11 @@ class PgJobAdapter implements JobAdapter {
       .from(schema.jobRuns)
       .where(eq(schema.jobRuns.id, id))
       .limit(1);
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     const now = new Date();
-    const existingMetadata = ((row.metadata as Record<string, unknown> | null) ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const existingMetadata = (row.metadata as Record<string, unknown> | null) ?? {};
     const existingReviewHistoryRaw = existingMetadata.reviewHistory;
     const existingReviewHistory = Array.isArray(existingReviewHistoryRaw)
       ? existingReviewHistoryRaw.filter(
@@ -3043,7 +3154,9 @@ class PgJobAdapter implements JobAdapter {
       .where(and(eq(schema.jobRuns.taskId, taskId), eq(schema.jobRuns.status, "running")))
       .orderBy(desc(schema.jobRuns.startedAt))
       .limit(1);
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     const [updated] = await this.db
       .update(schema.jobRuns)
       .set({
@@ -3064,8 +3177,12 @@ class PgJobAdapter implements JobAdapter {
     limit?: number;
   }): Promise<JobRun[]> {
     const conditions = [];
-    if (filter?.assignmentId) conditions.push(eq(schema.jobRuns.assignmentId, filter.assignmentId));
-    if (filter?.taskId) conditions.push(eq(schema.jobRuns.taskId, filter.taskId));
+    if (filter?.assignmentId) {
+      conditions.push(eq(schema.jobRuns.assignmentId, filter.assignmentId));
+    }
+    if (filter?.taskId) {
+      conditions.push(eq(schema.jobRuns.taskId, filter.taskId));
+    }
     const rows = await this.db
       .select()
       .from(schema.jobRuns)
@@ -3088,10 +3205,14 @@ class PgJobAdapter implements JobAdapter {
     const stage =
       params.assignment.deploymentStage ?? stageFromMode(params.assignment.executionMode);
     if (params.assignment.executionMode === "simulate" || stage === "shadow") {
-      for (const tool of DEFAULT_SIMULATION_DENY_TOOLS) deny.add(tool);
+      for (const tool of DEFAULT_SIMULATION_DENY_TOOLS) {
+        deny.add(tool);
+      }
     }
     if (stage === "limited-live" && !allowsLimitedLiveOutbound(params.assignment.scopeLimit)) {
-      for (const tool of DEFAULT_LIMITED_LIVE_DENY_TOOLS) deny.add(tool);
+      for (const tool of DEFAULT_LIMITED_LIVE_DENY_TOOLS) {
+        deny.add(tool);
+      }
     }
     return {
       toolsAllow,
@@ -3103,7 +3224,9 @@ class PgJobAdapter implements JobAdapter {
     input: JobEventEnqueueInput,
   ): Promise<{ accepted: boolean; event?: JobEvent }> {
     const eventType = input.eventType.trim();
-    if (!eventType) throw new Error("eventType is required");
+    if (!eventType) {
+      throw new Error("eventType is required");
+    }
     const id = genId();
     try {
       const [row] = await this.db
@@ -3137,7 +3260,9 @@ class PgJobAdapter implements JobAdapter {
     limit?: number;
   }): Promise<JobEvent[]> {
     const conditions = [];
-    if (filter?.eventType) conditions.push(eq(schema.jobEvents.eventType, filter.eventType));
+    if (filter?.eventType) {
+      conditions.push(eq(schema.jobEvents.eventType, filter.eventType));
+    }
     if (typeof filter?.processed === "boolean") {
       conditions.push(
         filter.processed
@@ -3184,7 +3309,9 @@ class PgJobAdapter implements JobAdapter {
           enabled: true,
         })
       ).filter((assignment) => {
-        if (event.targetAgentId && assignment.agentId !== event.targetAgentId) return false;
+        if (event.targetAgentId && assignment.agentId !== event.targetAgentId) {
+          return false;
+        }
         const triggers = Array.isArray(assignment.metadata?.eventTriggers)
           ? assignment.metadata.eventTriggers.filter(
               (item): item is string => typeof item === "string",
@@ -3199,7 +3326,9 @@ class PgJobAdapter implements JobAdapter {
       for (const assignment of assignments) {
         matchedAssignments += 1;
         const template = await this.getTemplate(assignment.templateId);
-        if (!template) continue;
+        if (!template) {
+          continue;
+        }
         const [open] = await this.db
           .select({ id: schema.tasks.id })
           .from(schema.tasks)

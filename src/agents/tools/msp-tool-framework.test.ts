@@ -188,7 +188,7 @@ describe("audit logging", () => {
     recordAudit(entry);
     const log = getAuditLog({ toolName: "atera_tickets" });
     expect(log.length).toBeGreaterThan(0);
-    expect(log[log.length - 1]!.action).toBe("list");
+    expect(log[log.length - 1].action).toBe("list");
   });
 
   it("computes audit stats", () => {
@@ -209,8 +209,8 @@ describe("audit logging", () => {
     });
     const stats = getAuditStats();
     expect(stats["test_tool"]).toBeDefined();
-    expect(stats["test_tool"]!.calls).toBeGreaterThanOrEqual(2);
-    expect(stats["test_tool"]!.errors).toBeGreaterThanOrEqual(1);
+    expect(stats["test_tool"].calls).toBeGreaterThanOrEqual(2);
+    expect(stats["test_tool"].errors).toBeGreaterThanOrEqual(1);
   });
 });
 

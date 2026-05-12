@@ -72,7 +72,7 @@ describe("JobsModule", () => {
       expect(runs.length).toBe(1);
       expect(runs[0]?.status).toBe("running");
 
-      const context = api.jobs.getContextForTask(tasks[0]!.id);
+      const context = api.jobs.getContextForTask(tasks[0].id);
       expect(context?.assignment.id).toBe(assignment.id);
       expect(context?.template.id).toBe(template.id);
       expect(context?.template.departmentId).toBe("support");

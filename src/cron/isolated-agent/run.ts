@@ -97,7 +97,9 @@ function isAutonomousMainTaskLoop(job: CronJob): boolean {
   if (job.name.trim().toLowerCase() === "autonomous task execution loop") {
     return true;
   }
-  if (job.payload.kind !== "agentTurn") return false;
+  if (job.payload.kind !== "agentTurn") {
+    return false;
+  }
   const message = job.payload.message?.toLowerCase() ?? "";
   return message.includes("autonomous execution loop for argent");
 }

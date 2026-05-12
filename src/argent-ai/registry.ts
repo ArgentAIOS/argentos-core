@@ -35,7 +35,7 @@ import {
  * Base stream function type for a provider.
  */
 export type ProviderStreamFunction = (
-  model: Model<Api>,
+  model: Model,
   context: Context,
   options?: StreamOptions,
 ) => AssistantMessageEventStream;
@@ -44,7 +44,7 @@ export type ProviderStreamFunction = (
  * Simple stream function with reasoning support.
  */
 export type ProviderStreamSimpleFunction = (
-  model: Model<Api>,
+  model: Model,
   context: Context,
   options?: SimpleStreamOptions,
 ) => AssistantMessageEventStream;
@@ -135,7 +135,9 @@ export function registerApiProvider<TApi extends Api, TOptions extends StreamOpt
  */
 export function getApiProvider(api: Api): ApiProviderInternal | undefined {
   const legacy = getLegacyApiProvider(api);
-  if (!legacy) return undefined;
+  if (!legacy) {
+    return undefined;
+  }
   return {
     api: legacy.api,
     stream: legacy.stream,

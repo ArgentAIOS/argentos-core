@@ -165,7 +165,7 @@ describe("parseMessageWithAttachments", () => {
 
     expect(parsed.images).toHaveLength(1);
     expect(parsed.images[0]?.mimeType).toBe("image/jpeg");
-    const meta = await sharp(Buffer.from(parsed.images[0]!.data, "base64")).metadata();
+    const meta = await sharp(Buffer.from(parsed.images[0].data, "base64")).metadata();
     expect(meta.width).toBeLessThanOrEqual(2000);
     expect(meta.height).toBeLessThanOrEqual(2000);
   }, 20_000);

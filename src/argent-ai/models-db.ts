@@ -766,10 +766,7 @@ export const MODELS: Record<string, Record<string, ModelDef>> = {
  * @returns Model definition
  * @throws Error if provider or model not found
  */
-export function getModel<TProvider extends string>(
-  provider: TProvider,
-  modelId: string,
-): Model<Api> {
+export function getModel<TProvider extends string>(provider: TProvider, modelId: string): Model {
   const providerModels = MODELS[provider];
   if (!providerModels) {
     throw new Error(`Unknown provider: "${provider}". Known: ${Object.keys(MODELS).join(", ")}`);
@@ -783,7 +780,7 @@ export function getModel<TProvider extends string>(
     );
   }
 
-  return model as Model<Api>;
+  return model as Model;
 }
 
 /**
@@ -801,12 +798,12 @@ export function getProviders(): KnownProvider[] {
  * @param provider - Provider name
  * @returns Array of model definitions
  */
-export function getModels<TProvider extends string>(provider: TProvider): Model<Api>[] {
+export function getModels<TProvider extends string>(provider: TProvider): Model[] {
   const providerModels = MODELS[provider];
   if (!providerModels) {
     return [];
   }
-  return Object.values(providerModels) as Model<Api>[];
+  return Object.values(providerModels) as Model[];
 }
 
 /**

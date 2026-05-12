@@ -979,7 +979,7 @@ export class QmdMemoryManager implements MemorySearchManager {
       return results.slice(0, target);
     }
     const sourceOrder = Array.from(bySource.entries())
-      .sort((a, b) => (b[1][0]?.score ?? 0) - (a[1][0]?.score ?? 0))
+      .toSorted((a, b) => (b[1][0]?.score ?? 0) - (a[1][0]?.score ?? 0))
       .map(([source]) => source);
     const diversified: MemorySearchResult[] = [];
     while (diversified.length < target) {
@@ -1069,7 +1069,7 @@ export class QmdMemoryManager implements MemorySearchManager {
         }
       }
     }
-    return [...bestByDocId.values()].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return [...bestByDocId.values()].toSorted((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }
 
   private listManagedCollectionNames(): string[] {

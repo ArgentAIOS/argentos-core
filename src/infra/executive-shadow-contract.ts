@@ -347,7 +347,7 @@ export const executiveShadowReadinessSchema = z
 
 export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowReadiness): boolean {
   return (
-    readiness.authoritySwitchAllowed === false &&
+    !readiness.authoritySwitchAllowed &&
     readiness.promotionStatus === "blocked" &&
     readiness.currentAuthority.gateway === "node" &&
     readiness.currentAuthority.scheduler === "node" &&
@@ -355,7 +355,7 @@ export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowRe
     readiness.currentAuthority.channels === "node" &&
     readiness.currentAuthority.sessions === "node" &&
     readiness.currentAuthority.executive === "shadow-only" &&
-    readiness.kernelShadow.reachable === true &&
+    readiness.kernelShadow.reachable &&
     readiness.kernelShadow.status === "fail-closed" &&
     readiness.kernelShadow.authority === "shadow" &&
     readiness.kernelShadow.reflectionQueue.status === "shadow-only" &&

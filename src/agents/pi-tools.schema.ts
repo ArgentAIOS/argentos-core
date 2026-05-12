@@ -45,6 +45,7 @@ function toDraft2020SchemaOrFallback(
       }
       throw new Error(
         `Invalid tool schema: tools.${context.toolIndex}.${context.toolName}.input_schema could not be validated`,
+        { cause: error },
       );
     }
   }

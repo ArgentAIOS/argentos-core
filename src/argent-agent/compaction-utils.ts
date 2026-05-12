@@ -137,7 +137,9 @@ function serializeConversation(messages: AgentMessageLike[]): string {
                   .map((b) => b.text)
                   .join("\n")
               : "";
-        if (text) lines.push(`User: ${text}`);
+        if (text) {
+          lines.push(`User: ${text}`);
+        }
         break;
       }
       case "assistant": {
@@ -167,7 +169,9 @@ function serializeConversation(messages: AgentMessageLike[]): string {
                   .map((b) => b.text)
                   .join("\n")
               : "";
-        if (text) lines.push(`Tool Result: ${text.slice(0, 500)}${text.length > 500 ? "..." : ""}`);
+        if (text) {
+          lines.push(`Tool Result: ${text.slice(0, 500)}${text.length > 500 ? "..." : ""}`);
+        }
         break;
       }
       case "bashExecution": {
@@ -183,13 +187,17 @@ function serializeConversation(messages: AgentMessageLike[]): string {
       case "custom": {
         const content = (msg as ToolResultMessageLike).content;
         const text = typeof content === "string" ? content : "";
-        if (text) lines.push(`Custom: ${text}`);
+        if (text) {
+          lines.push(`Custom: ${text}`);
+        }
         break;
       }
       case "branchSummary":
       case "compactionSummary": {
         const summary = (msg as SummaryMessageLike).summary;
-        if (summary) lines.push(`[Previous Summary]: ${summary}`);
+        if (summary) {
+          lines.push(`[Previous Summary]: ${summary}`);
+        }
         break;
       }
     }
@@ -212,7 +220,7 @@ function serializeConversation(messages: AgentMessageLike[]): string {
  */
 export async function generateSummary(
   currentMessages: AgentMessageLike[],
-  model: Model<Api>,
+  model: Model,
   reserveTokens: number,
   apiKey: string,
   signal?: AbortSignal,

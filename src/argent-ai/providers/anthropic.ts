@@ -211,7 +211,9 @@ export class AnthropicProvider implements Provider {
           }
         } else if (event.type === "content_block_delta") {
           const block = contentBlocks.find((b) => b.index === event.index);
-          if (!block) continue;
+          if (!block) {
+            continue;
+          }
 
           if (event.delta.type === "text_delta") {
             block.data.text += event.delta.text;
@@ -232,7 +234,9 @@ export class AnthropicProvider implements Provider {
           }
         } else if (event.type === "content_block_stop") {
           const block = contentBlocks.find((b) => b.index === event.index);
-          if (!block) continue;
+          if (!block) {
+            continue;
+          }
 
           if (block.type === "text") {
             yield { type: "text_end", text: block.data.text, partial };

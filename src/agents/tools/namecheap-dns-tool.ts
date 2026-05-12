@@ -53,9 +53,13 @@ function asBool(value: unknown): boolean {
 
 function parseDomain(input?: string): { sld: string; tld: string } {
   const raw = (input || "").trim().toLowerCase();
-  if (!raw) throw new Error("domain is required");
+  if (!raw) {
+    throw new Error("domain is required");
+  }
   const parts = raw.split(".").filter(Boolean);
-  if (parts.length < 2) throw new Error("domain must include TLD (example.com)");
+  if (parts.length < 2) {
+    throw new Error("domain must include TLD (example.com)");
+  }
   return {
     sld: parts[0],
     tld: parts.slice(1).join("."),
@@ -65,8 +69,12 @@ function parseDomain(input?: string): { sld: string; tld: string } {
 function xmlStatus(xml: string): "OK" | "ERROR" | "UNKNOWN" {
   const m = xml.match(/<ApiResponse[^>]*\sStatus="([^"]+)"/i);
   const value = (m?.[1] || "").toUpperCase();
-  if (value === "OK") return "OK";
-  if (value === "ERROR") return "ERROR";
+  if (value === "OK") {
+    return "OK";
+  }
+  if (value === "ERROR") {
+    return "ERROR";
+  }
   return "UNKNOWN";
 }
 
@@ -76,7 +84,9 @@ function xmlErrors(xml: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {
     const text = (m[1] || "").replace(/\s+/g, " ").trim();
-    if (text) out.push(text);
+    if (text) {
+      out.push(text);
+    }
   }
   return out;
 }
@@ -128,8 +138,12 @@ function parseHosts(
 }
 
 function objectParams(raw: unknown): JsonObject {
-  if (!raw) return {};
-  if (typeof raw === "object" && !Array.isArray(raw)) return raw as JsonObject;
+  if (!raw) {
+    return {};
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as JsonObject;
+  }
   throw new Error("params must be an object");
 }
 
@@ -140,7 +154,9 @@ function rawParamsFormatError(): Error {
 }
 
 function parseRawParams(raw: unknown): JsonObject {
-  if (!raw) return {};
+  if (!raw) {
+    return {};
+  }
   // Format 1: plain object (preferred for tool calls).
   if (typeof raw === "object" && !Array.isArray(raw)) {
     return raw as JsonObject;
@@ -148,7 +164,9 @@ function parseRawParams(raw: unknown): JsonObject {
   // Format 2: JSON string that parses to an object.
   if (typeof raw === "string") {
     const trimmed = raw.trim();
-    if (!trimmed) return {};
+    if (!trimmed) {
+      return {};
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
@@ -202,7 +220,9 @@ async function namecheapRequest(params: {
   query.set("Command", params.command);
 
   for (const [key, value] of Object.entries(params.extra || {})) {
-    if (value === undefined || value === null) continue;
+    if (value === undefined || value === null) {
+      continue;
+    }
     query.set(key, String(value));
   }
 
@@ -365,10 +385,12 @@ Actions:
             extra[`HostName${i}`] = name;
             extra[`RecordType${i}`] = type;
             extra[`Address${i}`] = address;
-            if (readStringParam(host, "ttl"))
+            if (readStringParam(host, "ttl")) {
               extra[`TTL${i}`] = readStringParam(host, "ttl") as string;
-            if (readStringParam(host, "mxpref"))
+            }
+            if (readStringParam(host, "mxpref")) {
               extra[`MXPref${i}`] = readStringParam(host, "mxpref") as string;
+            }
           });
 
           const xml = await namecheapRequest({

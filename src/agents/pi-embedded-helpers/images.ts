@@ -4,7 +4,7 @@ import { sanitizeToolCallIdsForCloudCodeAssist } from "../tool-call-id.js";
 import { sanitizeContentBlocksImages } from "../tool-images.js";
 import { stripThoughtSignatures } from "./bootstrap.js";
 
-type ContentBlock = AgentToolResult<unknown>["content"][number];
+type ContentBlock = AgentToolResult["content"][number];
 
 export function isEmptyAssistantMessageContent(
   message: Extract<AgentMessage, { role: "assistant" }>,

@@ -38,8 +38,12 @@ mermaid.initialize({
 // Resolve a local file path to a media API URL
 function toMediaUrl(src: string): string {
   let resolved = src;
-  if (resolved.startsWith("MEDIA:")) resolved = resolved.slice(6).trim();
-  if (resolved.startsWith("file://")) resolved = resolved.replace("file://", "");
+  if (resolved.startsWith("MEDIA:")) {
+    resolved = resolved.slice(6).trim();
+  }
+  if (resolved.startsWith("file://")) {
+    resolved = resolved.replace("file://", "");
+  }
   if (
     resolved.startsWith("/var/") ||
     resolved.startsWith("/tmp/") ||
@@ -239,7 +243,9 @@ export function CanvasPanel({
   // Save scroll position on scroll
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const handleScroll = () => {
       scrollPositionRef.current = container.scrollTop;
@@ -271,7 +277,9 @@ export function CanvasPanel({
   // }, [activeDoc, isOpen])
 
   const handleDownload = () => {
-    if (!activeDoc) return;
+    if (!activeDoc) {
+      return;
+    }
     const blob = new Blob([activeDoc.content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -283,26 +291,34 @@ export function CanvasPanel({
   };
 
   const handleSaveAsPDF = () => {
-    if (!activeDoc) return;
+    if (!activeDoc) {
+      return;
+    }
     // This would integrate with a PDF generation service
     // For now, just call the callback
     onSaveAsPDF?.(activeDoc);
   };
 
   const handleSaveAsDoc = () => {
-    if (!activeDoc) return;
+    if (!activeDoc) {
+      return;
+    }
     // This would convert to .docx format
     // For now, just call the callback
     onSaveAsDoc?.(activeDoc);
   };
 
   const handleEmail = () => {
-    if (!activeDoc) return;
+    if (!activeDoc) {
+      return;
+    }
     onEmail?.(activeDoc);
   };
 
   const handleToggleEdit = useCallback(() => {
-    if (!activeDoc) return;
+    if (!activeDoc) {
+      return;
+    }
     if (editMode) {
       // Save changes
       if (editContent !== activeDoc.content) {
@@ -329,7 +345,9 @@ export function CanvasPanel({
   }, [activeDoc, editMode, editContent]);
 
   const handleCopy = useCallback(() => {
-    if (!activeDoc) return;
+    if (!activeDoc) {
+      return;
+    }
     navigator.clipboard.writeText(activeDoc.content).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -367,15 +385,19 @@ export function CanvasPanel({
     documents.forEach((doc) => {
       if (doc.title.includes("/")) {
         const parts = doc.title.split("/");
-        if (parts.length > 1) folders.add(parts[0]);
+        if (parts.length > 1) {
+          folders.add(parts[0]);
+        }
       }
     });
-    return [...folders].sort();
+    return [...folders].toSorted();
   }, [documents]);
 
   // Memoize the rendered content to prevent re-renders from parent state changes
   const renderedContent = useMemo(() => {
-    if (!activeDoc) return null;
+    if (!activeDoc) {
+      return null;
+    }
 
     return (
       <div className="max-w-4xl mx-auto">
@@ -1029,7 +1051,9 @@ export function CanvasPanel({
       {deleteConfirmDocId &&
         (() => {
           const docToDelete = documents.find((d) => d.id === deleteConfirmDocId);
-          if (!docToDelete) return null;
+          if (!docToDelete) {
+            return null;
+          }
           return (
             <DeleteConfirmDialog
               docTitle={docToDelete.title}

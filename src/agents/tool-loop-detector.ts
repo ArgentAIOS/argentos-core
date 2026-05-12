@@ -176,7 +176,7 @@ function stableStringify(value: unknown): string {
     return String(value);
   }
   try {
-    const sorted = JSON.stringify(value, Object.keys(value as object).toSorted());
+    const sorted = JSON.stringify(value, Object.keys(value).toSorted());
     return sorted;
   } catch {
     return String(value);

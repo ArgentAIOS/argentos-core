@@ -78,7 +78,7 @@ PARAMETERS:
       try {
         // Fetch existing document
         const getRes = await fetch(
-          `${DASHBOARD_API}/api/canvas/document/${encodeURIComponent(id!)}`,
+          `${DASHBOARD_API}/api/canvas/document/${encodeURIComponent(id)}`,
           { headers: dashboardApiHeaders() },
         );
 

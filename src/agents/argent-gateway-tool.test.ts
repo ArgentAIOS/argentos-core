@@ -187,7 +187,9 @@ describe("gateway tool", () => {
       config: { commands: { restart: true } },
     }).find((candidate) => candidate.name === "gateway");
     expect(tool).toBeDefined();
-    if (!tool) throw new Error("missing gateway tool");
+    if (!tool) {
+      throw new Error("missing gateway tool");
+    }
 
     await expect(
       tool.execute("call-restart-narration", { action: "restart", delayMs: 0 }),
@@ -205,7 +207,9 @@ describe("gateway tool", () => {
         config: { commands: { restart: true } },
       }).find((candidate) => candidate.name === "gateway");
       expect(tool).toBeDefined();
-      if (!tool) throw new Error("missing gateway tool");
+      if (!tool) {
+        throw new Error("missing gateway tool");
+      }
 
       const result = await tool.execute("call-restart-explicit", { action: "restart", delayMs: 0 });
       expect(result.details).toMatchObject({
@@ -225,7 +229,9 @@ describe("gateway tool", () => {
       agentSessionKey: "agent:main:webchat",
     }).find((candidate) => candidate.name === "gateway");
     expect(tool).toBeDefined();
-    if (!tool) throw new Error("missing gateway tool");
+    if (!tool) {
+      throw new Error("missing gateway tool");
+    }
 
     await expect(
       tool.execute("call-config-patch-narration", {
@@ -242,7 +248,9 @@ describe("gateway tool", () => {
       agentSessionKey: "agent:main:webchat",
     }).find((candidate) => candidate.name === "gateway");
     expect(tool).toBeDefined();
-    if (!tool) throw new Error("missing gateway tool");
+    if (!tool) {
+      throw new Error("missing gateway tool");
+    }
 
     await expect(
       tool.execute("call-update-run-narration", {

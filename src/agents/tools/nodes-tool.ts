@@ -197,7 +197,7 @@ export function createNodesTool(options?: {
                 ? params.deviceId.trim()
                 : undefined;
 
-            const content: AgentToolResult<unknown>["content"] = [];
+            const content: AgentToolResult["content"] = [];
             const details: Array<Record<string, unknown>> = [];
 
             for (const facing of facings) {
@@ -246,7 +246,7 @@ export function createNodesTool(options?: {
               });
             }
 
-            const result: AgentToolResult<unknown> = { content, details };
+            const result: AgentToolResult = { content, details };
             return await sanitizeToolResultImages(result, "nodes:camera_snap");
           }
           case "camera_list": {

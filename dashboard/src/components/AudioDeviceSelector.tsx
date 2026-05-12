@@ -200,7 +200,9 @@ export function AudioDeviceSelector({
 
   // Shorten label for display
   const shortenLabel = (label: string) => {
-    if (label.length <= 20) return label;
+    if (label.length <= 20) {
+      return label;
+    }
     return label.slice(0, 18) + "...";
   };
 
@@ -273,7 +275,9 @@ export function AudioDeviceSelector({
                       <button
                         key={key}
                         onClick={() => {
-                          if (voiceSelectionLocked) return;
+                          if (voiceSelectionLocked) {
+                            return;
+                          }
                           onVoiceChange?.(key as Voice);
                         }}
                         disabled={voiceSelectionLocked}
@@ -336,7 +340,9 @@ export function AudioDeviceSelector({
                     Speaker
                     <button
                       onClick={async () => {
-                        if (!selectedOutput) return;
+                        if (!selectedOutput) {
+                          return;
+                        }
                         try {
                           // Create a test beep using AudioContext
                           const audioCtx = new AudioContext();

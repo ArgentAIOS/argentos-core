@@ -483,8 +483,8 @@ export const skillsHandlers: GatewayRequestHandlers = {
                 return peer
                   ? { id: peer.id, title: peer.title, state: peer.state }
                   : {
-                      id: candidate.supersededByCandidateId!,
-                      title: candidate.supersededByCandidateId!,
+                      id: candidate.supersededByCandidateId,
+                      title: candidate.supersededByCandidateId,
                       state: "unknown",
                     };
               })()

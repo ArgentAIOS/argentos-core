@@ -93,7 +93,9 @@ async function loadEntries(
       const content = await fs.readFile(filePath, "utf-8");
       const lines = content.trim().split("\n");
       for (const line of lines) {
-        if (!line.trim()) continue;
+        if (!line.trim()) {
+          continue;
+        }
         try {
           entries.push(JSON.parse(line) as ContemplationJournalEntry);
         } catch {
@@ -112,7 +114,9 @@ async function loadEntries(
 function formatTime(isoDate: string, tz: string): string {
   try {
     const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return "??:??";
+    if (isNaN(d.getTime())) {
+      return "??:??";
+    }
     return d.toLocaleTimeString("en-US", {
       timeZone: tz,
       hour: "numeric",
@@ -127,7 +131,9 @@ function formatTime(isoDate: string, tz: string): string {
 function formatDateKey(isoDate: string, tz: string): string {
   try {
     const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return isoDate.slice(0, 10);
+    if (isNaN(d.getTime())) {
+      return isoDate.slice(0, 10);
+    }
     return d.toLocaleDateString("en-US", {
       timeZone: tz,
       weekday: "short",
@@ -141,12 +147,18 @@ function formatDateKey(isoDate: string, tz: string): string {
 }
 
 function formatDuration(ms: number): string {
-  if (ms < 1000) return "<1s";
+  if (ms < 1000) {
+    return "<1s";
+  }
   const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
   const minutes = Math.floor(seconds / 60);
   const remainSec = seconds % 60;
-  if (minutes < 60) return remainSec > 0 ? `${minutes}m ${remainSec}s` : `${minutes}m`;
+  if (minutes < 60) {
+    return remainSec > 0 ? `${minutes}m ${remainSec}s` : `${minutes}m`;
+  }
   const hours = Math.floor(minutes / 60);
   const remainMin = minutes % 60;
   return remainMin > 0 ? `${hours}h ${remainMin}m` : `${hours}h`;
@@ -155,11 +167,21 @@ function formatDuration(ms: number): string {
 // ── Mood emoji helpers ──────────────────────────────────────────────────────
 
 function valenceEmoji(v: number): string {
-  if (v >= 1.0) return "\u{1F929}"; // star-struck
-  if (v >= 0.5) return "\u{1F60A}"; // smiling
-  if (v >= 0.0) return "\u{1F610}"; // neutral
-  if (v >= -0.5) return "\u{1F615}"; // confused
-  if (v >= -1.0) return "\u{1F61E}"; // disappointed
+  if (v >= 1.0) {
+    return "\u{1F929}";
+  } // star-struck
+  if (v >= 0.5) {
+    return "\u{1F60A}";
+  } // smiling
+  if (v >= 0.0) {
+    return "\u{1F610}";
+  } // neutral
+  if (v >= -0.5) {
+    return "\u{1F615}";
+  } // confused
+  if (v >= -1.0) {
+    return "\u{1F61E}";
+  } // disappointed
   return "\u{1F622}"; // crying
 }
 
@@ -179,7 +201,9 @@ function actionRecent(
   const grouped = new Map<string, ContemplationJournalEntry[]>();
   for (const entry of sliced) {
     const dateKey = formatDateKey(entry.timestamp, tz);
-    if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+    if (!grouped.has(dateKey)) {
+      grouped.set(dateKey, []);
+    }
     grouped.get(dateKey)!.push(entry);
   }
 
@@ -242,10 +266,16 @@ function actionEpisodes(
     const duration = formatDuration(entry.durationMs);
 
     text += `### ${date} ${time} — ${ep.type} (${duration})\n`;
-    if (ep.trigger?.detail) text += `Trigger: ${ep.trigger.source} — ${ep.trigger.detail}\n`;
-    if (ep.intent) text += `Intent: ${ep.intent}\n`;
+    if (ep.trigger?.detail) {
+      text += `Trigger: ${ep.trigger.source} — ${ep.trigger.detail}\n`;
+    }
+    if (ep.intent) {
+      text += `Intent: ${ep.intent}\n`;
+    }
     text += `Outcome: ${ep.outcome.result} — ${ep.outcome.summary}\n`;
-    if (ep.outcome.impact) text += `Impact: ${ep.outcome.impact}\n`;
+    if (ep.outcome.impact) {
+      text += `Impact: ${ep.outcome.impact}\n`;
+    }
     text += `Mood: ${ep.mood.state} (energy: ${ep.mood.energy}) | Valence: ${ep.valence} | Arousal: ${ep.arousal}\n`;
 
     if (ep.observations.length > 0) {
@@ -260,9 +290,15 @@ function actionEpisodes(
       text += `Tools: ${toolNames.join(", ")}\n`;
     }
 
-    if (ep.reflection) text += `Reflection: ${ep.reflection}\n`;
-    if (ep.lesson) text += `Lesson: ${ep.lesson}\n`;
-    if (ep.pattern_hint) text += `Pattern: ${ep.pattern_hint}\n`;
+    if (ep.reflection) {
+      text += `Reflection: ${ep.reflection}\n`;
+    }
+    if (ep.lesson) {
+      text += `Lesson: ${ep.lesson}\n`;
+    }
+    if (ep.pattern_hint) {
+      text += `Pattern: ${ep.pattern_hint}\n`;
+    }
 
     if (ep.identity_links.length > 0) {
       const links = ep.identity_links.map((l) => `${l.entity} (${l.role})`);
@@ -290,7 +326,9 @@ function actionMoods(
   const grouped = new Map<string, ContemplationJournalEntry[]>();
   for (const entry of sliced) {
     const dateKey = formatDateKey(entry.timestamp, tz);
-    if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+    if (!grouped.has(dateKey)) {
+      grouped.set(dateKey, []);
+    }
     grouped.get(dateKey)!.push(entry);
   }
 
@@ -353,7 +391,9 @@ function actionLessons(
       lessonCount++;
       text += `### ${date} ${time} (${ep.type})\n`;
       text += `**Lesson:** ${ep.lesson}\n`;
-      if (ep.reflection) text += `Reflection: ${ep.reflection}\n`;
+      if (ep.reflection) {
+        text += `Reflection: ${ep.reflection}\n`;
+      }
       if (ep.pattern_hint) {
         text += `Pattern: ${ep.pattern_hint}\n`;
         patterns.set(ep.pattern_hint, (patterns.get(ep.pattern_hint) ?? 0) + 1);
@@ -368,7 +408,7 @@ function actionLessons(
   // Summarize recurring patterns
   if (patterns.size > 0) {
     text += "---\n\n## Recurring Patterns\n\n";
-    const sorted = [...patterns.entries()].sort((a, b) => b[1] - a[1]);
+    const sorted = [...patterns.entries()].toSorted((a, b) => b[1] - a[1]);
     for (const [pattern, count] of sorted) {
       text += `- **${pattern}** (seen ${count}x)\n`;
     }
@@ -383,7 +423,9 @@ function actionLessons(
 
 export function createContemplationTool(options: { config?: ArgentConfig }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Contemplation History",
@@ -431,9 +473,7 @@ export function createContemplationTool(options: { config?: ArgentConfig }): Any
           count: result.count,
           action,
           days,
-          filters: {
-            ...(episodeTypeFilter ? { type: episodeTypeFilter } : {}),
-          },
+          filters: episodeTypeFilter ? { type: episodeTypeFilter } : {},
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

@@ -61,12 +61,16 @@ interface IdentityParams {
 }
 
 function normalizeStringList(list: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(list)) return undefined;
+  if (!Array.isArray(list)) {
+    return undefined;
+  }
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of list) {
     const value = String(item ?? "").trim();
-    if (!value || seen.has(value)) continue;
+    if (!value || seen.has(value)) {
+      continue;
+    }
     seen.add(value);
     out.push(value);
   }
@@ -156,9 +160,13 @@ function bootstrapIdentity(params: IdentityParams): { agentDir: string; rootDir:
 
 function inferProvider(model: string | undefined): string | undefined {
   const trimmed = model?.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   const slash = trimmed.indexOf("/");
-  if (slash <= 0) return undefined;
+  if (slash <= 0) {
+    return undefined;
+  }
   return trimmed.slice(0, slash).trim() || undefined;
 }
 
@@ -176,8 +184,12 @@ function upsertAgentConfigEntry(
     skillDefaultKey?: string;
   },
 ): boolean {
-  if (!cfg.agents) cfg.agents = {};
-  if (!Array.isArray(cfg.agents.list)) cfg.agents.list = [];
+  if (!cfg.agents) {
+    cfg.agents = {};
+  }
+  if (!Array.isArray(cfg.agents.list)) {
+    cfg.agents.list = [];
+  }
   let changed = false;
   let entry = cfg.agents.list.find((candidate) => candidate?.id === params.id);
   if (!entry) {
@@ -187,13 +199,17 @@ function upsertAgentConfigEntry(
   }
 
   const assign = <K extends keyof typeof entry>(key: K, value: (typeof entry)[K]) => {
-    if (JSON.stringify(entry?.[key]) === JSON.stringify(value)) return;
-    entry![key] = value;
+    if (JSON.stringify(entry?.[key]) === JSON.stringify(value)) {
+      return;
+    }
+    entry[key] = value;
     changed = true;
   };
   const assignExtra = (key: string, value: unknown) => {
     const record = entry as Record<string, unknown>;
-    if (JSON.stringify(record[key]) === JSON.stringify(value)) return;
+    if (JSON.stringify(record[key]) === JSON.stringify(value)) {
+      return;
+    }
     record[key] = value;
     changed = true;
   };
@@ -236,15 +252,29 @@ export async function provisionFamilyWorker(
   const skills = skillMapping.skills;
   const persistedSkills =
     skillMapping.source === "unmapped" && skills.length === 0 ? undefined : skills;
-  if (params.persona) config.persona = params.persona;
-  if (tools?.length) config.tools = tools;
-  if (persistedSkills && persistedSkills.length > 0) config.skills = persistedSkills;
+  if (params.persona) {
+    config.persona = params.persona;
+  }
+  if (tools?.length) {
+    config.tools = tools;
+  }
+  if (persistedSkills && persistedSkills.length > 0) {
+    config.skills = persistedSkills;
+  }
   config.skillSource = skillMapping.source;
-  if (skillMapping.defaultKey) config.skillDefaultKey = skillMapping.defaultKey;
-  if (params.model) config.model = params.model;
-  if (params.team) config.team = params.team;
+  if (skillMapping.defaultKey) {
+    config.skillDefaultKey = skillMapping.defaultKey;
+  }
+  if (params.model) {
+    config.model = params.model;
+  }
+  if (params.team) {
+    config.team = params.team;
+  }
   const provider = params.provider ?? inferProvider(params.model);
-  if (provider) config.provider = provider;
+  if (provider) {
+    config.provider = provider;
+  }
 
   const family = await getAgentFamily();
   await family.registerAgent(params.id, params.name, params.role, config);

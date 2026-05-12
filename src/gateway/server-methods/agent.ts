@@ -312,7 +312,7 @@ export const agentHandlers: GatewayRequestHandlers = {
           const previousSessionKey =
             globalEntry?.lastInteractionSessionKey ?? prevLastUserSessionKey;
           store["__lastUserMessage"] = {
-            ...(globalEntry || {}),
+            ...globalEntry,
             previousLastUserMessageAt: previousLastAt,
             previousSessionKey,
             lastUserMessageAt: now,

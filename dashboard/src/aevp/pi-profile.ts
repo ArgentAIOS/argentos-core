@@ -23,7 +23,9 @@ function envFlag(name: string): boolean {
   try {
     // Node / SSR
     const p = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    if (p?.env?.[name] && p.env[name] !== "0" && p.env[name] !== "") return true;
+    if (p?.env?.[name] && p.env[name] !== "0" && p.env[name] !== "") {
+      return true;
+    }
   } catch {
     /* ignore */
   }
@@ -35,7 +37,9 @@ function envFlag(name: string): boolean {
         ? (import.meta as { env?: Record<string, string | undefined> })
         : null;
     const v = importMeta?.env?.[name];
-    if (v && v !== "0" && v !== "") return true;
+    if (v && v !== "0" && v !== "") {
+      return true;
+    }
   } catch {
     /* ignore */
   }
@@ -56,7 +60,9 @@ function localStorageFlag(key: string): boolean {
 function urlParamFlag(key: string): boolean {
   try {
     const loc = (globalThis as { location?: { search?: string } }).location;
-    if (!loc?.search) return false;
+    if (!loc?.search) {
+      return false;
+    }
     const params = new URLSearchParams(loc.search);
     const v = params.get(key);
     return v === "1" || v === "true";

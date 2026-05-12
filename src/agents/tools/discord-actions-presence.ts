@@ -19,7 +19,7 @@ export async function handleDiscordPresenceAction(
   action: string,
   params: Record<string, unknown>,
   isActionEnabled: ActionGate<DiscordActionConfig>,
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   if (action !== "setPresence") {
     throw new Error(`Unknown presence action: ${action}`);
   }

@@ -64,10 +64,18 @@ const EXCLUDED_IDS = new Set(["main", "dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 function isOperational(a: { id: string; role?: string }): boolean {
-  if (EXCLUDED_IDS.has(a.id.toLowerCase())) return false;
-  if (a.id.startsWith("test-") || a.id.startsWith("test_")) return false;
-  if (UUID_RE.test(a.id)) return false;
-  if (a.role === "think_tank_panelist") return false;
+  if (EXCLUDED_IDS.has(a.id.toLowerCase())) {
+    return false;
+  }
+  if (a.id.startsWith("test-") || a.id.startsWith("test_")) {
+    return false;
+  }
+  if (UUID_RE.test(a.id)) {
+    return false;
+  }
+  if (a.role === "think_tank_panelist") {
+    return false;
+  }
   return true;
 }
 
@@ -104,9 +112,13 @@ function agentColor(id: string): string {
 function formatSchedule(schedule: CronSchedule): string {
   if (schedule.kind === "every" && schedule.everyMs) {
     const mins = schedule.everyMs / 60000;
-    if (mins < 60) return `Every ${mins}m`;
+    if (mins < 60) {
+      return `Every ${mins}m`;
+    }
     const hrs = mins / 60;
-    if (hrs < 24) return hrs === Math.floor(hrs) ? `Every ${hrs}h` : `Every ${hrs.toFixed(1)}h`;
+    if (hrs < 24) {
+      return hrs === Math.floor(hrs) ? `Every ${hrs}h` : `Every ${hrs.toFixed(1)}h`;
+    }
     const days = hrs / 24;
     return days === Math.floor(days) ? `Every ${days}d` : `Every ${days.toFixed(1)}d`;
   }
@@ -123,14 +135,22 @@ function formatSchedule(schedule: CronSchedule): string {
 
 function timeAgo(ms: number): string {
   const delta = Date.now() - ms;
-  if (delta < 60000) return "just now";
-  if (delta < 3600000) return `${Math.floor(delta / 60000)}m ago`;
-  if (delta < 86400000) return `${Math.floor(delta / 3600000)}h ago`;
+  if (delta < 60000) {
+    return "just now";
+  }
+  if (delta < 3600000) {
+    return `${Math.floor(delta / 60000)}m ago`;
+  }
+  if (delta < 86400000) {
+    return `${Math.floor(delta / 3600000)}h ago`;
+  }
   return `${Math.floor(delta / 86400000)}d ago`;
 }
 
 function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
@@ -325,7 +345,9 @@ export function JobsBoardWidget() {
   }, [request]);
 
   const fetchData = useCallback(async () => {
-    if (!connected) return;
+    if (!connected) {
+      return;
+    }
 
     try {
       const [cronRes, members] = await Promise.all([
@@ -337,7 +359,9 @@ export function JobsBoardWidget() {
 
       // Build member lookup
       const memberMap = new Map<string, FamilyMember>();
-      for (const m of members) memberMap.set(m.id, m);
+      for (const m of members) {
+        memberMap.set(m.id, m);
+      }
 
       // Group jobs by agentId
       const jobsByAgent = new Map<string, CronJob[]>();
@@ -352,25 +376,33 @@ export function JobsBoardWidget() {
       const agentGroups: AgentGroup[] = [];
 
       for (const [agentId, agentJobs] of jobsByAgent) {
-        if (agentId === "__system__") continue; // handle below
+        if (agentId === "__system__") {
+          continue;
+        } // handle below
 
         const member = memberMap.get(agentId);
         // Filter same as WorkflowMapCanvas
-        if (member && !isOperational(member)) continue;
-        if (!member && !isOperational({ id: agentId, role: "agent" })) continue;
+        if (member && !isOperational(member)) {
+          continue;
+        }
+        if (!member && !isOperational({ id: agentId, role: "agent" })) {
+          continue;
+        }
 
         agentGroups.push({
           id: agentId,
           name: member?.name ?? agentId,
           role: member?.role ?? "",
           color: agentColor(agentId),
-          jobs: agentJobs.sort((a, b) => a.name.localeCompare(b.name)),
+          jobs: agentJobs.toSorted((a, b) => a.name.localeCompare(b.name)),
         });
       }
 
       // Sort agent groups: most jobs first, then alphabetical
       agentGroups.sort((a, b) => {
-        if (a.jobs.length !== b.jobs.length) return b.jobs.length - a.jobs.length;
+        if (a.jobs.length !== b.jobs.length) {
+          return b.jobs.length - a.jobs.length;
+        }
         return a.name.localeCompare(b.name);
       });
 
@@ -382,7 +414,7 @@ export function JobsBoardWidget() {
           name: "System",
           role: "Unassigned",
           color: "#6B7280",
-          jobs: systemJobs.sort((a, b) => a.name.localeCompare(b.name)),
+          jobs: systemJobs.toSorted((a, b) => a.name.localeCompare(b.name)),
         });
       }
 
@@ -397,7 +429,9 @@ export function JobsBoardWidget() {
 
   const handleRunNow = useCallback(
     async (jobId: string) => {
-      if (!connected) return;
+      if (!connected) {
+        return;
+      }
       setRunningTrigger(jobId);
       try {
         await request("cron.run", { jobId, mode: "force" });
@@ -429,8 +463,12 @@ export function JobsBoardWidget() {
     }, 60_000);
 
     return () => {
-      if (cronIntervalRef.current) clearInterval(cronIntervalRef.current);
-      if (membersIntervalRef.current) clearInterval(membersIntervalRef.current);
+      if (cronIntervalRef.current) {
+        clearInterval(cronIntervalRef.current);
+      }
+      if (membersIntervalRef.current) {
+        clearInterval(membersIntervalRef.current);
+      }
     };
   }, [connected, fetchData]);
 

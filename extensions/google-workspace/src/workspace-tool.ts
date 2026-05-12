@@ -60,10 +60,14 @@ function readStr(params: Record<string, unknown>, key: string): string | undefin
 
 function readNum(params: Record<string, unknown>, key: string, fallback: number): number {
   const v = params[key];
-  if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.trunc(v);
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+    return Math.trunc(v);
+  }
   if (typeof v === "string") {
     const n = Number.parseInt(v, 10);
-    if (Number.isFinite(n) && n > 0) return n;
+    if (Number.isFinite(n) && n > 0) {
+      return n;
+    }
   }
   return fallback;
 }
@@ -95,7 +99,9 @@ function chunkDateRange(start: string, end: string): Array<{ start: string; end:
   while (d <= endDate) {
     const chunkEnd = new Date(d);
     chunkEnd.setUTCDate(chunkEnd.getUTCDate() + 29);
-    if (chunkEnd > endDate) chunkEnd.setTime(endDate.getTime());
+    if (chunkEnd > endDate) {
+      chunkEnd.setTime(endDate.getTime());
+    }
     chunks.push({
       start: d.toISOString().slice(0, 10),
       end: chunkEnd.toISOString().slice(0, 10),
@@ -144,7 +150,9 @@ async function actionUserEmailStats(
   params: Record<string, unknown>,
 ): Promise<unknown> {
   const user = readStr(params, "user");
-  if (!user) return { text: "Error: 'user' parameter required (email address).", error: true };
+  if (!user) {
+    return { text: "Error: 'user' parameter required (email address).", error: true };
+  }
 
   const defaults = getDefaultDateRange();
   const startDate = readStr(params, "start_date") ?? defaults.start;
@@ -217,7 +225,9 @@ async function actionEmailActivity(
   const events: GmailActivityEvent[] = [];
 
   for (const chunk of chunks) {
-    if (events.length >= maxResults) break;
+    if (events.length >= maxResults) {
+      break;
+    }
 
     let pageToken: string | undefined;
     do {
@@ -232,11 +242,15 @@ async function actionEmailActivity(
       });
 
       for (const item of res.data.items ?? []) {
-        if (events.length >= maxResults) break;
+        if (events.length >= maxResults) {
+          break;
+        }
 
         const actor = item.actor?.email ?? "unknown";
         for (const evt of item.events ?? []) {
-          if (events.length >= maxResults) break;
+          if (events.length >= maxResults) {
+            break;
+          }
 
           const event: GmailActivityEvent = {
             timestamp: item.id?.time ?? "",
@@ -245,9 +259,15 @@ async function actionEmailActivity(
           };
 
           for (const p of evt.parameters ?? []) {
-            if (p.name === "subject") event.subject = p.value;
-            if (p.name === "destination_recipient_address") event.recipient = p.value;
-            if (p.name === "message_id") event.messageId = p.value;
+            if (p.name === "subject") {
+              event.subject = p.value;
+            }
+            if (p.name === "destination_recipient_address") {
+              event.recipient = p.value;
+            }
+            if (p.name === "message_id") {
+              event.messageId = p.value;
+            }
           }
 
           events.push(event);
@@ -273,7 +293,9 @@ async function actionUserLookup(
   params: Record<string, unknown>,
 ): Promise<unknown> {
   const user = readStr(params, "user");
-  if (!user) return { text: "Error: 'user' parameter required (email address).", error: true };
+  if (!user) {
+    return { text: "Error: 'user' parameter required (email address).", error: true };
+  }
 
   const { directory } = getApiClients(config);
   const res = await directory.users.get({
@@ -321,14 +343,20 @@ async function actionUserList(
       orderBy: "email",
       pageToken,
     };
-    if (orgUnit) listParams.orgUnitPath = orgUnit;
-    if (query) listParams.query = query;
+    if (orgUnit) {
+      listParams.orgUnitPath = orgUnit;
+    }
+    if (query) {
+      listParams.query = query;
+    }
 
     // oxlint-disable-next-line typescript/no-explicit-any
     const res = await directory.users.list(listParams as any);
 
     for (const u of res.data.users ?? []) {
-      if (users.length >= maxResults) break;
+      if (users.length >= maxResults) {
+        break;
+      }
       users.push({
         email: u.primaryEmail ?? "",
         name:
@@ -400,7 +428,9 @@ async function actionEmailSummary(
       } while (pageToken);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("Data for dates later than")) throw err;
+      if (!msg.includes("Data for dates later than")) {
+        throw err;
+      }
       // Skip dates with no data yet (report lag)
     }
   }
@@ -416,11 +446,11 @@ async function actionEmailSummary(
 
   const byEmail = [...userTotals.entries()].map(([email, t]) => ({ email, ...t }));
   const topSenders = byEmail
-    .sort((a, b) => b.sent - a.sent)
+    .toSorted((a, b) => b.sent - a.sent)
     .slice(0, topN)
     .map(({ email, sent }) => ({ email, sent }));
   const topReceivers = byEmail
-    .sort((a, b) => b.received - a.received)
+    .toSorted((a, b) => b.received - a.received)
     .slice(0, topN)
     .map(({ email, received }) => ({ email, received }));
 
@@ -466,7 +496,9 @@ export function createGWorkspaceTool(api: ArgentPluginApi) {
 
     async execute(_id: string, params: Record<string, unknown>) {
       const action = readStr(params, "action");
-      if (!action) return jsonResult({ text: "Error: 'action' parameter required.", error: true });
+      if (!action) {
+        return jsonResult({ text: "Error: 'action' parameter required.", error: true });
+      }
 
       const pluginCfg = (api.pluginConfig ?? {}) as PluginConfig;
       if (!pluginCfg.serviceAccountKeyPath || !pluginCfg.adminEmail || !pluginCfg.domain) {

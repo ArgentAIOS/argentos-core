@@ -102,7 +102,7 @@ export default function SafetyRulesPanel({ showUpgradeHint = true }: SafetyRules
         enabled: rules.enabled,
         runtimeMode: rules.runtimeMode,
         global: {
-          ...(intentSettings?.global ?? {}),
+          ...intentSettings?.global,
           neverDo: rules.neverDo,
           requiresHumanApproval: rules.requiresHumanApproval,
         },

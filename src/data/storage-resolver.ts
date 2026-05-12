@@ -23,7 +23,9 @@ export function readStorageConfigFromDisk(
 ): Partial<StorageConfig> | undefined {
   try {
     const configPath = resolveConfigPathCandidate(env);
-    if (!fs.existsSync(configPath)) return undefined;
+    if (!fs.existsSync(configPath)) {
+      return undefined;
+    }
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     return raw?.storage ?? undefined;
   } catch {
@@ -56,15 +58,21 @@ export function resolvePostgresUrl(options?: {
 }): string {
   const env = options?.env ?? process.env;
   const explicit = options?.explicit?.trim();
-  if (explicit) return explicit;
+  if (explicit) {
+    return explicit;
+  }
 
   const fromEnv = env.ARGENT_PG_URL?.trim() || env.PG_URL?.trim();
-  if (fromEnv) return fromEnv;
+  if (fromEnv) {
+    return fromEnv;
+  }
 
   const storage =
     options?.storage ?? readStorageConfigFromDisk(env) ?? ({} as Partial<StorageConfig>);
   const fromConfig = storage.postgres?.connectionString?.trim();
-  if (fromConfig) return fromConfig;
+  if (fromConfig) {
+    return fromConfig;
+  }
 
   return options?.fallback ?? DEFAULT_PG_URL;
 }

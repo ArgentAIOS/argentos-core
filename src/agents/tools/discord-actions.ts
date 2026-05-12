@@ -57,7 +57,7 @@ const presenceActions = new Set(["setPresence"]);
 export async function handleDiscordAction(
   params: Record<string, unknown>,
   cfg: ArgentConfig,
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   const action = readStringParam(params, "action", { required: true });
   const isActionEnabled = createActionGate(cfg.channels?.discord?.actions);
 

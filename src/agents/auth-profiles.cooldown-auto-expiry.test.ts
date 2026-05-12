@@ -31,8 +31,8 @@ describe("clearExpiredCooldowns", () => {
 
     const result = clearExpiredCooldowns(store, now);
     expect(result).toBe(true);
-    expect(store.usageStats!["anthropic:a"]!.cooldownUntil).toBeUndefined();
-    expect(store.usageStats!["anthropic:a"]!.errorCount).toBe(0);
+    expect(store.usageStats!["anthropic:a"].cooldownUntil).toBeUndefined();
+    expect(store.usageStats!["anthropic:a"].errorCount).toBe(0);
     expect(isProfileInCooldown(store, "anthropic:a")).toBe(false);
   });
 
@@ -48,8 +48,8 @@ describe("clearExpiredCooldowns", () => {
 
     const result = clearExpiredCooldowns(store, now);
     expect(result).toBe(false);
-    expect(store.usageStats!["anthropic:a"]!.cooldownUntil).toBe(now + 30_000);
-    expect(store.usageStats!["anthropic:a"]!.errorCount).toBe(2);
+    expect(store.usageStats!["anthropic:a"].cooldownUntil).toBe(now + 30_000);
+    expect(store.usageStats!["anthropic:a"].errorCount).toBe(2);
     expect(isProfileInCooldown(store, "anthropic:a")).toBe(true);
   });
 
@@ -68,11 +68,11 @@ describe("clearExpiredCooldowns", () => {
     const result = clearExpiredCooldowns(store, now);
     expect(result).toBe(true);
     // disabledUntil cleared, cooldownUntil preserved
-    expect(store.usageStats!["anthropic:a"]!.disabledUntil).toBeUndefined();
-    expect(store.usageStats!["anthropic:a"]!.disabledReason).toBeUndefined();
-    expect(store.usageStats!["anthropic:a"]!.cooldownUntil).toBe(now + 60_000);
+    expect(store.usageStats!["anthropic:a"].disabledUntil).toBeUndefined();
+    expect(store.usageStats!["anthropic:a"].disabledReason).toBeUndefined();
+    expect(store.usageStats!["anthropic:a"].cooldownUntil).toBe(now + 60_000);
     // Error count NOT reset because cooldownUntil is still active
-    expect(store.usageStats!["anthropic:a"]!.errorCount).toBe(5);
+    expect(store.usageStats!["anthropic:a"].errorCount).toBe(5);
   });
 
   it("resets error count only when ALL cooldowns expired", () => {
@@ -89,10 +89,10 @@ describe("clearExpiredCooldowns", () => {
     });
 
     clearExpiredCooldowns(store, now);
-    expect(store.usageStats!["anthropic:a"]!.errorCount).toBe(0);
-    expect(store.usageStats!["anthropic:a"]!.failureCounts).toBeUndefined();
+    expect(store.usageStats!["anthropic:a"].errorCount).toBe(0);
+    expect(store.usageStats!["anthropic:a"].failureCounts).toBeUndefined();
     // lastFailureAt preserved for the decay window check
-    expect(store.usageStats!["anthropic:a"]!.lastFailureAt).toBe(now - 60_000);
+    expect(store.usageStats!["anthropic:a"].lastFailureAt).toBe(now - 60_000);
   });
 
   it("handles multiple profiles in one sweep", () => {
@@ -114,9 +114,9 @@ describe("clearExpiredCooldowns", () => {
 
     const result = clearExpiredCooldowns(store, now);
     expect(result).toBe(true);
-    expect(store.usageStats!["anthropic:a"]!.errorCount).toBe(0);
-    expect(store.usageStats!["anthropic:b"]!.errorCount).toBe(2);
-    expect(store.usageStats!["anthropic:c"]!.errorCount).toBe(0);
+    expect(store.usageStats!["anthropic:a"].errorCount).toBe(0);
+    expect(store.usageStats!["anthropic:b"].errorCount).toBe(2);
+    expect(store.usageStats!["anthropic:c"].errorCount).toBe(0);
   });
 
   it("returns false when no usageStats exist", () => {

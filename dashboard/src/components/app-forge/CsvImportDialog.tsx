@@ -40,8 +40,12 @@ function resolveRatingMax(candidate: number | undefined): number {
     return RATING_DEFAULT_MAX;
   }
   const rounded = Math.trunc(candidate);
-  if (rounded < RATING_MIN_MAX) return RATING_MIN_MAX;
-  if (rounded > RATING_MAX_MAX) return RATING_MAX_MAX;
+  if (rounded < RATING_MIN_MAX) {
+    return RATING_MIN_MAX;
+  }
+  if (rounded > RATING_MAX_MAX) {
+    return RATING_MAX_MAX;
+  }
   return rounded;
 }
 

@@ -13,14 +13,18 @@ import { resolve } from "node:path";
 let _db: Database.Database | null = null;
 
 export function resolveDbPath(configPath?: string): string {
-  if (configPath) return resolve(configPath.replace(/^~/, homedir()));
+  if (configPath) {
+    return resolve(configPath.replace(/^~/, homedir()));
+  }
   const stateDir = resolve(homedir(), ".argentos");
   mkdirSync(stateDir, { recursive: true });
   return resolve(stateDir, "lcm.db");
 }
 
 export function getDb(configPath?: string): Database.Database {
-  if (_db) return _db;
+  if (_db) {
+    return _db;
+  }
   const dbPath = resolveDbPath(configPath);
   _db = new Database(dbPath);
   _db.pragma("journal_mode = WAL");

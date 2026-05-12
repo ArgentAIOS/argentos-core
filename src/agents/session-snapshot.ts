@@ -98,13 +98,17 @@ async function extractMessagesFromTranscript(transcriptPath: string): Promise<Tr
   });
 
   for await (const line of rl) {
-    if (!line.trim()) continue;
+    if (!line.trim()) {
+      continue;
+    }
     try {
       const entry = JSON.parse(line);
       // Standard Pi transcript format: { type: "message", message: { role, content } }
       const msg = entry?.message ?? entry;
       const role = msg?.role;
-      if (role !== "user" && role !== "assistant") continue;
+      if (role !== "user" && role !== "assistant") {
+        continue;
+      }
 
       // Extract text from content array or string
       let text = "";
@@ -117,12 +121,18 @@ async function extractMessagesFromTranscript(transcriptPath: string): Promise<Tr
           .map((b: { text?: string }) => b.text ?? "")
           .join("\n");
       }
-      if (!text.trim()) continue;
+      if (!text.trim()) {
+        continue;
+      }
 
       // Skip system nudges / heartbeat pings for user messages
-      if (role === "user" && text.length < MIN_USER_MESSAGE_LENGTH) continue;
+      if (role === "user" && text.length < MIN_USER_MESSAGE_LENGTH) {
+        continue;
+      }
       // Skip nudges that look like system injections (timestamps-only, etc.)
-      if (role === "user" && /^\[.*\]\s*$/.test(text.trim())) continue;
+      if (role === "user" && /^\[.*\]\s*$/.test(text.trim())) {
+        continue;
+      }
 
       messages.push({ role, text: text.slice(0, MAX_MSG_CHARS) });
     } catch {
@@ -179,10 +189,14 @@ export async function saveEmergencySnapshot(params: {
   try {
     // Check that the transcript file exists and has content
     const stat = await fsAsync.stat(params.transcriptPath);
-    if (stat.size < 100) return false; // too small to be useful
+    if (stat.size < 100) {
+      return false;
+    } // too small to be useful
 
     const messages = await extractMessagesFromTranscript(params.transcriptPath);
-    if (messages.length === 0) return false;
+    if (messages.length === 0) {
+      return false;
+    }
 
     const summary = formatEmergencySnapshot(messages);
 

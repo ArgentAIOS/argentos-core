@@ -96,8 +96,12 @@ export class TonalPresenceEngine {
   // ── Lazy init (must be called after user gesture) ──────────────────────
 
   private ensureContext(): AudioContext | null {
-    if (this.destroyed) return null;
-    if (this.ctx) return this.ctx;
+    if (this.destroyed) {
+      return null;
+    }
+    if (this.ctx) {
+      return this.ctx;
+    }
 
     try {
       this.ctx = new AudioContext();
@@ -113,8 +117,12 @@ export class TonalPresenceEngine {
 
   private startAmbient(profile: TonalProfile): void {
     const ctx = this.ensureContext();
-    if (!ctx || !this.masterGain || !this.config.ambientTone) return;
-    if (this.ambientOsc) return; // Already running
+    if (!ctx || !this.masterGain || !this.config.ambientTone) {
+      return;
+    }
+    if (this.ambientOsc) {
+      return;
+    } // Already running
 
     // Ambient oscillator
     this.ambientGain = ctx.createGain();
@@ -132,8 +140,12 @@ export class TonalPresenceEngine {
 
   private startBreathing(rate: number): void {
     const ctx = this.ensureContext();
-    if (!ctx || !this.masterGain || !this.config.breathingAudio) return;
-    if (this.breathingLfo) return; // Already running
+    if (!ctx || !this.masterGain || !this.config.breathingAudio) {
+      return;
+    }
+    if (this.breathingLfo) {
+      return;
+    } // Already running
 
     // Breathing modulates ambient volume
     this.breathingGain = ctx.createGain();
@@ -158,7 +170,9 @@ export class TonalPresenceEngine {
   // ── Public API ─────────────────────────────────────────────────────────
 
   updateEmotional(emotional: EmotionalState): void {
-    if (!this.config.enabled || this.destroyed) return;
+    if (!this.config.enabled || this.destroyed) {
+      return;
+    }
 
     const profile = getTonalProfile(emotional.mood.state, emotional.arousal);
 
@@ -178,15 +192,21 @@ export class TonalPresenceEngine {
   }
 
   updateBreathing(rate: number): void {
-    if (!this.config.enabled || this.destroyed || !this.breathingLfo || !this.ctx) return;
+    if (!this.config.enabled || this.destroyed || !this.breathingLfo || !this.ctx) {
+      return;
+    }
     const now = this.ctx.currentTime;
     this.breathingLfo.frequency.linearRampToValueAtTime(Math.max(rate, 0.05), now + 0.5);
   }
 
   playChime(type: "mood" | "activity" | "alert"): void {
-    if (!this.config.enabled || !this.config.stateChimes || this.destroyed) return;
+    if (!this.config.enabled || !this.config.stateChimes || this.destroyed) {
+      return;
+    }
     const ctx = this.ensureContext();
-    if (!ctx || !this.masterGain) return;
+    if (!ctx || !this.masterGain) {
+      return;
+    }
 
     const chimeGain = ctx.createGain();
     chimeGain.connect(this.masterGain);
@@ -226,9 +246,13 @@ export class TonalPresenceEngine {
   }
 
   playPreSpeechCue(): void {
-    if (!this.config.enabled || !this.config.preSpeechCue || this.destroyed) return;
+    if (!this.config.enabled || !this.config.preSpeechCue || this.destroyed) {
+      return;
+    }
     const ctx = this.ensureContext();
-    if (!ctx || !this.masterGain) return;
+    if (!ctx || !this.masterGain) {
+      return;
+    }
 
     const now = ctx.currentTime;
     const cueGain = ctx.createGain();

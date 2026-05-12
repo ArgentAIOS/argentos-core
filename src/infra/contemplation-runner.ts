@@ -113,11 +113,15 @@ async function seasonPrompt(
     });
     clearTimeout(timeout);
 
-    if (!res.ok) return pick(fallbacks);
+    if (!res.ok) {
+      return pick(fallbacks);
+    }
 
     const data = (await res.json()) as { message?: { content?: string } };
     const text = data.message?.content?.trim();
-    if (text && text.length > 15) return text;
+    if (text && text.length > 15) {
+      return text;
+    }
     return pick(fallbacks);
   } catch {
     return pick(fallbacks);
@@ -316,10 +320,14 @@ function resolveContemplationAgents(cfg: ArgentConfig): ContemplationAgent[] {
   // Family agents from config agents.list that have contemplation enabled
   const list = cfg.agents?.list ?? [];
   for (const entry of list) {
-    if (!entry?.id) continue;
+    if (!entry?.id) {
+      continue;
+    }
     const agentId = normalizeAgentId(entry.id);
     // Skip the default agent (already added above)
-    if (agentId === resolveDefaultAgentId(cfg)) continue;
+    if (agentId === resolveDefaultAgentId(cfg)) {
+      continue;
+    }
 
     const agentContemplation = entry.contemplation as
       | { enabled?: boolean; every?: string }
@@ -362,8 +370,12 @@ async function loadFamilyContemplationAgents(cfg?: ArgentConfig): Promise<Contem
 
     const agents: ContemplationAgent[] = [];
     for (const member of members) {
-      if (member.status !== "active") continue;
-      if (member.id === "argent") continue; // Default agent handled by config
+      if (member.status !== "active") {
+        continue;
+      }
+      if (member.id === "argent") {
+        continue;
+      } // Default agent handled by config
 
       agents.push({
         agentId: member.id,
@@ -400,10 +412,14 @@ async function readAndAckFamilyMessages(agentId: string): Promise<{
     const { getAgentFamily } = await import("../data/agent-family.js");
     const family = await getAgentFamily();
     const redis = family.getRedis();
-    if (!redis) return { text: "", count: 0 };
+    if (!redis) {
+      return { text: "", count: 0 };
+    }
 
     const messages = await readFamilyMessages(redis, agentId, 20);
-    if (messages.length === 0) return { text: "", count: 0 };
+    if (messages.length === 0) {
+      return { text: "", count: 0 };
+    }
 
     // Filter messages addressed to this agent or broadcast (recipient = *)
     const relevant = messages.filter(
@@ -549,7 +565,7 @@ async function buildContemplationPrompt(
 
     const titles = relevant
       .filter((task) => task.status === "pending" || task.status === "in_progress")
-      .sort((a, b) => a.createdAt - b.createdAt)
+      .toSorted((a, b) => a.createdAt - b.createdAt)
       .slice(0, 5);
     if (titles.length > 0) {
       taskTitles = titles.map((t) => `  - ${t.title}`).join("\n");
@@ -754,9 +770,11 @@ async function buildContemplationPrompt(
       // Pull interesting pattern hints from recent episodes
       const hints = new Set<string>();
       for (const ep of episodeItems) {
-        const extra = ep.extra as Record<string, unknown>;
+        const extra = ep.extra;
         const hint = extra?.patternHint as string | undefined;
-        if (hint && hint.length > 5) hints.add(hint);
+        if (hint && hint.length > 5) {
+          hints.add(hint);
+        }
       }
       if (hints.size > 0) {
         threads.push("**Threads from recent episodes:**");
@@ -1402,12 +1420,16 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
   }
 
   function scheduleNext() {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     if (timer) {
       clearTimeout(timer);
       timer = null;
     }
-    if (agents.size === 0) return;
+    if (agents.size === 0) {
+      return;
+    }
 
     const nextDue = resolveNextAutonomousDueMs();
     if (typeof nextDue !== "number") {
@@ -1420,7 +1442,9 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
   }
 
   async function runCycle() {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
 
     // Rate limit: max cycles per hour
     const now = Date.now();
@@ -1437,7 +1461,9 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
       // Prevent tight 0ms loops while rate-limited: move all agents' due times
       // into the next hourly window.
       for (const agentState of agents.values()) {
-        if (agentState.running) continue;
+        if (agentState.running) {
+          continue;
+        }
         agentState.nextDueMs = Math.max(agentState.nextDueMs, now + backoffMs);
       }
 
@@ -1455,8 +1481,12 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
 
     // Find agents that are due
     for (const [agentId, agentState] of agents) {
-      if (stopped) break;
-      if (agentState.running) continue;
+      if (stopped) {
+        break;
+      }
+      if (agentState.running) {
+        continue;
+      }
 
       if (isAutonomousSchedulingSuppressedForAgent(agentId)) {
         continue;
@@ -1464,7 +1494,9 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
 
       const effectiveDue = resolveEffectiveDue(agentState);
 
-      if (now < effectiveDue) continue;
+      if (now < effectiveDue) {
+        continue;
+      }
 
       // ── Scheduler Dedupe: pre-enqueue check ──
       const dedupe = getSchedulerDedupe();
@@ -1545,10 +1577,14 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
 
     // Also load family agents from PG (async, best-effort)
     void loadFamilyContemplationAgents(cfg).then((familyAgents) => {
-      if (stopped) return;
+      if (stopped) {
+        return;
+      }
       let added = false;
       for (const agent of familyAgents) {
-        if (agents.has(agent.agentId)) continue; // Already from config
+        if (agents.has(agent.agentId)) {
+          continue;
+        } // Already from config
         const prevState = prevAgents.get(agent.agentId);
         agents.set(agent.agentId, {
           agentId: agent.agentId,
@@ -1571,7 +1607,9 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
   }
 
   const updateConfig = (nextCfg: ArgentConfig) => {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     const prevSize = agents.size;
     cfg = nextCfg;
     rebuildAgents();

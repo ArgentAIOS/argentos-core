@@ -143,7 +143,10 @@ function createEditRegexExecute(options: FileEditOptions) {
     try {
       regex = new RegExp(pattern, flags);
     } catch (err) {
-      throw new Error(`Invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(
+        `Invalid regex pattern: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      );
     }
 
     // Count matches
@@ -152,7 +155,9 @@ function createEditRegexExecute(options: FileEditOptions) {
     let match: RegExpExecArray | null;
     while ((match = countRegex.exec(original)) !== null) {
       matches.push(match[0]);
-      if (!flags.includes("g")) break;
+      if (!flags.includes("g")) {
+        break;
+      }
     }
 
     const result = original.replace(regex, replacement);

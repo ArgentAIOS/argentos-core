@@ -14,7 +14,7 @@ export const aevpHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const payload = params as Record<string, unknown>;
+    const payload = params;
     const type = payload.type;
 
     if (

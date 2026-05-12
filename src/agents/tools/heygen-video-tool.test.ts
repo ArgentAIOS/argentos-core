@@ -21,10 +21,16 @@ describe("heygen_video", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.HEYGEN_API_KEY;
-    else process.env.HEYGEN_API_KEY = originalKey;
-    if (originalDefaultAvatar === undefined) delete process.env.HEYGEN_DEFAULT_AVATAR_ID;
-    else process.env.HEYGEN_DEFAULT_AVATAR_ID = originalDefaultAvatar;
+    if (originalKey === undefined) {
+      delete process.env.HEYGEN_API_KEY;
+    } else {
+      process.env.HEYGEN_API_KEY = originalKey;
+    }
+    if (originalDefaultAvatar === undefined) {
+      delete process.env.HEYGEN_DEFAULT_AVATAR_ID;
+    } else {
+      process.env.HEYGEN_DEFAULT_AVATAR_ID = originalDefaultAvatar;
+    }
     vi.restoreAllMocks();
   });
 
@@ -101,7 +107,7 @@ describe("heygen_video", () => {
     const firstCharacter = (videoInputs[0]?.character || {}) as Record<string, unknown>;
     expect(firstCharacter.avatar_id).toBe("avatar-default");
 
-    const secondInput = videoInputs[1] as Record<string, unknown>;
+    const secondInput = videoInputs[1];
     const secondCharacter = (secondInput.character || {}) as Record<string, unknown>;
     const secondBackground = (secondInput.background || {}) as Record<string, unknown>;
     expect(secondCharacter.avatar_id).toBe("avatar-default");

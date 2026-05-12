@@ -124,7 +124,9 @@ function MediaLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -212,9 +214,15 @@ function toMediaUrl(filePath: string): string {
 
 // Detect media file extensions
 function getMediaType(path: string): "image" | "video" | "audio" | null {
-  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(path)) return "image";
-  if (/\.(mp4|webm|mov)$/i.test(path)) return "video";
-  if (/\.(mp3|wav|ogg|m4a)$/i.test(path)) return "audio";
+  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(path)) {
+    return "image";
+  }
+  if (/\.(mp4|webm|mov)$/i.test(path)) {
+    return "video";
+  }
+  if (/\.(mp3|wav|ogg|m4a)$/i.test(path)) {
+    return "audio";
+  }
   return null;
 }
 
@@ -290,7 +298,7 @@ function DeferredAudio({
 }: {
   src: string;
   className?: string;
-  onError?: (e: React.SyntheticEvent<HTMLAudioElement, Event>) => void;
+  onError?: (e: React.SyntheticEvent<HTMLAudioElement>) => void;
 }) {
   const [failed, setFailed] = useState(false);
 
@@ -316,7 +324,7 @@ function DeferredAudio({
 
 // Detect absolute file/folder paths
 const PATH_REGEX =
-  /^\/(?:Users|home|tmp|var|opt|etc|usr|Volumes|Library|System|private|Applications)[\/][^\s]*/;
+  /^\/(?:Users|home|tmp|var|opt|etc|usr|Volumes|Library|System|private|Applications)[/][^\s]*/;
 
 function isFilePath(text: string): boolean {
   return PATH_REGEX.test(text.trim());
@@ -329,7 +337,9 @@ function PathLink({ path: filePath }: { path: string }) {
   const menuRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    if (!showMenu) return;
+    if (!showMenu) {
+      return;
+    }
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMenu(false);
@@ -414,7 +424,9 @@ function MessageContent({
 
   const renderMedia = (filePath: string, idx: number) => {
     const media = <InlineMedia filePath={filePath} onImageClick={onImageClick} />;
-    if (media) return <div key={`${filePath}-${idx}`}>{media}</div>;
+    if (media) {
+      return <div key={`${filePath}-${idx}`}>{media}</div>;
+    }
 
     const mediaUrl = toMediaUrl(filePath);
     const fileName = filePath.split("/").pop() || "download";
@@ -513,7 +525,9 @@ function MessageContent({
             // Detect images/videos in markdown and render appropriate element
             img({ src, alt }) {
               let mediaSrc = src || "";
-              if (mediaSrc.startsWith("file://")) mediaSrc = mediaSrc.replace("file://", "");
+              if (mediaSrc.startsWith("file://")) {
+                mediaSrc = mediaSrc.replace("file://", "");
+              }
               if (
                 mediaSrc.startsWith("/var/") ||
                 mediaSrc.startsWith("/tmp/") ||
@@ -714,7 +728,7 @@ const TEXT_ATTACHMENT_TYPES = [
   "application/x-sh",
 ];
 
-const TEXT_ATTACHMENT_EXTENSIONS = [
+const TEXT_ATTACHMENT_EXTENSIONS = new Set([
   ".md",
   ".txt",
   ".csv",
@@ -753,13 +767,13 @@ const TEXT_ATTACHMENT_EXTENSIONS = [
   ".prisma",
   ".graphql",
   ".svg",
-];
+]);
 
 function isTextAttachmentFile(file: File): boolean {
   const ext = "." + file.name.split(".").pop()?.toLowerCase();
   return (
     TEXT_ATTACHMENT_TYPES.some((t) => file.type.startsWith(t)) ||
-    TEXT_ATTACHMENT_EXTENSIONS.includes(ext)
+    TEXT_ATTACHMENT_EXTENSIONS.has(ext)
   );
 }
 
@@ -1118,7 +1132,9 @@ export function ChatPanel({
   }, [messages]);
 
   useEffect(() => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest) {
+      return;
+    }
     let cancelled = false;
     const loadRouting = async () => {
       try {
@@ -1148,10 +1164,14 @@ export function ChatPanel({
 
   // Command autocomplete filtering
   const filteredCommands = (() => {
-    if (!input.startsWith("/") || commands.length === 0) return [];
+    if (!input.startsWith("/") || commands.length === 0) {
+      return [];
+    }
     const typed = input.toLowerCase();
     // Don't show dropdown if input has a space (user is typing args)
-    if (typed.includes(" ")) return [];
+    if (typed.includes(" ")) {
+      return [];
+    }
     return commands.filter((cmd) =>
       cmd.aliases.some((alias) => alias.toLowerCase().startsWith(typed)),
     );
@@ -1174,13 +1194,17 @@ export function ChatPanel({
         // No args needed — execute immediately
         onCommand(cmd.key);
         setInput("");
-        if (inputRef.current) inputRef.current.style.height = "auto";
+        if (inputRef.current) {
+          inputRef.current.style.height = "auto";
+        }
       } else {
         // Fallback: send as text
         const alias = cmd.aliases[0] || `/${cmd.key}`;
         onSend(alias);
         setInput("");
-        if (inputRef.current) inputRef.current.style.height = "auto";
+        if (inputRef.current) {
+          inputRef.current.style.height = "auto";
+        }
       }
     },
     [onCommand, onSend],
@@ -1198,7 +1222,9 @@ export function ChatPanel({
         const dataUrl = e.target?.result as string;
         // First image → preview slot, additional images → attachments array
         setAttachedImage((prev) => {
-          if (!prev) return dataUrl;
+          if (!prev) {
+            return dataUrl;
+          }
           // Already have a primary image — push this one to attachedFiles
           const imgMatch = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
           if (imgMatch) {
@@ -1301,7 +1327,9 @@ export function ChatPanel({
   };
 
   const handleKnowledgeIngest = async () => {
-    if (ingestFiles.length === 0 || isIngesting) return;
+    if (ingestFiles.length === 0 || isIngesting) {
+      return;
+    }
     if (!gatewayRequest) {
       setIngestMessage("Ingest unavailable: gateway request bridge is not connected.");
       return;
@@ -1353,7 +1381,9 @@ export function ChatPanel({
   };
 
   useEffect(() => {
-    if (!showIngestModal) return;
+    if (!showIngestModal) {
+      return;
+    }
     let cancelled = false;
 
     const loadCollections = async () => {
@@ -1391,7 +1421,7 @@ export function ChatPanel({
           }
         }
 
-        const deduped = Array.from(new Set(["default", ...names])).sort((a, b) =>
+        const deduped = Array.from(new Set(["default", ...names])).toSorted((a, b) =>
           a.localeCompare(b),
         );
         if (!cancelled) {
@@ -1420,7 +1450,9 @@ export function ChatPanel({
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
-    if (!items) return;
+    if (!items) {
+      return;
+    }
 
     for (const item of Array.from(items)) {
       if (item.type.startsWith("image/") || item.kind === "file") {
@@ -1450,7 +1482,9 @@ export function ChatPanel({
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    if (!hasDraggedFiles(e)) return;
+    if (!hasDraggedFiles(e)) {
+      return;
+    }
     e.preventDefault();
     setIsDragging(false);
 
@@ -1463,7 +1497,9 @@ export function ChatPanel({
   };
 
   const handleAttachmentInputFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0) {
+      return;
+    }
     for (const file of Array.from(files)) {
       handleFileSelect(file);
     }
@@ -1474,16 +1510,22 @@ export function ChatPanel({
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    if (!hasDraggedFiles(e)) return;
+    if (!hasDraggedFiles(e)) {
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
-    if (!hasDraggedFiles(e)) return;
+    if (!hasDraggedFiles(e)) {
+      return;
+    }
     const relatedTarget = e.relatedTarget as Node | null;
-    if (relatedTarget && e.currentTarget.contains(relatedTarget)) return;
+    if (relatedTarget && e.currentTarget.contains(relatedTarget)) {
+      return;
+    }
     setIsDragging(false);
   };
 
@@ -1513,7 +1555,9 @@ export function ChatPanel({
         if (match) {
           onCommand(match.key, cmdArgs);
           setInput("");
-          if (inputRef.current) inputRef.current.style.height = "auto";
+          if (inputRef.current) {
+            inputRef.current.style.height = "auto";
+          }
           return;
         }
       }
@@ -1544,7 +1588,9 @@ export function ChatPanel({
         setAttachedImage(null);
         setAttachedFiles([]);
         setAttachmentError(null);
-        if (inputRef.current) inputRef.current.style.height = "auto";
+        if (inputRef.current) {
+          inputRef.current.style.height = "auto";
+        }
         return;
       }
 
@@ -1567,7 +1613,9 @@ export function ChatPanel({
       setAttachedImage(null);
       setAttachedFiles([]);
       setAttachmentError(null);
-      if (inputRef.current) inputRef.current.style.height = "auto";
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+      }
     }
   };
 
@@ -1612,7 +1660,9 @@ export function ChatPanel({
                   onChange={(e) => {
                     const files = e.target.files;
                     if (files) {
-                      for (const file of Array.from(files)) handleIngestFileSelect(file);
+                      for (const file of Array.from(files)) {
+                        handleIngestFileSelect(file);
+                      }
                     }
                     e.target.value = "";
                   }}
@@ -1626,7 +1676,9 @@ export function ChatPanel({
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (e.key !== "Enter" && e.key !== " ") return;
+                      if (e.key !== "Enter" && e.key !== " ") {
+                        return;
+                      }
                       e.preventDefault();
                       ingestFileInputRef.current?.click();
                     }}
@@ -2614,7 +2666,9 @@ export function ChatPanel({
                   if (e.key === "Tab") {
                     e.preventDefault();
                     const selected = filteredCommands[cmdSelectedIdx];
-                    if (selected) selectCommand(selected);
+                    if (selected) {
+                      selectCommand(selected);
+                    }
                     return;
                   }
                   if (e.key === "Escape") {
@@ -2630,13 +2684,17 @@ export function ChatPanel({
                       onInterrupt?.(input.trim());
                       setInput("");
                       setAttachedImage(null);
-                      if (inputRef.current) inputRef.current.style.height = "auto";
+                      if (inputRef.current) {
+                        inputRef.current.style.height = "auto";
+                      }
                     }
                   } else {
                     e.preventDefault();
                     if (input.trim() || attachedImage || attachedFiles.length > 0) {
                       const form = e.currentTarget.closest("form");
-                      if (form) form.requestSubmit();
+                      if (form) {
+                        form.requestSubmit();
+                      }
                     }
                   }
                 }
@@ -2672,7 +2730,9 @@ export function ChatPanel({
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (e.key !== "Enter" && e.key !== " ") return;
+                    if (e.key !== "Enter" && e.key !== " ") {
+                      return;
+                    }
                     e.preventDefault();
                     fileInputRef.current?.click();
                   }}
@@ -2740,7 +2800,9 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={() => {
-                      if (isSpeaking) onStopTTS?.();
+                      if (isSpeaking) {
+                        onStopTTS?.();
+                      }
                       if (isLoading) {
                         if (input.trim()) {
                           onInterrupt?.(input.trim());

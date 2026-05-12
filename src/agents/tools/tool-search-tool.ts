@@ -99,15 +99,17 @@ export function createToolSearchTool(opts?: { agentId?: string }): AnyAgentTool 
         .filter(Boolean);
 
       const gatewayOpts: GatewayCallOptions = { timeoutMs: 15_000 };
-      const report = await callGatewayTool<ToolsStatusReport>("tools.status", gatewayOpts, {
-        ...(opts?.agentId ? { agentId: opts.agentId } : {}),
-      });
+      const report = await callGatewayTool<ToolsStatusReport>(
+        "tools.status",
+        gatewayOpts,
+        opts?.agentId ? { agentId: opts.agentId } : {},
+      );
 
       const tools = Array.isArray(report?.tools) ? report.tools : [];
       const ranked = tools
         .map((tool) => ({ tool, score: scoreMatch(tool, terms) }))
         .filter((entry) => entry.score > 0)
-        .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
+        .toSorted((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
         .slice(0, limit);
 
       const text =

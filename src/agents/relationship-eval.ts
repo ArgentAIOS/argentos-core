@@ -23,7 +23,9 @@ function clampScore(value: number): number {
 }
 
 function scoreContractCoverage(contract: JobRelationshipContract | undefined): number {
-  if (!contract) return 0;
+  if (!contract) {
+    return 0;
+  }
   const checks = [
     Boolean(contract.relationshipObjective?.trim()),
     Boolean(contract.toneProfile?.trim()),
@@ -51,9 +53,15 @@ export function evaluateRelationshipExecution(params: {
   const reasons: string[] = [];
   let baseline = 0.76;
 
-  if (params.deploymentStage === "shadow") baseline += 0.03;
-  if (params.deploymentStage === "limited-live") baseline += 0.02;
-  if (params.deploymentStage === "live") baseline += 0.01;
+  if (params.deploymentStage === "shadow") {
+    baseline += 0.03;
+  }
+  if (params.deploymentStage === "limited-live") {
+    baseline += 0.02;
+  }
+  if (params.deploymentStage === "live") {
+    baseline += 0.01;
+  }
 
   if (params.latestStatus === "blocked") {
     baseline -= 0.18;
@@ -110,8 +118,8 @@ export function evaluateRelationshipExecution(params: {
       : undefined;
   let recentTrend: "improving" | "steady" | "declining" | undefined;
   if (usableRecentScores.length >= 2) {
-    const first = usableRecentScores[usableRecentScores.length - 1] ?? usableRecentScores[0]!;
-    const last = usableRecentScores[0]!;
+    const first = usableRecentScores[usableRecentScores.length - 1] ?? usableRecentScores[0];
+    const last = usableRecentScores[0];
     const delta = last - first;
     recentTrend = delta > 0.08 ? "improving" : delta < -0.08 ? "declining" : "steady";
   }

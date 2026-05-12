@@ -229,7 +229,7 @@ export function getWidgetComponent(type: WidgetType): ComponentType {
   if (isCustomWidgetType(type)) {
     return EmptyWidget;
   }
-  return widgetRegistry[type as BuiltinWidgetType]?.component || EmptyWidget;
+  return widgetRegistry[type]?.component || EmptyWidget;
 }
 
 // Backward compat alias

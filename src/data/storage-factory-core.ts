@@ -19,9 +19,15 @@ let _adapter: StorageAdapter | null = null;
 let _pgMemory: MemoryAdapter | null = null;
 
 function shouldFailClosedStorage(config: StorageConfig): boolean {
-  if (process.env.ARGENT_STORAGE_FAIL_OPEN === "1") return false;
-  if (process.env.ARGENT_STORAGE_FAIL_CLOSED === "1") return true;
-  if (config.backend === "postgres") return true;
+  if (process.env.ARGENT_STORAGE_FAIL_OPEN === "1") {
+    return false;
+  }
+  if (process.env.ARGENT_STORAGE_FAIL_CLOSED === "1") {
+    return true;
+  }
+  if (config.backend === "postgres") {
+    return true;
+  }
   return config.backend === "dual" && config.readFrom === "postgres";
 }
 
@@ -38,14 +44,18 @@ async function loadPgAdapterModule(): Promise<PgAdapterModule> {
     return (await importer("./pg-adapter.js")) as PgAdapterModule;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Postgres adapter is unavailable in this ArgentOS Core build: ${reason}`);
+    throw new Error(`Postgres adapter is unavailable in this ArgentOS Core build: ${reason}`, {
+      cause: error,
+    });
   }
 }
 
 export async function getStorageAdapter(
   overrideConfig?: Partial<StorageConfig>,
 ): Promise<StorageAdapter> {
-  if (_adapter?.isReady()) return _adapter;
+  if (_adapter?.isReady()) {
+    return _adapter;
+  }
 
   const config = resolveStorageConfig(overrideConfig ?? loadStorageConfigFromFile());
 
@@ -79,7 +89,9 @@ export async function getStorageAdapter(
           log.error("dual mode pg init failed (fail-closed active)", {
             error: errorText,
           });
-          throw new Error(`Storage initialization failed in dual mode: ${errorText}`);
+          throw new Error(`Storage initialization failed in dual mode: ${errorText}`, {
+            cause: err,
+          });
         }
         log.error("dual mode pg init failed, falling back to sqlite (fail-open)", {
           error: errorText,
@@ -105,7 +117,9 @@ export async function getStorageAdapter(
           log.error("postgres mode init failed (fail-closed active)", {
             error: errorText,
           });
-          throw new Error(`Storage initialization failed in postgres mode: ${errorText}`);
+          throw new Error(`Storage initialization failed in postgres mode: ${errorText}`, {
+            cause: err,
+          });
         }
         log.error("postgres mode init failed, falling back to sqlite (fail-open)", {
           error: errorText,

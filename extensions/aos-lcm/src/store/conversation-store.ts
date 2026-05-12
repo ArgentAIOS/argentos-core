@@ -56,7 +56,7 @@ export class ConversationStore {
     const rows = this.db
       .prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?")
       .all(sessionId, limit) as RawRow[];
-    return rows.map(toStoredMessage).reverse();
+    return rows.map(toStoredMessage).toReversed();
   }
 
   /** Count messages in a session. */
@@ -82,7 +82,9 @@ export class ConversationStore {
   grep(sessionId: string, query: string, limit = 20): GrepResult[] {
     // Sanitize query for FTS5 — strip operators that could cause syntax errors
     const safeQuery = sanitizeFts5Query(query);
-    if (!safeQuery) return [];
+    if (!safeQuery) {
+      return [];
+    }
 
     const rows = this.db
       .prepare(`
@@ -126,7 +128,9 @@ export class ConversationStore {
 
   /** Get messages by a list of IDs (preserves order). */
   getByIds(ids: number[]): StoredMessage[] {
-    if (ids.length === 0) return [];
+    if (ids.length === 0) {
+      return [];
+    }
     const placeholders = ids.map(() => "?").join(",");
     const rows = this.db
       .prepare(`SELECT * FROM messages WHERE id IN (${placeholders}) ORDER BY id`)
@@ -174,10 +178,14 @@ function sanitizeFts5Query(raw: string): string {
   let q = raw.replace(/[(){}[\]^~*:]/g, " ");
   // Collapse whitespace
   q = q.replace(/\s+/g, " ").trim();
-  if (!q) return "";
+  if (!q) {
+    return "";
+  }
   // Wrap individual terms in quotes if they contain special chars
   const terms = q.split(" ").filter(Boolean);
-  if (terms.length === 1) return `"${terms[0]}"`;
+  if (terms.length === 1) {
+    return `"${terms[0]}"`;
+  }
   // Multiple terms: OR them for broader results
   return terms.map((t) => `"${t}"`).join(" OR ");
 }

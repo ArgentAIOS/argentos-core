@@ -331,8 +331,8 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
         setLocalRuntime(inferredLocalRuntime);
         setBackgroundLocalRuntime(detectedLocalRuntime);
         setSelectedModel(typeof primaryRef === "string" ? primaryRef : "");
-        setVoiceProvider((ttsData.provider as VoiceProviderId | undefined) || "edge");
-        setSearchProvider((searchData.provider as SearchProviderId | undefined) || "brave");
+        setVoiceProvider(ttsData.provider || "edge");
+        setSearchProvider(searchData.provider || "brave");
         setProfileName(defaultProfileName(nextProvider));
 
         const status = evaluateOnboardingStatus({

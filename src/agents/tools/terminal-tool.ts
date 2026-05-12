@@ -159,13 +159,20 @@ async function handleRun(params: Record<string, unknown>) {
   const command = params.command as string;
   const waitMs = Math.min(Math.max(Number(params.wait_ms) || 2000, 100), 30000);
 
-  if (!terminalId) return textResult("terminal_id is required for run action");
-  if (!command) return textResult("command is required for run action");
+  if (!terminalId) {
+    return textResult("terminal_id is required for run action");
+  }
+  if (!command) {
+    return textResult("command is required for run action");
+  }
 
   const session = terminalSessions.get(terminalId);
-  if (!session) return textResult(`Terminal ${terminalId} not found`);
-  if (session.exited)
+  if (!session) {
+    return textResult(`Terminal ${terminalId} not found`);
+  }
+  if (session.exited) {
     return textResult(`Terminal ${terminalId} has exited (code: ${session.exitCode})`);
+  }
 
   // Snapshot buffer position before writing
   const offsetBefore = session.outputOffset;
@@ -185,7 +192,7 @@ async function handleRun(params: Record<string, unknown>) {
     if (elapsed > 500) {
       const recentOutput = session.outputBuffer.slice(-200);
       // Common shell prompt endings: $, %, >, #, ❯, ›
-      if (/[\$%>#❯›]\s*$/.test(recentOutput)) {
+      if (/[$%>#❯›]\s*$/.test(recentOutput)) {
         settled = true;
         break;
       }
@@ -224,16 +231,22 @@ async function handleSendKeys(params: Record<string, unknown>) {
   const keysStr = params.keys as string;
   const waitMs = Math.min(Math.max(Number(params.wait_ms) || 500, 100), 10000);
 
-  if (!terminalId) return textResult("terminal_id is required for send_keys action");
-  if (!keysStr)
+  if (!terminalId) {
+    return textResult("terminal_id is required for send_keys action");
+  }
+  if (!keysStr) {
     return textResult(
       "keys is required for send_keys action (e.g. 'ctrl+c', 'esc', 'ctrl+c ctrl+c')",
     );
+  }
 
   const session = terminalSessions.get(terminalId);
-  if (!session) return textResult(`Terminal ${terminalId} not found`);
-  if (session.exited)
+  if (!session) {
+    return textResult(`Terminal ${terminalId} not found`);
+  }
+  if (session.exited) {
     return textResult(`Terminal ${terminalId} has exited (code: ${session.exitCode})`);
+  }
 
   const offsetBefore = session.outputOffset;
 
@@ -272,10 +285,14 @@ async function handleSendKeys(params: Record<string, unknown>) {
 
 async function handleRead(params: Record<string, unknown>) {
   const terminalId = params.terminal_id as string;
-  if (!terminalId) return textResult("terminal_id is required for read action");
+  if (!terminalId) {
+    return textResult("terminal_id is required for read action");
+  }
 
   const session = terminalSessions.get(terminalId);
-  if (!session) return textResult(`Terminal ${terminalId} not found`);
+  if (!session) {
+    return textResult(`Terminal ${terminalId} not found`);
+  }
 
   const output = session.outputBuffer || "(no output yet)";
   // Return last 8KB
@@ -295,12 +312,18 @@ async function handleRead(params: Record<string, unknown>) {
 
 async function handleClose(params: Record<string, unknown>) {
   const terminalId = params.terminal_id as string;
-  if (!terminalId) return textResult("terminal_id is required for close action");
+  if (!terminalId) {
+    return textResult("terminal_id is required for close action");
+  }
 
   const session = terminalSessions.get(terminalId);
-  if (!session) return textResult(`Terminal ${terminalId} already closed`);
+  if (!session) {
+    return textResult(`Terminal ${terminalId} already closed`);
+  }
 
-  if (session.idleTimer) clearTimeout(session.idleTimer);
+  if (session.idleTimer) {
+    clearTimeout(session.idleTimer);
+  }
   if (!session.exited) {
     try {
       session.pty.kill();

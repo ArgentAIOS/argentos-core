@@ -426,7 +426,7 @@ export function ConnectorNodePanel({
                   ctx={{
                     connectorId,
                     credentialId,
-                    manifest: manifest!,
+                    manifest: manifest,
                     gatewayRequest: request,
                   }}
                 />
@@ -443,7 +443,7 @@ export function ConnectorNodePanel({
                   ctx={{
                     connectorId,
                     credentialId,
-                    manifest: manifest!,
+                    manifest: manifest,
                     gatewayRequest: request,
                   }}
                 />

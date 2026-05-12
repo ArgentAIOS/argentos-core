@@ -13,7 +13,7 @@ vi.stubGlobal("fetch", mockFetch);
 
 // Mock service key resolution to return a test key
 vi.mock("./msp-tool-framework.js", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
+  const actual = await importOriginal();
   return {
     ...actual,
     resolveServiceApiKey: (envVar: string) => "test-api-key-12345",
@@ -128,7 +128,7 @@ describe("Endpoint Diagnostics", () => {
 
     const tool = createAteraEndpointDiagnosticsTool();
     const result = await tool.execute("call-1", { action: "device", agent_id: 12345 });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Endpoint Diagnostics: CCSERVER");
     expect(text).toContain("Offline");
@@ -141,7 +141,7 @@ describe("Endpoint Diagnostics", () => {
   it("returns error when no agent_id or machine_name provided", async () => {
     const tool = createAteraEndpointDiagnosticsTool();
     const result = await tool.execute("call-1", { action: "device" });
-    expect(result.content[0]!.text).toContain("agent_id or machine_name");
+    expect(result.content[0].text).toContain("agent_id or machine_name");
   });
 
   it("calculates health score with offline penalty", async () => {
@@ -151,7 +151,7 @@ describe("Endpoint Diagnostics", () => {
 
     const tool = createAteraEndpointDiagnosticsTool();
     const result = await tool.execute("call-1", { action: "device", agent_id: 12345 });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     // Offline (-40) + 1 alert (-10) + disk C: at 95% (-20) = 30/100
     expect(text).toContain("Score:");
@@ -166,7 +166,7 @@ describe("Endpoint Diagnostics", () => {
 
     const tool = createAteraEndpointDiagnosticsTool();
     const result = await tool.execute("call-1", { action: "customer_scan", customer_id: 42 });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Customer Device Health Scan");
     expect(text).toContain("2 devices");
@@ -181,7 +181,7 @@ describe("Endpoint Diagnostics", () => {
 
     const tool = createAteraEndpointDiagnosticsTool();
     const result = await tool.execute("call-1", { action: "fleet_health" });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Fleet Health Overview");
     expect(text).toContain("Total Devices:");
@@ -199,7 +199,7 @@ describe("Remote Action", () => {
   it("lists available actions", async () => {
     const tool = createAteraRemoteActionTool();
     const result = await tool.execute("call-1", { action: "list" });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Available Remote Actions");
     expect(text).toContain("create_alert");
@@ -218,7 +218,7 @@ describe("Remote Action", () => {
       severity: "Warning",
       device_name: "CCSERVER",
     });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Alert created successfully");
     expect(text).toContain("Test Alert");
@@ -232,13 +232,13 @@ describe("Remote Action", () => {
 
     const tool = createAteraRemoteActionTool();
     const result = await tool.execute("call-1", { action: "dismiss_alert", alert_id: 999 });
-    expect(result.content[0]!.text).toContain("dismissed successfully");
+    expect(result.content[0].text).toContain("dismissed successfully");
   });
 
   it("requires title for create_alert", async () => {
     const tool = createAteraRemoteActionTool();
     const result = await tool.execute("call-1", { action: "create_alert" });
-    expect(result.content[0]!.text).toContain("title is required");
+    expect(result.content[0].text).toContain("title is required");
   });
 
   it("creates diagnostic ticket", async () => {
@@ -252,7 +252,7 @@ describe("Remote Action", () => {
       agent_id: 12345,
       priority: "High",
     });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Diagnostic ticket created");
     expect(text).toContain("57300");
@@ -273,7 +273,7 @@ describe("Patch Status", () => {
 
     const tool = createAteraPatchStatusTool();
     const result = await tool.execute("call-1", { action: "os_inventory" });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("OS Version Inventory");
     expect(text).toContain("Windows Server 2019");
@@ -293,7 +293,7 @@ describe("Patch Status", () => {
 
     const tool = createAteraPatchStatusTool();
     const result = await tool.execute("call-1", { action: "stale_agents" });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Stale Agents");
     expect(text).toContain("OLD-PC");
@@ -307,7 +307,7 @@ describe("Patch Status", () => {
 
     const tool = createAteraPatchStatusTool();
     const result = await tool.execute("call-1", { action: "customer_posture", customer_id: 42 });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Patch Posture:");
     expect(text).toContain("Cromwell");
@@ -318,7 +318,7 @@ describe("Patch Status", () => {
   it("requires customer_id for customer_posture", async () => {
     const tool = createAteraPatchStatusTool();
     const result = await tool.execute("call-1", { action: "customer_posture" });
-    expect(result.content[0]!.text).toContain("customer_id is required");
+    expect(result.content[0].text).toContain("customer_id is required");
   });
 
   it("generates fleet compliance dashboard", async () => {
@@ -328,7 +328,7 @@ describe("Patch Status", () => {
 
     const tool = createAteraPatchStatusTool();
     const result = await tool.execute("call-1", { action: "fleet_compliance" });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Fleet Patch Compliance Dashboard");
     expect(text).toContain("Per-Customer Compliance");
@@ -342,7 +342,7 @@ describe("Patch Status", () => {
 
     const tool = createAteraPatchStatusTool();
     const result = await tool.execute("call-1", { action: "os_inventory" });
-    const text = result.content[0]!.text;
+    const text = result.content[0].text;
 
     expect(text).toContain("Outdated OS Detection");
     expect(text).toContain("LEGACY-PC");

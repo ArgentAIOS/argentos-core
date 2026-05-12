@@ -68,7 +68,9 @@ function resolveProvider(params: {
 
   if (params.requested) {
     const match = order.find((entry) => entry.provider === params.requested);
-    if (!match) return null;
+    if (!match) {
+      return null;
+    }
     const key =
       resolveServiceKey(match.env, params.config, {
         sessionKey: params.agentSessionKey,
@@ -83,7 +85,9 @@ function resolveProvider(params: {
         sessionKey: params.agentSessionKey,
         source: "youtube_thumbnail_generate",
       }) || process.env[entry.env];
-    if (key) return { provider: entry.provider, apiKey: key };
+    if (key) {
+      return { provider: entry.provider, apiKey: key };
+    }
   }
   return null;
 }
@@ -97,7 +101,9 @@ function buildPrompt(params: {
   brandNotes?: string;
   customPrompt?: string;
 }): string {
-  if (params.customPrompt?.trim()) return params.customPrompt.trim();
+  if (params.customPrompt?.trim()) {
+    return params.customPrompt.trim();
+  }
 
   const parts = [
     "YouTube thumbnail image, high contrast, ultra clear, professional composition.",
@@ -219,9 +225,15 @@ async function generateOpenAI(params: {
 }
 
 function falImageSizeForAspect(aspectRatio?: string): string {
-  if (aspectRatio === "16:9") return "landscape_16_9";
-  if (aspectRatio === "9:16") return "portrait_16_9";
-  if (aspectRatio === "1:1") return "square_hd";
+  if (aspectRatio === "16:9") {
+    return "landscape_16_9";
+  }
+  if (aspectRatio === "9:16") {
+    return "portrait_16_9";
+  }
+  if (aspectRatio === "1:1") {
+    return "square_hd";
+  }
   return "landscape_16_9";
 }
 

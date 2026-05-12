@@ -69,7 +69,9 @@ async function checkEmailGroundTruth(apiKey: string): Promise<GroundTruthResult 
 
     const unread = messages.filter((m) => !m.read && m.direction === "inbound");
     const recentSent = messages.filter((m) => {
-      if (m.direction !== "outbound") return false;
+      if (m.direction !== "outbound") {
+        return false;
+      }
       const sentAt = new Date(m.created_at).getTime();
       const fifteenMinAgo = Date.now() - 15 * 60 * 1000;
       return sentAt > fifteenMinAgo;
@@ -168,8 +170,11 @@ async function checkMoltyverseGroundTruth(apiKey: string): Promise<GroundTruthRe
       for (const p of posts) {
         const createdAt = new Date(p.created_at).getTime();
         if (createdAt > fifteenMinAgo) {
-          if (p.type === "comment") recentComments++;
-          else recentPosts++;
+          if (p.type === "comment") {
+            recentComments++;
+          } else {
+            recentPosts++;
+          }
         }
       }
     }
@@ -253,7 +258,9 @@ export async function collectGroundTruth(config: GroundTruthConfig): Promise<Gro
  * verification prompt alongside the task contract and agent response.
  */
 export function formatGroundTruthForVerifier(report: GroundTruthReport): string {
-  if (report.checks.length === 0) return "";
+  if (report.checks.length === 0) {
+    return "";
+  }
 
   const lines = ["## GROUND TRUTH (actual system state — use this to verify agent claims)"];
 

@@ -57,19 +57,18 @@ function stateFilePath(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 function normalizeState(raw: unknown): CopilotState {
-  if (!raw || typeof raw !== "object") return { ...DEFAULT_STATE };
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_STATE };
+  }
   const obj = raw as Partial<CopilotState>;
-  const accessModes =
-    obj.accessModes && typeof obj.accessModes === "object"
-      ? (obj.accessModes as CopilotState["accessModes"])
-      : {};
+  const accessModes = obj.accessModes && typeof obj.accessModes === "object" ? obj.accessModes : {};
   const intentHistory = Array.isArray(obj.intentHistory)
     ? obj.intentHistory.filter(
         (item): item is IntentChangeEntry =>
           Boolean(item) &&
           typeof item === "object" &&
-          typeof (item as IntentChangeEntry).id === "string" &&
-          typeof (item as IntentChangeEntry).at === "string",
+          typeof item.id === "string" &&
+          typeof item.at === "string",
       )
     : [];
   return {

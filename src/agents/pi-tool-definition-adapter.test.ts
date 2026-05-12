@@ -12,7 +12,7 @@ describe("pi tool definition adapter", () => {
       execute: async () => {
         throw new Error("nope");
       },
-    } satisfies AgentTool<unknown, unknown>;
+    } satisfies AgentTool<unknown>;
 
     const defs = toToolDefinitions([tool]);
     const result = await defs[0].execute("call1", {}, undefined, undefined);
@@ -34,7 +34,7 @@ describe("pi tool definition adapter", () => {
       execute: async () => {
         throw new Error("nope");
       },
-    } satisfies AgentTool<unknown, unknown>;
+    } satisfies AgentTool<unknown>;
 
     const defs = toToolDefinitions([tool]);
     const result = await defs[0].execute("call2", {}, undefined, undefined);

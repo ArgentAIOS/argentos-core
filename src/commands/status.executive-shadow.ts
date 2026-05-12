@@ -74,10 +74,9 @@ export async function getExecutiveShadowSummary(
       ),
     ]);
     const lastEvent = timeline.recentEvents.at(-1) ?? null;
-    const readiness =
-      readinessResult.ok === true
-        ? buildReadinessSummary(readinessResult.readiness)
-        : buildReadinessError(readinessResult.error);
+    const readiness = readinessResult.ok
+      ? buildReadinessSummary(readinessResult.readiness)
+      : buildReadinessError(readinessResult.error);
     return {
       reachable: true,
       kernelStatus: readiness.status,

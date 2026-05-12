@@ -128,7 +128,7 @@ async function main() {
   console.log("\n[smoke] top 5 injectors by chars:");
   const sorted = [...tracker.getEntries()]
     .filter((e) => e.name !== "system-prompt-total")
-    .sort((a, b) => b.chars - a.chars)
+    .toSorted((a, b) => b.chars - a.chars)
     .slice(0, 5);
   for (const e of sorted) {
     // eslint-disable-next-line no-console

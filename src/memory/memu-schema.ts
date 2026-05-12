@@ -324,10 +324,14 @@ function backfillLessonsFromReflections(db: DatabaseSync): void {
     } catch {
       continue;
     }
-    if (!Array.isArray(lessons) || lessons.length === 0) continue;
+    if (!Array.isArray(lessons) || lessons.length === 0) {
+      continue;
+    }
 
     for (const lessonText of lessons) {
-      if (typeof lessonText !== "string" || !lessonText.trim()) continue;
+      if (typeof lessonText !== "string" || !lessonText.trim()) {
+        continue;
+      }
       const id = crypto.randomUUID();
       db.prepare(
         `INSERT INTO lessons (id, type, context, action, outcome, lesson, confidence, occurrences, last_seen, source_episode_ids, created_at, updated_at)

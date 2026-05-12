@@ -369,7 +369,9 @@ export function applyVerdicts(
 
   for (const verdict of verdicts) {
     const existing = updated.tasks[verdict.taskId];
-    if (!existing) continue;
+    if (!existing) {
+      continue;
+    }
 
     if (verdict.status === "verified") {
       updated.tasks[verdict.taskId] = {

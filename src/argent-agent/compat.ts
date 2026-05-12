@@ -90,7 +90,7 @@ export function piContextToArgentRequest(context: Context): TurnRequest {
 
   for (const msg of context.messages) {
     if (msg.role === "user") {
-      const userMsg = msg as UserMessage;
+      const userMsg = msg;
       const userBlocks = Array.isArray(userMsg.content) ? userMsg.content : [];
       const text =
         typeof userMsg.content === "string"
@@ -101,7 +101,7 @@ export function piContextToArgentRequest(context: Context): TurnRequest {
               .join("");
       messages.push({ role: "user", content: text });
     } else if (msg.role === "assistant") {
-      const assistantMsg = msg as AssistantMessage;
+      const assistantMsg = msg;
       const assistantBlocks = Array.isArray(assistantMsg.content) ? assistantMsg.content : [];
       const text = assistantBlocks
         .filter((b): b is TextContent => b.type === "text")

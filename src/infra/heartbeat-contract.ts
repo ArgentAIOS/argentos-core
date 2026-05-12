@@ -86,14 +86,18 @@ const TASK_LINE_RE = /^[-*+]\s*\[([xX ])\]\s*(.+)$/;
 
 function parseTaskLine(line: string): HeartbeatTask | null {
   const match = TASK_LINE_RE.exec(line.trim());
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
 
   const checked = match[1] !== " ";
   const rest = match[2].trim();
 
   // Split by pipe
   const parts = rest.split("|").map((p) => p.trim());
-  if (parts.length < 2) return null;
+  if (parts.length < 2) {
+    return null;
+  }
 
   const id = parts[0].replace(/\s+/g, "_").toLowerCase();
   const action = parts[1];
@@ -243,7 +247,9 @@ export function getPendingTasks(
 ): HeartbeatTask[] {
   return contract.tasks.filter((task) => {
     const tp = progress.tasks[task.id];
-    if (!tp) return true;
+    if (!tp) {
+      return true;
+    }
     return tp.status === "pending";
   });
 }
@@ -257,7 +263,9 @@ export function getRetryableTasks(
 ): HeartbeatTask[] {
   return contract.tasks.filter((task) => {
     const tp = progress.tasks[task.id];
-    if (!tp || tp.status !== "failed") return false;
+    if (!tp || tp.status !== "failed") {
+      return false;
+    }
     return tp.attempts < task.maxAttempts;
   });
 }

@@ -103,22 +103,40 @@ const TOOL_CATEGORIES: Record<string, ToolCategory> = {
  * Handles prefix matching for tool families (e.g., memory_*).
  */
 export function classifyTool(toolName?: string): ToolCategory {
-  if (!toolName) return "generic";
+  if (!toolName) {
+    return "generic";
+  }
 
   const lower = toolName.toLowerCase().trim();
 
   // Exact match
   const exact = TOOL_CATEGORIES[lower];
-  if (exact) return exact;
+  if (exact) {
+    return exact;
+  }
 
   // Prefix matching for tool families
-  if (lower.startsWith("memory_")) return "memory";
-  if (lower.startsWith("doc_panel")) return "analyze";
-  if (lower.startsWith("tts")) return "communicate";
-  if (lower.startsWith("audio_")) return "communicate";
-  if (lower.startsWith("image")) return "create";
-  if (lower.startsWith("session")) return "analyze";
-  if (lower.startsWith("edit_")) return "code";
+  if (lower.startsWith("memory_")) {
+    return "memory";
+  }
+  if (lower.startsWith("doc_panel")) {
+    return "analyze";
+  }
+  if (lower.startsWith("tts")) {
+    return "communicate";
+  }
+  if (lower.startsWith("audio_")) {
+    return "communicate";
+  }
+  if (lower.startsWith("image")) {
+    return "create";
+  }
+  if (lower.startsWith("session")) {
+    return "analyze";
+  }
+  if (lower.startsWith("edit_")) {
+    return "code";
+  }
 
   return "generic";
 }

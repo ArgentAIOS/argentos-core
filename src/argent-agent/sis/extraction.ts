@@ -253,7 +253,7 @@ export class LessonExtractor {
     }
 
     // Sort by similarity descending
-    return candidates.sort((a, b) => b.similarity - a.similarity);
+    return candidates.toSorted((a, b) => b.similarity - a.similarity);
   }
 }
 

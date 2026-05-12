@@ -180,7 +180,7 @@ function buildConflict(
 function uniqueSortedSurfaces(
   values: RustGatewayShadowObservationSurface[],
 ): RustGatewayShadowObservationSurface[] {
-  return uniqueSortedStrings(values) as RustGatewayShadowObservationSurface[];
+  return uniqueSortedStrings(values);
 }
 
 function uniqueSortedStrings<T extends string>(values: T[]): T[] {

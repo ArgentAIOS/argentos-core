@@ -177,10 +177,12 @@ export function buildSessionContext(
 
   // Walk from leaf to root collecting the branch
   const branch: SessionEntry[] = [];
-  let currentId = leafId ?? (entries.length > 0 ? entries[entries.length - 1]!.id : null);
+  let currentId = leafId ?? (entries.length > 0 ? entries[entries.length - 1].id : null);
   while (currentId) {
     const entry = index.get(currentId);
-    if (!entry) break;
+    if (!entry) {
+      break;
+    }
     branch.unshift(entry);
     currentId = entry.parentId;
   }
@@ -208,7 +210,7 @@ export function buildSessionContext(
         ],
       } as unknown as AgentMessage);
     } else if (entry.type === "message") {
-      messages.push((entry as SessionMessageEntry).message);
+      messages.push(entry.message);
     } else if (entry.type === "custom_message") {
       const cm = entry as CustomMessageEntry;
       const text =
@@ -216,7 +218,9 @@ export function buildSessionContext(
           ? cm.content
           : cm.content
               .map((b) => {
-                if (b.type === "text") return (b as TextContent).text;
+                if (b.type === "text") {
+                  return b.text;
+                }
                 return "[image]";
               })
               .join("");
@@ -225,9 +229,9 @@ export function buildSessionContext(
         content: [{ type: "text", text }],
       } as unknown as AgentMessage);
     } else if (entry.type === "thinking_level_change") {
-      thinkingLevel = (entry as ThinkingLevelChangeEntry).thinkingLevel;
+      thinkingLevel = entry.thinkingLevel;
     } else if (entry.type === "model_change") {
-      const mc = entry as ModelChangeEntry;
+      const mc = entry;
       model = { provider: mc.provider, modelId: mc.modelId };
     }
   }
@@ -341,7 +345,7 @@ export class ArgentSessionManager {
 
   getHeader(): SessionHeader | null {
     const first = this.fileEntries[0];
-    return first && first.type === "session" ? (first as SessionHeader) : null;
+    return first && first.type === "session" ? first : null;
   }
 
   getSessionName(): string | undefined {
@@ -349,7 +353,7 @@ export class ArgentSessionManager {
     for (let i = this.fileEntries.length - 1; i >= 0; i--) {
       const entry = this.fileEntries[i];
       if (entry && "type" in entry && entry.type === "session_info") {
-        return (entry as SessionInfoEntry).name;
+        return entry.name;
       }
     }
     return undefined;
@@ -372,12 +376,16 @@ export class ArgentSessionManager {
   /** Walk from an entry to root, returning all entries in path order. */
   getBranch(fromId?: string): SessionEntry[] {
     const id = fromId ?? this.leafId;
-    if (!id) return [];
+    if (!id) {
+      return [];
+    }
     const branch: SessionEntry[] = [];
     let currentId: string | null = id;
     while (currentId) {
       const entry = this.byId.get(currentId);
-      if (!entry) break;
+      if (!entry) {
+        break;
+      }
       branch.unshift(entry);
       currentId = entry.parentId;
     }
@@ -555,22 +563,27 @@ export class ArgentSessionManager {
         const lines = raw.split("\n").filter((l) => l.trim());
         const entries = lines.map((l) => JSON.parse(l) as FileEntry);
 
-        const header = entries[0]?.type === "session" ? (entries[0] as SessionHeader) : null;
+        const header = entries[0]?.type === "session" ? entries[0] : null;
         const messages = entries.filter(
           (e): e is SessionMessageEntry => "type" in e && e.type === "message",
         );
         const allText = messages
           .map((m) => {
             const msg = m.message;
-            if (typeof msg === "string") return msg;
+            if (typeof msg === "string") {
+              return msg;
+            }
             if (msg && typeof msg === "object" && "content" in msg) {
               const c = msg.content;
-              if (typeof c === "string") return c;
+              if (typeof c === "string") {
+                return c;
+              }
               if (Array.isArray(c)) {
                 return c
                   .map((b: unknown) => {
-                    if (b && typeof b === "object" && "text" in b)
+                    if (b && typeof b === "object" && "text" in b) {
                       return (b as { text: string }).text;
+                    }
                     return "";
                   })
                   .join(" ");
@@ -599,7 +612,7 @@ export class ArgentSessionManager {
       }
     }
 
-    return infos.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+    return infos.toSorted((a, b) => b.modified.getTime() - a.modified.getTime());
   }
 
   // ==========================================================================
@@ -634,8 +647,8 @@ export class ArgentSessionManager {
     this.leafId = entry.id;
 
     if (entry.type === "label") {
-      const label = (entry as LabelEntry).label;
-      const targetId = (entry as LabelEntry).targetId;
+      const label = entry.label;
+      const targetId = entry.targetId;
       if (label) {
         this.labelsById.set(targetId, label);
       } else {
@@ -665,23 +678,25 @@ export class ArgentSessionManager {
 
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed) continue;
+      if (!trimmed) {
+        continue;
+      }
       try {
         const entry = JSON.parse(trimmed) as FileEntry;
         this.fileEntries.push(entry);
 
         if (entry.type === "session") {
-          const header = entry as SessionHeader;
+          const header = entry;
           this.sessionId = header.id;
           this.cwd = header.cwd;
         } else {
-          const se = entry as SessionEntry;
+          const se = entry;
           this.byId.set(se.id, se);
           this.leafId = se.id; // Track the last entry as leaf
 
           if (se.type === "label") {
-            const label = (se as LabelEntry).label;
-            const targetId = (se as LabelEntry).targetId;
+            const label = se.label;
+            const targetId = se.targetId;
             if (label) {
               this.labelsById.set(targetId, label);
             } else {
@@ -704,9 +719,9 @@ export class ArgentSessionManager {
           const st = statSync(full);
           return { path: full, mtime: st.mtime.getTime() };
         })
-        .sort((a, b) => b.mtime - a.mtime);
+        .toSorted((a, b) => b.mtime - a.mtime);
 
-      return files.length > 0 ? files[0]!.path : null;
+      return files.length > 0 ? files[0].path : null;
     } catch {
       return null;
     }

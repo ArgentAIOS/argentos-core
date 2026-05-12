@@ -90,7 +90,9 @@ function applyGestureOverlay(state: AEVPRenderState, gesture: GestureEvent): AEV
   };
 
   const apply = gestures[gesture.gesture];
-  if (apply) apply();
+  if (apply) {
+    apply();
+  }
   return s;
 }
 
@@ -144,11 +146,15 @@ export function AEVPPresence({
 
   // Measure container when in fill mode
   const measureContainer = useCallback(() => {
-    if (!fill || !containerRef.current) return;
+    if (!fill || !containerRef.current) {
+      return;
+    }
     const rect = containerRef.current.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       setSize((prev) => {
-        if (prev.w === Math.round(rect.width) && prev.h === Math.round(rect.height)) return prev;
+        if (prev.w === Math.round(rect.width) && prev.h === Math.round(rect.height)) {
+          return prev;
+        }
         return { w: Math.round(rect.width), h: Math.round(rect.height) };
       });
     }
@@ -156,7 +162,9 @@ export function AEVPPresence({
 
   // ResizeObserver for fill mode
   useEffect(() => {
-    if (!fill || !containerRef.current) return;
+    if (!fill || !containerRef.current) {
+      return;
+    }
     measureContainer();
     const ro = new ResizeObserver(measureContainer);
     ro.observe(containerRef.current);
@@ -173,7 +181,9 @@ export function AEVPPresence({
   // Mount/unmount renderer lifecycle
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
 
     console.log("[AEVP] AEVPPresence mounted, creating renderer", size.w, "x", size.h);
     const renderer = new AEVPRenderer(canvas);
@@ -241,24 +251,34 @@ export function AEVPPresence({
 
   // Phase 7: Agent-requested particle formation writes
   useEffect(() => {
-    if (!agentState.activeFormation) return;
+    if (!agentState.activeFormation) {
+      return;
+    }
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    if (!renderer) {
+      return;
+    }
     renderer.requestFormation(agentState.activeFormation);
   }, [agentState.activeFormation]);
 
   // Agent-requested symbolic particle behavior expressions
   useEffect(() => {
-    if (!agentState.activeSymbol) return;
+    if (!agentState.activeSymbol) {
+      return;
+    }
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    if (!renderer) {
+      return;
+    }
     renderer.requestSymbolExpression(agentState.activeSymbol);
   }, [agentState.activeSymbol]);
 
   // Update render state + dashboard climate + tonal when emotional/activity changes
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    if (!renderer) {
+      return;
+    }
 
     const reducedMotion = accessibilityConfig?.reducedMotion ?? false;
 

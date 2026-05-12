@@ -261,7 +261,9 @@ async function runPreflight(options: ConnectorSetupToolOptions, installMissing: 
         // fall through
       }
     }
-    throw new Error(err.stderr || err.message || "Google Workspace setup check failed");
+    throw new Error(err.stderr || err.message || "Google Workspace setup check failed", {
+      cause: error,
+    });
   }
 }
 
@@ -275,7 +277,7 @@ async function launchGoogleLogin(options: ConnectorSetupToolOptions) {
     throw new Error("Interactive Google sign-in launch is currently supported on macOS only.");
   }
   const runCommand = options.runCommand ?? defaultRunCommand;
-  const command = `cd '${GOOGLE_CONFIG_DIR.replace(/'/g, `'\"'\"'`)}' && gws auth login -s ${GOOGLE_REQUIRED_SERVICES}`;
+  const command = `cd '${GOOGLE_CONFIG_DIR.replace(/'/g, `'"'"'`)}' && gws auth login -s ${GOOGLE_REQUIRED_SERVICES}`;
   await runCommand("osascript", [
     "-e",
     'tell application "Terminal" to activate',

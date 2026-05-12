@@ -225,8 +225,12 @@ function mergeRecord<T>(
 function credentialExpiry(cred: AuthProfileCredential): number {
   // OAuth credentials may use `expiresAt` (TS type) or `expires` (legacy storage)
   const raw = cred as Record<string, unknown>;
-  if (typeof raw.expiresAt === "number") return raw.expiresAt;
-  if (typeof raw.expires === "number") return raw.expires;
+  if (typeof raw.expiresAt === "number") {
+    return raw.expiresAt;
+  }
+  if (typeof raw.expires === "number") {
+    return raw.expires;
+  }
   return 0;
 }
 

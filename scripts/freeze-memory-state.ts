@@ -63,11 +63,15 @@ function dirSize(p: string): number {
   const stack = [p];
   while (stack.length > 0) {
     const current = stack.pop();
-    if (!current) continue;
+    if (!current) {
+      continue;
+    }
     const stat = fs.statSync(current);
     if (stat.isDirectory()) {
       const children = fs.readdirSync(current);
-      for (const child of children) stack.push(path.join(current, child));
+      for (const child of children) {
+        stack.push(path.join(current, child));
+      }
     } else {
       total += stat.size;
     }
@@ -88,7 +92,9 @@ function copyFileIfExists(
   entries: SnapshotEntry[],
   hash: boolean,
 ): void {
-  if (!exists(source)) return;
+  if (!exists(source)) {
+    return;
+  }
   safeMkdir(path.dirname(destination));
   fs.copyFileSync(source, destination);
   entries.push({
@@ -101,7 +107,9 @@ function copyFileIfExists(
 }
 
 function copyDirIfExists(source: string, destination: string, entries: SnapshotEntry[]): void {
-  if (!exists(source)) return;
+  if (!exists(source)) {
+    return;
+  }
   safeMkdir(path.dirname(destination));
   fs.cpSync(source, destination, { recursive: true, force: true });
   entries.push({
@@ -152,9 +160,13 @@ function resolvePgDumpCommand(): string | null {
     "/usr/local/opt/postgresql@17/bin/pg_dump",
   ];
   for (const candidate of preferred) {
-    if (exists(candidate)) return candidate;
+    if (exists(candidate)) {
+      return candidate;
+    }
   }
-  if (commandExists("pg_dump")) return "pg_dump";
+  if (commandExists("pg_dump")) {
+    return "pg_dump";
+  }
   return null;
 }
 
@@ -308,10 +320,18 @@ async function main() {
   console.log(`entries: ${entries.length}`);
   console.log(`bytes: ${totalBytes}`);
   if (pg.enabled) {
-    if (pg.dumpPath) console.log(`pg_dump: ${pg.dumpPath}`);
-    if (pg.dumpError) console.log(`pg_dump_error: ${pg.dumpError}`);
-    if (pg.countsPath) console.log(`pg_counts: ${pg.countsPath}`);
-    if (pg.countError) console.log(`pg_count_error: ${pg.countError}`);
+    if (pg.dumpPath) {
+      console.log(`pg_dump: ${pg.dumpPath}`);
+    }
+    if (pg.dumpError) {
+      console.log(`pg_dump_error: ${pg.dumpError}`);
+    }
+    if (pg.countsPath) {
+      console.log(`pg_counts: ${pg.countsPath}`);
+    }
+    if (pg.countError) {
+      console.log(`pg_count_error: ${pg.countError}`);
+    }
   }
 }
 

@@ -111,7 +111,7 @@ function rememberBlueBubblesReplyCache(
     break;
   }
   while (blueBubblesReplyCacheByMessageId.size > REPLY_CACHE_MAX) {
-    const oldest = blueBubblesReplyCacheByMessageId.keys().next().value as string | undefined;
+    const oldest = blueBubblesReplyCacheByMessageId.keys().next().value;
     if (!oldest) {
       break;
     }

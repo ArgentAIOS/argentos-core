@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { AgentTool, AgentToolResult } from "../agent-core/core.js";
 import { filterToolsByPolicy, isToolAllowedByPolicyName } from "./pi-tools.policy.js";
 
-function createStubTool(name: string): AgentTool<unknown, unknown> {
+function createStubTool(name: string): AgentTool<unknown> {
   return {
     name,
     label: name,
     description: "",
     parameters: {},
-    execute: async () => ({}) as AgentToolResult<unknown>,
+    execute: async () => ({}) as AgentToolResult,
   };
 }
 

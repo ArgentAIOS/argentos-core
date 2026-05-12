@@ -62,7 +62,9 @@ const DB_CONNSTR_RE =
   /((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^:]+:)([^@]+)(@)/gi;
 
 function maskToken(token: string): string {
-  if (token.length < 18) return "***";
+  if (token.length < 18) {
+    return "***";
+  }
   return `${token.slice(0, 6)}...${token.slice(-4)}`;
 }
 
@@ -73,7 +75,9 @@ function maskToken(token: string): string {
  * Returns the original string if null/undefined/empty.
  */
 export function redactSensitiveText(text: string | null | undefined): string {
-  if (text == null || text === "") return text ?? "";
+  if (text == null || text === "") {
+    return text ?? "";
+  }
   let result = text;
 
   // Known prefixes (sk-, ghp_, AKIA, etc.)

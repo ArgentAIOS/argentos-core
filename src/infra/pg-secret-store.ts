@@ -135,7 +135,9 @@ export async function pgResolveServiceKey(
   variable: string,
 ): Promise<string | undefined> {
   const key = await pgGetServiceKeyByVariable(sql, variable);
-  if (!key || !key.enabled) return undefined;
+  if (!key || !key.enabled) {
+    return undefined;
+  }
   return key.value;
 }
 
@@ -164,8 +166,10 @@ export async function pgGetServiceKeyByVariable(
     WHERE variable = ${variable}
     LIMIT 1
   `;
-  if (rows.length === 0) return undefined;
-  return decryptServiceKeyRow(rows[0]!);
+  if (rows.length === 0) {
+    return undefined;
+  }
+  return decryptServiceKeyRow(rows[0]);
 }
 
 /**
@@ -276,8 +280,10 @@ export async function pgGetAuthCredential(
     WHERE profile_id = ${profileId} AND enabled = true
     LIMIT 1
   `;
-  if (rows.length === 0) return undefined;
-  return decryptAuthRow(rows[0]!);
+  if (rows.length === 0) {
+    return undefined;
+  }
+  return decryptAuthRow(rows[0]);
 }
 
 /**
@@ -443,8 +449,8 @@ function decryptServiceKeyRow(row: PgServiceKeyRow): PgServiceKey {
       ? (row.allowedTeams ?? row.allowed_teams)
       : undefined,
     denyAll: (row.denyAll ?? row.deny_all) === true,
-    createdAt: (row.createdAt ?? row.created_at ?? new Date()) as Date,
-    updatedAt: (row.updatedAt ?? row.updated_at ?? new Date()) as Date,
+    createdAt: row.createdAt ?? row.created_at ?? new Date(),
+    updatedAt: row.updatedAt ?? row.updated_at ?? new Date(),
   };
 }
 

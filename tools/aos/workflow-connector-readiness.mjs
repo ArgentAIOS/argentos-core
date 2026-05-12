@@ -49,7 +49,9 @@ function manifestPath(rootDir, id) {
 
 function loadManifest(rootDir, id) {
   const filePath = manifestPath(rootDir, id);
-  if (!hasFile(filePath)) return null;
+  if (!hasFile(filePath)) {
+    return null;
+  }
   return readJson(filePath);
 }
 
@@ -79,7 +81,7 @@ function commandIds(manifest) {
     ? manifest.commands
         .map((command) => command.id)
         .filter(Boolean)
-        .sort()
+        .toSorted()
     : [];
 }
 
@@ -103,7 +105,7 @@ function isPreviewOnlyCommand(command) {
 }
 
 function stableUnique(values) {
-  return [...new Set(values.filter(Boolean))].sort();
+  return [...new Set(values.filter(Boolean))].toSorted();
 }
 
 function credentialRequirements(manifest) {
@@ -129,18 +131,27 @@ function credentialStatus(requirements, env) {
   for (const group of requirements.required_one_of) {
     if (group.some((key) => Boolean(env[key]))) {
       for (const key of group) {
-        if (env[key]) present.add(key);
+        if (env[key]) {
+          present.add(key);
+        }
       }
     } else {
-      for (const key of group) missing.add(key);
+      for (const key of group) {
+        missing.add(key);
+      }
     }
   }
 
   const oneOfKeys = new Set(requirements.required_one_of.flat());
   for (const key of requirements.service_keys) {
-    if (oneOfKeys.has(key)) continue;
-    if (env[key]) present.add(key);
-    else missing.add(key);
+    if (oneOfKeys.has(key)) {
+      continue;
+    }
+    if (env[key]) {
+      present.add(key);
+    } else {
+      missing.add(key);
+    }
   }
 
   const satisfied =
@@ -152,13 +163,15 @@ function credentialStatus(requirements, env) {
 
   return {
     satisfied,
-    present: [...present].sort(),
-    missing: [...missing].sort(),
+    present: [...present].toSorted(),
+    missing: [...missing].toSorted(),
   };
 }
 
 function workflowUsages(workflowTemplatePath) {
-  if (!workflowTemplatePath || !hasFile(workflowTemplatePath)) return [];
+  if (!workflowTemplatePath || !hasFile(workflowTemplatePath)) {
+    return [];
+  }
   const source = fs.readFileSync(workflowTemplatePath, "utf8");
   const usages = [];
   const callPattern =
@@ -216,7 +229,9 @@ function providerSurfaceSummary(sourceRoot, id) {
   return (KNOWN_PROVIDER_SURFACES[id] ?? [])
     .map((providerId) => {
       const manifest = loadManifest(sourceRoot, providerId);
-      if (!manifest) return null;
+      if (!manifest) {
+        return null;
+      }
       return {
         connector_id: providerId,
         label: manifest.connector?.label ?? providerId,
@@ -348,11 +363,17 @@ function parseArgs(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--source-root") options.sourceRoot = argv[++index];
-    else if (arg === "--runtime-root") options.runtimeRoot = argv[++index];
-    else if (arg === "--workflow-template") options.workflowTemplatePath = argv[++index];
-    else if (arg === "--summary") options.summary = true;
-    else throw new Error(`Unknown argument: ${arg}`);
+    if (arg === "--source-root") {
+      options.sourceRoot = argv[++index];
+    } else if (arg === "--runtime-root") {
+      options.runtimeRoot = argv[++index];
+    } else if (arg === "--workflow-template") {
+      options.workflowTemplatePath = argv[++index];
+    } else if (arg === "--summary") {
+      options.summary = true;
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
   }
   return options;
 }
@@ -361,8 +382,11 @@ export function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   const report = buildWorkflowConnectorReadiness(options);
   assert.equal(report.schema_version, "1.0.0");
-  if (options.summary) writeSummary(report);
-  else console.log(JSON.stringify(report, null, 2));
+  if (options.summary) {
+    writeSummary(report);
+  } else {
+    console.log(JSON.stringify(report, null, 2));
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
