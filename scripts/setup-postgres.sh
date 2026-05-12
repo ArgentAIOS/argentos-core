@@ -9,6 +9,9 @@
 #  - If postgresql@17 is ALREADY running for some other purpose (port != 5433),
 #    we refuse to silently repurpose it. Set ARGENT_PG_REPURPOSE_EXISTING=1 to
 #    consent to taking over the existing Homebrew service.
+#  - When ARGENT_PG_REPURPOSE_EXISTING=1 IS set, we snapshot the existing
+#    cluster via pg_dumpall to ~/.argentos/backups/ BEFORE rewriting the
+#    port. If the dump fails, the takeover aborts. (See GH #278.)
 #  - After applying config, we use `brew services restart` (not `start`) so a
 #    port-change rewrite is picked up even when the service was already running.
 #  - If we can't reach our postgres on port 5433 after restart, we diagnose
@@ -146,6 +149,50 @@ EOF
         exit 2
       fi
       echo "ARGENT_PG_REPURPOSE_EXISTING=1 set; proceeding to reconfigure."
+
+      # ---- 2b. Snapshot existing cluster BEFORE reconfigure (GH #278) ----
+      # User has consented to repurpose someone else's postgres@17. Before
+      # we rewrite the port and restart the service, dump everything to a
+      # known location so they can recover if something goes wrong. If the
+      # dump fails (any non-zero exit), abort the takeover — we will not
+      # proceed without a snapshot.
+      PG_BACKUP_DIR="${HOME}/.argentos/backups"
+      if ! mkdir -p "${PG_BACKUP_DIR}"; then
+        echo "ERROR: could not create backup directory ${PG_BACKUP_DIR}" >&2
+        exit 3
+      fi
+      PG_BACKUP_FILE="${PG_BACKUP_DIR}/postgres-pre-takeover-$(date +%Y%m%d-%H%M%S).sql"
+      PG_DUMPALL="${PG_BIN_DIR}/pg_dumpall"
+
+      echo "Snapshotting postgresql@17 (port ${probe_port}) -> ${PG_BACKUP_FILE}"
+      # -w: never prompt for a password — fail fast if auth is required so
+      #     we surface a clear error instead of hanging the installer.
+      if ! "${PG_DUMPALL}" -h 127.0.0.1 -p "${probe_port}" -w \
+            -f "${PG_BACKUP_FILE}"; then
+        cat >&2 <<EOF
+
+============================================================
+ERROR: pg_dumpall failed before postgresql@17 takeover
+
+ArgentOS Core was about to reconfigure the existing
+postgresql@17 service (port ${probe_port} -> ${ARGENT_PG_PORT}),
+but could not snapshot the current cluster via pg_dumpall.
+
+Aborting the takeover — we will NOT reconfigure the port
+without a recoverable snapshot. (See GH #278.)
+
+Possible causes:
+  - Authentication required. pg_dumpall was invoked with -w
+    (no password prompt). Set up ~/.pgpass for
+    127.0.0.1:${probe_port} (or export PGPASSWORD) and re-run.
+  - The dump partially wrote to:
+      ${PG_BACKUP_FILE}
+    Inspect / delete that file before retrying.
+============================================================
+EOF
+        exit 3
+      fi
+      echo "Pre-takeover snapshot written: ${PG_BACKUP_FILE}"
     fi
   fi
 fi
