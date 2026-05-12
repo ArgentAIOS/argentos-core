@@ -507,6 +507,28 @@ export default function (api) {
 Load the plugin (extensions dir or `plugins.load.paths`), restart the gateway,
 then configure `channels.<id>` in your config.
 
+### Agent-tag rendering (mood → emoji)
+
+Agents emit structured `[MOOD:X]` and `[TTS:[tone] body]` tags that text
+channels (Telegram, Discord, Signal, Slack, iMessage, WhatsApp, MS Teams)
+render as compact icon prefixes (e.g. `😊` for `happy`). Deployments override
+the mood→emoji map under `channels.defaults.agentTags.moodEmojiMap` for
+branded variants; entries merge on top of the defaults (set a value to `""`
+to suppress a default mood).
+
+```json5
+{
+  channels: {
+    defaults: {
+      agentTags: {
+        // Per-mood override; unsupplied moods keep their default emoji.
+        moodEmojiMap: { happy: "🌞", pumped: "🔥", confused: "" },
+      },
+    },
+  },
+}
+```
+
 ### Agent tools
 
 See the dedicated guide: [Plugin agent tools](/plugins/agent-tools).

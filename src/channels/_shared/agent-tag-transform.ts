@@ -12,10 +12,22 @@
  * rather than crashing or producing garbled output. Unknown moods are
  * skipped (treated as neutral) so we never produce a confusing emoji.
  *
- * Reference: GH #198.
+ * The mood→emoji mapping is overridable per-deployment via
+ * `channels.defaults.agentTags.moodEmojiMap` in `argent.json`. The override
+ * map is merged on top of the built-in defaults: a deployment supplying
+ * `{ happy: "🌞" }` keeps every other mood at the default mapping. Pass an
+ * explicit empty string (`""`) to suppress a default mood (renders as
+ * neutral / no prefix).
+ *
+ * Reference: GH #198 (initial transform), GH #203 (config override).
  */
 
-const MOOD_EMOJI: Readonly<Record<string, string>> = {
+/**
+ * Built-in mood→emoji map. Exported so callers can introspect or extend the
+ * defaults (e.g., when computing the effective map for tests or admin UI).
+ * Deployments override this via `channels.defaults.agentTags.moodEmojiMap`.
+ */
+export const DEFAULT_MOOD_EMOJI: Readonly<Record<string, string>> = {
   happy: "😊",
   loving: "❤️",
   warm: "❤️",
@@ -39,13 +51,57 @@ const MOOD_TAG_ALL_RE = /\[MOOD:\s*[^\]\n]+?\s*\]/gi;
 // match anchored to a closing bracket that is followed by end-of-block.
 const TTS_BLOCK_RE = /\[TTS(?:_NOW)?:\s*(?:\[\s*([^\]\n]*?)\s*\]\s*)?([^\n]*?)\]/i;
 
+export type AgentTagTransformOptions = {
+  /**
+   * Optional per-deployment overrides for the mood→emoji map. Merged on top
+   * of {@link DEFAULT_MOOD_EMOJI}. Keys are case-insensitive (normalized to
+   * lowercase). Set a key to an empty string to suppress the default emoji
+   * for that mood (renders as neutral).
+   */
+  moodEmojiMap?: Readonly<Record<string, string>>;
+};
+
+/**
+ * Normalize an override map: lowercase keys, drop non-string values defensively.
+ * Returns null if there are no usable overrides.
+ */
+function normalizeOverrides(
+  overrides: Readonly<Record<string, string>> | undefined,
+): Readonly<Record<string, string>> | null {
+  if (!overrides) {
+    return null;
+  }
+  const normalized: Record<string, string> = {};
+  let hasAny = false;
+  for (const [rawKey, rawValue] of Object.entries(overrides)) {
+    if (typeof rawValue !== "string") {
+      continue;
+    }
+    const key = rawKey.trim().toLowerCase();
+    if (!key) {
+      continue;
+    }
+    normalized[key] = rawValue;
+    hasAny = true;
+  }
+  return hasAny ? normalized : null;
+}
+
 /** Look up the emoji for a mood name. Returns null for unknown / neutral. */
-function moodToEmoji(mood: string): string | null {
+function moodToEmoji(
+  mood: string,
+  overrides: Readonly<Record<string, string>> | null,
+): string | null {
   const key = mood.trim().toLowerCase();
   if (!key || key === "neutral") {
     return null;
   }
-  return MOOD_EMOJI[key] ?? null;
+  // Per-mood override → built-in default. Empty string explicitly suppresses.
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
+    const overridden = overrides[key];
+    return overridden ? overridden : null;
+  }
+  return DEFAULT_MOOD_EMOJI[key] ?? null;
 }
 
 /**
@@ -58,11 +114,21 @@ function moodToEmoji(mood: string): string | null {
  *   the spoken text inline in the message body.
  * - Unknown moods, malformed tags, and missing pieces degrade gracefully:
  *   the function never throws, and the message body is preserved.
+ *
+ * Pass `options.moodEmojiMap` to override individual moods or supply
+ * custom mood→emoji entries. The override merges on top of the built-in
+ * defaults so unsupplied moods keep their default rendering — existing
+ * deployments without an override see identical behavior.
  */
-export function transformAgentTagsForTextChannel(input: string): string {
+export function transformAgentTagsForTextChannel(
+  input: string,
+  options?: AgentTagTransformOptions,
+): string {
   if (!input) {
     return input;
   }
+
+  const overrides = normalizeOverrides(options?.moodEmojiMap);
 
   let working = input;
 
@@ -70,7 +136,7 @@ export function transformAgentTagsForTextChannel(input: string): string {
   let moodEmoji: string | null = null;
   const moodMatch = MOOD_TAG_RE.exec(working);
   if (moodMatch) {
-    moodEmoji = moodToEmoji(moodMatch[1] ?? "");
+    moodEmoji = moodToEmoji(moodMatch[1] ?? "", overrides);
     working = working.replace(MOOD_TAG_ALL_RE, "");
   }
 
