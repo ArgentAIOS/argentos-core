@@ -1,0 +1,127 @@
+# Closes #180 — GitHub's built-in auto-close keywords (`closes #N`, `fixes #N`,
+# `resolves #N`) only fire on merges to the **default branch** (main). Our
+# active integration branch is `dev`, so referenced issues remained open after
+# every dev-merge until someone closed them by hand. This workflow watches
+# `push` events on `dev`, scans each new commit message for verb-prefixed
+# issue refs, and closes those issues via `gh issue close`.
+#
+# Safety design:
+#   - Verb is REQUIRED (`close[sd]?` / `fix(es|ed)?` / `resolve[sd]?`).
+#     A bare `#123` is NOT closed — this is what prevents the trailing
+#     `(#PR-number)` squash-merge artifact from closing the wrong issue.
+#   - Verb is word-bounded (`preclosed #5` does NOT match `closed`).
+#   - Multi-issue groups (`closes #1, #2, #3`) are captured.
+#   - We prefer false-negatives (miss an issue, close it manually) over
+#     false-positives (close the wrong issue).
+
+name: Auto-close on dev merge
+
+on:
+  push:
+    branches: [dev]
+
+permissions: {}
+
+jobs:
+  auto-close:
+    name: Close referenced issues
+    runs-on: ubuntu-latest
+    # Skip auto-generated dependabot/release noise that won't reference issues.
+    if: github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need history for `git log <before>..<after>`.
+          fetch-depth: 0
+
+      - name: Close referenced issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # Determine commit range. On the very first push or after a force-reset,
+          # `before` may be all-zeros; fall back to inspecting just the head commit.
+          if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            COMMITS=$(git log -1 --format=%H "$AFTER_SHA")
+          else
+            COMMITS=$(git log --format=%H "${BEFORE_SHA}..${AFTER_SHA}" 2>/dev/null || git log -1 --format=%H "$AFTER_SHA")
+          fi
+
+          if [[ -z "$COMMITS" ]]; then
+            echo "No commits in range — nothing to do."
+            exit 0
+          fi
+
+          # Map: issue_number -> commit SHA that referenced it (first wins).
+          declare -A ISSUE_TO_COMMIT=()
+
+          while IFS= read -r SHA; do
+            [[ -z "$SHA" ]] && continue
+            MSG=$(git log -1 --format=%B "$SHA")
+            # Regex: word-bounded verb + #N + optional (, #N)*. Extract all #N
+            # from each match, strip the '#', dedupe.
+            NUMS=$(printf '%s\n' "$MSG" \
+              | grep -oiE '(^|[^[:alpha:]])(close[sd]?|fix(es|ed)?|resolve[sd]?)[[:space:]]+#[0-9]+([[:space:]]*,[[:space:]]*#[0-9]+)*' \
+              | grep -oE '#[0-9]+' \
+              | tr -d '#' \
+              | sort -u || true)
+            if [[ -n "$NUMS" ]]; then
+              while IFS= read -r N; do
+                [[ -z "$N" ]] && continue
+                # Only record first-seen commit for each issue.
+                if [[ -z "${ISSUE_TO_COMMIT[$N]:-}" ]]; then
+                  ISSUE_TO_COMMIT[$N]="$SHA"
+                fi
+              done <<< "$NUMS"
+            fi
+          done <<< "$COMMITS"
+
+          if [[ ${#ISSUE_TO_COMMIT[@]} -eq 0 ]]; then
+            echo "No close/fix/resolve issue references found in push range."
+            exit 0
+          fi
+
+          echo "Found ${#ISSUE_TO_COMMIT[@]} referenced issue(s):"
+          for N in "${!ISSUE_TO_COMMIT[@]}"; do
+            echo "  - #$N (referenced by ${ISSUE_TO_COMMIT[$N]:0:7})"
+          done
+
+          # Close each issue. Skip if already closed (or if it doesn't exist /
+          # is actually a PR — `gh issue view` returns non-zero in that case).
+          for N in "${!ISSUE_TO_COMMIT[@]}"; do
+            SHA="${ISSUE_TO_COMMIT[$N]}"
+            COMMIT_URL="${SERVER_URL}/${REPO}/commit/${SHA}"
+
+            STATE=$(gh issue view "$N" --repo "$REPO" --json state --jq .state 2>/dev/null || echo "MISSING")
+            case "$STATE" in
+              OPEN)
+                echo "Closing #$N (referenced by $SHA)..."
+                if gh issue close "$N" --repo "$REPO" \
+                  --comment "Closed automatically by [\`${SHA:0:7}\`](${COMMIT_URL}) (merged to \`dev\`). GitHub's built-in auto-close only fires on the default branch; this is the dev-branch equivalent (see #180)." \
+                  --reason completed; then
+                  echo "  ✓ #$N closed"
+                else
+                  echo "  ✗ Failed to close #$N (continuing)"
+                fi
+                ;;
+              CLOSED)
+                echo "Skipping #$N — already closed."
+                ;;
+              MISSING)
+                echo "Skipping #$N — issue not found (or is a PR)."
+                ;;
+              *)
+                echo "Skipping #$N — unknown state: $STATE"
+                ;;
+            esac
+          done
