@@ -9,6 +9,7 @@ import { sleepWithAbort } from "../../infra/backoff.js";
 import { recordConsciousnessKernelConversationTurn } from "../../infra/consciousness-kernel.js";
 import { retrieveActiveLessons, formatLessonsForPrompt } from "../../infra/sis-active-lessons.js";
 import { runSelfEvaluation } from "../../infra/sis-self-eval.js";
+import { getModelHealthTracker } from "../../models/model-health-tracker.js";
 import { routeModel } from "../../models/router.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
 import { isSubagentSessionKey } from "../../routing/session-key.js";
@@ -1285,6 +1286,17 @@ export async function runEmbeddedPiAgent(
             !lastAssistant &&
             nonEmptyAssistantTextCount === 0 &&
             !attempt.didSendViaMessagingTool;
+          // #281 — feed the routing-suggestion engine's per-model health tracker so it can
+          // de-prioritize models that have flaked recently. PR #279 added the reactive
+          // retry path below; this is the proactive companion. Recording the outcome
+          // *before* the fallback decision keeps the next routing call honest.
+          if (!aborted && !promptError) {
+            getModelHealthTracker().recordOutcome(
+              provider,
+              modelId,
+              isEmptyAssistantResponse ? "empty" : "ok",
+            );
+          }
           if (isEmptyAssistantResponse) {
             const nextFallbackModel = pickNextOpenAiCodexFallbackModel({
               provider,

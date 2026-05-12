@@ -22,8 +22,10 @@ import type {
   TierReasoningEffort,
 } from "./types.js";
 import { DEFAULT_TIER_MODELS, BUILTIN_PROFILES } from "./builtin-profiles.js";
+import { ModelHealthTracker, getModelHealthTracker } from "./model-health-tracker.js";
 
 export { BUILTIN_PROFILES };
+export { ModelHealthTracker, getModelHealthTracker } from "./model-health-tracker.js";
 
 const DEFAULT_THRESHOLDS = {
   local: 0.3,
@@ -213,6 +215,117 @@ function isLikelyToolUsePrompt(prompt: string): boolean {
 
 function isLikelyMemoryUsePrompt(prompt: string): boolean {
   return MEMORY_TRIGGER_PATTERNS.some((pattern) => pattern.test(prompt));
+}
+
+/**
+ * If the primary (provider, model) has flaked recently (per
+ * {@link ModelHealthTracker}), promote the first healthy alternate from the
+ * fallback chain into the primary slot.  Demotes the flaking primary into
+ * the front of sessionFallbacks (still selectable, just lower priority).
+ *
+ * Wired in for #281 — proactive complement to the reactive retry-fallback
+ * path PR #279 wired into `pi-embedded-runner/run.ts`.
+ *
+ * Never blocks a model: if every candidate is flaking, the original primary
+ * is returned unchanged so routing still produces a usable answer.
+ */
+function maybeDeprioritizeFlakingPrimary(params: {
+  primary: { provider: string; model: string };
+  sessionFallbacks?: string[];
+  profileFallbacks?: ProfileFallbackEntry[];
+  tracker: ModelHealthTracker;
+  defaultProvider: string;
+}): {
+  provider: string;
+  model: string;
+  sessionFallbacks?: string[];
+  profileFallbacks?: ProfileFallbackEntry[];
+  /** Set when the primary is currently flaking, regardless of whether a swap happened. */
+  flakingPrimary: boolean;
+  /** Set only when an alternate was promoted into the primary slot. */
+  swapped: boolean;
+  /** Identifier of the alternate that won (when swapped). */
+  swappedFromRef?: string;
+  swappedToRef?: string;
+} {
+  const { primary, sessionFallbacks, profileFallbacks, tracker, defaultProvider } = params;
+  const flakingPrimary = tracker.isFlaking(primary.provider, primary.model);
+  if (!flakingPrimary) {
+    return {
+      provider: primary.provider,
+      model: primary.model,
+      sessionFallbacks,
+      profileFallbacks,
+      flakingPrimary: false,
+      swapped: false,
+    };
+  }
+
+  const primaryRef = `${primary.provider}/${primary.model}`;
+
+  // Walk sessionFallbacks first (string "provider/model"), then profileFallbacks.
+  if (Array.isArray(sessionFallbacks) && sessionFallbacks.length > 0) {
+    for (let i = 0; i < sessionFallbacks.length; i++) {
+      const raw = String(sessionFallbacks[i] ?? "").trim();
+      if (!raw) continue;
+      const slash = raw.indexOf("/");
+      const provider = slash > 0 ? raw.slice(0, slash) : defaultProvider;
+      const model = slash > 0 ? raw.slice(slash + 1) : raw;
+      if (!provider || !model) continue;
+      if (!tracker.isFlaking(provider, model)) {
+        const next = sessionFallbacks.slice();
+        next.splice(i, 1);
+        // Demote the flaking primary to the front of the fallback list — still
+        // selectable, but no longer the first choice.
+        next.unshift(primaryRef);
+        return {
+          provider,
+          model,
+          sessionFallbacks: next,
+          profileFallbacks,
+          flakingPrimary: true,
+          swapped: true,
+          swappedFromRef: primaryRef,
+          swappedToRef: `${provider}/${model}`,
+        };
+      }
+    }
+  }
+
+  if (Array.isArray(profileFallbacks) && profileFallbacks.length > 0) {
+    for (let i = 0; i < profileFallbacks.length; i++) {
+      const entry = profileFallbacks[i];
+      if (!entry?.provider || !entry?.model) continue;
+      if (!tracker.isFlaking(entry.provider, entry.model)) {
+        const next = profileFallbacks.slice();
+        next.splice(i, 1);
+        // profileFallbacks entries carry profile metadata, so we don't push
+        // the flaking primary back into that list (it doesn't belong to a
+        // different profile). The pi-embedded-runner's retry-fallback path
+        // (PR #279) still kicks in if the alternate also returns empty.
+        return {
+          provider: entry.provider,
+          model: entry.model,
+          sessionFallbacks,
+          profileFallbacks: next,
+          flakingPrimary: true,
+          swapped: true,
+          swappedFromRef: primaryRef,
+          swappedToRef: `${entry.provider}/${entry.model}`,
+        };
+      }
+    }
+  }
+
+  // All candidates are flaking — preserve original primary so routing remains usable.
+  return {
+    provider: primary.provider,
+    model: primary.model,
+    sessionFallbacks,
+    profileFallbacks,
+    flakingPrimary: true,
+    swapped: false,
+  };
 }
 
 /**
@@ -497,8 +610,15 @@ export function routeModel(params: {
   defaultProvider: string;
   /** Default model when not routing. */
   defaultModel: string;
+  /**
+   * Optional ModelHealthTracker override.  When omitted, the process-local
+   * singleton is used so observations from `pi-embedded-runner/run.ts` flow
+   * through here automatically.  Tests inject a fresh instance.
+   */
+  healthTracker?: ModelHealthTracker;
 }): RoutingDecision {
   const { signals, config, defaultProvider, defaultModel } = params;
+  const healthTracker = params.healthTracker ?? getModelHealthTracker();
 
   // If routing is disabled, pass through
   if (!config?.enabled) {
@@ -555,17 +675,32 @@ export function routeModel(params: {
       config,
       tier: "powerful",
     });
+    const swap = maybeDeprioritizeFlakingPrimary({
+      primary: { provider: mapping.provider, model: mapping.model },
+      sessionFallbacks,
+      profileFallbacks,
+      tracker: healthTracker,
+      defaultProvider: mapping.provider,
+    });
+    const reasonParts: string[] = ["forceMaxTier (deep think)"];
+    if (swap.swapped) {
+      reasonParts.push(`recent-empty deprioritized ${swap.swappedFromRef} → ${swap.swappedToRef}`);
+    } else if (swap.flakingPrimary) {
+      reasonParts.push("recent-empty flaking (no healthy alternate)");
+    }
     if (config.verbose) {
-      console.log(`[model-router] forceMaxTier → powerful (${mapping.provider}/${mapping.model})`);
+      console.log(
+        `[model-router] forceMaxTier → powerful (${swap.provider}/${swap.model})${swap.swapped ? ` [deprioritized ${swap.swappedFromRef}]` : ""}`,
+      );
     }
     return {
-      provider: mapping.provider,
-      model: mapping.model,
-      ...(sessionFallbacks ? { fallbacks: sessionFallbacks } : {}),
-      ...(profileFallbacks ? { profileFallbacks } : {}),
+      provider: swap.provider,
+      model: swap.model,
+      ...(swap.sessionFallbacks ? { fallbacks: swap.sessionFallbacks } : {}),
+      ...(swap.profileFallbacks ? { profileFallbacks: swap.profileFallbacks } : {}),
       tier: "powerful",
       score: 1,
-      reason: "forceMaxTier (deep think)",
+      reason: reasonParts.join(", "),
       routed: true,
       profile: profileName,
       ...(mapping.reasoningEffort ? { reasoningEffort: mapping.reasoningEffort } : {}),
@@ -595,18 +730,30 @@ export function routeModel(params: {
       config,
       tier: forcedTier,
     });
+    const swap = maybeDeprioritizeFlakingPrimary({
+      primary: { provider: mapping.provider, model: mapping.model },
+      profileFallbacks,
+      tracker: healthTracker,
+      defaultProvider: mapping.provider,
+    });
+    const reasonParts: string[] = [`tool override: ${signals.toolName}`];
+    if (swap.swapped) {
+      reasonParts.push(`recent-empty deprioritized ${swap.swappedFromRef} → ${swap.swappedToRef}`);
+    } else if (swap.flakingPrimary) {
+      reasonParts.push("recent-empty flaking (no healthy alternate)");
+    }
     if (config.verbose) {
       console.log(
-        `[model-router] toolOverride: ${signals.toolName} → ${forcedTier} (${mapping.provider}/${mapping.model})`,
+        `[model-router] toolOverride: ${signals.toolName} → ${forcedTier} (${swap.provider}/${swap.model})${swap.swapped ? ` [deprioritized ${swap.swappedFromRef}]` : ""}`,
       );
     }
     return {
-      provider: mapping.provider,
-      model: mapping.model,
-      ...(profileFallbacks ? { profileFallbacks } : {}),
+      provider: swap.provider,
+      model: swap.model,
+      ...(swap.profileFallbacks ? { profileFallbacks: swap.profileFallbacks } : {}),
       tier: forcedTier,
       score: 1,
-      reason: `tool override: ${signals.toolName}`,
+      reason: reasonParts.join(", "),
       routed: true,
       profile: profileName,
       ...(mapping.reasoningEffort ? { reasoningEffort: mapping.reasoningEffort } : {}),
@@ -664,17 +811,33 @@ export function routeModel(params: {
     tier,
   });
 
+  // De-prioritize the resolved primary when it has flaked recently (#281).
+  // Promotes the first healthy fallback into the primary slot; the original
+  // primary is demoted (still selectable, just lower priority).  Never blocks.
+  const swap = maybeDeprioritizeFlakingPrimary({
+    primary: { provider: mapping.provider, model: mapping.model },
+    sessionFallbacks,
+    profileFallbacks,
+    tracker: healthTracker,
+    defaultProvider: mapping.provider,
+  });
+  if (swap.swapped) {
+    reasons.push(`recent-empty deprioritized ${swap.swappedFromRef} → ${swap.swappedToRef}`);
+  } else if (swap.flakingPrimary) {
+    reasons.push("recent-empty flaking (no healthy alternate)");
+  }
+
   if (config.verbose) {
     console.log(
-      `[model-router] ${profileName ? `profile=${profileName} ` : ""}score=${score.toFixed(2)} tier=${tier} → ${mapping.provider}/${mapping.model} (${reasons.join(", ")})`,
+      `[model-router] ${profileName ? `profile=${profileName} ` : ""}score=${score.toFixed(2)} tier=${tier} → ${swap.provider}/${swap.model}${swap.swapped ? ` [deprioritized ${swap.swappedFromRef}]` : ""} (${reasons.join(", ")})`,
     );
   }
 
   return {
-    provider: mapping.provider,
-    model: mapping.model,
-    ...(sessionFallbacks ? { fallbacks: sessionFallbacks } : {}),
-    ...(profileFallbacks ? { profileFallbacks } : {}),
+    provider: swap.provider,
+    model: swap.model,
+    ...(swap.sessionFallbacks ? { fallbacks: swap.sessionFallbacks } : {}),
+    ...(swap.profileFallbacks ? { profileFallbacks: swap.profileFallbacks } : {}),
     tier,
     score,
     reason: reasons.join(", "),
