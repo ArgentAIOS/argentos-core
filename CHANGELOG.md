@@ -245,7 +245,209 @@ ergonomics — no schema changes, no breaking API changes. Safe drop-in upgrade.
 - **AppForge progress.** New rating cell field type (star/heart/thumb/flame
   glyphs) and click-to-sort grid column headers with visual indicators.
 
-(See https://github.com/ArgentAIOS/argentos-core/releases/tag/v2026.5.6.1 for the full v2026.5.6.1 changelog. Captured here for changelog continuity since this entry didn't make it onto the dev branch when the release was cut.)
+### Bug fixes — Update / Install / Gateway
+
+- **`argent update` LaunchAgent install**
+  ([#175](https://github.com/ArgentAIOS/argentos-core/issues/175)):
+  `argent update` now installs missing `ai.argent.dashboard-ui` and
+  `ai.argent.dashboard-api` LaunchAgents for new install paths instead of
+  leaving them out.
+- **`argent update` gateway-restart cycle**
+  ([#155](https://github.com/ArgentAIOS/argentos-core/issues/155)):
+  Wait for port 18789 to release before restarting the gateway, and let
+  `argent doctor` detect transition-state rather than falsely reporting
+  "Gateway not running" mid-cycle.
+- **`argent update` gateway-token preservation**
+  ([#167](https://github.com/ArgentAIOS/argentos-core/issues/167)): Stop
+  rotating `gateway.auth.token` on every `argent update`. Token rotation
+  is now gated behind an explicit user action — open sessions don't get
+  silently invalidated by routine updates.
+- **Legacy plist env vars purged**
+  ([#169](https://github.com/ArgentAIOS/argentos-core/issues/169)):
+  `ai.argent.gateway.plist` no longer ships with `ARGENT_GIT_DIR` or
+  `ARGENTOS_GIT_DIR` pointing at the legacy `/Users/sem/argentos`
+  location. New installs get a clean plist.
+- **`argent doctor` plist binary validation**
+  ([#172](https://github.com/ArgentAIOS/argentos-core/issues/172)):
+  `argent doctor` now validates `ai.argent.*.plist` `BinaryPath` against
+  the canonical install location and flags drift.
+- **Google Workspace connector setup**
+  ([#128](https://github.com/ArgentAIOS/argentos-core/issues/128)):
+  Resolve `preflight_gws.py` from the package root in the installed CLI
+  rather than the source tree — setup no longer 404s on installed
+  Argent.
+- **Public Core admin-surfaces hidden**
+  ([#105](https://github.com/ArgentAIOS/argentos-core/issues/105)):
+  Public Core dashboard no longer exposes the residual internal/admin
+  surfaces (broken routes that previously rendered a confusing 404 in
+  the sidebar).
+- **Dashboard cron-jobs cache quota**
+  ([#157](https://github.com/ArgentAIOS/argentos-core/issues/157)):
+  Cap the cron-jobs localStorage cache to prevent `QuotaExceededError`
+  on accounts with long heartbeat history.
+
+### Bug fixes — Models / Providers / Auth
+
+- **`--set-default` for plugin-backed providers**
+  ([#190](https://github.com/ArgentAIOS/argentos-core/issues/190)):
+  `argent models auth login --set-default --provider <zai|openrouter|...>`
+  now actually sets the default model. Previously honored only for
+  `openai-codex`; other providers silently dropped the flag.
+- **auth-profiles.json self-heal**
+  ([#193](https://github.com/ArgentAIOS/argentos-core/issues/193)):
+  `argent agent` no longer throws `No API key found for provider
+'openai-codex'` when `auth-profiles.json` has a valid profile but an
+  `order` array pointing at a missing alias. The store now self-repairs
+  on load.
+- **LM Studio loaded vs catalog**
+  ([#220](https://github.com/ArgentAIOS/argentos-core/issues/220)):
+  The LM Studio model dropdown now lists currently-loaded models, not
+  the full catalog. Catalog entries no longer mislead users into
+  selecting a model that isn't actually loaded in LM Studio.
+- **LM Studio Models page parity**
+  ([#219](https://github.com/ArgentAIOS/argentos-core/issues/219)):
+  Models page now has an "LM Studio Models" section parallel to the
+  "Ollama Models" section instead of asymmetric coverage.
+- **Routing suggestion filter**
+  ([#218](https://github.com/ArgentAIOS/argentos-core/issues/218)):
+  The routing-suggestion engine no longer recommends unloaded LM Studio
+  models or Ollama models when Ollama is down.
+- **agent_status reflects configuration**
+  ([#214](https://github.com/ArgentAIOS/argentos-core/issues/214)):
+  `agent_status` now distinguishes "not-configured" from
+  "configured-but-down" for Ollama so DOWN messages aren't shown for
+  providers the user never set up.
+
+### Bug fixes — Channels / Telegram / Discord
+
+- **MOOD/TTS tag leak fix**
+  ([#198](https://github.com/ArgentAIOS/argentos-core/issues/198)):
+  Agent `[MOOD:X]` and `[TTS:Y]` tags no longer leak into Telegram and
+  Discord channel output as raw text. They are stripped from outbound
+  text and translated into channel-appropriate metadata where supported.
+- **Telegram 409 logging + UX**
+  ([#194](https://github.com/ArgentAIOS/argentos-core/issues/194)):
+  `argent-gateway` now includes the bot ID in 409-conflict logs and
+  surfaces a persistent-conflict UX warning so users see _which_ bot is
+  fighting for the long-poll lock when there are multiple bots
+  configured.
+
+### Bug fixes — UI / Chat
+
+- **Re-auth command preserved in chat error**
+  ([#224](https://github.com/ArgentAIOS/argentos-core/issues/224)):
+  When an OAuth token is invalidated mid-chat, the error message now
+  includes the literal re-auth command (e.g.
+  `argent models auth login --provider openai-codex`) so the user can
+  copy-paste rather than guess.
+- **Personal skills promotion**
+  ([#210](https://github.com/ArgentAIOS/argentos-core/issues/210)):
+  `promoteCandidate` now increments `recurrenceCount` on dedup-skip so
+  the "promoted" bucket fills correctly. Previously, repeat invocations
+  of the same candidate were treated as no-ops and the bucket stayed
+  empty.
+- **Connectors catalog popup spam**
+  ([#152](https://github.com/ArgentAIOS/argentos-core/issues/152)):
+  Cache the `connectors.catalog` probe so the Settings → System tab
+  stops triggering a node popup every render.
+
+### Bug fixes — Build / Type / CI
+
+- **tsc-since.mjs identity hardening** (this release's headline,
+  [#255](https://github.com/ArgentAIOS/argentos-core/issues/255)):
+  tsc's per-message length cap truncates error tails with `...'` based
+  on the _un-elided_ string length, which differs by checkout path.
+  `argent update`'s preflight worktree at `/private/var/folders/.../`
+  has paths ~50 chars longer than the baseline-snapshot worktree at
+  `/Users/sem/code/argent-core/worktrees/<name>/`, so the same
+  conceptual error got truncated at a different point and missed the
+  baseline as net-new. The fix collapses `'import("…")…'` blocks to a
+  stable placeholder during normalization, making identity
+  path-length-independent.
+- **tsc pre-bundle gate added**
+  ([#178](https://github.com/ArgentAIOS/argentos-core/issues/178)):
+  Run `tsc --noEmit` before `tsdown` bundles, comparing against a
+  267-entry baseline at `ops/known-failing.json`. Catches net-new type
+  errors before they reach `dist/`.
+- **Bundle emits composio + builtin-profiles**
+  ([#196](https://github.com/ArgentAIOS/argentos-core/issues/196)):
+  `tsdown` now emits `dist/connectors/composio` and
+  `dist/models/builtin-profiles`. These features were dead at runtime
+  because the bundler was skipping them.
+- **pi-embedded-runner symlinked worktrees**
+  ([#211](https://github.com/ArgentAIOS/argentos-core/issues/211)):
+  `tsconfig.json` resolution now works when type-checking from a
+  worktree whose `node_modules` is a symlink (the common bump-worktree
+  case).
+- **Worktree-aware pre-commit hook**
+  ([#176](https://github.com/ArgentAIOS/argentos-core/issues/176)):
+  Pre-commit hooks no longer fail in bump worktrees that lack their
+  own `node_modules`. The hook resolves `oxfmt` from the canonical
+  install instead of requiring a per-worktree symlink.
+- **Label-issues workflow auth fix**
+  ([#199](https://github.com/ArgentAIOS/argentos-core/issues/199)):
+  Use `GITHUB_TOKEN` for the label / label-issues workflow instead of
+  the broken GitHub App private-key secret. Stops the workflow from
+  failing on every PR.
+
+### Refactors
+
+- **`isHeadlessSession` consolidation**
+  ([#206](https://github.com/ArgentAIOS/argentos-core/issues/206)):
+  `isHeadlessSession` now delegates to `isRemoteEnvironment` with a
+  documented override, removing duplicate detection logic.
+
+### Documentation
+
+- **CLI docs depth audit**
+  ([#189](https://github.com/ArgentAIOS/argentos-core/issues/189)):
+  Sibling `docs/cli/*` pages audited and expanded — shallow stubs
+  filled in.
+- **Marketplace + license CLI entries**
+  ([#191](https://github.com/ArgentAIOS/argentos-core/issues/191)):
+  `docs/cli/index.md` now includes marketplace + license commands;
+  personal-skills page added; marketplace command coverage verified.
+- **zh-CN sidebar 404 cleanup**
+  ([#200](https://github.com/ArgentAIOS/argentos-core/issues/200)):
+  Remove orphan zh-CN sidebar entries that referenced files no longer
+  on disk and 404'd in Mintlify navigation.
+
+### New features
+
+- **AppForge: rating cell field type.** Star / heart / thumb / flame
+  glyph variants for visualizing 0–5 values inside grid cells.
+- **AppForge: click-to-sort grid headers.** Column headers are
+  interactive with visual ascending/descending indicators.
+
+### Testing notes
+
+- `argent update` from any prior dev.X version should land cleanly on
+  `2026.5.6.1`. Validate post-update: `argent doctor` reports 0 plugin
+  errors, the gateway plist has no `ARGENT_GIT_DIR` / `ARGENTOS_GIT_DIR`
+  env vars, and `auth-profiles.json` has correctly-shaped profile keys
+  (object keyed by `<provider>:<alias>`, not an empty array).
+- LM Studio: with at least one model loaded, the Models page should
+  show that model in the LM Studio dropdown and the routing engine
+  should suggest it. Stop the loaded model; the dropdown should remove
+  it within one probe cycle.
+- Telegram: configure two bots simultaneously; the 409 conflict log
+  must include each bot's ID, and the persistent-conflict UX warning
+  appears in the dashboard after ~3 cycles.
+- Public Core: install from scratch as a non-admin user; the
+  dashboard sidebar should not show admin-only surfaces.
+- AppForge: create a rating field on a table; verify the glyph
+  variants render; click column headers to confirm sort indicators.
+
+### Known carry-overs (open follow-ups)
+
+- [#257](https://github.com/ArgentAIOS/argentos-core/issues/257)
+  Real fix for the `pi-types` ↔ `@mariozechner/pi-agent-core` type drift
+  underlying `#255` — the band-aid in this release suppresses the
+  symptom; the drift itself remains and the baseline carries 19
+  pi-types-related entries until the re-export is unified.
+- [#254](https://github.com/ArgentAIOS/argentos-core/issues/254)
+  `zai/glm-5-turbo` returns empty assistant payloads (`stopReason=stop`,
+  0 content). Triaged but not fixed in this release.
 
 ## 2026.4.30
 
