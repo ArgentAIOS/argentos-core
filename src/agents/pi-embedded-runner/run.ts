@@ -405,18 +405,39 @@ function resolveOpenAiCodexFallbackCandidates(modelId: string): string[] {
   return [];
 }
 
+// Z.AI GLM-5* models route through the openai-completions adapter, which does
+// NOT honor Z.AI's custom `thinking: { type }` field or surface `reasoning_content`
+// as visible text. When glm-5/glm-5-turbo emit reasoning-only responses (a known
+// upstream quirk — see argent-ai/providers/zai.ts which has a dedicated retry for
+// this case), the runtime sees stopReason=stop with 0 content. Fall back to
+// glm-4.7 which doesn't exhibit this behavior on the general endpoint. Tracks #254.
+function resolveZaiEmptyResponseFallbackCandidates(modelId: string): string[] {
+  const normalized = modelId.trim().toLowerCase();
+  if (normalized === "glm-5-turbo" || normalized === "glm-5" || normalized === "glm-5.1") {
+    return ["glm-4.7"];
+  }
+  return [];
+}
+
 function pickNextOpenAiCodexFallbackModel(params: {
   provider: string;
   modelId: string;
   tried: Set<string>;
 }): string | undefined {
-  if (normalizeProviderId(params.provider) !== "openai-codex") {
-    return undefined;
+  const providerId = normalizeProviderId(params.provider);
+  if (providerId === "openai-codex") {
+    const candidates = resolveOpenAiCodexFallbackCandidates(params.modelId);
+    return candidates.find(
+      (candidate) => candidate !== params.modelId && !params.tried.has(candidate),
+    );
   }
-  const candidates = resolveOpenAiCodexFallbackCandidates(params.modelId);
-  return candidates.find(
-    (candidate) => candidate !== params.modelId && !params.tried.has(candidate),
-  );
+  if (providerId === "zai" || providerId === "zai-coding") {
+    const candidates = resolveZaiEmptyResponseFallbackCandidates(params.modelId);
+    return candidates.find(
+      (candidate) => candidate !== params.modelId && !params.tried.has(candidate),
+    );
+  }
+  return undefined;
 }
 
 export async function runEmbeddedPiAgent(
