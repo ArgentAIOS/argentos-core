@@ -5,15 +5,30 @@
  * They enable consuming code to import from agent-core/ and get Argent-native
  * types without changing any import paths.
  *
+ * For the types that bridge into upstream `@mariozechner/pi-agent-core` call
+ * sites (`AgentMessage`, `StreamFn`, `CustomAgentMessages`), we forward
+ * directly to `@mariozechner/pi-agent-core` so the type identity is unified.
+ * Without this, tsc treats argent's local mirrors and the upstream originals
+ * as separate identities even when they're structurally similar, which
+ * surfaces as ~19 spurious `T is not assignable to T` errors when
+ * `activeSession.messages` / `activeSession.agent.streamFn` flow through
+ * argent-typed helpers (see GH #257). Other types remain locally defined
+ * because they include argent-specific shapes that don't drift.
+ *
  * Reference: legacy upstream dist type declarations.
  *
  * @module argent-agent/pi-types
  */
 
+// `AgentMessage` (and `CustomAgentMessages`) are forwarded from pi-agent-core
+// further down. Re-importing here lets the locally-defined types below
+// (`AgentState`, `AgentContext`, `AgentLoopConfig`, `PiAgentEvent`) reference
+// the unified identity directly. Without this, `export type { AgentMessage }
+// from "..."` only exposes the name to consumers — not to this file itself.
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { Static, TSchema } from "@sinclair/typebox";
 import type {
   AssistantMessageEvent,
-  AssistantMessageEventStream,
   ImageContent,
   Message,
   Model,
@@ -29,14 +44,11 @@ import type {
 // ============================================================================
 
 /**
- * Stream function type — can return sync or Promise for async config lookup.
- * Matches Pi's StreamFn exactly.
+ * Stream function type — forwarded from `@mariozechner/pi-agent-core` so the
+ * type identity is shared with `AgentSessionAgent["streamFn"]` and other
+ * upstream call sites. See module-level note above.
  */
-export type StreamFn = (
-  model: Model<Api>,
-  context: import("../argent-ai/types.js").Context,
-  options?: SimpleStreamOptions,
-) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
+export type { StreamFn } from "@mariozechner/pi-agent-core";
 
 // ============================================================================
 // THINKING LEVEL
@@ -49,16 +61,21 @@ export type StreamFn = (
 export type AgentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 // ============================================================================
-// CUSTOM AGENT MESSAGES
+// CUSTOM AGENT MESSAGES + AGENT MESSAGE
 // ============================================================================
 
 /**
  * Extensible interface for custom app messages.
+ *
+ * Forwarded from `@mariozechner/pi-agent-core` so module-augmentation declared
+ * against that module (or this re-export) merges into a single declaration
+ * site — which keeps `AgentMessage` identity unified with the upstream type.
+ *
  * Apps can extend via declaration merging:
  *
  * @example
  * ```typescript
- * declare module "../argent-agent/pi-types.js" {
+ * declare module "@mariozechner/pi-agent-core" {
  *   interface CustomAgentMessages {
  *     artifact: ArtifactMessage;
  *     notification: NotificationMessage;
@@ -66,14 +83,15 @@ export type AgentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" |
  * }
  * ```
  */
-export interface CustomAgentMessages {}
+export type { CustomAgentMessages } from "@mariozechner/pi-agent-core";
 
 /**
  * AgentMessage: Union of LLM messages + custom messages.
- * This abstraction allows apps to add custom message types while maintaining
- * type safety and compatibility with the base LLM messages.
+ *
+ * Forwarded from `@mariozechner/pi-agent-core` so the type identity is shared
+ * with `AgentSession["messages"]`. See module-level note above.
  */
-export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
+export type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 // ============================================================================
 // TOOL TYPES
