@@ -906,7 +906,15 @@ class ArgentAgentSessionImpl implements AgentSession {
         (e) => e.type === "message" && (e as { message: AgentMessage }).message.role === "user",
       )
       .map((e) => {
-        const msg = (e as { message: AgentMessage }).message;
+        // The filter above narrows entries to user messages, but the
+        // `as { message: AgentMessage }` cast erases that narrowing for the
+        // compiler. Since pi-types now forwards `AgentMessage` directly from
+        // pi-agent-core (#257), the union is wider than the previous
+        // argent-local mirror — including bashExecution / branchSummary /
+        // compactionSummary variants without `content`. Re-narrow explicitly
+        // to UserMessage here so the existing string/array checks below stay
+        // well-typed without any runtime change.
+        const msg = (e as { message: Extract<AgentMessage, { role: "user" }> }).message;
         const text =
           typeof msg.content === "string"
             ? msg.content
@@ -1057,9 +1065,16 @@ function resolveVisionModelMeta(model: unknown): {
 }
 
 function estimateTokens(msg: AgentMessage): number {
-  if (typeof msg.content === "string") return Math.ceil(msg.content.length / 4);
-  if (Array.isArray(msg.content)) {
-    return msg.content.reduce((sum: number, block: unknown) => {
+  // `AgentMessage` now forwards from pi-agent-core (#257); the union includes
+  // pi-coding-agent's custom variants (bashExecution / branchSummary /
+  // compactionSummary) that don't expose `content`. Use a tolerant cast so
+  // the existing typeof / Array.isArray runtime checks continue to handle
+  // every shape — the missing-content branch falls through to `return 50`,
+  // matching the previous behaviour for non-LLM messages.
+  const m = msg as { content?: unknown };
+  if (typeof m.content === "string") return Math.ceil(m.content.length / 4);
+  if (Array.isArray(m.content)) {
+    return m.content.reduce((sum: number, block: unknown) => {
       if (block && typeof block === "object" && "text" in block) {
         return sum + Math.ceil((block as { text: string }).text.length / 4);
       }
