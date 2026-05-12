@@ -29,6 +29,20 @@ import { normalizeReplyPayloadsForDelivery } from "./payloads.js";
 export type { NormalizedOutboundPayload } from "./payloads.js";
 export { normalizeOutboundPayloads } from "./payloads.js";
 
+// GH #198 + #202: channels that get the `[MOOD:X]` / `[TTS:[tone] body]` →
+// icon-prefix transform applied to outbound text before chunking. Add new
+// text channels here; webchat is intentionally excluded because the
+// dashboard renders the raw structured signals natively.
+const AGENT_TAG_ICON_CHANNELS: ReadonlySet<Exclude<OutboundChannel, "none">> = new Set([
+  "telegram",
+  "discord",
+  "signal",
+  "slack",
+  "imessage",
+  "whatsapp",
+  "msteams",
+]);
+
 type SendMatrixMessage = (
   to: string,
   text: string,
@@ -227,9 +241,9 @@ export async function deliverOutboundPayloads(params: {
   const signalMaxBytes = isSignalChannel
     ? resolveChannelMediaMaxBytes({
         cfg,
-        resolveChannelLimitMb: ({ cfg, accountId }) =>
-          cfg.channels?.signal?.accounts?.[accountId]?.mediaMaxMb ??
-          cfg.channels?.signal?.mediaMaxMb,
+        resolveChannelLimitMb: ({ cfg: signalCfg, accountId: signalAccountId }) =>
+          signalCfg.channels?.signal?.accounts?.[signalAccountId]?.mediaMaxMb ??
+          signalCfg.channels?.signal?.mediaMaxMb,
         accountId,
       })
     : undefined;
@@ -318,14 +332,28 @@ export async function deliverOutboundPayloads(params: {
       })),
     };
   };
-  // GH #198: text-only chat channels should render agent tags
+  // GH #198 + GH #202: text chat channels should render agent tags
   // (`[MOOD:X]`, `[TTS:[tone] body]`) as compact icon prefixes instead of
   // letting the bracket syntax leak as raw text. Apply the transform once,
   // before chunking, so every downstream chunk inherits the rendered prefix.
-  const renderAgentTagsAsIcons = channel === "telegram" || channel === "discord";
+  // Telegram + Discord landed in #198; #202 extends the same pipeline to the
+  // remaining text channels (signal, slack, imessage, whatsapp, and the
+  // msteams plugin). webchat is intentionally excluded — it renders the raw
+  // structured signals natively in the dashboard UI.
+  //
+  // GH #203: deployments can override the default mood→emoji map by setting
+  // `channels.defaults.agentTags.moodEmojiMap` in argent.json. Undefined ⇒
+  // built-in defaults (no behavior change for existing deployments).
+  const renderAgentTagsAsIcons = AGENT_TAG_ICON_CHANNELS.has(channel);
+  const moodEmojiMapOverride = cfg.channels?.defaults?.agentTags?.moodEmojiMap;
   const normalizedPayloads = normalizeReplyPayloadsForDelivery(payloads).map((payload) =>
     renderAgentTagsAsIcons && payload.text
-      ? { ...payload, text: transformAgentTagsForTextChannel(payload.text) }
+      ? {
+          ...payload,
+          text: transformAgentTagsForTextChannel(payload.text, {
+            moodEmojiMap: moodEmojiMapOverride,
+          }),
+        }
       : payload,
   );
   for (const payload of normalizedPayloads) {

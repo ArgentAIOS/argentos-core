@@ -156,7 +156,7 @@ describe("sis runner consolidation parser", () => {
       })}\n[/SIS_PATTERNS]`,
       `${buildValidPayload({ recommendations: ["focus", "verify"] })}`,
       `context\n[SIS_PATTERNS]\n${base}\n[/SIS_PATTERNS]\npost`,
-      `[SIS_PATTERNS]\n{\"patterns\": [}\n[/SIS_PATTERNS]`,
+      `[SIS_PATTERNS]\n{"patterns": [}\n[/SIS_PATTERNS]`,
     ];
 
     let successCount = 0;

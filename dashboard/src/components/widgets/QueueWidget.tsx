@@ -6,6 +6,7 @@
 
 import { Layers, Clock, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 interface QueueStats {
   total: number;
@@ -27,7 +28,7 @@ export function QueueWidget() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/tasks/queue-stats");
+      const res = await fetchLocalApi("/api/tasks/queue-stats");
       if (res.ok) {
         const data = await res.json();
         setStats(data);

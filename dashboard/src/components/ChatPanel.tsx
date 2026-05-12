@@ -43,6 +43,7 @@ import {
   CanvasIcon,
 } from "../icons/ArgentOS";
 import { getMoodColor, getMoodIcon, type MoodName } from "../lib/moodSystem";
+import { fetchLocalApi } from "../utils/localApiFetch";
 import { AudioDeviceSelector, type Voice } from "./AudioDeviceSelector";
 
 // Code block with copy button for markdown rendering
@@ -315,7 +316,7 @@ function DeferredAudio({
 
 // Detect absolute file/folder paths
 const PATH_REGEX =
-  /^\/(?:Users|home|tmp|var|opt|etc|usr|Volumes|Library|System|private|Applications)[\/][^\s]*/;
+  /^\/(?:Users|home|tmp|var|opt|etc|usr|Volumes|Library|System|private|Applications)[/][^\s]*/;
 
 function isFilePath(text: string): boolean {
   return PATH_REGEX.test(text.trim());
@@ -341,7 +342,7 @@ function PathLink({ path: filePath }: { path: string }) {
   const openPath = async (mode: "finder" | "terminal") => {
     setShowMenu(false);
     try {
-      const res = await fetch("/api/system/open", {
+      const res = await fetchLocalApi("/api/system/open", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: filePath, mode }),
@@ -1375,7 +1376,7 @@ export function ChatPanel({
         }
 
         if (names.length === 0) {
-          const response = await fetch("/api/settings/knowledge/collections");
+          const response = await fetchLocalApi("/api/settings/knowledge/collections");
           if (response.ok) {
             const payload = (await response.json()) as {
               collections?: Array<{ collection?: string }>;

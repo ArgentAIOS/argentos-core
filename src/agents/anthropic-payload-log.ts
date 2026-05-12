@@ -186,7 +186,13 @@ export function createAnthropicPayloadLogger(params: {
           payload,
           payloadDigest: digest(payload),
         });
-        options?.onPayload?.(payload);
+        // pi-ai's SimpleStreamOptions.onPayload signature is `(payload, model)`.
+        // The previous one-arg call only type-checked because argent-ai
+        // mirrored an older one-arg shape; after #257 unifies `StreamFn` with
+        // pi-agent-core, the wrapper sees the real two-arg contract. Pass
+        // `model` (already in scope from the StreamFn outer params) so any
+        // downstream consumer that uses the second argument is honoured.
+        options?.onPayload?.(payload, model);
       };
       return streamFn(model, context, {
         ...options,

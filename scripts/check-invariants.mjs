@@ -204,31 +204,12 @@ const INV2_FETCH_HELPERS = new Set([
 // Frozen baseline — files containing pre-existing direct fetches as of
 // dev.25. New entries are FORBIDDEN. Removing entries (after migration) is
 // encouraged.
-const INV2_BASELINE = new Set([
-  "dashboard/src/App.tsx",
-  "dashboard/src/components/AlignmentDocs.tsx",
-  "dashboard/src/components/CalendarModal.tsx",
-  "dashboard/src/components/ChatPanel.tsx",
-  "dashboard/src/components/ConfigPanel.tsx",
-  "dashboard/src/components/ConnectorBuilderPanel.tsx",
-  "dashboard/src/components/SafetyRulesPanel.tsx",
-  "dashboard/src/components/StatusBar.tsx",
-  "dashboard/src/components/SystemsRegistryPanel.tsx",
-  "dashboard/src/components/widgets/ActiveWorkersWidget.tsx",
-  "dashboard/src/components/widgets/ApprovalsWidget.tsx",
-  "dashboard/src/components/widgets/CalendarAgendaWidget.tsx",
-  "dashboard/src/components/widgets/CostBurnWidget.tsx",
-  "dashboard/src/components/widgets/CustomWidget.tsx",
-  "dashboard/src/components/widgets/ErrorsWidget.tsx",
-  "dashboard/src/components/widgets/FleetKillWidget.tsx",
-  "dashboard/src/components/widgets/QueueWidget.tsx",
-  "dashboard/src/components/widgets/StockNewsWidget.tsx",
-  "dashboard/src/components/widgets/ThroughputWidget.tsx",
-  "dashboard/src/hooks/useCalendar.ts",
-  "dashboard/src/hooks/useCronJobs.ts",
-  "dashboard/src/hooks/useWeather.ts",
-  "dashboard/src/hooks/useWidgets.ts",
-]);
+//
+// As of #173 (2026-05-12) the baseline is EMPTY — every grandfathered file
+// has been migrated to `fetchLocalApi()`. Going forward, any new dashboard
+// REST fetch is required to use the helper; the empty set means INV-2 is
+// now enforced without exception. Do not add entries here; migrate instead.
+const INV2_BASELINE = new Set([]);
 
 // Match: fetch("/api/..."), fetch('/api/...'), fetch(`/api/...`)
 const INV2_FETCH_LITERAL_PATTERN = /\bfetch\s*\(\s*(?:"\/api\/|'\/api\/|`\/api\/)/;

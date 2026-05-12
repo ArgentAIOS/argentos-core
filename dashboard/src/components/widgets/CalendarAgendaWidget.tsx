@@ -1,6 +1,7 @@
 import { X, Video, MapPin, Clock, Users, ExternalLink, Mic } from "lucide-react";
 import { useState, useCallback } from "react";
 import { useCalendar, type CalendarEvent } from "../../hooks/useCalendar";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 import { WidgetContainer } from "./WidgetContainer";
 
 export function CalendarAgendaWidget() {
@@ -11,7 +12,7 @@ export function CalendarAgendaWidget() {
   const [recordingError, setRecordingError] = useState<string | null>(null);
 
   const invokeRecorder = useCallback(async (action: string, args: Record<string, unknown> = {}) => {
-    const resp = await fetch("/api/gateway/tools/invoke", {
+    const resp = await fetchLocalApi("/api/gateway/tools/invoke", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tool: "meeting_record", action, args }),

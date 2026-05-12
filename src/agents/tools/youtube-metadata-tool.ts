@@ -113,7 +113,7 @@ function parseKeyPoints(raw: unknown): string[] {
   if (typeof raw === "string") {
     const lines = raw
       .split(/\r?\n/)
-      .map((line) => line.replace(/^[\-\*\d\.\)\s]+/, "").trim())
+      .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
       .filter(Boolean);
     return cleanList(lines);
   }

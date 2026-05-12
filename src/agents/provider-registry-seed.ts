@@ -11,7 +11,7 @@
 import type { ProviderRegistry, ProviderRegistryEntry } from "../config/types.models.js";
 
 // Current seed version. Bump this to force re-seed on next startup.
-export const SEED_VERSION = 8;
+export const SEED_VERSION = 9;
 
 // ---------------------------------------------------------------------------
 // Cost presets
@@ -745,6 +745,92 @@ const venice: ProviderRegistryEntry = {
   ],
 };
 
+// Z.AI (api.z.ai) — GLM model family. Mirrors `zai` section of
+// src/argent-ai/models-db.ts so ensureArgentModelsJson writes a real
+// `zai` provider block instead of relying on pi-coding-agent's anthropic-
+// compatible fallback. See issue #269.
+const zai: ProviderRegistryEntry = {
+  name: "Z.AI",
+  baseUrl: "https://api.z.ai/api/paas/v4",
+  api: "openai-completions",
+  authType: "api_key",
+  envKeyVar: "ZAI_API_KEY",
+  models: [
+    {
+      id: "glm-5-turbo",
+      name: "GLM-5-Turbo",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 1.2, output: 4, cacheRead: 0.24, cacheWrite: 1.2 },
+      contextWindow: 204800,
+      maxTokens: 131072,
+    },
+    {
+      id: "glm-5",
+      name: "GLM-5",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 1, output: 3.2, cacheRead: 0.25, cacheWrite: 1 },
+      contextWindow: 204800,
+      maxTokens: 131072,
+    },
+    {
+      id: "glm-4.7",
+      name: "GLM-4.7",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0.6, output: 2.2, cacheRead: 0.15, cacheWrite: 0.6 },
+      contextWindow: 204800,
+      maxTokens: 131072,
+    },
+    {
+      id: "glm-4.7-flash",
+      name: "GLM-4.7-Flash",
+      reasoning: true,
+      input: ["text"],
+      cost: ZERO_COST,
+      contextWindow: 200000,
+      maxTokens: 131072,
+    },
+    {
+      id: "glm-4.6",
+      name: "GLM-4.6",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0.6, output: 2.2, cacheRead: 0.15, cacheWrite: 0.6 },
+      contextWindow: 204800,
+      maxTokens: 131072,
+    },
+    {
+      id: "glm-4.5",
+      name: "GLM-4.5",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0.6, output: 2.2, cacheRead: 0.15, cacheWrite: 0.6 },
+      contextWindow: 131072,
+      maxTokens: 98304,
+    },
+    {
+      id: "glm-4.5-flash",
+      name: "GLM-4.5-Flash",
+      reasoning: true,
+      input: ["text"],
+      cost: ZERO_COST,
+      contextWindow: 131072,
+      maxTokens: 98304,
+    },
+    {
+      id: "glm-4.5-air",
+      name: "GLM-4.5-Air",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0.2, output: 1.1, cacheRead: 0.05, cacheWrite: 0.2 },
+      contextWindow: 131072,
+      maxTokens: 98304,
+    },
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Seed function
 // ---------------------------------------------------------------------------
@@ -764,6 +850,7 @@ export function buildSeedRegistry(): ProviderRegistry {
       groq,
       synthetic,
       venice,
+      zai,
     },
   };
 }

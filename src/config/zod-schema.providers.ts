@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ChannelHeartbeatVisibilitySchema } from "./zod-schema.channels.js";
+import { ChannelAgentTagsSchema, ChannelHeartbeatVisibilitySchema } from "./zod-schema.channels.js";
 import { GroupPolicySchema } from "./zod-schema.core.js";
 import {
   BlueBubblesConfigSchema,
@@ -15,7 +15,7 @@ import { WhatsAppConfigSchema } from "./zod-schema.providers-whatsapp.js";
 
 export * from "./zod-schema.providers-core.js";
 export * from "./zod-schema.providers-whatsapp.js";
-export { ChannelHeartbeatVisibilitySchema } from "./zod-schema.channels.js";
+export { ChannelAgentTagsSchema, ChannelHeartbeatVisibilitySchema } from "./zod-schema.channels.js";
 
 export const ChannelsSchema = z
   .object({
@@ -23,6 +23,7 @@ export const ChannelsSchema = z
       .object({
         groupPolicy: GroupPolicySchema.optional(),
         heartbeat: ChannelHeartbeatVisibilitySchema,
+        agentTags: ChannelAgentTagsSchema,
       })
       .strict()
       .optional(),

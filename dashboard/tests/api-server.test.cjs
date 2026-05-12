@@ -443,3 +443,33 @@ describe("Weather", () => {
     assert.strictEqual(res.status, 200);
   });
 });
+
+// ── Provider Registry fallback (issue #268) ──
+
+describe("Provider Registry fallback", () => {
+  it("GET /api/settings/providers returns the seed fallback when no user registry exists", async () => {
+    // tempHome is empty (no ~/.argentos/provider-registry.json), so this
+    // exercises the cloneDefaultProviderRegistry() / DEFAULT_PROVIDER_REGISTRY
+    // path sourced from dashboard/provider-catalog/index.cjs.
+    const res = await api("GET", "/api/settings/providers");
+    assert.strictEqual(res.status, 200);
+    assert.ok(res.data && typeof res.data === "object", "response is an object");
+    assert.ok(
+      res.data.providers && typeof res.data.providers === "object",
+      "providers field is an object",
+    );
+    const providerNames = Object.keys(res.data.providers);
+    assert.ok(
+      providerNames.length > 0,
+      `expected non-empty providers fallback (issue #268), got ${providerNames.length} providers`,
+    );
+    // Spot-check a few canonical seed providers so a regression that
+    // re-empties the .cjs (or drifts from the TS seed) fails loudly.
+    for (const required of ["minimax", "moonshot", "groq"]) {
+      assert.ok(
+        providerNames.includes(required),
+        `expected seed fallback to include "${required}" provider`,
+      );
+    }
+  });
+});

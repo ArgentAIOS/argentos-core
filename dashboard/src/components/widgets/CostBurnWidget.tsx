@@ -5,6 +5,7 @@
 
 import { DollarSign } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 interface CostStats {
   today: number;
@@ -44,7 +45,7 @@ export function CostBurnWidget() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/usage/cost");
+      const res = await fetchLocalApi("/api/usage/cost");
       if (res.ok) {
         const data = await res.json();
         setStats(data);

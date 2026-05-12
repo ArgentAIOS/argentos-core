@@ -36,10 +36,19 @@ export function isValidUrlInput(value: string): boolean {
 
 /**
  * Parse a serialized rating cell draft (the grid uses string-typed drafts) to
- * an integer in [0, max]. Returns `null` for invalid input so the editor can
+ * a value in [0, max]. Returns `null` for invalid input so the editor can
  * keep the prior value rather than silently writing garbage.
+ *
+ * Pass `allowHalf: true` to opt the field into 0.5 increments — the draft is
+ * snapped to the nearest 0.5 instead of the nearest integer. Default (false)
+ * preserves the existing integer-only behavior so rating columns without
+ * `allowHalf` set are unchanged.
  */
-export function parseRatingDraftValue(value: string, max: number): number | null {
+export function parseRatingDraftValue(
+  value: string,
+  max: number,
+  allowHalf: boolean = false,
+): number | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return 0;
@@ -48,19 +57,25 @@ export function parseRatingDraftValue(value: string, max: number): number | null
   if (!Number.isFinite(parsed)) {
     return null;
   }
-  const rounded = Math.round(parsed);
-  if (rounded < 0 || rounded > max) {
+  const snapped = allowHalf ? Math.round(parsed * 2) / 2 : Math.round(parsed);
+  if (snapped < 0 || snapped > max) {
     return null;
   }
-  return rounded;
+  return snapped;
 }
 
-/** Serialize a rating value (0 = unrated) for storage in the string-typed draft. */
-export function serializeRatingDraftValue(value: number): string {
+/**
+ * Serialize a rating value (0 = unrated) for storage in the string-typed
+ * draft. With `allowHalf: true` the value is snapped to the nearest 0.5; the
+ * default integer-only mode matches pre-half-rating behavior so existing
+ * persisted drafts deserialize identically.
+ */
+export function serializeRatingDraftValue(value: number, allowHalf: boolean = false): string {
   if (!Number.isFinite(value) || value <= 0) {
     return "";
   }
-  return String(Math.round(value));
+  const snapped = allowHalf ? Math.round(value * 2) / 2 : Math.round(value);
+  return String(snapped);
 }
 
 /**

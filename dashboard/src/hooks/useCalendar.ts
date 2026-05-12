@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 const CALENDAR_ACCOUNT_STORAGE_KEY = "argent-calendar-account";
 
@@ -70,12 +71,12 @@ export function useCalendar(refreshInterval = 60000, enabled = true) {
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
       // Fetch upcoming events list (new endpoint)
-      const response = await fetch(calendarEndpoint("/api/calendar/upcoming"), {
+      const response = await fetchLocalApi(calendarEndpoint("/api/calendar/upcoming"), {
         signal: controller.signal,
       });
       if (!response.ok) {
         // Fallback to old endpoint
-        const nextResponse = await fetch(calendarEndpoint("/api/calendar/next"), {
+        const nextResponse = await fetchLocalApi(calendarEndpoint("/api/calendar/next"), {
           signal: controller.signal,
         });
         if (!nextResponse.ok) throw new Error("Failed to fetch calendar");

@@ -5,6 +5,7 @@
 
 import { OctagonX, AlertTriangle } from "lucide-react";
 import { useState } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 
 export function FleetKillWidget() {
   const [confirming, setConfirming] = useState(false);
@@ -18,7 +19,7 @@ export function FleetKillWidget() {
     }
     setKilling(true);
     try {
-      await fetch("/api/workers/kill-all", { method: "POST" });
+      await fetchLocalApi("/api/workers/kill-all", { method: "POST" });
     } catch {
       // Best effort
     }

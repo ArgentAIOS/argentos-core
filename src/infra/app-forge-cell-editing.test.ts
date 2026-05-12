@@ -306,4 +306,30 @@ describe("app-forge cell editing — rating draft helpers", () => {
     expect(serializeRatingDraftValue(3)).toBe("3");
     expect(serializeRatingDraftValue(3.6)).toBe("4");
   });
+
+  describe("with allowHalf enabled", () => {
+    it("snaps drafts to the nearest 0.5 increment", () => {
+      expect(parseRatingDraftValue("3", 5, true)).toBe(3);
+      expect(parseRatingDraftValue("3.5", 5, true)).toBe(3.5);
+      expect(parseRatingDraftValue("3.74", 5, true)).toBe(3.5);
+      expect(parseRatingDraftValue("3.76", 5, true)).toBe(4);
+      expect(parseRatingDraftValue("4.25", 5, true)).toBe(4.5);
+    });
+
+    it("still rejects out-of-range half drafts", () => {
+      expect(parseRatingDraftValue("5.5", 5, true)).toBeNull();
+      expect(parseRatingDraftValue("-0.5", 5, true)).toBeNull();
+    });
+
+    it("serializes half ratings without losing precision", () => {
+      expect(serializeRatingDraftValue(3.5, true)).toBe("3.5");
+      expect(serializeRatingDraftValue(4, true)).toBe("4");
+      expect(serializeRatingDraftValue(2.74, true)).toBe("2.5");
+    });
+
+    it("treats empty/zero as a cleared cell even with allowHalf on", () => {
+      expect(parseRatingDraftValue("", 5, true)).toBe(0);
+      expect(serializeRatingDraftValue(0, true)).toBe("");
+    });
+  });
 });

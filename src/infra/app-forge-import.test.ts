@@ -90,6 +90,53 @@ describe("AppForge import preview", () => {
     ]);
   });
 
+  it("propagates rating field config and flags out-of-range CSV values", () => {
+    const preview = buildAppForgeImportPreview({
+      csv: ["Name,Quality", "Asset A,4", "Asset B,9", "Asset C,not-a-number"].join("\n"),
+      base: base({
+        tables: [
+          {
+            id: "table-1",
+            name: "Reviews",
+            revision: 1,
+            fields: [
+              { id: "name", name: "Name", type: "text", required: true },
+              {
+                id: "quality",
+                name: "Quality",
+                type: "rating",
+                ratingMax: 7,
+                ratingIcon: "heart",
+              },
+            ],
+            records: [],
+          },
+        ],
+      }),
+      targetTableId: "table-1",
+    });
+
+    const ratingColumn = preview.columns.find((column) => column.fieldId === "quality");
+    expect(ratingColumn).toMatchObject({
+      type: "rating",
+      ratingMax: 7,
+      ratingIcon: "heart",
+      matchedFieldId: "quality",
+    });
+
+    // 4 is within [0, 7] — preserved as a number.
+    expect(preview.rows[0]?.values.quality).toBe(4);
+    expect(preview.rows[0]?.errors).toEqual([]);
+
+    // 9 exceeds the configured max of 7 — flagged.
+    expect(preview.rows[1]?.values.quality).toBeNull();
+    expect(preview.rows[1]?.errors.map((error) => error.code)).toContain("invalid_rating");
+
+    // Non-numeric input — flagged.
+    expect(preview.rows[2]?.values.quality).toBeNull();
+    expect(preview.rows[2]?.errors.map((error) => error.code)).toContain("invalid_rating");
+  });
+
   it("parses quoted CSV cells, de-duplicates headers, and honors preview limits", () => {
     const preview = buildAppForgeImportPreview({
       csv: [

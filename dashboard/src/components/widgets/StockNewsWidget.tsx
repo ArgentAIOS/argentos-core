@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, Minus, Newspaper } from "lucide-react";
 import { useState, useEffect } from "react";
+import { fetchLocalApi } from "../../utils/localApiFetch";
 import { WidgetContainer } from "./WidgetContainer";
 
 interface NewsArticle {
@@ -29,7 +30,7 @@ export function StockNewsWidget({ size = "small" }: StockNewsWidgetProps) {
   useEffect(() => {
     const fetchNews = async () => {
       try {
-        const response = await fetch("/api/news?limit=5");
+        const response = await fetchLocalApi("/api/news?limit=5");
         const data = await response.json();
         setArticles(data);
         setLoading(false);

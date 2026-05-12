@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle, KeyRound, Package, RefreshCw, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DashboardSurfaceProfile } from "../lib/configSurfaceProfile";
+import { fetchLocalApi } from "../utils/localApiFetch";
 import { ConnectorBuilderPanel } from "./ConnectorBuilderPanel";
 
 type GatewayRequestFn = <T = unknown>(
@@ -261,7 +262,7 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
       try {
         setAosGoogleLoading(true);
         setMessage(null);
-        const response = await fetch("/api/settings/aos-google/preflight", {
+        const response = await fetchLocalApi("/api/settings/aos-google/preflight", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ installMissing, requireAuth: true }),
@@ -298,7 +299,7 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
       try {
         setAosGoogleLaunchAction(action);
         setMessage(null);
-        const response = await fetch("/api/settings/aos-google/launch", {
+        const response = await fetchLocalApi("/api/settings/aos-google/launch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action }),
