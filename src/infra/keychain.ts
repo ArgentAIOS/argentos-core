@@ -26,18 +26,96 @@ const KEY_FILE_NAME = ".master-key";
 const SERVICE_KEYS_FILE_NAME = "service-keys.json";
 const KEYCHAIN_AUTO_MIGRATE_ENV = "ARGENT_KEYCHAIN_MIGRATE_FILE_KEY";
 const KEYCHAIN_DISABLE_WRITE_ENV = "ARGENT_KEYCHAIN_DISABLE_WRITE";
+const KEYCHAIN_PATH_ENV = "ARGENT_KEYCHAIN_PATH";
+const DEFAULT_KEYCHAIN_REL_PATH = "Library/Keychains/login.keychain-db";
 const SECRET_PREFIX = "enc:v1:";
 
 let cachedKey: Buffer | null = null;
+let unpinnedKeychainWarned = false;
+
+/**
+ * Resolve the macOS keychain path to pin explicitly via `-k <path>`.
+ *
+ * Why pin? Under contention (many worker processes spawning at once),
+ * macOS's default-keychain resolution can intermittently fail and surface
+ * a blocking "Keychain Not Found" modal. Pinning the path bypasses that
+ * resolution and addresses GH #292.
+ *
+ * Resolution order:
+ *   1. `ARGENT_KEYCHAIN_PATH` env override (opt-out / custom installs).
+ *   2. `$HOME/Library/Keychains/login.keychain-db` (macOS default).
+ *
+ * Returns `null` when the resolved path doesn't exist — callers should
+ * fall back to the unpinned command instead of erroring.
+ */
+export function resolveKeychainPath(opts?: {
+  homeDir?: string;
+  env?: NodeJS.ProcessEnv;
+  fileExists?: (p: string) => boolean;
+}): string | null {
+  const env = opts?.env ?? process.env;
+  const homeDir = opts?.homeDir ?? env.HOME ?? "";
+  const exists = opts?.fileExists ?? ((p: string) => fs.existsSync(p));
+  const override = env[KEYCHAIN_PATH_ENV]?.trim();
+  const candidate =
+    override && override.length > 0
+      ? override
+      : homeDir
+        ? path.join(homeDir, DEFAULT_KEYCHAIN_REL_PATH)
+        : null;
+  if (!candidate) return null;
+  if (!exists(candidate)) return null;
+  return candidate;
+}
+
+/**
+ * Build the `security find-generic-password` invocation. Pure helper —
+ * exposed for tests so we can assert the `-k <path>` flag without
+ * shelling out.
+ */
+export function buildFindGenericPasswordCommand(
+  service: string,
+  account: string,
+  keychainPath: string | null,
+): string {
+  const pin = keychainPath ? ` -k "${keychainPath}"` : "";
+  return `security find-generic-password -s "${service}" -a "${account}" -w${pin}`;
+}
+
+/**
+ * Build the `security add-generic-password -U` invocation. Pure helper —
+ * exposed for tests so we can assert the `-k <path>` flag without
+ * shelling out.
+ */
+export function buildAddGenericPasswordCommand(
+  service: string,
+  account: string,
+  hex: string,
+  keychainPath: string | null,
+): string {
+  const pin = keychainPath ? ` -k "${keychainPath}"` : "";
+  return `security add-generic-password -U -s "${service}" -a "${account}" -w "${hex}"${pin}`;
+}
+
+function warnUnpinnedKeychainOnce(): void {
+  if (unpinnedKeychainWarned) return;
+  unpinnedKeychainWarned = true;
+  log.warn(
+    "macOS keychain path could not be resolved; falling back to default-keychain resolution. " +
+      "Set ARGENT_KEYCHAIN_PATH to an explicit *.keychain-db file to silence this warning.",
+  );
+}
 
 /**
  * Read the master key from macOS Keychain.
  */
 function readKeychainKey(): Buffer | null {
   if (process.platform !== "darwin") return null;
+  const pinnedPath = resolveKeychainPath();
+  if (!pinnedPath) warnUnpinnedKeychainOnce();
   try {
     const hex = execSync(
-      `security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${KEYCHAIN_ACCOUNT}" -w`,
+      buildFindGenericPasswordCommand(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, pinnedPath),
       { encoding: "utf8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] },
     ).trim();
     const buf = Buffer.from(hex, "hex");
@@ -59,12 +137,16 @@ function writeKeychainKey(key: Buffer): boolean {
     return false;
   }
   const hex = key.toString("hex");
+  const pinnedPath = resolveKeychainPath();
+  if (!pinnedPath) warnUnpinnedKeychainOnce();
   try {
     // -U updates in place when item exists; avoids delete+add double-prompt behavior.
-    execSync(
-      `security add-generic-password -U -s "${KEYCHAIN_SERVICE}" -a "${KEYCHAIN_ACCOUNT}" -w "${hex}"`,
-      { encoding: "utf8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] },
-    );
+    // -k pins the keychain path explicitly (see resolveKeychainPath / GH #292).
+    execSync(buildAddGenericPasswordCommand(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, hex, pinnedPath), {
+      encoding: "utf8",
+      timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     log.info("stored master key in macOS Keychain");
     return true;
   } catch (err) {
