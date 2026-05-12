@@ -433,12 +433,26 @@ export async function compactEmbeddedPiSessionDirect(
           model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: builtInTools,
-          customTools,
+          // GH #305 (typebox 0.34→1.x bridge): argent's ToolDefinition surfaces
+          // narrower generics than pi 0.70.2's `ToolDefinition[]`. Cast through
+          // `unknown` to clear the variance error on this branch; the proper
+          // fix lands with the typebox bridge.
+          customTools: customTools as unknown as NonNullable<
+            Parameters<typeof createAgentSession>[0]
+          >["customTools"],
           sessionManager,
           settingsManager,
         }));
       }
-      applySystemPromptOverrideToSession(session, systemPromptOverride());
+      // GH #306 (AgentSession identity drift): argent's AgentSession identity
+      // diverges from pi 0.70.2's at the type level even though the runtime
+      // shape matches. Cast through `unknown` to clear the parameter-identity
+      // error on this branch; the proper fix lands with the AgentSession
+      // structural bridge.
+      applySystemPromptOverrideToSession(
+        session as unknown as Parameters<typeof applySystemPromptOverrideToSession>[0],
+        systemPromptOverride(),
+      );
 
       try {
         const prior = await sanitizeSessionHistory({
@@ -516,7 +530,12 @@ export async function compactEmbeddedPiSessionDirect(
           result: {
             summary: result.summary,
             firstKeptEntryId: result.firstKeptEntryId,
-            tokensBefore,
+            // EmbeddedPiCompactResult.result.tokensBefore is `number`; the
+            // local `tokensBefore` can be `undefined` when both the SDK value
+            // and the local estimate are 0/unavailable. Coerce to 0 — that
+            // matches the SDK's "no usable count" sentinel and the downstream
+            // consumers' falsy-check semantics.
+            tokensBefore: tokensBefore ?? 0,
             tokensAfter,
             details: result.details,
           },
