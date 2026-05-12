@@ -649,7 +649,7 @@ function prepareTextForTTS(text: string, maxWords = 300): string {
     // Remove markdown table separator lines (|---|---|)
     .replace(/^\s*\|?[\s\-:|]+\|?\s*$/gm, "")
     // Remove file paths
-    .replace(/[\/\\][\w\-\.\/\\]+\.\w+/g, "")
+    .replace(/[/\\][\w\-./\\]+\.\w+/g, "")
     // Remove markdown headers
     .replace(/^#{1,6}\s+/gm, "")
     // Convert stage directions in italics to ElevenLabs v3 audio tags where supported.
@@ -712,8 +712,8 @@ function prepareTextForTTS(text: string, maxWords = 300): string {
     .replace(/[{}<>|\\@#$%^&*+=~]/g, " ")
     // Remove standalone brackets that aren't part of audio tags
     // v3 supports 1800+ free-form tags — preserve any [bracketed phrase] starting with a letter
-    .replace(/\[(?![a-zA-Z][a-zA-Z0-9 '',.\-]{0,60}\])/g, " ")
-    .replace(/(?<!\[[a-zA-Z][a-zA-Z0-9 '',.\-]{0,60})\]/g, " ")
+    .replace(/\[(?![a-zA-Z][a-zA-Z0-9 '',.-]{0,60}\])/g, " ")
+    .replace(/(?<!\[[a-zA-Z][a-zA-Z0-9 '',.-]{0,60})\]/g, " ")
     // Remove multiple spaces/newlines
     .replace(/\s+/g, " ")
     .trim();
@@ -3188,7 +3188,7 @@ function App() {
         .find((mediaPath) => /\.(mp3|wav|ogg|m4a|opus)$/i.test(mediaPath));
       const contentWithoutStructuredTts = stripTtsControlMarkers(withoutMood);
       const audioTagRe =
-        /\[(?!(?:TASK|TASK_START|TASK_DONE|TASK_ERROR|APP|ALERT|ALERT_WARN|ALERT_URGENT|MOOD|TTS|TTS_NOW):)[a-zA-Z][a-zA-Z0-9 '',.\-]{0,60}\](?!\()/g;
+        /\[(?!(?:TASK|TASK_START|TASK_DONE|TASK_ERROR|APP|ALERT|ALERT_WARN|ALERT_URGENT|MOOD|TTS|TTS_NOW):)[a-zA-Z][a-zA-Z0-9 '',.-]{0,60}\](?!\()/g;
       const cleanText = contentWithoutStructuredTts
         .replace(/\[TASK:[^\]]+\]/g, "")
         .replace(/\[TASK_START:[^\]]+\]/g, "")
@@ -3787,7 +3787,7 @@ function App() {
             // ElevenLabs v3 audio tags — kept in TTS text, stripped from display
             // v3 supports 1800+ free-form tags; match any [bracketed phrase] that looks like a tag
             const AUDIO_TAG_RE =
-              /\[(?!(?:TASK|TASK_START|TASK_DONE|TASK_ERROR|APP|ALERT|ALERT_WARN|ALERT_URGENT|MOOD|TTS|TTS_NOW):)[a-zA-Z][a-zA-Z0-9 '',.\-]{0,60}\](?!\()/g;
+              /\[(?!(?:TASK|TASK_START|TASK_DONE|TASK_ERROR|APP|ALERT|ALERT_WARN|ALERT_URGENT|MOOD|TTS|TTS_NOW):)[a-zA-Z][a-zA-Z0-9 '',.-]{0,60}\](?!\()/g;
 
             // Strip markers from display (system markers + audio tags)
             // Also strip bare mood direction lines (e.g., "soft, warm" on its own line)
@@ -4037,7 +4037,7 @@ function App() {
           }
 
           const AUDIO_TAG_RE_NS =
-            /\[(?!(?:TASK|TASK_START|TASK_DONE|TASK_ERROR|APP|ALERT|ALERT_WARN|ALERT_URGENT|MOOD|TTS|TTS_NOW):)[a-zA-Z][a-zA-Z0-9 '',.\-]{0,60}\](?!\()/g;
+            /\[(?!(?:TASK|TASK_START|TASK_DONE|TASK_ERROR|APP|ALERT|ALERT_WARN|ALERT_URGENT|MOOD|TTS|TTS_NOW):)[a-zA-Z][a-zA-Z0-9 '',.-]{0,60}\](?!\()/g;
 
           const cleanResponse = visibleText
             .replace(/^[a-zA-Z][a-zA-Z, ]{2,50}$/gm, (line) => {

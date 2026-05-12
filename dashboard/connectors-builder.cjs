@@ -129,7 +129,7 @@ function normalizeActionRows(actions) {
         .trim()
         .toLowerCase();
       if (!MODE_ORDER.includes(requiredMode)) {
-        throw new Error(`Invalid mode \"${requiredMode}\" for ${resource}.${action}.`);
+        throw new Error(`Invalid mode "${requiredMode}" for ${resource}.${action}.`);
       }
       const summary = String(entry.summary || "").trim() || `${action} ${resource}`;
       return {
@@ -492,7 +492,7 @@ function renderTests(params) {
     "def test_capabilities_json():",
     '    result = CliRunner().invoke(cli, ["--json", "capabilities"])',
     "    assert result.exit_code == 0",
-    `    assert '\"tool\": \"${params.toolName}\"' in result.output`,
+    `    assert '"tool": "${params.toolName}"' in result.output`,
     "",
     "",
     "def test_permission_denied_for_write_path_in_readonly():",

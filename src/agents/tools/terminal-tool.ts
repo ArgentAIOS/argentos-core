@@ -185,7 +185,7 @@ async function handleRun(params: Record<string, unknown>) {
     if (elapsed > 500) {
       const recentOutput = session.outputBuffer.slice(-200);
       // Common shell prompt endings: $, %, >, #, ❯, ›
-      if (/[\$%>#❯›]\s*$/.test(recentOutput)) {
+      if (/[$%>#❯›]\s*$/.test(recentOutput)) {
         settled = true;
         break;
       }

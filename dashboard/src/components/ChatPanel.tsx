@@ -316,7 +316,7 @@ function DeferredAudio({
 
 // Detect absolute file/folder paths
 const PATH_REGEX =
-  /^\/(?:Users|home|tmp|var|opt|etc|usr|Volumes|Library|System|private|Applications)[\/][^\s]*/;
+  /^\/(?:Users|home|tmp|var|opt|etc|usr|Volumes|Library|System|private|Applications)[/][^\s]*/;
 
 function isFilePath(text: string): boolean {
   return PATH_REGEX.test(text.trim());
