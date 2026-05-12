@@ -772,7 +772,10 @@ export async function runEmbeddedPiAgent(
       if (lockedProfileId && !profileOrder.includes(lockedProfileId)) {
         throw new Error(`Auth profile "${lockedProfileId}" is not configured for ${provider}.`);
       }
-      const profileCandidates = lockedProfileId
+      // Explicit element type: without it TS infers `string[] | undefined[]`,
+      // whose mutating methods (`push`) reject everything because the parameter
+      // type collapses to `string & undefined = never` (see fallback push below).
+      const profileCandidates: (string | undefined)[] = lockedProfileId
         ? [lockedProfileId]
         : profileOrder.length > 0
           ? profileOrder
@@ -782,7 +785,11 @@ export async function runEmbeddedPiAgent(
       const initialThinkLevel = effectiveThinkingLevel ?? "off";
       let thinkLevel = initialThinkLevel;
       const attemptedThinking = new Set<ThinkLevel>();
-      let apiKeyInfo: ApiKeyInfo | null = null;
+      // TS 5.9 narrows `let x: T | null = null` to the literal `null` and
+      // does not widen it back through closure reassignments (see
+      // `applyApiKeyInfo` below). Cast the initializer to the declared union
+      // so downstream `apiKeyInfo?.apiKey` checks don't collapse to `never`.
+      let apiKeyInfo: ApiKeyInfo | null = null as ApiKeyInfo | null;
       let lastProfileId: string | undefined;
 
       const resolveAuthProfileFailoverReason = (params: {
@@ -826,6 +833,12 @@ export async function runEmbeddedPiAgent(
       };
 
       const resolveApiKeyForCandidate = async (candidate?: string) => {
+        // `model` is `let`-captured and TS widens it back to `Model<Api> | undefined`
+        // inside closures even though it's guarded by the `if (!model) throw` above.
+        // Re-narrow here so the captured reference reflects runtime invariants.
+        if (!model) {
+          throw new Error(`Model resolution lost for ${provider}/${modelId}.`);
+        }
         return getApiKeyForModel({
           model,
           cfg: params.config,
@@ -836,26 +849,31 @@ export async function runEmbeddedPiAgent(
       };
 
       const applyApiKeyInfo = async (candidate?: string): Promise<void> => {
+        // Re-narrow `model` inside the closure (see resolveApiKeyForCandidate note).
+        if (!model) {
+          throw new Error(`Model resolution lost for ${provider}/${modelId}.`);
+        }
+        const currentModel = model;
         apiKeyInfo = await resolveApiKeyForCandidate(candidate);
         const resolvedProfileId = apiKeyInfo.profileId ?? candidate;
         if (!apiKeyInfo.apiKey) {
           if (apiKeyInfo.mode !== "aws-sdk") {
             throw new Error(
-              `No API key resolved for provider "${model.provider}" (auth mode: ${apiKeyInfo.mode}).`,
+              `No API key resolved for provider "${currentModel.provider}" (auth mode: ${apiKeyInfo.mode}).`,
             );
           }
           lastProfileId = resolvedProfileId;
           return;
         }
-        if (model.provider === "github-copilot") {
+        if (currentModel.provider === "github-copilot") {
           const { resolveCopilotApiToken } =
             await import("../../providers/github-copilot-token.js");
           const copilotToken = await resolveCopilotApiToken({
             githubToken: apiKeyInfo.apiKey,
           });
-          authStorage.setRuntimeApiKey(model.provider, copilotToken.token);
+          authStorage.setRuntimeApiKey(currentModel.provider, copilotToken.token);
         } else {
-          authStorage.setRuntimeApiKey(model.provider, apiKeyInfo.apiKey);
+          authStorage.setRuntimeApiKey(currentModel.provider, apiKeyInfo.apiKey);
         }
         lastProfileId = apiKeyInfo.profileId;
       };
@@ -1726,7 +1744,11 @@ export async function runEmbeddedPiAgent(
                 if (!block || typeof block !== "object") {
                   continue;
                 }
-                const record = block as Record<string, unknown>;
+                // PR #275 widened the AgentMessage union (forwarding from
+                // pi-agent-core), so `block` is now typed as a non-overlapping
+                // tagged union. Route through `unknown` per TS's hint to make
+                // the structural cast explicit.
+                const record = block as unknown as Record<string, unknown>;
                 const directText =
                   (typeof record.text === "string" ? record.text : "") ||
                   (typeof record.output_text === "string" ? record.output_text : "") ||
