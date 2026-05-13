@@ -42,10 +42,6 @@ export {
    */
   calculateCost,
   /**
-   * @deprecated Prefer Argent-native `argentSupportsXhigh` from this module.
-   */
-  supportsXhigh,
-  /**
    * @deprecated Prefer Argent-native `argentModelsAreEqual` from this module.
    */
   modelsAreEqual,
@@ -82,6 +78,13 @@ export {
    */
   createAssistantMessageEventStream,
 } from "@mariozechner/pi-ai";
+/**
+ * Pi-compat `supportsXhigh` — sourced through pi-bridge (GH #306) so the
+ * underlying pi 0.73+ removal of the upstream export doesn't break call sites.
+ *
+ * @deprecated Prefer Argent-native `argentSupportsXhigh` from this module.
+ */
+export { supportsXhigh } from "../argent-agent/pi-bridge/index.js";
 export type {
   /**
    * @deprecated Prefer Argent-native aliased types where available.

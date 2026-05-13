@@ -59,19 +59,19 @@ When you need a pi symbol that isn't already exposed:
 ## Currently exported
 
 - **Types:** `AgentMessage`, `StreamFn`, `CustomAgentMessages` (proved by
-  PR #275 — see `./types.ts`).
+  PR #275 — see `./types.ts`); `Transport` (#306 — see `./transport.ts`).
 - **Values + factories:** `AuthStorage` + `createAuthStorage(path)`,
-  `ModelRegistry` + `createModelRegistry(authStorage, path)`.
+  `ModelRegistry` + `createModelRegistry(authStorage, path)`,
+  `supportsXhigh(model)` wrapper (#306 — see `./supports-xhigh.ts`).
+- **Mappers:** `mapSessionCompactionResult` (#303), `bridgeToolParameters`
+  - `Type`, `TSchema`, `Static`, `Tool`, `Context` typebox identities (#305).
 
 ## What's not here yet (tracked follow-ups under #286)
 
 - `AgentSession` structural type for call sites that cast `as AgentSession`
   (4+ sites today — affected by pi 0.73's 78-new-private-members drift).
 - `Agent.replaceMessages` callers (4 sites; method removed in pi 0.73+).
-- `SessionCompactionResult` shape mapper.
 - `BashExecutionMessage.content` callers (7 sites; field removed).
-- `Tool` / `Context` typebox 0.34 → 1.x bridge (~30 cascading errors).
-- `supportsXhigh` helper (re-export removed in pi 0.73+).
 
 These are the clusters that block #182. Each will become a sub-issue under
 #286 and migrate to this module as the bridge expands.
