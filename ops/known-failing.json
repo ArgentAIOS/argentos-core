@@ -1,6 +1,6 @@
 {
-  "snapshotAt": "2026-05-13T12:47:51.797Z",
-  "totalErrors": 225,
+  "snapshotAt": "2026-05-13T12:55:27.007Z",
+  "totalErrors": 218,
   "errors": [
     {
       "file": "src/agents/compaction.ts",
@@ -25,48 +25,6 @@
       "line": 180,
       "code": "TS2677",
       "message": "A type predicate's type must be assignable to its parameter's type."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 234,
-      "code": "TS2532",
-      "message": "Object is possibly 'undefined'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1182,
-      "code": "TS2352",
-      "message": "Conversion of type 'AuthStorage' to type 'AuthStorageWithRuntimeOverrides' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1192,
-      "code": "TS2322",
-      "message": "Type 'ModelRegistry' is not assignable to type 'OpenAICodexModelRegistryLike'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1335,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'AgentSessionAgentLike'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1554,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'AgentSessionAgentLike'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1565,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'AgentSessionAgentLike'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1600,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'AgentSessionAgentLike'."
     },
     {
       "file": "src/agents/pi-embedded-runner/run/message-sanitizer.ts",

@@ -227,7 +227,7 @@ function messageHasInlineImages(message: unknown): boolean {
       typeof block === "object" &&
       (block as { type?: unknown }).type === "image" &&
       typeof (block as { data?: unknown }).data === "string" &&
-      (block as { data?: string }).data.length > 0,
+      (block as { data: string }).data.length > 0,
   );
 }
 
@@ -1175,7 +1175,12 @@ export async function runEmbeddedAttempt(
       // but it needs apiKey in options since getEnvApiKey has no mapping for openai-codex.
       // Wrap streamSimple to inject the OAuth JWT from authStorage.runtimeOverrides.
       const providerApiKey = await resolveRuntimeProviderApiKey(
-        params.authStorage as AuthStorageWithRuntimeOverrides,
+        // pi's `AuthStorage` exposes a private constructor and a stricter
+        // `getApiKey` shape than the local `AuthStorageWithRuntimeOverrides`
+        // ABI argent's runtime helpers expect (the structural type tolerates
+        // missing fields and the runtime-override Map). Forward through
+        // `unknown` so the structural mismatch lives in this one place.
+        params.authStorage as unknown as AuthStorageWithRuntimeOverrides,
         params.provider,
       );
       if (params.provider === "openai-codex") {
@@ -1185,7 +1190,12 @@ export async function runEmbeddedAttempt(
             const effectiveModelId = resolveOpenAICodexVisionModelId({
               model,
               context,
-              modelRegistry: params.modelRegistry,
+              // pi's `ModelRegistry` has more methods than the local
+              // `OpenAICodexModelRegistryLike` ABI declares (`find`/`getAll`);
+              // forward through the structural shape so the registry-shape
+              // drift lives in this one cast rather than at the helper's
+              // call signature.
+              modelRegistry: params.modelRegistry as unknown as OpenAICodexModelRegistryLike,
             });
             const effectiveModel =
               effectiveModelId && effectiveModelId !== model.id
@@ -1328,7 +1338,7 @@ export async function runEmbeddedAttempt(
         });
 
         if (visionReady.length > 0) {
-          activeSession.agent.replaceMessages(visionReady);
+          activeSession.agent.replaceMessages?.(visionReady);
         }
       } catch (err) {
         sessionManager.flushPendingToolResults?.();
@@ -1547,7 +1557,7 @@ export async function runEmbeddedAttempt(
             sessionManager.resetLeaf();
           }
           const sessionContext = sessionManager.buildSessionContext();
-          activeSession.agent.replaceMessages(sessionContext.messages);
+          activeSession.agent.replaceMessages?.(sessionContext.messages);
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +
               `runId=${params.runId} sessionId=${params.sessionId}`,
@@ -1558,7 +1568,7 @@ export async function runEmbeddedAttempt(
         try {
           const sanitizedHistory = sanitizeMessagesForModelAdapter(activeSession.messages);
           if (sanitizedHistory.changed) {
-            activeSession.agent.replaceMessages(sanitizedHistory.messages);
+            activeSession.agent.replaceMessages?.(sanitizedHistory.messages);
             const onlySummaryNormalization = sanitizedHistory.repairs.every((repair) =>
               repair.startsWith("normalized summary message role: "),
             );
@@ -1593,7 +1603,7 @@ export async function runEmbeddedAttempt(
           );
           if (didMutate) {
             // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
-            activeSession.agent.replaceMessages(activeSession.messages);
+            activeSession.agent.replaceMessages?.(activeSession.messages);
           }
 
           cacheTrace?.recordStage("prompt:images", {

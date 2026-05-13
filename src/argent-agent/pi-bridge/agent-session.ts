@@ -51,7 +51,15 @@ import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
  * `agent-core/coding.ts` rebinds `createAgentSession` to), so the field is
  * always present at runtime.
  *
- * **Intentionally omitted:** `replaceMessages`. Tracked under GH #302.
+ * `replaceMessages` is declared OPTIONAL so call sites work whether they hit
+ * argent's `AgentImpl` (where it is always present) or a pi-class instance
+ * (where it is absent — pi 0.73+ removed the method entirely; pi 0.70.2's
+ * public `Agent` shape never exposed it either). Call sites use the
+ * `agent.replaceMessages?.(msgs)` form: a no-op against pi's class, the real
+ * history replacement against argent's runtime. This shape is
+ * forward-compatible with GH #302's eventual helper-based migration — a
+ * future `replaceAgentMessages(agent, msgs)` bridge can drop in without
+ * disturbing this interface.
  */
 export interface AgentSessionAgentLike {
   /**
@@ -63,6 +71,13 @@ export interface AgentSessionAgentLike {
 
   /** Replace the system prompt entirely (argent-shaped — see header). */
   setSystemPrompt(prompt: string): void;
+
+  /**
+   * Replace the message history (optional — see header). Present on argent's
+   * `AgentImpl`; absent on pi's `Agent` class (removed in 0.73+; never
+   * publicly exposed on 0.70.2). Call sites MUST invoke via `?.()`.
+   */
+  replaceMessages?(messages: AgentMessage[]): void;
 }
 
 /**
