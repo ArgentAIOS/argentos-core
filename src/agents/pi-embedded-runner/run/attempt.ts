@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import type { Api, ImageContent, Model } from "../../../agent-core/ai.js";
-import type { AgentMessage } from "../../../agent-core/core.js";
-import type { Transport } from "../../../argent-agent/pi-bridge/index.js";
-import type { AgentSessionLike } from "../../../argent-agent/pi-bridge/index.js";
+import type {
+  AgentMessage,
+  AgentSessionLike,
+  Transport,
+} from "../../../argent-agent/pi-bridge/index.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
   streamSimple,

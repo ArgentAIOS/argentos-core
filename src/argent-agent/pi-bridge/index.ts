@@ -126,3 +126,18 @@ export { supportsXhigh } from "./supports-xhigh.js";
 // through the bridge instead of pi directly.
 //
 export type { Transport } from "./transport.js";
+
+// ---------------------------------------------------------------------------
+// BASH EXECUTION MESSAGE CONTENT ACCESSOR (GH #304)
+// ---------------------------------------------------------------------------
+//
+// pi's `BashExecutionMessage` textual content moved from `.content` (pre-0.70)
+// to `.output` (0.70.2+) and is the BashExecutionMessage half of #182's
+// catalogue of breaking shape drift. `getBashExecutionContent(msg)` is the
+// single chokepoint argent uses so future pi renames cost one file, not seven
+// call sites. The matching `AgentMessage[]` identity drift symptom that #182
+// catalogues for attempt.ts is absorbed by routing `AgentMessage` through this
+// bridge (forwarded from `./types.js` above).
+//
+export type { BashExecutionMessage } from "./bash-execution.js";
+export { getBashExecutionContent } from "./bash-execution.js";
