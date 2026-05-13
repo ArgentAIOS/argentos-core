@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import type { Api, ImageContent, Model } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
+import type { Transport } from "../../../argent-agent/pi-bridge/index.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
   streamSimple,
@@ -236,7 +237,7 @@ function messageHasInlineImages(message: unknown): boolean {
 
 export function resolveOpenAICodexTransport(
   context: { messages?: unknown[] } | undefined,
-): "sse" | "websocket" {
+): Transport {
   return context?.messages?.some((message) => messageHasInlineImages(message))
     ? "sse"
     : "websocket";

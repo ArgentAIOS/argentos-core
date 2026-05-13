@@ -76,3 +76,25 @@ export {
 //
 export type { TSchema, Static, Tool, Context } from "./tool.js";
 export { Type, bridgeToolParameters } from "./tool.js";
+
+// ---------------------------------------------------------------------------
+// SUPPORTS-XHIGH CAPABILITY HELPER (GH #306)
+// ---------------------------------------------------------------------------
+//
+// Pi 0.73+ removes the `supportsXhigh` named export and replaces it with
+// `getSupportedThinkingLevels(model).includes("xhigh")`. Argent re-implements
+// the capability check locally so call sites stay stable across that bump.
+// See `./supports-xhigh.ts` header for the full rationale.
+//
+export { supportsXhigh } from "./supports-xhigh.js";
+
+// ---------------------------------------------------------------------------
+// TRANSPORT TYPE ALIAS (GH #306)
+// ---------------------------------------------------------------------------
+//
+// Pi 0.73+ tightened `Transport` to `"sse" | "websocket" | "auto"`, dropping
+// legacy `"websocket-cached"`. Argent already does not reference the removed
+// variant; this alias is exposed so future call sites import `Transport`
+// through the bridge instead of pi directly.
+//
+export type { Transport } from "./transport.js";
