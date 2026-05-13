@@ -1233,3 +1233,64 @@ export function validateWorkflow(
 export function hasBlockingWorkflowIssues(issues: WorkflowIssue[]): boolean {
   return issues.some((issue) => issue.severity === "error");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Promote-to-live safety re-validation (argent-core #350, 2026-05-13 audit)
+//
+// `normalizeWorkflow()` runs `validateWorkflow()` in "live" mode only when the
+// incoming save is already tagged `deploymentStage === "live"`. That leaves a
+// gap: an operator can persist an unsafe draft (e.g. a `send_message` action
+// with no upstream approval gate), then promote that workflow from a non-live
+// stage to "live" without re-validation. The helper below closes that gap by
+// re-validating at live standards whenever the save path is transitioning
+// from a non-live stage to live, regardless of the workflow's stored stage.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PromoteToLiveSafetyContext {
+  /** Stage the workflow currently has in storage. `null`/`undefined` is treated as a brand-new workflow. */
+  previousStage?: WorkflowDefinition["deploymentStage"] | null;
+  /** Stage the save is attempting to set. Falls back to `workflow.deploymentStage`. */
+  nextStage?: WorkflowDefinition["deploymentStage"] | null;
+}
+
+export interface PromoteToLiveSafetyResult {
+  /** True when the workflow is safe to persist at the requested stage. */
+  ok: boolean;
+  /** True when this save is promoting from a non-live stage to live. */
+  promoting: boolean;
+  /** All issues produced by `validateWorkflow(workflow, "live")`. Empty when not promoting. */
+  liveIssues: WorkflowIssue[];
+  /** Subset of `liveIssues` with `severity === "error"` — these block the promotion. */
+  blockingIssues: WorkflowIssue[];
+}
+
+/**
+ * Decide whether a save can promote a workflow to the "live" deployment stage.
+ *
+ * Returns `{ ok: true, promoting: false, ... }` when the save is not a
+ * draft→live transition (covers same-stage saves and draft→draft saves —
+ * existing behaviour is preserved untouched).
+ *
+ * Returns `{ ok, promoting: true, blockingIssues, liveIssues }` when the save
+ * IS a promote-to-live transition. Callers MUST reject the save when
+ * `ok` is false and surface `blockingIssues` so the dashboard can render them.
+ */
+export function evaluatePromoteToLiveSafety(
+  workflow: WorkflowDefinition,
+  ctx: PromoteToLiveSafetyContext = {},
+): PromoteToLiveSafetyResult {
+  const previousStage = ctx.previousStage ?? null;
+  const nextStage = ctx.nextStage ?? workflow.deploymentStage ?? null;
+  const promoting = nextStage === "live" && previousStage !== "live";
+  if (!promoting) {
+    return { ok: true, promoting: false, liveIssues: [], blockingIssues: [] };
+  }
+  const liveIssues = validateWorkflow(workflow, "live");
+  const blockingIssues = liveIssues.filter((issue) => issue.severity === "error");
+  return {
+    ok: blockingIssues.length === 0,
+    promoting: true,
+    liveIssues,
+    blockingIssues,
+  };
+}
