@@ -22,7 +22,7 @@
  * `@sinclair/typebox`. The adapter pattern is the cheapest, safest fix:
  *
  *   - This module re-exports `TSchema`, `Static`, `Type`, `Tool`, `Context`
- *     from `@mariozechner/pi-ai` (which itself forwards them from `typebox` 1.x).
+ *     from `@earendil-works/pi-ai` (which itself forwards them from `typebox` 1.x).
  *     Code that constructs / hands a value to pi imports from here so the
  *     identity is unified.
  *   - `bridgeToolParameters()` is the boundary cast: it accepts argent's
@@ -36,7 +36,7 @@
  * @module argent-agent/pi-bridge/tool
  */
 
-import type { TSchema as PiTSchema } from "@mariozechner/pi-ai";
+import type { TSchema as PiTSchema } from "@earendil-works/pi-ai";
 
 // ---------------------------------------------------------------------------
 // CANONICAL TYPEBOX IDENTITY (pi's 1.x — forwarded from pi-ai)
@@ -46,8 +46,8 @@ import type { TSchema as PiTSchema } from "@mariozechner/pi-ai";
 // TypeScript sees a single unified identity. Importing `TSchema` directly
 // from `@sinclair/typebox` reintroduces the 0.34/1.x split.
 //
-export type { TSchema, Static } from "@mariozechner/pi-ai";
-export { Type } from "@mariozechner/pi-ai";
+export type { TSchema, Static } from "@earendil-works/pi-ai";
+export { Type } from "@earendil-works/pi-ai";
 
 // ---------------------------------------------------------------------------
 // CANONICAL TOOL / CONTEXT TYPES (pi's identities — forwarded from pi-ai)
@@ -71,7 +71,7 @@ export { Type } from "@mariozechner/pi-ai";
 // here gives bridge consumers the *pi* identity for the few sites that hand
 // values to pi (`createAgentSession`, `streamSimple` etc.).
 //
-export type { Tool, Context } from "@mariozechner/pi-ai";
+export type { Tool, Context } from "@earendil-works/pi-ai";
 
 /**
  * Cast an argent (`@sinclair/typebox` 0.34) schema to pi's (`typebox` 1.x)

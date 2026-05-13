@@ -10404,7 +10404,7 @@ async function loadPiBackedModelCatalog() {
   piModelCatalogLoadedAt = Date.now();
   piModelCatalogPromise = (async () => {
     try {
-      const { AuthStorage, ModelRegistry } = await import("@mariozechner/pi-coding-agent");
+      const { AuthStorage, ModelRegistry } = await import("@earendil-works/pi-coding-agent");
       const agentDir = resolveArgentAgentDirForModelCatalog();
       const authStorage = new AuthStorage(path.join(agentDir, "auth.json"));
       const registry = new ModelRegistry(authStorage, path.join(agentDir, "models.json"));

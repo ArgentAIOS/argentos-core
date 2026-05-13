@@ -10,7 +10,7 @@
  * @module argent-agent/pi-bridge/model-registry
  */
 
-import { ModelRegistry as PiModelRegistry } from "@mariozechner/pi-coding-agent";
+import { ModelRegistry as PiModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { AuthStorage } from "./auth-storage.js";
 
 /**

@@ -1,10 +1,10 @@
 import type {
   ProxyAssistantMessageEvent as PiProxyEvent,
   ProxyStreamOptions as PiProxyOpts,
-} from "@mariozechner/pi-agent-core";
-import { streamProxy as piStreamProxy } from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-agent-core";
+import { streamProxy as piStreamProxy } from "@earendil-works/pi-agent-core";
 // Direct Pi implementations for comparison
-import { estimateTokens as piEstimateTokens } from "@mariozechner/pi-coding-agent";
+import { estimateTokens as piEstimateTokens } from "@earendil-works/pi-coding-agent";
 /**
  * Seam Swap Parity Tests
  *

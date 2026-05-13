@@ -13,4 +13,7 @@
 
 // Re-export from Pi until fully Argent-native implementations exist.
 // This isolates the pi-ai deep import to a single file in argent-ai.
-export { convertMessages, convertTools } from "@mariozechner/pi-ai/dist/providers/google-shared.js";
+export {
+  convertMessages,
+  convertTools,
+} from "@earendil-works/pi-ai/dist/providers/google-shared.js";

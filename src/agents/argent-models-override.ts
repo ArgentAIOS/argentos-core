@@ -5,7 +5,7 @@
  * `ensureArgentModelsJson()` pipeline so the entries land in the per-agent
  * `models.json` that pi-coding-agent's `ModelRegistry` consumes.
  *
- * TEMPORARY: drops when pi-ai (currently `@mariozechner/pi-ai 0.70.2`) ships
+ * TEMPORARY: drops when pi-ai (currently `@earendil-works/pi-ai 0.70.2`) ships
  * `gpt-5.5-chat-latest` natively. Tracking via earendil-works/pi#4275 + the
  * matching upstream PR. See the bump-backlog GH issue for the full list of
  * breaking-type-changes that block the upgrade today.

@@ -39,13 +39,13 @@
  * originals as separate identities even when structurally equivalent, which
  * surfaces as ~19 spurious `T is not assignable to T` errors. See GH #257.
  */
-export type { AgentMessage } from "@mariozechner/pi-agent-core";
+export type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 /**
  * `StreamFn`: stream function signature shared with pi-agent-core's
  * `AgentSessionAgent["streamFn"]`. Forwarded to keep the identity unified.
  */
-export type { StreamFn } from "@mariozechner/pi-agent-core";
+export type { StreamFn } from "@earendil-works/pi-agent-core";
 
 /**
  * `CustomAgentMessages`: extensible interface for custom app messages.
@@ -54,11 +54,11 @@ export type { StreamFn } from "@mariozechner/pi-agent-core";
  *
  * @example
  * ```typescript
- * declare module "@mariozechner/pi-agent-core" {
+ * declare module "@earendil-works/pi-agent-core" {
  *   interface CustomAgentMessages {
  *     artifact: ArtifactMessage;
  *   }
  * }
  * ```
  */
-export type { CustomAgentMessages } from "@mariozechner/pi-agent-core";
+export type { CustomAgentMessages } from "@earendil-works/pi-agent-core";

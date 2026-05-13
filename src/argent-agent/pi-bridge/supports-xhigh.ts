@@ -5,7 +5,7 @@
  *
  * # Why a wrapper, not a re-export
  *
- * Pi 0.73+ removes the `supportsXhigh` named export from `@mariozechner/pi-ai`
+ * Pi 0.73+ removes the `supportsXhigh` named export from `@earendil-works/pi-ai`
  * (and replaces it, internally, with `getSupportedThinkingLevels(model).includes("xhigh")`).
  * Earlier pi releases — including the 0.70.2 argent currently pins — still export
  * `supportsXhigh` as a top-level function.
@@ -24,7 +24,7 @@
  * @module argent-agent/pi-bridge/supports-xhigh
  */
 
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 /**
  * Check if a model supports the `xhigh` thinking level.

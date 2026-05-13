@@ -522,7 +522,7 @@
       "file": "src/argent-ai/google-shared.ts",
       "line": 16,
       "code": "TS2307",
-      "message": "Cannot find module '@mariozechner/pi-ai/dist/providers/google-shared.js' or its corresponding type declarations."
+      "message": "Cannot find module '@earendil-works/pi-ai/dist/providers/google-shared.js' or its corresponding type declarations."
     },
     {
       "file": "src/browser/control-auth.ts",

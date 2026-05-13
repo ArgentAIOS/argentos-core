@@ -24,7 +24,7 @@
  * @module argent-agent/pi-bridge/session-compaction
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 /**
  * Structural view of pi's `CompactionResult`. Both `firstKeptEntryId` and

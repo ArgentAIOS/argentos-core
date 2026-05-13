@@ -41,7 +41,7 @@
  * @module argent-agent/pi-bridge/agent-session
  */
 
-import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
+import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 
 /**
  * Pi-shaped agent state slice argent's bridge writes to.
@@ -113,7 +113,7 @@ export function replaceAgentMessages(agent: AgentSessionAgentLike, messages: Age
  * Options for `AgentSessionLike.prompt(...)`. Structural — does not depend on
  * pi-ai's `ImageContent` identity, so the type-check survives pi-ai version
  * drift. Argent passes `ImageContent[]` from its own `argent-ai/types`; pi's
- * class accepts `ImageContent[]` from `@mariozechner/pi-ai`. Both flow into
+ * class accepts `ImageContent[]` from `@earendil-works/pi-ai`. Both flow into
  * the structural `unknown[]` slot without an `unknown` cast at the call site.
  */
 export interface AgentSessionPromptOptionsLike {

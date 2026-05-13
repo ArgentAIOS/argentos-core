@@ -12,8 +12,8 @@ typebox 0.34 → 1.x switch, `BashExecutionMessage.content` removal, etc. —
 breaks every cast in argent.
 
 `pi-bridge` is the **single import point** for everything argent uses from
-`@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent`, and
-`@mariozechner/pi-agent-core`. When pi changes, only this module needs to
+`@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and
+`@earendil-works/pi-agent-core`. When pi changes, only this module needs to
 adapt — not 30+ call sites.
 
 PR #275 (pi-types unify) was a partial start: forwarded `AgentMessage`,
@@ -25,8 +25,8 @@ pattern works. The bridge generalizes it across the rest of the surface.
 
 **Hard rule for new code:**
 
-> Any code that needs a type or value from `@mariozechner/pi-ai`,
-> `@mariozechner/pi-coding-agent`, or `@mariozechner/pi-agent-core` MUST
+> Any code that needs a type or value from `@earendil-works/pi-ai`,
+> `@earendil-works/pi-coding-agent`, or `@earendil-works/pi-agent-core` MUST
 > import it from `argent-agent/pi-bridge`. If the bridge doesn't expose what
 > you need, add the re-export here (see below) — don't reach into pi directly.
 
@@ -47,7 +47,7 @@ When you need a pi symbol that isn't already exposed:
    Use a sibling module (`./auth-storage.ts`, etc.) when the export needs a
    value wrapper, a factory helper, or any drift-absorbing logic.
 2. **Re-export, don't re-define.** Prefer `export type { Foo } from
-"@mariozechner/pi-agent-core"` over copying the type. Local copies drift.
+"@earendil-works/pi-agent-core"` over copying the type. Local copies drift.
 3. **Wrap factories, not constructors.** If pi exposes a public constructor
    today that may go private tomorrow, expose a `createFoo(...)` helper here
    so call sites are forward-compatible.

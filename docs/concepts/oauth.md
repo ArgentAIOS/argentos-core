@@ -71,7 +71,7 @@ argent models status
 
 ## OAuth exchange (how login works)
 
-ArgentOS’s interactive login flows are implemented in `@mariozechner/pi-ai` and wired into the wizards/commands.
+ArgentOS’s interactive login flows are implemented in `@earendil-works/pi-ai` and wired into the wizards/commands.
 
 ### Anthropic (Claude Pro/Max) setup-token
 

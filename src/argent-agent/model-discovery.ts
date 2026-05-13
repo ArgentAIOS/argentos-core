@@ -9,7 +9,7 @@
  * and agent-core/coding barrel to avoid ESM chunk cycles.
  *
  * MIGRATION (#286): this file used to import directly from
- * `@mariozechner/pi-coding-agent`. As of the pi-bridge foundation
+ * `@earendil-works/pi-coding-agent`. As of the pi-bridge foundation
  * (codex/fix-286-pi-bridge), the symbols are sourced from
  * `./pi-bridge/index.js` — the single import point for pi-coding-agent
  * shapes. The bridge is forward-compatible with pi 0.73+'s
