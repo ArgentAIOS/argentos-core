@@ -34,6 +34,7 @@ import {
   ArgentSettingsManager,
   createArgentAgentSession,
 } from "../../../argent-agent/index.js";
+import { replaceAgentMessages } from "../../../argent-agent/pi-bridge/index.js";
 import { runWithPromptBudget } from "../../../argent-agent/prompt-budget.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
@@ -1338,7 +1339,7 @@ export async function runEmbeddedAttempt(
         });
 
         if (visionReady.length > 0) {
-          activeSession.agent.replaceMessages?.(visionReady);
+          replaceAgentMessages(activeSession.agent, visionReady);
         }
       } catch (err) {
         sessionManager.flushPendingToolResults?.();
@@ -1557,7 +1558,7 @@ export async function runEmbeddedAttempt(
             sessionManager.resetLeaf();
           }
           const sessionContext = sessionManager.buildSessionContext();
-          activeSession.agent.replaceMessages?.(sessionContext.messages);
+          replaceAgentMessages(activeSession.agent, sessionContext.messages);
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +
               `runId=${params.runId} sessionId=${params.sessionId}`,
@@ -1568,7 +1569,7 @@ export async function runEmbeddedAttempt(
         try {
           const sanitizedHistory = sanitizeMessagesForModelAdapter(activeSession.messages);
           if (sanitizedHistory.changed) {
-            activeSession.agent.replaceMessages?.(sanitizedHistory.messages);
+            replaceAgentMessages(activeSession.agent, sanitizedHistory.messages);
             const onlySummaryNormalization = sanitizedHistory.repairs.every((repair) =>
               repair.startsWith("normalized summary message role: "),
             );
@@ -1603,7 +1604,7 @@ export async function runEmbeddedAttempt(
           );
           if (didMutate) {
             // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
-            activeSession.agent.replaceMessages?.(activeSession.messages);
+            replaceAgentMessages(activeSession.agent, activeSession.messages);
           }
 
           cacheTrace?.recordStage("prompt:images", {

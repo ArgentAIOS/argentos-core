@@ -23,12 +23,14 @@
  *
  * Scope guardrails
  * ----------------
- * `AgentSessionAgentLike` intentionally **omits** `Agent.replaceMessages` —
- * that method was removed from pi's public `Agent` surface and is the topic
- * of GH #302's separate bridge work. Sites that mutate
- * `.agent.replaceMessages(...)` continue to type-check against pi's class
- * shape until #302 lands and exposes its own helper. The matching
- * `BashExecutionMessage.content` cluster lives behind GH #304.
+ * History replacement was previously `Agent.replaceMessages(msgs)` — a method
+ * pi 0.73+ removed and pi 0.70.2's public `Agent` shape never exposed. GH
+ * #302 migrated this surface to pi's new API: `agent.state.messages = msgs`
+ * (the setter copies the top-level array). The bridge models pi's
+ * `AgentState` slice as `AgentSessionAgentStateLike` and exposes a
+ * `replaceAgentMessages(agent, msgs)` helper so call sites do not need to
+ * touch the raw setter. The matching `BashExecutionMessage.content` cluster
+ * lives behind GH #304.
  *
  * Migration policy (matches the rest of pi-bridge)
  * ------------------------------------------------
@@ -42,6 +44,19 @@
 import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
 
 /**
+ * Pi-shaped agent state slice argent's bridge writes to.
+ *
+ * Models the public slice of pi 0.70.2's `AgentState` that argent depends
+ * on. The `messages` setter copies the supplied array (matches pi's class
+ * accessor contract). Both pi's `Agent` class and argent's `AgentImpl`
+ * satisfy this shape — see GH #302.
+ */
+export interface AgentSessionAgentStateLike {
+  /** Conversation transcript. Assigning a new array copies it. */
+  messages: AgentMessage[];
+}
+
+/**
  * Inner-agent surface argent reads on `AgentSessionLike.agent`.
  *
  * `streamFn` is assignable so the runtime can swap providers per-turn (see
@@ -51,15 +66,11 @@ import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
  * `agent-core/coding.ts` rebinds `createAgentSession` to), so the field is
  * always present at runtime.
  *
- * `replaceMessages` is declared OPTIONAL so call sites work whether they hit
- * argent's `AgentImpl` (where it is always present) or a pi-class instance
- * (where it is absent — pi 0.73+ removed the method entirely; pi 0.70.2's
- * public `Agent` shape never exposed it either). Call sites use the
- * `agent.replaceMessages?.(msgs)` form: a no-op against pi's class, the real
- * history replacement against argent's runtime. This shape is
- * forward-compatible with GH #302's eventual helper-based migration — a
- * future `replaceAgentMessages(agent, msgs)` bridge can drop in without
- * disturbing this interface.
+ * `state` models pi 0.70.2+'s `AgentState` slice argent writes to —
+ * specifically `state.messages`, which replaced `Agent.replaceMessages`
+ * (removed in pi 0.73+; never publicly exposed in 0.70.2). Call sites MUST
+ * route through `replaceAgentMessages(agent, msgs)` rather than touching the
+ * raw setter, so future pi API drift only needs one update. See GH #302.
  */
 export interface AgentSessionAgentLike {
   /**
@@ -73,11 +84,29 @@ export interface AgentSessionAgentLike {
   setSystemPrompt(prompt: string): void;
 
   /**
-   * Replace the message history (optional — see header). Present on argent's
-   * `AgentImpl`; absent on pi's `Agent` class (removed in 0.73+; never
-   * publicly exposed on 0.70.2). Call sites MUST invoke via `?.()`.
+   * Pi-shaped agent state. Mutate the transcript via `state.messages = msgs`
+   * (or, preferred, the `replaceAgentMessages` helper). See GH #302.
    */
-  replaceMessages?(messages: AgentMessage[]): void;
+  readonly state: AgentSessionAgentStateLike;
+}
+
+/**
+ * Replace the agent's conversation transcript.
+ *
+ * Encapsulates the pi 0.70.2+ API (`agent.state.messages = msgs`, where the
+ * setter copies the top-level array). This is the GH #302 replacement for
+ * the now-removed `Agent.replaceMessages(msgs)` method. Centralising the
+ * write through this helper means any future pi API drift — a renamed
+ * setter, a new `setHistory(...)` method, etc. — only needs one update.
+ *
+ * Runtime safety: every production source for `agent` flows through
+ * `createArgentAgentSession`, whose `AgentImpl` exposes a matching
+ * `state.messages` accessor that delegates to its internal `_messages`
+ * field. Pi's `Agent` class also satisfies the same shape via its public
+ * `AgentState` accessor.
+ */
+export function replaceAgentMessages(agent: AgentSessionAgentLike, messages: AgentMessage[]): void {
+  agent.state.messages = messages;
 }
 
 /**
@@ -111,7 +140,7 @@ export interface AgentSessionLike {
   /** Current session ID. */
   readonly sessionId: string;
 
-  /** Full message history. Mutation goes through `agent.replaceMessages` (#302). */
+  /** Full message history. Mutation routes through `replaceAgentMessages` (#302). */
   readonly messages: AgentMessage[];
 
   /** Whether the agent is currently streaming a response. */
