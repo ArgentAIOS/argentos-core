@@ -77,13 +77,19 @@ export {
 // Argent's own `AgentSession` interface satisfies it directly; pi's class
 // satisfies the read subset. Either runtime source flows through the same
 // structural type. See `./agent-session.ts` for full rationale + scope
-// guardrails (replaceMessages stays out — that's GH #302).
+// guardrails.
+//
+// GH #302 follow-up: `AgentSessionAgentLike.state.messages` (writable
+// accessor) replaces the removed `Agent.replaceMessages` method. Call sites
+// MUST route through `replaceAgentMessages(agent, msgs)`.
 //
 export type {
   AgentSessionLike,
   AgentSessionAgentLike,
+  AgentSessionAgentStateLike,
   AgentSessionPromptOptionsLike,
 } from "./agent-session.js";
+export { replaceAgentMessages } from "./agent-session.js";
 
 // ---------------------------------------------------------------------------
 // TOOL / CONTEXT / TYPEBOX IDENTITY BRIDGE (GH #305)

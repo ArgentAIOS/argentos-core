@@ -31,6 +31,20 @@ import type { ArgentSettingsManager, ThinkingLevel } from "./settings-manager.js
 // ============================================================================
 
 /**
+ * Public agent state — narrow shape mirroring pi-agent-core's `AgentState`
+ * (only the fields argent's runtime needs to write).
+ *
+ * Pi 0.70.2+ removed `Agent.replaceMessages` and routes history replacement
+ * through `agent.state.messages = msgs` (the setter copies the top-level
+ * array). Argent's `AgentImpl` exposes the same accessor so both runtime
+ * sources satisfy the same shape — see GH #302.
+ */
+export interface AgentSessionAgentState {
+  /** Conversation transcript. Assigning a new array copies it. */
+  messages: AgentMessage[];
+}
+
+/**
  * The inner Agent that owns the stream function, messages, and system prompt.
  * This is what `session.agent` exposes.
  */
@@ -41,8 +55,22 @@ export interface AgentSessionAgent {
   /** Replace the system prompt entirely. */
   setSystemPrompt(prompt: string): void;
 
-  /** Replace the message history. Used for sanitization, limiting, image injection. */
+  /**
+   * Replace the message history. Used for sanitization, limiting, image
+   * injection. Retained for argent-internal callers (tests, compaction,
+   * session bootstrap); pi-bridge consumers should use
+   * `replaceAgentMessages(agent, msgs)` which routes through `state.messages`
+   * for forward-compat with pi 0.70.2+ (GH #302).
+   */
   replaceMessages(messages: AgentMessage[]): void;
+
+  /**
+   * Pi-shaped agent state surface. Writing to `state.messages` replaces the
+   * transcript (the setter copies the array). Added in GH #302 so the
+   * pi-bridge helper can target pi's new API without referencing argent's
+   * `replaceMessages` directly.
+   */
+  readonly state: AgentSessionAgentState;
 
   /** Additional runtime parameters (provider-specific headers, etc.). */
   extraParams?: Record<string, unknown>;

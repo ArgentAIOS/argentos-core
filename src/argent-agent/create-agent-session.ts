@@ -44,9 +44,28 @@ class AgentImpl implements AgentSessionAgent {
   extraParams?: Record<string, unknown>;
   private _messages: AgentMessage[] = [];
   private _systemPrompt = "";
+  // Pi-shaped state surface: writing to `state.messages` mirrors pi 0.70.2+'s
+  // `AgentState.messages` setter (copies the array). The closure captures
+  // `this` so the getter/setter can forward to `_messages` without binding
+  // hazards. See GH #302 — this is the replacement for `Agent.replaceMessages`
+  // removed in pi 0.73+.
+  private readonly _state: AgentSessionAgent["state"];
 
   constructor(streamFn: AgentSessionAgent["streamFn"]) {
     this.streamFn = streamFn;
+    const self = this;
+    this._state = {
+      get messages(): AgentMessage[] {
+        return self._messages;
+      },
+      set messages(messages: AgentMessage[]) {
+        self._messages = [...messages];
+      },
+    };
+  }
+
+  get state(): AgentSessionAgent["state"] {
+    return this._state;
   }
 
   setSystemPrompt(prompt: string): void {
