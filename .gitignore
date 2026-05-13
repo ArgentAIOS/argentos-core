@@ -80,3 +80,4 @@ USER.md
 __pycache__/
 dashboard/public/live2d/
 .tmp/
+.claude/settings.local.json

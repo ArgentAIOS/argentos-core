@@ -23,6 +23,7 @@ const knownLanes = [
   "business",
   "agent-persona",
   "open-design-composio",
+  "tinyfish",
   "all",
 ];
 const taskStatuses = ["todo", "doing", "blocked", "done", "cancelled"];
