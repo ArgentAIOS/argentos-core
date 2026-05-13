@@ -21,6 +21,12 @@ import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
+  isOnePasswordRef,
+  maskRef,
+  resolveOnePasswordRef,
+  type OnePasswordResolution,
+} from "./onepassword-resolver.js";
+import {
   hashSecretValue,
   querySecretAudit,
   recordSecretAudit,
@@ -29,6 +35,19 @@ import {
 import { decryptSecret, encryptSecret, isEncrypted } from "./secret-crypto.js";
 
 const log = createSubsystemLogger("service-keys");
+
+/**
+ * Hook that lets us substitute the 1Password resolver in tests without a
+ * real `op` binary. Default delegates to the real resolver.
+ */
+let onePasswordResolverHook: (ref: string) => OnePasswordResolution = (ref) =>
+  resolveOnePasswordRef(ref);
+
+export function __setOnePasswordResolverForTests(
+  fn: ((ref: string) => OnePasswordResolution) | null,
+): void {
+  onePasswordResolverHook = fn ?? ((ref) => resolveOnePasswordRef(ref));
+}
 
 const SERVICE_KEYS_PATH = path.join(process.env.HOME ?? "/tmp", ".argentos", "service-keys.json");
 
@@ -281,15 +300,49 @@ export function resolveServiceKey(
     }
     try {
       const decrypted = decryptSecret(entry.value);
-      auditSecretFetch({
-        entry,
-        envName,
-        result: "success",
-        source: "service-keys.json",
-        context,
-        cfg,
-      });
-      return decrypted;
+      // If the stored value is a 1Password reference, resolve it via `op`.
+      // This is ADDITIVE: literal values continue to flow through unchanged.
+      if (isOnePasswordRef(decrypted)) {
+        const opResult = onePasswordResolverHook(decrypted);
+        if (opResult.ok && opResult.value) {
+          auditSecretFetch({
+            entry,
+            envName,
+            result: "success",
+            source: "1password",
+            context,
+            cfg,
+          });
+          return opResult.value;
+        }
+        log.warn("1Password reference failed to resolve; falling back to next source", {
+          variable: envName,
+          keyId: entry.id,
+          ref: maskRef(decrypted),
+          errorCode: opResult.errorCode,
+          errorMessage: opResult.errorMessage,
+        });
+        auditSecretFetch({
+          entry,
+          envName,
+          result: "error",
+          reason: `1password:${opResult.errorCode ?? "unknown"}`,
+          source: "1password",
+          context,
+          cfg,
+        });
+        // Fall through to the next resolution source (env, legacy config).
+      } else {
+        auditSecretFetch({
+          entry,
+          envName,
+          result: "success",
+          source: "service-keys.json",
+          context,
+          cfg,
+        });
+        return decrypted;
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       log.warn("failed to decrypt service key; falling back to next source", {
@@ -754,15 +807,48 @@ export async function resolveServiceKeyAsync(
           });
           return undefined;
         }
-        auditSecretFetch({
-          entry: policyEntry,
-          envName,
-          result: "success",
-          source: "postgres",
-          context,
-          cfg,
-        });
-        return pgEntry.value;
+        // 1Password ref handling for PG-stored values.
+        if (isOnePasswordRef(pgEntry.value)) {
+          const opResult = onePasswordResolverHook(pgEntry.value);
+          if (opResult.ok && opResult.value) {
+            auditSecretFetch({
+              entry: policyEntry,
+              envName,
+              result: "success",
+              source: "1password",
+              context,
+              cfg,
+            });
+            return opResult.value;
+          }
+          log.warn("1Password reference (PG) failed to resolve; falling back", {
+            variable: envName,
+            keyId: pgEntry.id,
+            ref: maskRef(pgEntry.value),
+            errorCode: opResult.errorCode,
+            errorMessage: opResult.errorMessage,
+          });
+          auditSecretFetch({
+            entry: policyEntry,
+            envName,
+            result: "error",
+            reason: `1password:${opResult.errorCode ?? "unknown"}`,
+            source: "1password",
+            context,
+            cfg,
+          });
+          // Fall through to sync resolver chain.
+        } else {
+          auditSecretFetch({
+            entry: policyEntry,
+            envName,
+            result: "success",
+            source: "postgres",
+            context,
+            cfg,
+          });
+          return pgEntry.value;
+        }
       }
     }
   } catch {
