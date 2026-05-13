@@ -1,5 +1,5 @@
 /**
- * Explicit re-exports from @mariozechner/pi-ai.
+ * Explicit re-exports from @earendil-works/pi-ai.
  *
  * Keep this surface intentional so upstream additions do not silently
  * become part of ArgentOS's public runtime contract.
@@ -77,7 +77,7 @@ export {
    * @deprecated Kept for Pi-compat stream wrappers and tests.
    */
   createAssistantMessageEventStream,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 /**
  * Pi-compat `supportsXhigh` — sourced through pi-bridge (GH #306) so the
  * underlying pi 0.73+ removal of the upstream export doesn't break call sites.
@@ -146,7 +146,7 @@ export type {
    * @deprecated Prefer Argent-native `ArgentOpenAICompletionsOptions`.
    */
   OpenAICompletionsOptions,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 
 import type {
   Api,
@@ -157,8 +157,8 @@ import type {
   Model,
   SimpleStreamOptions,
   Usage,
-} from "@mariozechner/pi-ai";
-import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createArgentStreamSimple as createCompatArgentStreamSimple } from "../argent-agent/compat.js";
 
 /**
@@ -437,7 +437,7 @@ export type {
  * Keep this on Pi's implementation so Argent stays aligned with the
  * current OpenAI/OAuth contract instead of maintaining a forked flow.
  */
-export { loginOpenAICodex as argentLoginOpenAICodex } from "@mariozechner/pi-ai/oauth";
+export { loginOpenAICodex as argentLoginOpenAICodex } from "@earendil-works/pi-ai/oauth";
 
 /**
  * Argent-native OpenAI Responses API streaming.
@@ -458,8 +458,8 @@ export { streamOpenAIResponses } from "../argent-ai/openai-responses.js";
 export {
   getOAuthApiKey as argentGetOAuthApiKey,
   getOAuthProviders as argentGetOAuthProviders,
-} from "@mariozechner/pi-ai/oauth";
-export { getOAuthApiKey, getOAuthProviders, loginOpenAICodex } from "@mariozechner/pi-ai/oauth";
+} from "@earendil-works/pi-ai/oauth";
+export { getOAuthApiKey, getOAuthProviders, loginOpenAICodex } from "@earendil-works/pi-ai/oauth";
 
 /**
  * Argent-native OpenAI Completions options type.

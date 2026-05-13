@@ -2,7 +2,7 @@
  * Argent Agent — Compaction Utilities
  *
  * Argent-native implementations of estimateTokens and generateSummary.
- * Replaces @mariozechner/pi-coding-agent compaction exports.
+ * Replaces @earendil-works/pi-coding-agent compaction exports.
  *
  * @module argent-agent/compaction-utils
  */

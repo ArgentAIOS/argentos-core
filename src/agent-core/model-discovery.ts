@@ -2,7 +2,7 @@
  * Dedicated seam for model-discovery primitives used by embedded runtime loaders.
  *
  * SEAM SWAP: Now delegates through argent-agent/model-discovery instead of
- * importing @mariozechner/pi-coding-agent directly. The pi dependency is
+ * importing @earendil-works/pi-coding-agent directly. The pi dependency is
  * isolated behind the argent-agent boundary.
  *
  * Important: keep this module independent from `agent-core/index` and the

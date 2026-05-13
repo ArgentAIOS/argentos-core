@@ -109,11 +109,13 @@ enum ModelCatalogLoader {
             URL(fileURLWithPath: CommandResolver.projectRootPath()),
             URL(fileURLWithPath: FileManager().currentDirectoryPath),
         ]
+        let upstreamScope = "@earendil-works"
         let legacyScope = "@mariozechner"
-        let legacyPackage = "pi-ai"
+        let piPackage = "pi-ai"
         let relativeCandidates = [
             "dist/src/argent-ai/models-db.js",
-            "node_modules/\(legacyScope)/\(legacyPackage)/dist/models.generated.js",
+            "node_modules/\(upstreamScope)/\(piPackage)/dist/models.generated.js",
+            "node_modules/\(legacyScope)/\(piPackage)/dist/models.generated.js",
         ]
         for root in roots {
             for relativePath in relativeCandidates {

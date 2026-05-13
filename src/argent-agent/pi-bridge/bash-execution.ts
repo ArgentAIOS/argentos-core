@@ -30,7 +30,7 @@
  * @module argent-agent/pi-bridge/bash-execution
  */
 
-import type { CustomAgentMessages } from "@mariozechner/pi-agent-core";
+import type { CustomAgentMessages } from "@earendil-works/pi-agent-core";
 
 /**
  * Pi's `BashExecutionMessage` type, sourced via the `CustomAgentMessages`
@@ -38,12 +38,12 @@ import type { CustomAgentMessages } from "@mariozechner/pi-agent-core";
  *
  * Indirecting through the merged map lets the bridge expose the type without
  * reaching into pi-coding-agent's non-exported deep path
- * (`@mariozechner/pi-coding-agent/dist/core/messages.js`). When pi promotes
+ * (`@earendil-works/pi-coding-agent/dist/core/messages.js`). When pi promotes
  * the type to a public re-export — or renames it again — only this alias
  * changes.
  *
  * Consumers that need the type should import from
- * `argent-agent/pi-bridge` instead of `@mariozechner/pi-coding-agent` directly,
+ * `argent-agent/pi-bridge` instead of `@earendil-works/pi-coding-agent` directly,
  * so the bridge can introduce shape drift in one place when pi bumps.
  */
 export type BashExecutionMessage = CustomAgentMessages["bashExecution"];

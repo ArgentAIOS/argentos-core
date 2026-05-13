@@ -5,7 +5,7 @@ import {
   ProcessTerminal,
   Text,
   TUI,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import type {
   AgentSummary,
   SessionInfo,

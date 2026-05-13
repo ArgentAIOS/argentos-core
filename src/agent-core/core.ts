@@ -2,7 +2,7 @@
  * Agent Core — Core Types & Infrastructure
  *
  * SEAM SWAP COMPLETE: All exports point to Argent-native implementations.
- * No remaining @mariozechner/pi-* imports in this file.
+ * No remaining @earendil-works/pi-* imports in this file.
  *
  * Downstream consumers import from here:
  *   import { AgentMessage, StreamFn, AgentToolResult } from '../agent-core/core.js';

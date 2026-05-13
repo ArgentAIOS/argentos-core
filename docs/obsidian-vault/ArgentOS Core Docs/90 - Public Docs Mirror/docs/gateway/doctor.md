@@ -129,7 +129,7 @@ Current migrations:
 ### 2b) OpenCode Zen provider overrides
 
 If you’ve added `models.providers.opencode` (or `opencode-zen`) manually, it
-overrides the built-in OpenCode Zen catalog from `@mariozechner/pi-ai`. That can
+overrides the built-in OpenCode Zen catalog from `@earendil-works/pi-ai`. That can
 force every model onto a single API or zero out costs. Doctor warns so you can
 remove the override and restore per-model API routing + costs.
 

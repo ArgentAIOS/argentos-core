@@ -1,4 +1,4 @@
-import { Container, Markdown, Spacer } from "@mariozechner/pi-tui";
+import { Container, Markdown, Spacer } from "@earendil-works/pi-tui";
 import { markdownTheme, theme } from "../theme/theme.js";
 
 export class AssistantMessageComponent extends Container {

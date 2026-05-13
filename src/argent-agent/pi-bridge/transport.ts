@@ -22,7 +22,7 @@
  * @module argent-agent/pi-bridge/transport
  */
 
-import type { Transport as PiTransport } from "@mariozechner/pi-ai";
+import type { Transport as PiTransport } from "@earendil-works/pi-ai";
 
 /**
  * Stream transport variants supported by pi providers.

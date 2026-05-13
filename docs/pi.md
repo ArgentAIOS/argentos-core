@@ -21,10 +21,10 @@ ArgentOS uses the pi SDK to embed an AI coding agent into its messaging gateway 
 
 ```json
 {
-  "@mariozechner/pi-agent-core": "0.70.2",
-  "@mariozechner/pi-ai": "0.70.2",
-  "@mariozechner/pi-coding-agent": "0.70.2",
-  "@mariozechner/pi-tui": "0.70.2"
+  "@earendil-works/pi-agent-core": "0.70.2",
+  "@earendil-works/pi-ai": "0.70.2",
+  "@earendil-works/pi-coding-agent": "0.70.2",
+  "@earendil-works/pi-tui": "0.70.2"
 }
 ```
 
@@ -164,7 +164,7 @@ import {
   DefaultResourceLoader,
   SessionManager,
   SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const resourceLoader = new DefaultResourceLoader({
   cwd: resolvedWorkspace,
@@ -504,7 +504,7 @@ ArgentOS also has a local TUI mode that uses pi-tui components directly:
 
 ```typescript
 // src/tui/tui.ts
-import { ... } from "@mariozechner/pi-tui";
+import { ... } from "@earendil-works/pi-tui";
 ```
 
 This provides the interactive terminal experience similar to pi's native mode.

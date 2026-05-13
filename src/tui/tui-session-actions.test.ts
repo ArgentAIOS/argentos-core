@@ -51,7 +51,7 @@ describe("tui session actions", () => {
     const { refreshSessionInfo } = createSessionActions({
       client: { listSessions } as { listSessions: typeof listSessions },
       chatLog: { addSystem: vi.fn() } as unknown as import("./components/chat-log.js").ChatLog,
-      tui: { requestRender } as unknown as import("@mariozechner/pi-tui").TUI,
+      tui: { requestRender } as unknown as import("@earendil-works/pi-tui").TUI,
       opts: {},
       state,
       agentNames: new Map(),

@@ -1,4 +1,9 @@
-import { type SelectItem, SelectList, type SettingItem, SettingsList } from "@mariozechner/pi-tui";
+import {
+  type SelectItem,
+  SelectList,
+  type SettingItem,
+  SettingsList,
+} from "@earendil-works/pi-tui";
 import {
   filterableSelectListTheme,
   searchableSelectListTheme,
