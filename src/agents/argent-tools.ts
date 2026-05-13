@@ -89,6 +89,10 @@ import { createTasksTool } from "./tools/tasks-tools.js";
 import { createTeamSpawnTool } from "./tools/team-spawn-tool.js";
 import { createTeamStatusTool } from "./tools/team-status-tool.js";
 import { createTerminalTool } from "./tools/terminal-tool.js";
+import {
+  createTinyFishBrowserCloseTool,
+  createTinyFishBrowserOpenTool,
+} from "./tools/tinyfish-browser.js";
 import { createToolSearchTool } from "./tools/tool-search-tool.js";
 import { createTtsGenerateTool } from "./tools/tts-generate-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
@@ -180,6 +184,14 @@ export function createArgentTools(options?: {
   const webFetchTool = createWebFetchTool({
     config: options?.config,
     sandboxed: options?.sandboxed,
+  });
+  const tinyfishBrowserOpenTool = createTinyFishBrowserOpenTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
+  const tinyfishBrowserCloseTool = createTinyFishBrowserCloseTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
   });
   const messageTool = options?.disableMessageTool
     ? null
@@ -297,6 +309,8 @@ export function createArgentTools(options?: {
     }),
     ...(webSearchTool ? [webSearchTool] : []),
     ...(webFetchTool ? [webFetchTool] : []),
+    tinyfishBrowserOpenTool,
+    tinyfishBrowserCloseTool,
     ...(imageTool ? [imageTool] : []),
     // ArgentOS tools
     createTasksTool({
