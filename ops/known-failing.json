@@ -1,6 +1,6 @@
 {
-  "snapshotAt": "2026-05-13T12:55:27.007Z",
-  "totalErrors": 218,
+  "snapshotAt": "2026-05-13T17:08:05.107Z",
+  "totalErrors": 219,
   "errors": [
     {
       "file": "src/agents/compaction.ts",
@@ -1309,6 +1309,12 @@
       "line": 43,
       "code": "TS2339",
       "message": "Property 'trim' does not exist on type 'never'."
+    },
+    {
+      "file": "src/argent-ai/google-shared.ts",
+      "line": 19,
+      "code": "TS2307",
+      "message": "Cannot find module '@earendil-works/pi-ai/dist/providers/google-shared.js' or its corresponding type declarations."
     }
   ]
 }
