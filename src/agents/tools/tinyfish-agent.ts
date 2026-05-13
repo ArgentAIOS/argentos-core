@@ -5,6 +5,12 @@ import { resolveServiceKey } from "../../infra/service-keys.js";
 import { wrapWebContent } from "../../security/external-content.js";
 import { stringEnum } from "../schema/typebox.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
+import {
+  DEFAULT_TIMEOUT_SECONDS,
+  readResponseText,
+  resolveTimeoutSeconds,
+  withTimeout,
+} from "./web-shared.js";
 
 function readBooleanParam(params: Record<string, unknown>, key: string): boolean | undefined {
   const value = params[key];
@@ -18,12 +24,6 @@ function readBooleanParam(params: Record<string, unknown>, key: string): boolean
   }
   return undefined;
 }
-import {
-  DEFAULT_TIMEOUT_SECONDS,
-  readResponseText,
-  resolveTimeoutSeconds,
-  withTimeout,
-} from "./web-shared.js";
 
 const BROWSER_PROFILES = ["lite", "stealth"] as const;
 type BrowserProfile = (typeof BROWSER_PROFILES)[number];
