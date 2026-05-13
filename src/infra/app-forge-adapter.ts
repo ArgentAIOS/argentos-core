@@ -1,3 +1,4 @@
+import type { AppForgeActorEnvelope } from "./app-forge-permissions.js";
 import {
   checkAppForgeRevision,
   normalizeAppForgeSavedView,
@@ -12,6 +13,8 @@ export type AppForgeBaseWrite = {
   base: AppForgeBase;
   expectedRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 type AppForgeRevisionConflict = Exclude<AppForgeRevisionCheck, { ok: true }>;
@@ -22,6 +25,8 @@ export type AppForgeTableWriteOptions = {
   expectedBaseRevision?: number;
   expectedTableRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 export type AppForgeTableWriteResult =
@@ -37,6 +42,8 @@ export type AppForgeRecordWriteOptions = {
   expectedTableRevision?: number;
   expectedRecordRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 export type AppForgeRecordWriteResult =
@@ -52,6 +59,8 @@ export type AppForgeSavedViewWriteOptions = {
   expectedBaseRevision?: number;
   expectedTableRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 export type AppForgeSavedViewWriteResult =

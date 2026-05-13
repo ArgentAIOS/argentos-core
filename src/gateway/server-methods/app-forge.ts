@@ -17,10 +17,14 @@ import {
   type AppForgeTable,
 } from "../../infra/app-forge-model.js";
 import {
-  buildAppForgePermissionCheckAuditEvent,
-  canWriteAppForge,
+  AppForgeAclDeniedError,
+  assertAppForgeAclWrite,
   coerceAppForgePermissionScope,
   normalizeAppForgeActor,
+  type AppForgeActorEnvelope,
+  type AppForgeAclWriteAction,
+  type AppForgePermissionCheckAuditEvent,
+  type AppForgePermissionScope,
 } from "../../infra/app-forge-permissions.js";
 import {
   type AppForgeAdapter,
@@ -121,21 +125,66 @@ function asAppForgeRecord(value: unknown): AppForgeRecord | null {
   return value as AppForgeRecord;
 }
 
+/**
+ * Look up the appId for an audit event without forcing a base read in legacy
+ * single-operator mode (no multi-user ACL claims). Returns "" when the base
+ * is not found or ACL is not in play — the audit still fires; downstream
+ * revision checks will report any actual not-found state.
+ */
+async function resolveAppIdForAudit(
+  adapter: AppForgeAdapter,
+  baseId: string,
+  params: Record<string, unknown>,
+): Promise<string> {
+  if (params.actor === undefined && params.permissions === undefined) {
+    return "";
+  }
+  const current = await adapter.getBase(baseId);
+  return current?.appId ?? "";
+}
+
+type AppForgeWriteGuardOk = {
+  ok: true;
+  actor: AppForgeActorEnvelope | null;
+  audit: AppForgePermissionCheckAuditEvent;
+};
+
+type AppForgeWriteGuardDenied = {
+  ok: false;
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+/**
+ * Single ACL gate for every AppForge write boundary (#336).
+ *
+ * Behaviour matrix (preserves existing test contract):
+ *  - neither `actor` nor `permissions` provided → allow, emit "no-acl-scope" audit
+ *  - both provided                              → run gate; throw → deny w/ audit
+ *  - only one of them provided                  → reject as partial multi-user claim
+ *  - malformed actor / permissions              → reject with clear message
+ */
 function appForgeWriteGuard(
   params: Record<string, unknown>,
   appId: string,
-):
-  | { ok: true }
-  | {
-      ok: false;
-      message: string;
-      details?: Record<string, unknown>;
-    } {
+  action: AppForgeAclWriteAction,
+  opts: { resourceId?: string } = {},
+): AppForgeWriteGuardOk | AppForgeWriteGuardDenied {
   const hasActor = params.actor !== undefined;
   const hasPermissions = params.permissions !== undefined;
+
+  // Legacy single-operator mode: no ACL claims supplied. Still log an audit
+  // entry so EVERY write boundary has a trail.
   if (!hasActor && !hasPermissions) {
-    return { ok: true };
+    const audit = assertAppForgeAclWrite({
+      appId,
+      actor: null,
+      action,
+      resourceId: opts.resourceId,
+    });
+    return { ok: true, actor: null, audit };
   }
+
   if (!hasActor || !hasPermissions) {
     return {
       ok: false,
@@ -143,36 +192,37 @@ function appForgeWriteGuard(
     };
   }
 
-  let actor;
+  let actor: AppForgeActorEnvelope;
   try {
     actor = normalizeAppForgeActor(params.actor as Parameters<typeof normalizeAppForgeActor>[0]);
   } catch {
     return { ok: false, message: "valid AppForge actor is required" };
   }
 
-  const permissions = coerceAppForgePermissionScope(params.permissions);
-  if (!permissions) {
+  const scope: AppForgePermissionScope | null = coerceAppForgePermissionScope(params.permissions);
+  if (!scope) {
     return { ok: false, message: "valid AppForge permissions are required" };
   }
 
-  if (canWriteAppForge(permissions, actor)) {
-    return { ok: true };
+  try {
+    const audit = assertAppForgeAclWrite({
+      appId,
+      actor,
+      action,
+      scope,
+      resourceId: opts.resourceId,
+    });
+    return { ok: true, actor, audit };
+  } catch (error) {
+    if (error instanceof AppForgeAclDeniedError) {
+      return {
+        ok: false,
+        message: error.message,
+        details: { audit: error.audit },
+      };
+    }
+    throw error;
   }
-
-  return {
-    ok: false,
-    message: "unauthorized appforge write",
-    details: {
-      audit: buildAppForgePermissionCheckAuditEvent({
-        appId,
-        actor,
-        permissions,
-        permission: "write",
-        allowed: false,
-        reason: "actor lacks owner/editor AppForge access",
-      }),
-    },
-  };
 }
 
 function booleanParam(params: Record<string, unknown>, name: string): boolean | undefined {
@@ -372,7 +422,9 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const guard = appForgeWriteGuard(params, targetBase.appId);
+    const guard = appForgeWriteGuard(params, targetBase.appId, "record.import", {
+      resourceId: `${baseId}/${tableId}`,
+    });
     if (!guard.ok) {
       respond(
         false,
@@ -381,6 +433,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    const guardActor = guard.actor;
 
     const overrides = parseImportColumnOverrides(params.overrides);
     const batchSize = optionalNumberParam(params, "batchSize");
@@ -417,6 +470,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     const writeRecord: AppForgeImportWriteRecordFn = async (record, ctx) => {
       const result = await adapter.putRecord(baseId, tableId, record, {
         idempotencyKey: idempotencyKey ? `${idempotencyKey}:${ctx.rowNumber}` : undefined,
+        actor: guardActor ?? undefined,
       });
       if (!result.ok) {
         return { ok: false, message: result.message };
@@ -487,7 +541,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const guard = appForgeWriteGuard(params, base.appId);
+    const guard = appForgeWriteGuard(params, base.appId, "base.put", { resourceId: base.id });
     if (!guard.ok) {
       respond(
         false,
@@ -501,6 +555,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       base,
       expectedRevision: optionalNumberParam(params, "expectedRevision"),
       idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+      actor: guard.actor ?? undefined,
     });
     if (!result.ok) {
       respond(
@@ -521,22 +576,27 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    // Always run the ACL gate, even in legacy single-operator mode, so deletes
+    // emit an audit event (#336). Resolve the appId by looking up the base
+    // when multi-user ACL claims are present (so audit can attribute correctly).
+    let appIdForAudit = "";
     if (params.actor !== undefined || params.permissions !== undefined) {
       const current = await adapter.getBase(baseId);
       if (!current) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
         return;
       }
+      appIdForAudit = current.appId;
+    }
 
-      const guard = appForgeWriteGuard(params, current.appId);
-      if (!guard.ok) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
-        );
-        return;
-      }
+    const guard = appForgeWriteGuard(params, appIdForAudit, "base.delete", { resourceId: baseId });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
     }
 
     const result = await adapter.deleteBase(baseId, {
@@ -599,10 +659,24 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "table.put", {
+      resourceId: `${baseId}/${table.id}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+
     const result = await adapter.putTable(baseId, table, {
       expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
       expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
       idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+      actor: guard.actor ?? undefined,
     });
     if (!result.ok) {
       respond(
@@ -639,6 +713,19 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         false,
         undefined,
         errorShape(ErrorCodes.INVALID_REQUEST, "baseId and tableId are required"),
+      );
+      return;
+    }
+
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "table.delete", {
+      resourceId: `${baseId}/${tableId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
       );
       return;
     }
@@ -731,11 +818,25 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "record.put", {
+      resourceId: `${baseId}/${tableId}/${record.id}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+
     const result = await adapter.putRecord(baseId, tableId, record, {
       expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
       expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
       expectedRecordRevision: optionalNumberParam(params, "expectedRecordRevision"),
       idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+      actor: guard.actor ?? undefined,
     });
     if (!result.ok) {
       respond(
@@ -781,6 +882,19 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         false,
         undefined,
         errorShape(ErrorCodes.INVALID_REQUEST, "baseId, tableId, and recordId are required"),
+      );
+      return;
+    }
+
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "record.delete", {
+      resourceId: `${baseId}/${tableId}/${recordId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
       );
       return;
     }
@@ -857,29 +971,25 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    // Permissions: views inherit table-level permissions. Reuse the existing
-    // appforge write guard so we get a single audit-event source of truth for
-    // unauthorized view writes.
-    if (params.actor !== undefined || params.permissions !== undefined) {
-      const base = await adapter.getBase(baseId);
-      if (!base) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
-        return;
-      }
-      const guard = appForgeWriteGuard(params, base.appId);
-      if (!guard.ok) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
-        );
-        return;
-      }
+    // Views inherit table-level permissions. Run the single ACL gate (#336)
+    // so every view write goes through the same audit/deny path.
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "view.put", {
+      resourceId: `${baseId}/${tableId}/${view.id}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
     }
     const result = await adapter.putView(baseId, tableId, view, {
       expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
       expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
       idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+      actor: guard.actor ?? undefined,
     });
     if (!result.ok) {
       respond(
@@ -905,21 +1015,17 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    if (params.actor !== undefined || params.permissions !== undefined) {
-      const base = await adapter.getBase(baseId);
-      if (!base) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
-        return;
-      }
-      const guard = appForgeWriteGuard(params, base.appId);
-      if (!guard.ok) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
-        );
-        return;
-      }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "view.delete", {
+      resourceId: `${baseId}/${tableId}/${viewId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
     }
     const result = await adapter.deleteView(baseId, tableId, viewId, {
       expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),

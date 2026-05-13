@@ -1154,4 +1154,206 @@ describe("AppForge gateway handlers", () => {
       expect.objectContaining({ message: "unauthorized appforge write" }),
     );
   });
+
+  // -- ACL write-gate (#336) -------------------------------------------------
+
+  it("enforces AppForge ACL claims on table writes when multi-user params are provided", async () => {
+    const deniedRespond = await invokeAppForgeHandler("appforge.tables.put", {
+      baseId: "base-1",
+      table: table(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 0,
+      actor: "viewer-1",
+      permissions: permissions({
+        creator: "owner-1",
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(deniedRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+        audit: expect.objectContaining({
+          eventType: "forge.permissions.checked",
+          allowed: false,
+          aclRole: "viewer",
+        }),
+      }),
+    );
+
+    const allowedRespond = await invokeAppForgeHandler("appforge.tables.put", {
+      baseId: "base-1",
+      table: table(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 0,
+      actor: "editor-1",
+      permissions: permissions({
+        creator: "owner-1",
+        editors: ["editor-1"],
+      }),
+    });
+    expect(allowedRespond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        base: expect.objectContaining({ revision: 2 }),
+        table: expect.objectContaining({ id: "table-2", revision: 1 }),
+      }),
+      undefined,
+    );
+  });
+
+  it("enforces AppForge ACL claims on table deletes", async () => {
+    const denied = await invokeAppForgeHandler("appforge.tables.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      actor: "viewer-1",
+      permissions: permissions({
+        creator: "owner-1",
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(denied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+      }),
+    );
+
+    const allowed = await invokeAppForgeHandler("appforge.tables.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      actor: "owner-1",
+      permissions: permissions({ creator: "owner-1" }),
+    });
+    expect(allowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        base: expect.objectContaining({ id: "base-1" }),
+        table: expect.objectContaining({ id: "table-1" }),
+      }),
+      undefined,
+    );
+  });
+
+  it("enforces AppForge ACL claims on record writes", async () => {
+    const denied = await invokeAppForgeHandler("appforge.records.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      record: record(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      expectedRecordRevision: 0,
+      actor: "viewer-1",
+      permissions: permissions({
+        creator: "owner-1",
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(denied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+        audit: expect.objectContaining({
+          allowed: false,
+          aclRole: "viewer",
+        }),
+      }),
+    );
+
+    const allowed = await invokeAppForgeHandler("appforge.records.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      record: record(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      expectedRecordRevision: 0,
+      actor: "editor-1",
+      permissions: permissions({
+        creator: "owner-1",
+        editors: ["editor-1"],
+      }),
+    });
+    expect(allowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        record: expect.objectContaining({ id: "record-1", revision: 1 }),
+      }),
+      undefined,
+    );
+  });
+
+  it("enforces AppForge ACL claims on record deletes", async () => {
+    // Seed a record first via the owner.
+    await invokeAppForgeHandler("appforge.records.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      record: record(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      expectedRecordRevision: 0,
+    });
+
+    const denied = await invokeAppForgeHandler("appforge.records.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+      recordId: "record-1",
+      actor: "viewer-1",
+      permissions: permissions({
+        creator: "owner-1",
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(denied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+      }),
+    );
+
+    const allowed = await invokeAppForgeHandler("appforge.records.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+      recordId: "record-1",
+      actor: "owner-1",
+      permissions: permissions(),
+    });
+    expect(allowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        record: expect.objectContaining({ id: "record-1" }),
+      }),
+      undefined,
+    );
+  });
+
+  it("rejects partial ACL claims on table writes", async () => {
+    const respond = await invokeAppForgeHandler("appforge.tables.put", {
+      baseId: "base-1",
+      table: table(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 0,
+      actor: "editor-1",
+      // missing permissions
+    });
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "actor and permissions are required together for AppForge multi-user writes",
+      }),
+    );
+  });
 });

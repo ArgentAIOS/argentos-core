@@ -366,3 +366,149 @@ export function buildAppForgePermissionChangeAuditEvent(params: {
     acl: snapshotAppForgePermissions(params.permissions),
   };
 }
+
+// =============================================================================
+// AppForge ACL write-gate (#336)
+//
+// All AppForge writes (base, table, record, view, interface, import) MUST flow
+// through `assertAppForgeAclWrite`. The gate:
+//   1. Normalizes the actor identity.
+//   2. Resolves whether the actor has write access (when ACL scope is supplied).
+//   3. Emits an audit event for the allow/deny decision.
+//   4. Throws `AppForgeAclDeniedError` on deny so callers cannot proceed.
+// =============================================================================
+
+export const APP_FORGE_ACL_WRITE_ACTIONS = [
+  "base.put",
+  "base.delete",
+  "table.put",
+  "table.delete",
+  "record.put",
+  "record.delete",
+  "record.import",
+  "view.put",
+  "view.delete",
+  "interface.put",
+  "interface.delete",
+] as const;
+export type AppForgeAclWriteAction = (typeof APP_FORGE_ACL_WRITE_ACTIONS)[number];
+
+export const APP_FORGE_NO_ACL_SCOPE_REASON = "no acl scope provided; allow with audit";
+
+const EMPTY_ACL_SCOPE: AppForgePermissionScope = { owners: [], editors: [], viewers: [] };
+
+const SYSTEM_FALLBACK_ACTOR: AppForgeActorEnvelope = {
+  actorId: "system:unauthenticated",
+  actorType: "system",
+};
+
+export class AppForgeAclDeniedError extends Error {
+  readonly code = "appforge_acl_denied" as const;
+  readonly audit: AppForgePermissionCheckAuditEvent;
+
+  constructor(audit: AppForgePermissionCheckAuditEvent, message?: string) {
+    super(message ?? "unauthorized appforge write");
+    this.name = "AppForgeAclDeniedError";
+    this.audit = audit;
+  }
+}
+
+export type AppForgeAuditLogger = (event: AppForgePermissionCheckAuditEvent) => void;
+
+function defaultAuditLogger(event: AppForgePermissionCheckAuditEvent): void {
+  if (event.allowed) {
+    return;
+  }
+  try {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[appforge.acl] write denied",
+      JSON.stringify({
+        appId: event.appId,
+        action: event.permission,
+        actorId: event.actor.actorId,
+        aclRole: event.aclRole,
+        reason: event.reason,
+        emittedAt: event.emittedAt,
+      }),
+    );
+  } catch {
+    // never let audit serialization break a request
+  }
+}
+
+let auditLogger: AppForgeAuditLogger = defaultAuditLogger;
+
+export function setAppForgeAuditLogger(logger: AppForgeAuditLogger | null): void {
+  auditLogger = logger ?? (() => {});
+}
+
+export function resetAppForgeAuditLogger(): void {
+  auditLogger = defaultAuditLogger;
+}
+
+export function emitAppForgeAuditEvent(event: AppForgePermissionCheckAuditEvent): void {
+  try {
+    auditLogger(event);
+  } catch {
+    // audit must never throw upward
+  }
+}
+
+export type AssertAppForgeAclWriteParams = {
+  appId: string;
+  actor: AppForgeActorInput | null | undefined;
+  action: AppForgeAclWriteAction;
+  scope?: Pick<AppForgePermissions, "owners" | "editors" | "viewers"> | null;
+  resourceId?: string;
+  emittedAt?: string;
+};
+
+/**
+ * Single ACL gate at every AppForge write boundary.
+ *
+ * - If `scope` is supplied: actor must have write access. On deny, throws
+ *   `AppForgeAclDeniedError` and the audit event is emitted before throw.
+ * - If `scope` is omitted: allow (legacy single-operator mode) but still emit
+ *   an audit event so every write has a trail.
+ *
+ * Returns the emitted audit event so callers can attach it to the response.
+ */
+export function assertAppForgeAclWrite(
+  params: AssertAppForgeAclWriteParams,
+): AppForgePermissionCheckAuditEvent {
+  const actor = maybeNormalizeAppForgeActor(params.actor) ?? SYSTEM_FALLBACK_ACTOR;
+
+  if (!params.scope) {
+    const event = buildAppForgePermissionCheckAuditEvent({
+      appId: params.appId,
+      actor,
+      permissions: EMPTY_ACL_SCOPE,
+      permission: "write",
+      allowed: true,
+      reason: `${params.action}: ${APP_FORGE_NO_ACL_SCOPE_REASON}`,
+      emittedAt: params.emittedAt,
+    });
+    emitAppForgeAuditEvent(event);
+    return event;
+  }
+
+  const allowed = canWriteAppForge(params.scope, actor);
+  const reason = allowed
+    ? `${params.action}: permitted`
+    : `${params.action}: actor lacks owner/editor AppForge access`;
+  const event = buildAppForgePermissionCheckAuditEvent({
+    appId: params.appId,
+    actor,
+    permissions: params.scope,
+    permission: "write",
+    allowed,
+    reason,
+    emittedAt: params.emittedAt,
+  });
+  emitAppForgeAuditEvent(event);
+  if (!allowed) {
+    throw new AppForgeAclDeniedError(event);
+  }
+  return event;
+}
