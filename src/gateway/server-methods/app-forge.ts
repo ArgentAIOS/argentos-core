@@ -3,7 +3,13 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { getPgClient } from "../../data/pg-client.js";
 import { isPostgresEnabled } from "../../data/storage-config.js";
 import { resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
-import { buildAppForgeImportPreview } from "../../infra/app-forge-import.js";
+import {
+  buildAppForgeImportCommitPlan,
+  buildAppForgeImportPreview,
+  executeAppForgeImportCommit,
+  type AppForgeImportColumnOverride,
+  type AppForgeImportWriteRecordFn,
+} from "../../infra/app-forge-import.js";
 import {
   buildAppForgePermissionCheckAuditEvent,
   canWriteAppForge,
@@ -164,6 +170,34 @@ function booleanParam(params: Record<string, unknown>, name: string): boolean | 
   return typeof value === "boolean" ? value : undefined;
 }
 
+function parseImportColumnOverrides(value: unknown): AppForgeImportColumnOverride[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const overrides: AppForgeImportColumnOverride[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const header = typeof entry.header === "string" ? entry.header : undefined;
+    const fieldId = typeof entry.fieldId === "string" ? entry.fieldId : undefined;
+    if (!header && !fieldId) {
+      continue;
+    }
+    const fieldName = typeof entry.fieldName === "string" ? entry.fieldName : undefined;
+    const type =
+      typeof entry.type === "string"
+        ? (entry.type as AppForgeImportColumnOverride["type"])
+        : undefined;
+    const skip = typeof entry.skip === "boolean" ? entry.skip : undefined;
+    const options = Array.isArray(entry.options)
+      ? entry.options.filter((option): option is string => typeof option === "string")
+      : undefined;
+    overrides.push({ header, fieldId, fieldName, type, skip, options });
+  }
+  return overrides.length > 0 ? overrides : undefined;
+}
+
 function isWebchatClient(client: { connect?: { client?: { id?: string } } } | null): boolean {
   return client?.connect?.client?.id === "webchat";
 }
@@ -274,12 +308,14 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     const targetTableId = stringParam(params, "targetTableId") ?? undefined;
     const maxRows = optionalNumberParam(params, "maxRows");
     const baseValue = isRecord(params.base) ? asAppForgeBase(params.base) : null;
+    const overrides = parseImportColumnOverrides(params.overrides);
     try {
       const preview = buildAppForgeImportPreview({
         csv,
         tableName,
         targetTableId,
         maxRows,
+        overrides,
         base: baseValue
           ? { activeTableId: baseValue.activeTableId, tables: baseValue.tables }
           : null,
@@ -295,6 +331,119 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         ),
       );
     }
+  },
+
+  "appforge.import.commit": async ({ req, params, client, context, isWebchatConnect, respond }) => {
+    const csv = stringParam(params, "csv");
+    if (!csv) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "csv is required"));
+      return;
+    }
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    if (!baseId || !tableId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and tableId are required"),
+      );
+      return;
+    }
+
+    const adapter = getAppForgeAdapter();
+    const targetBase = await adapter.getBase(baseId);
+    if (!targetBase) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
+      return;
+    }
+    const targetTable = targetBase.tables.find((table) => table.id === tableId);
+    if (!targetTable) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "table not found"));
+      return;
+    }
+
+    const guard = appForgeWriteGuard(params, targetBase.appId);
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+
+    const overrides = parseImportColumnOverrides(params.overrides);
+    const batchSize = optionalNumberParam(params, "batchSize");
+    const skipInvalidParam = booleanParam(params, "skipInvalidRows");
+    const recordIdPrefix = stringParam(params, "recordIdPrefix") ?? undefined;
+    const idempotencyKey = stringParam(params, "idempotencyKey") ?? undefined;
+    const tableName = stringParam(params, "tableName") ?? undefined;
+
+    let plan;
+    try {
+      plan = buildAppForgeImportCommitPlan({
+        csv,
+        tableName,
+        targetTableId: tableId,
+        base: { activeTableId: targetBase.activeTableId, tables: targetBase.tables },
+        overrides,
+        batchSize,
+        skipInvalidRows: skipInvalidParam,
+        recordIdPrefix,
+      });
+    } catch (error) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          error instanceof Error ? error.message : "failed to plan CSV import commit",
+        ),
+      );
+      return;
+    }
+
+    const emit = shouldEmitWorkflowEvent(client, params);
+    const writeRecord: AppForgeImportWriteRecordFn = async (record, ctx) => {
+      const result = await adapter.putRecord(baseId, tableId, record, {
+        idempotencyKey: idempotencyKey ? `${idempotencyKey}:${ctx.rowNumber}` : undefined,
+      });
+      if (!result.ok) {
+        return { ok: false, message: result.message };
+      }
+      if (emit) {
+        const event = buildAppForgeRecordMutationEvent({
+          action: result.record.revision <= 1 ? "created" : "updated",
+          base: result.base,
+          table: result.table,
+          record: result.record,
+        });
+        await emitWorkflowEventBestEffort(event as Record<string, unknown>, {
+          req,
+          params,
+          client,
+          context,
+          isWebchatConnect,
+          respond,
+        });
+      }
+      return { ok: true, record: result.record };
+    };
+
+    const report = await executeAppForgeImportCommit(plan, writeRecord);
+    const refreshedBase = await adapter.getBase(baseId);
+    const refreshedTable =
+      refreshedBase?.tables.find((table) => table.id === tableId) ?? targetTable;
+
+    respond(
+      true,
+      {
+        base: refreshedBase ?? targetBase,
+        table: refreshedTable,
+        report,
+      },
+      undefined,
+    );
   },
 
   "appforge.bases.list": async ({ params, respond }) => {
