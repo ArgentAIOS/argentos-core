@@ -13,6 +13,12 @@ export type MemoryConfig = {
   qmd?: MemoryQmdConfig;
   vault?: MemoryVaultConfig;
   cognee?: MemoryCogneeConfig;
+  /**
+   * HTTP/HTTPS proxy URL used by memory subsystem outbound clients (embeddings
+   * + LLM batch). When set, takes precedence over `HTTPS_PROXY` / `HTTP_PROXY`
+   * env vars. Ported from upstream MemU PR #310 (issue #313).
+   */
+  proxy?: string;
 };
 
 export type MemoryObservationsConfig = {
