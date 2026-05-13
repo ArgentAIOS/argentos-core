@@ -1,10 +1,24 @@
-import { ExternalLink, Flame, Heart, Search, Star, ThumbsUp, X } from "lucide-react";
+import {
+  ExternalLink,
+  File as FileIcon,
+  Flame,
+  Heart,
+  Mail,
+  Paperclip,
+  Search,
+  Star,
+  ThumbsUp,
+  Upload,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type ComponentType,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type {
@@ -1040,6 +1054,492 @@ export function RatingCellEditor({
       <span className="ml-1 text-[11px] tabular-nums text-white/45">
         {current}/{max}
       </span>
+    </div>
+  );
+}
+
+// ============================================================================
+// Email cell display — Phase 4 gap #4. The email *editor* (with inline regex
+// validation) already exists above; this is the read-only display path so the
+// grid renders clickable `mailto:` links rather than plain text.
+// ============================================================================
+
+type EmailCellDisplayProps = {
+  value: string;
+};
+
+export function EmailCellDisplay({ value }: EmailCellDisplayProps) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return <span className="text-white/24">No email</span>;
+  }
+  // If the value isn't a well-formed email (e.g. a half-typed draft), render
+  // it as inert text so we don't generate a broken `mailto:` link.
+  if (!isValidEmailInput(trimmed) || trimmed === "") {
+    return <span className="truncate text-white/66">{trimmed}</span>;
+  }
+  return (
+    <a
+      href={`mailto:${trimmed}`}
+      data-testid="appforge-email-cell-link"
+      onClick={(event) => event.stopPropagation()}
+      className="inline-flex max-w-[14rem] items-center gap-1 truncate text-sky-200 hover:text-sky-100 hover:underline"
+      title={`Email ${trimmed}`}
+    >
+      <Mail className="h-3 w-3 flex-shrink-0" />
+      <span className="truncate">{trimmed}</span>
+    </a>
+  );
+}
+
+// ============================================================================
+// Attachment cell editor + display — Phase 4 gap #4. We mirror the substrate
+// helpers in `src/infra/app-forge-cell-editing.ts` (tested there) so the
+// dashboard component bundle stays self-contained without an extra import
+// boundary. See the substrate file for design notes — these copies must stay
+// in sync.
+//
+// Attachment entries are stored as comma-separated `name|url` (or bare `url`)
+// tokens. The wire format matches `multi_select` so the gateway/import paths
+// keep round-tripping cleanly. Image extensions render as inline thumbnails;
+// everything else renders as a file chip.
+// ============================================================================
+
+type AttachmentEntry = {
+  name: string;
+  url: string;
+};
+
+const ATTACHMENT_FILE_INPUT_LIMIT_BYTES = 2 * 1024 * 1024; // 2 MiB
+const ATTACHMENT_IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "avif",
+]);
+
+function attachmentIsValidUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:") || trimmed.startsWith("/")) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function attachmentDeriveName(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
+    const mime = trimmed.startsWith("data:") ? trimmed.slice(5).split(/[;,]/)[0] : "";
+    return mime ? `Attachment (${mime})` : "Attachment";
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const tail = segments.length ? decodeURIComponent(segments[segments.length - 1]) : "";
+    if (tail) {
+      return tail;
+    }
+    return parsed.hostname || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+function attachmentParseEntry(raw: string): AttachmentEntry | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const delimiterIndex = trimmed.indexOf("|");
+  if (delimiterIndex === -1) {
+    if (!attachmentIsValidUrl(trimmed)) {
+      return null;
+    }
+    return { name: attachmentDeriveName(trimmed), url: trimmed };
+  }
+  const name = trimmed.slice(0, delimiterIndex).trim();
+  const url = trimmed.slice(delimiterIndex + 1).trim();
+  if (!url || !attachmentIsValidUrl(url)) {
+    return null;
+  }
+  return { name: name || attachmentDeriveName(url), url };
+}
+
+function attachmentSerializeEntry(entry: AttachmentEntry): string {
+  const url = entry.url.trim();
+  if (!url) {
+    return "";
+  }
+  const name = entry.name.trim().replace(/\|/g, " ");
+  if (!name || name === attachmentDeriveName(url)) {
+    return url;
+  }
+  return `${name}|${url}`;
+}
+
+function attachmentParseValue(value: string): AttachmentEntry[] {
+  if (!value) {
+    return [];
+  }
+  const seenUrls = new Set<string>();
+  const result: AttachmentEntry[] = [];
+  for (const raw of value.split(/[\n,]/)) {
+    const parsed = attachmentParseEntry(raw);
+    if (!parsed || seenUrls.has(parsed.url)) {
+      continue;
+    }
+    seenUrls.add(parsed.url);
+    result.push(parsed);
+  }
+  return result;
+}
+
+function attachmentSerializeValue(entries: ReadonlyArray<AttachmentEntry>): string {
+  const seenUrls = new Set<string>();
+  const parts: string[] = [];
+  for (const entry of entries) {
+    const serialized = attachmentSerializeEntry(entry);
+    if (!serialized) {
+      continue;
+    }
+    const url = entry.url.trim();
+    if (seenUrls.has(url)) {
+      continue;
+    }
+    seenUrls.add(url);
+    parts.push(serialized);
+  }
+  return parts.join(", ");
+}
+
+function attachmentIsImage(entry: AttachmentEntry): boolean {
+  const url = entry.url.trim();
+  if (!url) {
+    return false;
+  }
+  if (url.startsWith("data:image/") || url.startsWith("data:application/svg")) {
+    return true;
+  }
+  const withoutQuery = url.split(/[?#]/)[0];
+  const lastDot = withoutQuery.lastIndexOf(".");
+  if (lastDot === -1 || lastDot < withoutQuery.lastIndexOf("/")) {
+    return false;
+  }
+  const ext = withoutQuery.slice(lastDot + 1).toLowerCase();
+  return ATTACHMENT_IMAGE_EXTENSIONS.has(ext);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("file read result was not a string"));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+type AttachmentCellEditorProps = GridCellEditorProps;
+
+export function AttachmentCellEditor({
+  field,
+  draft,
+  onChange,
+  onCommit,
+  onCancel,
+}: AttachmentCellEditorProps) {
+  const [pending, setPending] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const suppressBlurCommitRef = useRef(false);
+  const entries = useMemo(() => attachmentParseValue(draft.value), [draft.value]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const apply = (next: ReadonlyArray<AttachmentEntry>) => {
+    onChange({ ...draft, value: attachmentSerializeValue(next) });
+  };
+
+  const handleAddUrl = (raw: string, suggestedName?: string) => {
+    const parsed = attachmentParseEntry(suggestedName ? `${suggestedName}|${raw}` : raw);
+    if (!parsed) {
+      setError("Enter a valid http(s), data:, or /path URL.");
+      return;
+    }
+    if (entries.some((entry) => entry.url === parsed.url)) {
+      setError("This attachment is already attached.");
+      return;
+    }
+    setError(null);
+    apply([...entries, parsed]);
+    setPending("");
+  };
+
+  const handleRemove = (url: string) => {
+    apply(entries.filter((entry) => entry.url !== url));
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      if (pending.trim()) {
+        event.preventDefault();
+        handleAddUrl(pending);
+        return;
+      }
+      event.preventDefault();
+      onCommit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key === "Backspace" && !pending && entries.length > 0) {
+      event.preventDefault();
+      apply(entries.slice(0, -1));
+    }
+  };
+
+  const ingestFiles = async (files: FileList | File[]) => {
+    const accepted: AttachmentEntry[] = [];
+    let rejected = 0;
+    for (const file of Array.from(files)) {
+      if (file.size > ATTACHMENT_FILE_INPUT_LIMIT_BYTES) {
+        rejected += 1;
+        continue;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const entry: AttachmentEntry = { name: file.name, url: dataUrl };
+        if (
+          !accepted.some((existing) => existing.url === entry.url) &&
+          !entries.some((existing) => existing.url === entry.url)
+        ) {
+          accepted.push(entry);
+        }
+      } catch {
+        rejected += 1;
+      }
+    }
+    if (accepted.length) {
+      apply([...entries, ...accepted]);
+    }
+    if (rejected > 0) {
+      setError(
+        `Skipped ${rejected} file${rejected === 1 ? "" : "s"} (max 2 MiB each; paste a URL for larger files).`,
+      );
+    } else if (accepted.length) {
+      setError(null);
+    }
+  };
+
+  const handleFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      void ingestFiles(files);
+    }
+    // Allow re-selecting the same file by clearing the value.
+    event.target.value = "";
+  };
+
+  const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      void ingestFiles(files);
+    }
+  };
+
+  return (
+    <div
+      data-testid="appforge-attachment-editor"
+      data-attachment-drag-active={dragActive ? "true" : "false"}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragActive(true);
+      }}
+      onDragLeave={() => setDragActive(false)}
+      onDrop={handleDrop}
+      className={`flex w-full flex-col gap-1 rounded-md border px-2 py-1 text-sm text-white ${
+        dragActive ? "border-sky-300/70 bg-sky-500/10" : "border-sky-400/40 bg-black/55"
+      }`}
+    >
+      <div className="flex w-full flex-wrap items-center gap-1">
+        {entries.map((entry) => (
+          <span
+            key={entry.url}
+            data-testid="appforge-attachment-chip"
+            title={entry.name}
+            className="inline-flex max-w-44 items-center gap-1 truncate rounded-md bg-sky-400/22 px-2 py-0.5 text-xs font-medium text-sky-100"
+          >
+            {attachmentIsImage(entry) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={entry.url}
+                alt={entry.name}
+                className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                data-testid="appforge-attachment-thumbnail"
+              />
+            ) : (
+              <FileIcon className="h-3 w-3 flex-shrink-0" />
+            )}
+            <span className="truncate">{entry.name}</span>
+            <button
+              type="button"
+              aria-label={`Remove ${entry.name}`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                suppressBlurCommitRef.current = true;
+              }}
+              onClick={() => handleRemove(entry.url)}
+              className="rounded-full p-0.5 text-sky-100/80 hover:bg-sky-400/35 hover:text-white"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <span className="flex min-w-[100px] flex-1 items-center gap-1">
+          <Paperclip className="h-3 w-3 flex-shrink-0 text-white/35" aria-hidden />
+          <input
+            ref={inputRef}
+            value={pending}
+            onChange={(event) => {
+              setError(null);
+              setPending(event.target.value);
+            }}
+            onBlur={() => {
+              if (suppressBlurCommitRef.current) {
+                suppressBlurCommitRef.current = false;
+                queueMicrotask(() => inputRef.current?.focus());
+                return;
+              }
+              if (pending.trim()) {
+                handleAddUrl(pending);
+                return;
+              }
+              onCommit();
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              entries.length === 0 ? `Paste URL or drop a file (${field.name})…` : "Add another…"
+            }
+            aria-label={`Add attachment to ${field.name}`}
+            data-testid="appforge-attachment-input"
+            className="min-w-[100px] flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+          />
+          <button
+            type="button"
+            data-testid="appforge-attachment-upload-button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              suppressBlurCommitRef.current = true;
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1 rounded-md border border-white/12 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/65 hover:bg-white/10 hover:text-white"
+          >
+            <Upload className="h-3 w-3" />
+            Upload
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            data-testid="appforge-attachment-file-input"
+            className="hidden"
+            onChange={handleFileInputChange}
+          />
+        </span>
+      </div>
+      {error && (
+        <span
+          data-testid="appforge-attachment-editor-error"
+          className="text-[11px] font-medium text-rose-200"
+        >
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type AttachmentCellDisplayProps = {
+  value: ForgeStructuredRecordValue | undefined;
+};
+
+export function AttachmentCellDisplay({ value }: AttachmentCellDisplayProps) {
+  const serialized = Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string").join(", ")
+    : typeof value === "string"
+      ? value
+      : "";
+  const entries = useMemo(() => attachmentParseValue(serialized), [serialized]);
+
+  if (entries.length === 0) {
+    return <span className="text-white/24">—</span>;
+  }
+
+  return (
+    <div
+      className="flex max-w-[18rem] flex-wrap items-center gap-1"
+      data-testid="appforge-attachment-cell"
+    >
+      {entries.map((entry) => {
+        const isImage = attachmentIsImage(entry);
+        const commonClass =
+          "inline-flex max-w-40 items-center gap-1 truncate rounded-md border border-sky-300/18 bg-sky-400/12 px-2 py-0.5 text-xs font-medium text-sky-100";
+        return (
+          <a
+            key={entry.url}
+            href={entry.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            data-testid="appforge-attachment-cell-item"
+            data-attachment-is-image={isImage ? "true" : "false"}
+            title={entry.name}
+            className={commonClass}
+          >
+            {isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={entry.url}
+                alt={entry.name}
+                className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                data-testid="appforge-attachment-cell-thumbnail"
+              />
+            ) : (
+              <FileIcon className="h-3 w-3 flex-shrink-0" />
+            )}
+            <span className="truncate">{entry.name}</span>
+          </a>
+        );
+      })}
     </div>
   );
 }

@@ -51,6 +51,9 @@ import {
 import { fetchLocalApi, resolveDashboardApiToken } from "../utils/localApiFetch";
 import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
 import {
+  AttachmentCellDisplay,
+  AttachmentCellEditor,
+  EmailCellDisplay,
   EmailCellEditor,
   LinkedRecordCellEditor,
   MultiSelectCellDisplay,
@@ -3121,6 +3124,37 @@ export function AppForge({
                                       rows={3}
                                       className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400"
                                     />
+                                  ) : field.type === "multi_select" ||
+                                    field.type === "attachment" ||
+                                    field.type === "linked_record" ? (
+                                    <>
+                                      <textarea
+                                        data-testid={`appforge-form-${field.type}-input`}
+                                        value={formDraft[field.id] ?? ""}
+                                        onChange={(event) =>
+                                          setFormDraft((current) => ({
+                                            ...current,
+                                            [field.id]: event.target.value,
+                                          }))
+                                        }
+                                        rows={2}
+                                        placeholder={
+                                          field.type === "multi_select"
+                                            ? "Comma-separated tags"
+                                            : field.type === "attachment"
+                                              ? "Comma-separated URLs (name|url optional)"
+                                              : "Comma-separated record IDs"
+                                        }
+                                        className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                      />
+                                      <span className="mt-1 block text-[11px] text-slate-400">
+                                        {field.type === "multi_select"
+                                          ? "Separate tags with commas."
+                                          : field.type === "attachment"
+                                            ? "Paste one or more URLs (http(s):, data:, or /path)."
+                                            : "Reference target table records by ID."}
+                                      </span>
+                                    </>
                                   ) : (
                                     <input
                                       type={fieldInputType(field)}
@@ -3132,7 +3166,13 @@ export function AppForge({
                                         }))
                                       }
                                       placeholder={
-                                        field.type === "linked_record" ? "Record names" : ""
+                                        field.type === "linked_record"
+                                          ? "Record names"
+                                          : field.type === "email"
+                                            ? "name@example.com"
+                                            : field.type === "url"
+                                              ? "https://example.com"
+                                              : ""
                                       }
                                       className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-sky-400"
                                     />
@@ -3778,6 +3818,15 @@ export function AppForge({
                                                   onCommit={() => void commitEditingCell()}
                                                   onCancel={() => setEditingCell(null)}
                                                 />
+                                              ) : activeEditingCell &&
+                                                field.type === "attachment" ? (
+                                                <AttachmentCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
                                               ) : activeEditingCell && field.type === "rating" ? (
                                                 <RatingCellEditor
                                                   field={field}
@@ -3884,6 +3933,12 @@ export function AppForge({
                                                 />
                                               ) : field.type === "url" ? (
                                                 <UrlCellDisplay value={value} />
+                                              ) : field.type === "email" ? (
+                                                <EmailCellDisplay value={value} />
+                                              ) : field.type === "attachment" ? (
+                                                <AttachmentCellDisplay
+                                                  value={record.values[field.id]}
+                                                />
                                               ) : field.type === "rating" ? (
                                                 <RatingCellDisplay
                                                   field={field}
