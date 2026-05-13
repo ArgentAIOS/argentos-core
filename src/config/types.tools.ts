@@ -360,8 +360,8 @@ export type ToolsConfig = {
     search?: {
       /** Enable web search tool (default: true when API key is present). */
       enabled?: boolean;
-      /** Search provider ("brave" or "perplexity"). */
-      provider?: "brave" | "perplexity";
+      /** Search provider ("brave", "perplexity", or "tinyfish"). */
+      provider?: "brave" | "perplexity" | "tinyfish";
       /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
       apiKey?: string;
       /** Default search results count (1-10). */
@@ -378,6 +378,17 @@ export type ToolsConfig = {
         baseUrl?: string;
         /** Model to use (defaults to "perplexity/sonar-pro"). */
         model?: string;
+      };
+      /** TinyFish-specific configuration (used when provider="tinyfish"). */
+      tinyfish?: {
+        /** API key for TinyFish (defaults to TINYFISH_API_KEY env var). */
+        apiKey?: string;
+        /** Base URL override (default: https://api.search.tinyfish.ai). */
+        baseUrl?: string;
+        /** Default country code for geo-targeted results (e.g. "US", "GB"). */
+        location?: string;
+        /** Default language code for result language (e.g. "en", "fr"). */
+        language?: string;
       };
     };
     fetch?: {
@@ -410,6 +421,51 @@ export type ToolsConfig = {
         maxAgeMs?: number;
         /** Timeout in seconds for Firecrawl requests. */
         timeoutSeconds?: number;
+      };
+      /**
+       * TinyFish-as-fetch-backend (opt-in). When `enabled` and an API key are
+       * present, callers can pass `backend: "tinyfish"` to web_fetch to render
+       * the URL via TinyFish's browser-based fetch (renders JS, bypasses
+       * anti-bot). Default web_fetch behavior is unchanged.
+       */
+      tinyfish?: {
+        /** Allow `backend: "tinyfish"` requests in web_fetch (default: false). */
+        enabled?: boolean;
+        /** TinyFish API key (optional; defaults to TINYFISH_API_KEY env var). */
+        apiKey?: string;
+        /** TinyFish Fetch base URL override (default: https://api.fetch.tinyfish.ai). */
+        baseUrl?: string;
+        /** Output format ("markdown" recommended for LLMs). */
+        format?: "markdown" | "html" | "json";
+        /** Timeout in seconds for TinyFish fetch requests (default: 150). */
+        timeoutSeconds?: number;
+      };
+    };
+    /**
+     * TinyFish Agent (natural-language browser automation). Opt-in: requires
+     * `enabled=true` AND a TinyFish API key. Agent runs are billed against
+     * the TinyFish account — paid tier — and surface a clear error if the
+     * account lacks credits. Default behavior is unchanged when disabled.
+     */
+    agent?: {
+      /** Allow tinyfish_agent tool (default: false). */
+      enabled?: boolean;
+      /** TinyFish API key (optional; defaults to TINYFISH_API_KEY env var). */
+      apiKey?: string;
+      /** TinyFish Agent base URL override (default: https://agent.tinyfish.ai). */
+      baseUrl?: string;
+      /** Browser profile ("lite" or "stealth"; default: lite). */
+      browserProfile?: "lite" | "stealth";
+      /** Default max steps cap (1-500; default: 150). */
+      maxSteps?: number;
+      /** Timeout in seconds for agent run requests (default: 300). */
+      timeoutSeconds?: number;
+      /** Default capture flags applied when the caller omits them. */
+      capture?: {
+        screenshots?: boolean;
+        snapshots?: boolean;
+        recording?: boolean;
+        elements?: boolean;
       };
     };
   };

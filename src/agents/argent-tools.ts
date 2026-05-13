@@ -89,6 +89,10 @@ import { createTasksTool } from "./tools/tasks-tools.js";
 import { createTeamSpawnTool } from "./tools/team-spawn-tool.js";
 import { createTeamStatusTool } from "./tools/team-status-tool.js";
 import { createTerminalTool } from "./tools/terminal-tool.js";
+import {
+  createTinyFishBrowserCloseTool,
+  createTinyFishBrowserOpenTool,
+} from "./tools/tinyfish-browser.js";
 import { createToolSearchTool } from "./tools/tool-search-tool.js";
 import { createTtsGenerateTool } from "./tools/tts-generate-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
@@ -97,7 +101,11 @@ import { createVercelDeployTool } from "./tools/vercel-deploy-tool.js";
 import { createVideoGenerationTool } from "./tools/video-generation-tool.js";
 import { createVipEmailTool } from "./tools/vip-email-tool.js";
 import { createVisualPresenceTool } from "./tools/visual-presence-tool.js";
-import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+import {
+  createTinyFishAgentTool,
+  createWebFetchTool,
+  createWebSearchTool,
+} from "./tools/web-tools.js";
 import { createWidgetBuilderTool } from "./tools/widget-builder-tool.js";
 import { createWorkflowBuilderTool } from "./tools/workflow-builder-tool.js";
 import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
@@ -180,6 +188,19 @@ export function createArgentTools(options?: {
   const webFetchTool = createWebFetchTool({
     config: options?.config,
     sandboxed: options?.sandboxed,
+  });
+  const tinyfishBrowserOpenTool = createTinyFishBrowserOpenTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
+  const tinyfishBrowserCloseTool = createTinyFishBrowserCloseTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
+  const tinyfishAgentTool = createTinyFishAgentTool({
+    config: options?.config,
+    sandboxed: options?.sandboxed,
+    agentSessionKey: options?.agentSessionKey,
   });
   const messageTool = options?.disableMessageTool
     ? null
@@ -297,6 +318,9 @@ export function createArgentTools(options?: {
     }),
     ...(webSearchTool ? [webSearchTool] : []),
     ...(webFetchTool ? [webFetchTool] : []),
+    tinyfishBrowserOpenTool,
+    tinyfishBrowserCloseTool,
+    ...(tinyfishAgentTool ? [tinyfishAgentTool] : []),
     ...(imageTool ? [imageTool] : []),
     // ArgentOS tools
     createTasksTool({

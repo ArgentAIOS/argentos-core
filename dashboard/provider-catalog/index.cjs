@@ -12,9 +12,9 @@
  * expects a local provider catalog artifact.
  */
 module.exports = {
-  PROVIDER_REGISTRY_SEED_VERSION: 9,
+  PROVIDER_REGISTRY_SEED_VERSION: 10,
   DEFAULT_PROVIDER_REGISTRY: {
-    version: 9,
+    version: 10,
     providers: {
       minimax: {
         name: "MiniMax",

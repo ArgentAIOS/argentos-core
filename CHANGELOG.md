@@ -2,6 +2,295 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.5.6.3
+
+Third micro release on top of `v2026.5.6`. **17 commits / 11 issues closed**,
+combining the full TinyFish web toolkit (search + fetch + browser + agent),
+1Password Service Account as a first-class secrets backend, and the
+pi-bridge cluster that unblocks the long-pending pi-ai 0.73.1+ bump (#182).
+No schema changes, no breaking API changes. Safe drop-in upgrade from
+`v2026.5.6.2`.
+
+### Highlights
+
+- **TinyFish becomes the recommended default web stack.** Free Search +
+  Fetch ship as the first-class default for every account (no API-key
+  wrangling, no credits), and the paid Browser API + Agent API now ship
+  as first-class agent tools alongside them. Operators get a working
+  web stack in 30 seconds; agents can drive a real browser
+  (Playwright/CDP) or describe goals in natural language and have
+  TinyFish navigate / click / fill on their behalf.
+- **1Password Service Accounts as a first-class secrets backend.**
+  Per-key `op://Vault/Item/field` references on any entry in
+  `service-keys` are now detected at resolve time and resolved through
+  the `op` CLI. Existing literal values continue to work unchanged —
+  fully additive and opt-in per key. Tokens are never logged, output
+  is always masked, and 5-minute in-memory caching keeps the resolver
+  cheap. `argent secrets backend 1password setup`, `doctor`, and
+  `test <variable>` ship with the CLI; `argent doctor` reports
+  1Password health only when refs exist.
+- **Pi-bridge cluster closes — pi-ai 0.73.1+ bump (#182) is now
+  unblocked.** Six bridge PRs land in this release (#321, #322, #323,
+  #324, #327 plus the foundation cluster #299/#308/#309/#310). Argent's
+  runtime now consumes pi-coding-agent's `AgentSession`, `Agent.state`,
+  `AgentMessage`, `BashExecutionMessage`, `supportsXhigh`, `Transport`,
+  `AuthStorage`, `ModelRegistry`, `SessionCompactionResult`, and the
+  typebox `Tool`/`Context` types through structural bridge interfaces
+  in `pi-bridge/`. The next pi-ai bump becomes a routine version-pin
+  rather than a multi-day migration.
+- **SetupWizard cards derived from the provider seed.** The dashboard's
+  first-run LLM provider cards (anthropic, openai, minimax, zai, local)
+  are now generated from `src/agents/provider-registry-seed.ts` at
+  build time, eliminating the drift between the runtime registry and
+  the onboarding wizard that #295 catalogued.
+
+### TinyFish web toolkit
+
+- **TinyFish first-class default — `web_search` + `web_fetch`** (PR
+  [#317](https://github.com/ArgentAIOS/argentos-core/pull/317)):
+  `tinyfish` joins `SEARCH_PROVIDERS`; `resolveSearchProvider` picks
+  TinyFish whenever a `TINYFISH_API_KEY` is resolvable (env, dashboard
+  service-keys, or `tools.web.search.tinyfish.apiKey`). `web_fetch`
+  gains an opt-in `backend: "tinyfish"` param that posts JS-heavy or
+  anti-bot pages through `api.fetch.tinyfish.ai`. CLI wizard surfaces
+  TinyFish **first** in `promptWebToolsConfig`; dashboard onboarding
+  reorders `SEARCH_PROVIDER_CARDS` with TinyFish at the top labelled
+  "Free Search & Fetch (Recommended)". Brave + Perplexity remain
+  fully supported. Strict-Zod gap closed for `firecrawl`, `readability`,
+  and `tinyfish` sub-objects so valid `argent.json` configs are no
+  longer rejected. 30 tests in `web-search.test.ts` cover every
+  smart-default branch, resolver units, and 401 auth-failure transport.
+- **TinyFish Browser API — remote Playwright/CDP session** (PR
+  [#325](https://github.com/ArgentAIOS/argentos-core/pull/325), closes
+  [#320](https://github.com/ArgentAIOS/argentos-core/issues/320)):
+  New `tinyfish_browser_open` / `tinyfish_browser_close` agent tools.
+  `open` posts to `api.browser.tinyfish.ai` and returns
+  `{session_id, cdp_url, base_url}` — the agent (or a higher-level
+  tool) connects via `chromium.connect_over_cdp(cdp_url)`. Argent
+  itself does **not** wrap Playwright. `close` is acknowledgement-only
+  (sessions auto-terminate after 1 hour of inactivity; the API has no
+  explicit delete endpoint). Paid-tier walls surface as
+  `tinyfish_browser_paid_tier_required` with an upgrade message; 401
+  is mapped separately so the agent doesn't suggest an upgrade on
+  auth failures. 21 tests cover registration, schema, auth, transport,
+  and error mapping.
+- **TinyFish Agent API — natural-language web automation** (PR
+  [#326](https://github.com/ArgentAIOS/argentos-core/pull/326), closes
+  [#319](https://github.com/ArgentAIOS/argentos-core/issues/319)):
+  New `tinyfish_agent` tool. Operators describe a goal in natural
+  language plus a starting URL; TinyFish navigates / clicks / fills
+  on real sites and returns structured results. Optional
+  `max_steps`, `browser_profile` (`lite`/`stealth`), `screenshots`,
+  `snapshots`, `recording`, `webhook_url`, `timeout_seconds`.
+  Hard caps: 500 steps, 600s timeout. New config surface
+  `tools.web.agent.*`. Opt-in (defaults `enabled: false`) because
+  Agent is a paid tier. Error mapping for `INSUFFICIENT_CREDITS` /
+  paid-feature wall, `RATE_LIMIT_EXCEEDED`, auth failures, and
+  client-side timeout. 35 tests covering config, auth, URL guards,
+  registration, transport, and error mapping.
+
+### 1Password Service Accounts (first-class secrets backend)
+
+- **`op://` references resolved at service-key resolution time** (PR
+  [#318](https://github.com/ArgentAIOS/argentos-core/pull/318)):
+  Per-key `op://Vault/Item/field` references in any service-keys entry
+  are detected at resolve time and resolved through the `op` CLI.
+  New `src/infra/onepassword-resolver.ts` exposes `isOnePasswordRef`,
+  `parseOnePasswordRef`, `maskRef`, and `resolveOnePasswordRef` with
+  a 5-minute in-memory cache (TTL configurable per call; `ttl=0`
+  disables). `OP_SERVICE_ACCOUNT_TOKEN` is read from `process.env`
+  or from argent's encrypted secret store and is **never logged or
+  printed** — all `op` output passes through `redactToken` first, and
+  the subprocess env is whitelist-built so unrelated env doesn't leak
+  into `op`. Graceful fallback when the `op` CLI is absent
+  (`op_cli_missing`). New CLI: `argent secrets backend 1password
+setup [--token ops_...] [--migrate-existing]`, `doctor [--sample
+op://...]`, and `test <variable>`. `argent doctor` reports a
+  1Password block only when refs are present, with clear remediation
+  steps; never fails the parent doctor run. Dashboard exposes
+  `GET /api/settings/service-keys/1password/health` with the same
+  probe data (UI toggle is a follow-up). 20 tests cover parse, mask,
+  redact, token resolution priority, cache TTL boundary (hit / miss
+  / `ttl=0`), `op-missing` fallback, ref detection, and env-fallback
+  on resolver failure. Ships **flavor A** (per-key refs) from the
+  spec; flavor B (global `secrets.backend = "1password"` flag) is a
+  follow-up.
+
+### Pi-bridge cluster (unblocks #182)
+
+The pi-coding-agent 0.70.2+ surface added ~78 private members,
+removed `replaceMessages`, privatized `AuthStorage` / `ModelRegistry`
+constructors, switched to `typebox@1.x`, and reshaped
+`BashExecutionMessage` and `supportsXhigh`. PR #275 / #276 attempted
+forward-direction unification (argent's `AgentSession` impl wrapping
+pi's class) and correctly stopped — class extension can't satisfy
+private members it doesn't own. This release ships the **structural**
+bridge instead: argent's runtime consumes pi's surface through
+interfaces in `pi-bridge/` that capture only the public shape
+argent reads. Future pi bumps absorb drift at one chokepoint per type.
+
+- **Foundation + AuthStorage / ModelRegistry / SessionCompactionResult /
+  typebox `Tool`+`Context`** (PRs
+  [#299](https://github.com/ArgentAIOS/argentos-core/pull/299) /
+  [#308](https://github.com/ArgentAIOS/argentos-core/pull/308) /
+  [#309](https://github.com/ArgentAIOS/argentos-core/pull/309) /
+  [#310](https://github.com/ArgentAIOS/argentos-core/pull/310), partial
+  [#286](https://github.com/ArgentAIOS/argentos-core/issues/286);
+  closes [#300](https://github.com/ArgentAIOS/argentos-core/issues/300),
+  [#303](https://github.com/ArgentAIOS/argentos-core/issues/303),
+  [#305](https://github.com/ArgentAIOS/argentos-core/issues/305)):
+  Establishes `src/argent-agent/pi-bridge/` as the single chokepoint
+  for argent ↔ pi-coding-agent type identity. Migrates the remaining
+  `AuthStorage` and `ModelRegistry` call sites off direct pi imports;
+  adds a `SessionCompactionResult` mapper; bridges the typebox
+  `Tool`/`Context` surface so 0.34 → 1.x drift is absorbed in one
+  place.
+- **`supportsXhigh` + `Transport` cleanup** (PR
+  [#321](https://github.com/ArgentAIOS/argentos-core/pull/321), closes
+  [#306](https://github.com/ArgentAIOS/argentos-core/issues/306)):
+  Drift-absorbing `supportsXhigh(model)` wrapper in pi-bridge (local
+  re-implementation, not a re-export — pi 0.73+ removed the named
+  export and replaced it with
+  `getSupportedThinkingLevels().includes("xhigh")`). `Transport` type
+  alias forwards pi's `"sse" | "websocket" | "auto"` union; audited
+  `src/` for the removed `"websocket-cached"` variant and confirmed
+  zero occurrences. The two #182-catalogued sites (`agent-core/ai.ts`
+  re-export and `pi-embedded-runner/run/attempt.ts`
+  `resolveOpenAICodexTransport`) migrated through the bridge.
+- **`AgentSessionLike` structural bridge** (PR
+  [#323](https://github.com/ArgentAIOS/argentos-core/pull/323), closes
+  [#301](https://github.com/ArgentAIOS/argentos-core/issues/301)):
+  `pi-bridge/agent-session.ts` exposes `AgentSessionLike` and
+  `AgentSessionAgentLike` — interfaces capturing only the public
+  surface `pi-embedded-runner` actually reads. Both argent's
+  `AgentSession` interface and pi's class satisfy the read subset;
+  argent's interface additionally satisfies `agent.setSystemPrompt`
+  (the runtime source is always argent — `agent-core/coding.ts`
+  rebinds `createAgentSession` → `createArgentAgentSession`).
+  `attempt.ts:1130` TS2352 cast and `system-prompt.ts:94` TS2339
+  `setSystemPrompt`-on-Agent error retire. Baseline: 227 → 225.
+- **`Agent.replaceMessages` migration** (PR
+  [#324](https://github.com/ArgentAIOS/argentos-core/pull/324), closes
+  [#302](https://github.com/ArgentAIOS/argentos-core/issues/302)):
+  Migrates the 4 `Agent.replaceMessages(...)` call sites in
+  `attempt.ts` to pi 0.70.2+'s new API: `agent.state.messages = msgs`
+  (the `AgentState.messages` setter copies the top-level array).
+  Pi-bridge gains `AgentSessionAgentStateLike` plus a
+  `replaceAgentMessages(agent, msgs)` helper — single chokepoint
+  wrapping the assignment so future drift only touches one file.
+  Retires the optional `replaceMessages?` shim that PR #323 had
+  added as a stopgap (it type-checked but was a silent no-op on any
+  pi-class instance). Argent's internal `AgentSession` retains its
+  own `replaceMessages` method for internal callers (tests,
+  compaction, session bootstrap).
+- **`SetupWizard` cards from registry seed** (PR
+  [#322](https://github.com/ArgentAIOS/argentos-core/pull/322), closes
+  [#295](https://github.com/ArgentAIOS/argentos-core/issues/295)):
+  Refactors `dashboard/src/lib/onboardingStack.ts` so the SetupWizard's
+  5 first-run LLM provider cards (anthropic, openai, minimax, zai,
+  local) derive from `provider-registry-seed.ts` instead of being
+  hand-maintained in two places. `ONBOARDING_PROVIDER_CARD_SEEDS`
+  added to the core seed with an `onboardingVisible: true` flag;
+  `SEED_VERSION` bumped 9 → 10 so existing installs re-seed.
+  `scripts/export-provider-catalog.ts` (introduced for #268) extends
+  to regenerate a typed TS artifact at
+  `dashboard/src/lib/_generated/onboarding-card-seed.ts` during
+  `pnpm build`. The 5 existing cards render with identical IDs,
+  labels, accents, recommended labels, descriptions, key URLs, and
+  ordering — verified by direct field-by-field comparison.
+  `MODEL_FALLBACKS` and `ROUTER_TIER_PREFERENCES` migrations remain
+  follow-ups under #295.
+- **`BashExecutionMessage.content` migration** (PR
+  [#327](https://github.com/ArgentAIOS/argentos-core/pull/327), closes
+  [#304](https://github.com/ArgentAIOS/argentos-core/issues/304)):
+  Last `attempt.ts` site in the pi-bridge cluster. New
+  `pi-bridge/bash-execution.ts` exposes `getBashExecutionContent(msg)`
+  plus a `BashExecutionMessage` alias sourced via the
+  `CustomAgentMessages["bashExecution"]` merged-map indirect (no deep
+  pi-coding-agent import). `attempt.ts` now imports `AgentMessage`
+  from `argent-agent/pi-bridge` (was `agent-core/core.js`); the 7
+  sites that hand `activeSession.messages` to consumers
+  (sanitizeSessionHistory, sanitizeMessagesForModelAdapter,
+  injectHistoryImagesIntoMessages, detectAndLoadPromptImages,
+  cacheTrace.recordStage × 3) consume the bridge identity directly.
+  Helper prefers `.output` and falls back to legacy `.content` so any
+  future cross-link to older pi typings still type-checks. With this
+  in place, **#182 (pi-ai 0.73.1+ bump) becomes a routine
+  version-pin.**
+
+### Other fixes + ergonomics
+
+- **Routing de-prioritizes models with recent empty-response failures**
+  (PR [#307](https://github.com/ArgentAIOS/argentos-core/pull/307),
+  closes [#281](https://github.com/ArgentAIOS/argentos-core/issues/281)):
+  Models that recently emitted empty responses are temporarily
+  de-prioritized in the routing layer, complementing the per-model
+  fallback retry shipped in v2026.5.6.2 (#254 / #280).
+- **Keychain: pin `login.keychain-db` explicitly** (PR
+  [#298](https://github.com/ArgentAIOS/argentos-core/pull/298), closes
+  [#292](https://github.com/ArgentAIOS/argentos-core/issues/292)):
+  Pins the explicit `login.keychain-db` path when issuing
+  `security` CLI commands so macOS doesn't pop the keychain-access
+  prompt under contention from concurrent agents.
+- **Provider hygiene: drop dead `nvidia-free`; refresh `minimax-mix`
+  ids** (PR [#294](https://github.com/ArgentAIOS/argentos-core/pull/294)).
+
+### Known carry-overs
+
+- [#276](https://github.com/ArgentAIOS/argentos-core/issues/276)
+  AgentSession identity unify — **superseded** by the
+  `AgentSessionLike` structural bridge in #323 (closing soon as
+  obsolete; the structural approach replaces the forward-extension
+  approach attempted in #275 / #276).
+- [#286](https://github.com/ArgentAIOS/argentos-core/issues/286)
+  Pi-bridge module — **substantially closed.** The foundation
+  (#299) plus the AuthStorage/ModelRegistry/SessionCompactionResult/
+  typebox/AgentSessionLike/replaceMessages/BashExecutionMessage/
+  supportsXhigh/Transport bridges are in. Remaining work is the
+  actual pi-ai 0.73.1+ version bump.
+- [#182](https://github.com/ArgentAIOS/argentos-core/issues/182)
+  pi-ai 0.73.1+ bump — **unblocked.** The bridge cluster removes
+  every previously-flagged drift surface. Next bump becomes a
+  routine version-pin.
+
+### Validation
+
+- ✅ `pnpm exec tsc --noEmit` baseline 218 errors (down from 227 on
+  v2026.5.6.2 thanks to #323's -2 delta) — net-zero new errors from
+  any PR in this release.
+- ✅ `pnpm build` succeeds.
+- ✅ Architectural invariants (INV-1 / INV-2 / INV-4) pass.
+- ✅ `pnpm check:repo-lane` passes.
+- ✅ 100+ new tests across TinyFish (30 search + 21 browser + 35
+  agent), 1Password (20), and pi-bridge cluster. All passing.
+- ⚠️ Pre-existing failures in `run.overflow-compaction.test.ts`
+  (missing `isModelUnavailableErrorMessage` mock export) reproduce on
+  origin/dev unchanged — not introduced by this release.
+
+### Testing notes
+
+- `argent update` from `v2026.5.6.2` should land cleanly on
+  `2026.5.6.3`. Validate post-update: `argent doctor` reports 0
+  plugin errors, gateway running on the new version stamp.
+- **TinyFish**: `TINYFISH_API_KEY=tf_... pnpm dev` → confirm
+  `web_search` routes to TinyFish without `provider` config. Open
+  dashboard onboarding → search provider step → confirm TinyFish
+  card is first with the "Recommended" badge.
+- **TinyFish Browser**: with a paid key, `tinyfish_browser_open` →
+  connect via Playwright `connect_over_cdp(cdp_url)` → verify
+  navigation works.
+- **TinyFish Agent**: with `tools.web.agent.enabled=true` and a paid
+  key, call `tinyfish_agent {goal, url, max_steps: 20}` → expect a
+  structured result.
+- **1Password**: `argent secrets backend 1password setup --token
+ops_...` against a real Service Account → token stored encrypted,
+  `op vault list` probe succeeds. Set a service-keys value to
+  `op://Argent/<Item>/<field>` → `argent secrets backend 1password
+test <variable>` resolves end-to-end with masked output.
+- **Pi-bridge cluster**: tracker validation — apply the bridge in
+  the pi-ai 0.73.1+ bump worktree and confirm all previously-flagged
+  drift surfaces type-check.
+
 ## 2026.5.6.2
 
 Second micro release on top of `v2026.5.6`. **18 issues closed**, all bug

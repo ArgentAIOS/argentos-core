@@ -30,12 +30,17 @@ import {
 export { extractReadableContent } from "./web-fetch-utils.js";
 
 const EXTRACT_MODES = ["markdown", "text"] as const;
+const FETCH_BACKENDS = ["direct", "tinyfish"] as const;
+type FetchBackend = (typeof FETCH_BACKENDS)[number];
 
 const DEFAULT_FETCH_MAX_CHARS = 50_000;
 const DEFAULT_FETCH_MAX_REDIRECTS = 3;
 const DEFAULT_ERROR_MAX_CHARS = 4_000;
 const DEFAULT_FIRECRAWL_BASE_URL = "https://api.firecrawl.dev";
 const DEFAULT_FIRECRAWL_MAX_AGE_MS = 172_800_000;
+const DEFAULT_TINYFISH_FETCH_BASE_URL = "https://api.fetch.tinyfish.ai";
+const DEFAULT_TINYFISH_TIMEOUT_SECONDS = 150;
+const DEFAULT_TINYFISH_FORMAT: "markdown" | "html" | "json" = "markdown";
 const DEFAULT_DASHBOARD_API = "http://localhost:9242";
 const DEFAULT_FETCH_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -56,6 +61,13 @@ const WebFetchSchema = Type.Object({
       minimum: 100,
     }),
   ),
+  backend: Type.Optional(
+    stringEnum(FETCH_BACKENDS, {
+      description:
+        'Fetch backend. "tinyfish" (recommended when enabled — free, no credits) routes the URL through TinyFish\'s browser-based fetch for JS-heavy or anti-bot pages with clean LLM-tuned markdown. "direct" (default) uses argent\'s SSRF-guarded HTTP fetch with Readability extraction.',
+      default: "direct",
+    }),
+  ),
 });
 
 type WebFetchConfig = NonNullable<ArgentConfig["tools"]>["web"] extends infer Web
@@ -74,6 +86,40 @@ type FirecrawlFetchConfig =
       timeoutSeconds?: number;
     }
   | undefined;
+
+type TinyFishFetchConfig =
+  | {
+      enabled?: boolean;
+      apiKey?: string;
+      baseUrl?: string;
+      format?: "markdown" | "html" | "json";
+      timeoutSeconds?: number;
+    }
+  | undefined;
+
+type TinyFishFetchResultEntry = {
+  url?: string;
+  final_url?: string;
+  title?: string | null;
+  description?: string | null;
+  language?: string | null;
+  author?: string | null;
+  published_date?: string | null;
+  text?: string | Record<string, unknown>;
+  format?: string;
+  latency_ms?: number | null;
+};
+
+type TinyFishFetchErrorEntry = {
+  url?: string;
+  error?: string;
+  status?: number;
+};
+
+type TinyFishFetchResponse = {
+  results?: TinyFishFetchResultEntry[];
+  errors?: TinyFishFetchErrorEntry[];
+};
 
 function resolveFetchConfig(cfg?: ArgentConfig): WebFetchConfig {
   const fetch = cfg?.tools?.web?.fetch;
@@ -180,6 +226,126 @@ function resolveFirecrawlMaxAgeMsOrDefault(firecrawl?: FirecrawlFetchConfig): nu
     return resolved;
   }
   return DEFAULT_FIRECRAWL_MAX_AGE_MS;
+}
+
+function resolveTinyFishFetchConfig(fetch?: WebFetchConfig): TinyFishFetchConfig {
+  if (!fetch || typeof fetch !== "object") {
+    return undefined;
+  }
+  const tinyfish = "tinyfish" in fetch ? fetch.tinyfish : undefined;
+  if (!tinyfish || typeof tinyfish !== "object") {
+    return undefined;
+  }
+  return tinyfish as TinyFishFetchConfig;
+}
+
+function resolveTinyFishFetchEnabled(tinyfish?: TinyFishFetchConfig): boolean {
+  if (typeof tinyfish?.enabled === "boolean") {
+    return tinyfish.enabled;
+  }
+  return false;
+}
+
+function resolveTinyFishFetchApiKey(tinyfish?: TinyFishFetchConfig): string | undefined {
+  const fromConfig =
+    tinyfish && "apiKey" in tinyfish && typeof tinyfish.apiKey === "string"
+      ? tinyfish.apiKey.trim()
+      : "";
+  const fromEnv = (process.env.TINYFISH_API_KEY ?? "").trim();
+  return fromConfig || fromEnv || undefined;
+}
+
+function resolveTinyFishFetchBaseUrl(tinyfish?: TinyFishFetchConfig): string {
+  const raw =
+    tinyfish && "baseUrl" in tinyfish && typeof tinyfish.baseUrl === "string"
+      ? tinyfish.baseUrl.trim()
+      : "";
+  return (raw || DEFAULT_TINYFISH_FETCH_BASE_URL).replace(/\/+$/, "");
+}
+
+function resolveTinyFishFetchFormat(tinyfish?: TinyFishFetchConfig): "markdown" | "html" | "json" {
+  const raw =
+    tinyfish && "format" in tinyfish && typeof tinyfish.format === "string"
+      ? (tinyfish.format as string).trim().toLowerCase()
+      : "";
+  if (raw === "html" || raw === "json" || raw === "markdown") {
+    return raw;
+  }
+  return DEFAULT_TINYFISH_FORMAT;
+}
+
+function resolveTinyFishFetchTimeoutSeconds(tinyfish?: TinyFishFetchConfig): number {
+  const raw =
+    tinyfish && "timeoutSeconds" in tinyfish && typeof tinyfish.timeoutSeconds === "number"
+      ? tinyfish.timeoutSeconds
+      : undefined;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_TINYFISH_TIMEOUT_SECONDS;
+  }
+  return Math.max(1, Math.floor(raw));
+}
+
+export async function fetchTinyFishContent(params: {
+  url: string;
+  extractMode: ExtractMode;
+  apiKey: string;
+  baseUrl: string;
+  format: "markdown" | "html" | "json";
+  timeoutSeconds: number;
+}): Promise<{
+  text: string;
+  title?: string;
+  finalUrl?: string;
+  format: string;
+  latencyMs?: number;
+}> {
+  const endpoint = params.baseUrl.replace(/\/+$/, "");
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-API-Key": params.apiKey,
+    },
+    body: JSON.stringify({
+      urls: [params.url],
+      format: params.format,
+    }),
+    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
+  });
+
+  if (!res.ok) {
+    const detail = await readResponseText(res);
+    throw new Error(`TinyFish Fetch API error (${res.status}): ${detail || res.statusText}`);
+  }
+
+  const data = (await res.json()) as TinyFishFetchResponse;
+  const result = data.results?.[0];
+  if (!result) {
+    const err = data.errors?.[0];
+    const code = err?.error ?? "unknown_error";
+    const status = err?.status ? ` (status ${err.status})` : "";
+    throw new Error(`TinyFish Fetch returned no content for ${params.url}: ${code}${status}`);
+  }
+
+  const rawText =
+    typeof result.text === "string"
+      ? result.text
+      : result.text != null
+        ? JSON.stringify(result.text, null, 2)
+        : "";
+  const text =
+    params.format === "markdown" && params.extractMode === "text"
+      ? markdownToText(rawText)
+      : rawText;
+
+  return {
+    text,
+    title: typeof result.title === "string" ? result.title : undefined,
+    finalUrl: typeof result.final_url === "string" ? result.final_url : undefined,
+    format: typeof result.format === "string" ? result.format : params.format,
+    latencyMs: typeof result.latency_ms === "number" ? result.latency_ms : undefined,
+  };
 }
 
 function resolveMaxChars(value: unknown, fallback: number, cap: number): number {
@@ -427,25 +593,83 @@ async function runWebFetch(params: {
   firecrawlProxy: "auto" | "basic" | "stealth";
   firecrawlStoreInCache: boolean;
   firecrawlTimeoutSeconds: number;
+  backend: FetchBackend;
+  tinyfishEnabled: boolean;
+  tinyfishApiKey?: string;
+  tinyfishBaseUrl: string;
+  tinyfishFormat: "markdown" | "html" | "json";
+  tinyfishTimeoutSeconds: number;
 }): Promise<Record<string, unknown>> {
   const cacheKey = normalizeCacheKey(
-    `fetch:${params.url}:${params.extractMode}:${params.maxChars}`,
+    `fetch:${params.backend}:${params.url}:${params.extractMode}:${params.maxChars}`,
   );
   const cached = readCache(FETCH_CACHE, cacheKey);
   if (cached) {
     return { ...cached.value, cached: true };
   }
 
-  let parsedUrl: URL;
+  // Validate URL early — TinyFish path skips the SSRF guard below but should
+  // still reject non-http(s) URLs before sending the request.
+  let parsedUrlEarly: URL;
   try {
-    parsedUrl = new URL(params.url);
+    parsedUrlEarly = new URL(params.url);
   } catch {
     throw new Error("Invalid URL: must be http or https");
   }
-  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+  if (!["http:", "https:"].includes(parsedUrlEarly.protocol)) {
     throw new Error("Invalid URL: must be http or https");
   }
 
+  if (params.backend === "tinyfish") {
+    if (!params.tinyfishEnabled) {
+      throw new Error(
+        'web_fetch backend="tinyfish" is disabled. Set tools.web.fetch.tinyfish.enabled=true in config.',
+      );
+    }
+    if (!params.tinyfishApiKey) {
+      throw new Error(
+        'web_fetch backend="tinyfish" needs an API key. Set TINYFISH_API_KEY or tools.web.fetch.tinyfish.apiKey. Get a free key at https://agent.tinyfish.ai/api-keys.',
+      );
+    }
+    const tStart = Date.now();
+    const tinyfish = await fetchTinyFishContent({
+      url: params.url,
+      extractMode: params.extractMode,
+      apiKey: params.tinyfishApiKey,
+      baseUrl: params.tinyfishBaseUrl,
+      format: params.tinyfishFormat,
+      timeoutSeconds: params.tinyfishTimeoutSeconds,
+    });
+    const wrapped = wrapWebFetchContent(tinyfish.text, params.maxChars);
+    const wrappedTitle = tinyfish.title ? wrapWebFetchField(tinyfish.title) : undefined;
+    const payload = {
+      url: params.url, // Keep raw for tool chaining
+      finalUrl: tinyfish.finalUrl || params.url, // Keep raw
+      status: 200,
+      contentType:
+        tinyfish.format === "json"
+          ? "application/json"
+          : tinyfish.format === "html"
+            ? "text/html"
+            : "text/markdown",
+      title: wrappedTitle,
+      extractMode: params.extractMode,
+      extractor: "tinyfish",
+      backend: "tinyfish",
+      truncated: wrapped.truncated,
+      length: wrapped.wrappedLength,
+      rawLength: wrapped.rawLength,
+      wrappedLength: wrapped.wrappedLength,
+      fetchedAt: new Date().toISOString(),
+      tookMs: Date.now() - tStart,
+      tinyfishLatencyMs: tinyfish.latencyMs,
+      text: wrapped.text,
+    };
+    writeCache(FETCH_CACHE, cacheKey, payload, params.cacheTtlMs);
+    return payload;
+  }
+
+  // URL already validated above via parsedUrlEarly.
   const start = Date.now();
   let res: Response;
   let release: (() => Promise<void>) | null = null;
@@ -712,14 +936,24 @@ export function createWebFetchTool(options?: {
     firecrawl?.timeoutSeconds ?? fetch?.timeoutSeconds,
     DEFAULT_TIMEOUT_SECONDS,
   );
+  const tinyfishConfig = resolveTinyFishFetchConfig(fetch);
+  const tinyfishApiKey = resolveTinyFishFetchApiKey(tinyfishConfig);
+  const tinyfishEnabled = resolveTinyFishFetchEnabled(tinyfishConfig);
+  const tinyfishBaseUrl = resolveTinyFishFetchBaseUrl(tinyfishConfig);
+  const tinyfishFormat = resolveTinyFishFetchFormat(tinyfishConfig);
+  const tinyfishTimeoutSeconds = resolveTinyFishFetchTimeoutSeconds(tinyfishConfig);
   const userAgent =
     (fetch && "userAgent" in fetch && typeof fetch.userAgent === "string" && fetch.userAgent) ||
     DEFAULT_FETCH_USER_AGENT;
+  const baseDescription =
+    "Fetch and extract readable content from a URL. Prefers native markdown when the server supports it (Cloudflare Markdown-for-Agents), otherwise extracts from HTML via Readability. Use for lightweight page access without browser automation.";
+  const tinyfishHint = tinyfishEnabled
+    ? ' Recommended: pass `backend: "tinyfish"` for JS-heavy SPAs, anti-bot pages, or when you want clean LLM-tuned markdown out of the box (free, no credits).'
+    : "";
   return {
     label: "Web Fetch",
     name: "web_fetch",
-    description:
-      "Fetch and extract readable content from a URL. Prefers native markdown when the server supports it (Cloudflare Markdown-for-Agents), otherwise extracts from HTML via Readability. Use for lightweight page access without browser automation.",
+    description: `${baseDescription}${tinyfishHint}`,
     parameters: WebFetchSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -727,6 +961,8 @@ export function createWebFetchTool(options?: {
       const extractMode = readStringParam(params, "extractMode") === "text" ? "text" : "markdown";
       const maxChars = readNumberParam(params, "maxChars", { integer: true });
       const maxCharsCap = resolveFetchMaxCharsCap(fetch);
+      const backendRaw = readStringParam(params, "backend");
+      const backend: FetchBackend = backendRaw === "tinyfish" ? "tinyfish" : "direct";
       const result = await runWebFetch({
         url,
         extractMode,
@@ -748,6 +984,12 @@ export function createWebFetchTool(options?: {
         firecrawlProxy: "auto",
         firecrawlStoreInCache: true,
         firecrawlTimeoutSeconds,
+        backend,
+        tinyfishEnabled,
+        tinyfishApiKey,
+        tinyfishBaseUrl,
+        tinyfishFormat,
+        tinyfishTimeoutSeconds,
       });
       return jsonResult(result);
     },

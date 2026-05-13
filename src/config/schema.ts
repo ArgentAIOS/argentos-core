@@ -201,12 +201,31 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.web.search.maxResults": "Web Search Max Results",
   "tools.web.search.timeoutSeconds": "Web Search Timeout (sec)",
   "tools.web.search.cacheTtlMinutes": "Web Search Cache TTL (min)",
+  "tools.web.search.tinyfish.apiKey": "TinyFish API Key (Search)",
+  "tools.web.search.tinyfish.baseUrl": "TinyFish Search Base URL",
+  "tools.web.search.tinyfish.location": "TinyFish Search Location",
+  "tools.web.search.tinyfish.language": "TinyFish Search Language",
   "tools.web.fetch.enabled": "Enable Web Fetch Tool",
   "tools.web.fetch.maxChars": "Web Fetch Max Chars",
   "tools.web.fetch.timeoutSeconds": "Web Fetch Timeout (sec)",
   "tools.web.fetch.cacheTtlMinutes": "Web Fetch Cache TTL (min)",
   "tools.web.fetch.maxRedirects": "Web Fetch Max Redirects",
   "tools.web.fetch.userAgent": "Web Fetch User-Agent",
+  "tools.web.fetch.tinyfish.enabled": "Enable TinyFish Fetch Backend",
+  "tools.web.fetch.tinyfish.apiKey": "TinyFish API Key (Fetch)",
+  "tools.web.fetch.tinyfish.baseUrl": "TinyFish Fetch Base URL",
+  "tools.web.fetch.tinyfish.format": "TinyFish Fetch Format",
+  "tools.web.fetch.tinyfish.timeoutSeconds": "TinyFish Fetch Timeout (sec)",
+  "tools.web.agent.enabled": "Enable TinyFish Agent Tool",
+  "tools.web.agent.apiKey": "TinyFish API Key (Agent)",
+  "tools.web.agent.baseUrl": "TinyFish Agent Base URL",
+  "tools.web.agent.browserProfile": "TinyFish Agent Browser Profile",
+  "tools.web.agent.maxSteps": "TinyFish Agent Max Steps",
+  "tools.web.agent.timeoutSeconds": "TinyFish Agent Timeout (sec)",
+  "tools.web.agent.capture.screenshots": "TinyFish Agent Capture Screenshots",
+  "tools.web.agent.capture.snapshots": "TinyFish Agent Capture DOM Snapshots",
+  "tools.web.agent.capture.recording": "TinyFish Agent Capture Recording",
+  "tools.web.agent.capture.elements": "TinyFish Agent Capture Elements",
   "gateway.controlUi.basePath": "Control UI Base Path",
   "gateway.controlUi.root": "Control UI Assets Root",
   "gateway.controlUi.allowedOrigins": "Control UI Allowed Origins",
@@ -606,7 +625,8 @@ const FIELD_HELP: Record<string, string> = {
     'Text suffix for cross-context markers (supports "{channel}").',
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
-  "tools.web.search.provider": 'Search provider ("brave" or "perplexity").',
+  "tools.web.search.provider":
+    'Search provider ("brave", "perplexity", or "tinyfish"). When omitted, defaults to "tinyfish" (free, no credits — recommended) if a TINYFISH_API_KEY is available, otherwise falls back to Brave when a Brave key is configured.',
   "tools.web.search.apiKey": "Brave Search API key (fallback: BRAVE_API_KEY env var).",
   "tools.web.search.maxResults": "Default number of results to return (1-20).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",
@@ -617,6 +637,14 @@ const FIELD_HELP: Record<string, string> = {
     "Perplexity base URL override (default: https://openrouter.ai/api/v1 or https://api.perplexity.ai).",
   "tools.web.search.perplexity.model":
     'Perplexity model override (default: "perplexity/sonar-pro").',
+  "tools.web.search.tinyfish.apiKey":
+    "TinyFish API key (fallback: TINYFISH_API_KEY env var). Required when provider=tinyfish.",
+  "tools.web.search.tinyfish.baseUrl":
+    "TinyFish Search base URL override (default: https://api.search.tinyfish.ai).",
+  "tools.web.search.tinyfish.location":
+    'TinyFish default country code for geo-targeted results (e.g. "US", "GB").',
+  "tools.web.search.tinyfish.language":
+    'TinyFish default language code for result language (e.g. "en", "fr").',
   "tools.web.fetch.enabled": "Enable the web_fetch tool (lightweight HTTP fetch).",
   "tools.web.fetch.maxChars": "Max characters returned by web_fetch (truncated).",
   "tools.web.fetch.maxCharsCap":
@@ -636,6 +664,32 @@ const FIELD_HELP: Record<string, string> = {
   "tools.web.fetch.firecrawl.maxAgeMs":
     "Firecrawl maxAge (ms) for cached results when supported by the API.",
   "tools.web.fetch.firecrawl.timeoutSeconds": "Timeout in seconds for Firecrawl requests.",
+  "tools.web.fetch.tinyfish.enabled":
+    "Allow web_fetch callers to request the TinyFish fetch backend (default: false).",
+  "tools.web.fetch.tinyfish.apiKey":
+    "TinyFish API key for web_fetch backend (fallback: TINYFISH_API_KEY env var).",
+  "tools.web.fetch.tinyfish.baseUrl":
+    "TinyFish Fetch base URL override (default: https://api.fetch.tinyfish.ai).",
+  "tools.web.fetch.tinyfish.format":
+    'TinyFish output format ("markdown" recommended for LLMs; default: "markdown").',
+  "tools.web.fetch.tinyfish.timeoutSeconds":
+    "Timeout in seconds for TinyFish fetch requests (default: 150).",
+  "tools.web.agent.enabled":
+    "Enable the tinyfish_agent tool (natural-language browser automation). Off by default — Agent runs are billed against the TinyFish account (paid tier).",
+  "tools.web.agent.apiKey":
+    "TinyFish API key for Agent (fallback: TINYFISH_API_KEY env var). Same key used by Search + Fetch.",
+  "tools.web.agent.baseUrl":
+    "TinyFish Agent base URL override (default: https://agent.tinyfish.ai).",
+  "tools.web.agent.browserProfile":
+    'Default browser profile ("lite" = fast; "stealth" = harder to detect). Default: "lite".',
+  "tools.web.agent.maxSteps":
+    "Default cap on the number of browser steps per run (1-500; default: 150). Callers can override per call but cannot exceed this cap.",
+  "tools.web.agent.timeoutSeconds":
+    "Total timeout in seconds for an agent run (default: 300). Synchronous runs can be long.",
+  "tools.web.agent.capture.screenshots": "Default for screenshot capture when caller omits it.",
+  "tools.web.agent.capture.snapshots": "Default for DOM snapshot capture when caller omits it.",
+  "tools.web.agent.capture.recording": "Default for run recording when caller omits it.",
+  "tools.web.agent.capture.elements": "Default for element capture when caller omits it.",
   "channels.slack.allowBots":
     "Allow bot-authored messages to trigger Slack replies (default: false).",
   "channels.slack.thread.historyScope":

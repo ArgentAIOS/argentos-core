@@ -8,9 +8,11 @@
  */
 
 import type { Command } from "commander";
+import { registerSecretsBackend1PasswordCli } from "./secrets-1password-cli.js";
 
 export function registerSecretsCli(program: Command): void {
   const secrets = program.command("secrets").description("Encrypted secret management");
+  registerSecretsBackend1PasswordCli(secrets);
 
   secrets
     .command("list")

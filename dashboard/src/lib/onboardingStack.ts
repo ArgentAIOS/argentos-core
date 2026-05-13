@@ -1,13 +1,22 @@
 /**
  * Provider-aware onboarding helpers shared by the dashboard wizard and first-run gating.
  * These helpers keep runtime validation and derived defaults aligned with the graphical flow.
+ *
+ * The `LLM_PROVIDER_CARDS` constant below is derived from
+ * `dashboard/src/lib/_generated/onboarding-card-seed.ts`, which is regenerated
+ * during `pnpm build` from the canonical core seed at
+ * `src/agents/provider-registry-seed.ts`. Do not hand-edit the card list here —
+ * edit `ONBOARDING_PROVIDER_CARD_SEEDS` in the seed and re-run the export
+ * script (or `pnpm build`). See issue #295.
  */
+
+import { ONBOARDING_PROVIDER_CARD_SEEDS } from "./_generated/onboarding-card-seed";
 
 export type HostedLlmProviderId = "anthropic" | "openai" | "minimax" | "zai";
 export type LlmProviderId = HostedLlmProviderId | "local";
 export type LocalRuntimeProviderId = "ollama" | "lmstudio";
 export type VoiceProviderId = "edge" | "openai" | "elevenlabs";
-export type SearchProviderId = "brave" | "perplexity";
+export type SearchProviderId = "brave" | "perplexity" | "tinyfish";
 
 export type AuthProfileSummary = {
   key: string;
@@ -72,53 +81,35 @@ const LMSTUDIO_LOCAL_MODEL_REF = `lmstudio/${LMSTUDIO_LOCAL_MODEL_ID}`;
 const KEYLESS_PROVIDERS = new Set(["ollama", "lmstudio", "edge"]);
 const ANTHROPIC_HARD_DEFAULT = "anthropic";
 
-export const LLM_PROVIDER_CARDS: ProviderCard[] = [
-  {
-    id: "anthropic",
-    label: "Anthropic",
-    accent: "amber",
-    recommended: "Best Claude experience",
-    description:
-      "Claude models with strong coding and reasoning. Best if you already use Anthropic or Claude Max.",
-    keyUrl: "https://console.anthropic.com/",
-  },
-  {
-    id: "openai",
-    label: "OpenAI",
-    accent: "emerald",
-    recommended: "Balanced hosted default",
-    description:
-      "GPT models plus built-in TTS pairing. Great low-friction path if you already have an OpenAI API account.",
-    keyUrl: "https://platform.openai.com/api-keys",
-  },
-  {
-    id: "minimax",
-    label: "MiniMax",
-    accent: "violet",
-    recommended: "Great value + media stack",
-    description:
-      "Fast, affordable hosted models with broad media capabilities. Good when you want one provider for a lot of AI surface area.",
-    keyUrl: "https://platform.minimaxi.com/",
-  },
-  {
-    id: "zai",
-    label: "Z.AI / GLM",
-    accent: "cyan",
-    recommended: "Strong GLM family",
-    description:
-      "GLM hosted models from Z.AI. Best if you specifically want the GLM family or already use bigmodel.cn.",
-    keyUrl: "https://open.bigmodel.cn/",
-  },
-  {
-    id: "local",
-    label: "Local only",
-    accent: "slate",
-    recommended: "No hosted keys",
-    description:
-      "Use local models only. Best if you are intentionally staying offline or already run Ollama/LM Studio locally.",
-    keyUrl: "https://ollama.com/",
-  },
-];
+const LLM_PROVIDER_CARD_IDS = new Set<LlmProviderId>([
+  "anthropic",
+  "openai",
+  "minimax",
+  "zai",
+  "local",
+]);
+
+function isLlmProviderId(id: string): id is LlmProviderId {
+  return LLM_PROVIDER_CARD_IDS.has(id as LlmProviderId);
+}
+
+// Derived from src/agents/provider-registry-seed.ts via
+// scripts/export-provider-catalog.ts (see issue #295). The seed defines the
+// canonical IDs, labels, accent tokens, descriptions, and key URLs; this array
+// is just a narrowed view scoped to the wizard's typed `LlmProviderId` set so
+// callers stay strongly-typed. If the seed adds a new wizard-eligible card
+// that isn't part of `LlmProviderId`, widen the type union *and* expand
+// `LLM_PROVIDER_CARD_IDS` above in the same change.
+export const LLM_PROVIDER_CARDS: ProviderCard[] = ONBOARDING_PROVIDER_CARD_SEEDS.filter((seed) =>
+  isLlmProviderId(seed.id),
+).map((seed) => ({
+  id: seed.id as LlmProviderId,
+  label: seed.label,
+  accent: seed.accent,
+  recommended: seed.recommended,
+  description: seed.description,
+  keyUrl: seed.keyUrl,
+}));
 
 export const VOICE_PROVIDER_CARDS: VoiceProviderCard[] = [
   {
@@ -142,18 +133,32 @@ export const VOICE_PROVIDER_CARDS: VoiceProviderCard[] = [
 
 export const SEARCH_PROVIDER_CARDS: SearchProviderCard[] = [
   {
+    id: "tinyfish",
+    label: "TinyFish — Free Search & Fetch (Recommended)",
+    description:
+      "Zero credits, no API key to manage. Free for every account. Fastest path in for new users — and the only backend that includes JS-heavy / anti-bot fetch out of the box.",
+  },
+  {
     id: "brave",
     label: "Brave Search",
-    description:
-      "Simple web results with a dedicated search provider. Good default if you want straightforward search tool behavior.",
+    description: "Direct Brave API. Good if you already have a Brave Search key.",
   },
   {
     id: "perplexity",
     label: "Perplexity / Sonar",
     description:
-      "Search with synthesized answers and citations. Best when you want richer research-style responses.",
+      "Search with synthesized answers and citations. Best when you want richer research-style responses (via Perplexity or OpenRouter).",
   },
 ];
+
+/**
+ * Recommended-default search provider for new ArgentOS users.
+ * Used by onboarding flows (dashboard SetupWizard, CLI configure wizard) when
+ * the user hasn't picked yet. Runtime resolution in
+ * `src/agents/tools/web-search.ts::resolveSearchProvider` still honors explicit
+ * config overrides + falls back to Brave when a Brave key is present.
+ */
+export const DEFAULT_SEARCH_PROVIDER: SearchProviderId = "tinyfish";
 
 const MODEL_FALLBACKS: Record<LlmProviderId, ProviderModelChoice[]> = {
   anthropic: [
