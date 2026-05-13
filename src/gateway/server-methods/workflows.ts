@@ -23,6 +23,11 @@ import {
 } from "../../connectors/catalog.js";
 import { resolvePostgresUrl, resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
 import {
+  getAppForgeEventJournal,
+  type AppForgeEventActor,
+  type AppForgeJournalEvent,
+} from "../../infra/appforge-event-journal.js";
+import {
   collectAppForgeWorkflowCapabilities,
   type AppForgeAppSummary,
   type AppForgeWorkflowCapability,
@@ -524,6 +529,89 @@ function optionalString(params: Record<string, unknown>, key: string): string | 
   }
   const trimmed = v.trim();
   return trimmed || undefined;
+}
+
+// ── AppForge journal helpers ────────────────────────────────────────────────
+
+function isPlainObjectShape(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function extractAppForgeActor(params: Record<string, unknown>): AppForgeEventActor | null {
+  const actor = params.actor;
+  if (!isPlainObjectShape(actor)) {
+    return null;
+  }
+  const id = typeof actor.id === "string" ? actor.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+  const out: AppForgeEventActor = { id };
+  if (typeof actor.type === "string" && actor.type.trim()) {
+    out.type = actor.type.trim();
+  }
+  if (typeof actor.displayName === "string" && actor.displayName.trim()) {
+    out.displayName = actor.displayName.trim();
+  }
+  return out;
+}
+
+function extractAppForgeBefore(params: Record<string, unknown>): Record<string, unknown> | null {
+  const value = params.before;
+  return isPlainObjectShape(value) ? { ...value } : null;
+}
+
+function extractAppForgeAfter(params: Record<string, unknown>): Record<string, unknown> | null {
+  const value = params.after;
+  return isPlainObjectShape(value) ? { ...value } : null;
+}
+
+function parseAppForgeEventFilterParam(params: Record<string, unknown>): {
+  kinds?: string[];
+  scope?: Record<string, string>;
+} {
+  const filter: { kinds?: string[]; scope?: Record<string, string> } = {};
+  const rawKinds = params.kinds;
+  if (Array.isArray(rawKinds)) {
+    const kinds = rawKinds
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim());
+    if (kinds.length > 0) {
+      filter.kinds = kinds;
+    }
+  }
+  const rawScope = params.scope;
+  if (isPlainObjectShape(rawScope)) {
+    const scope: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawScope)) {
+      if (typeof value === "string" && value.trim()) {
+        scope[key] = value.trim();
+      }
+    }
+    if (Object.keys(scope).length > 0) {
+      filter.scope = scope;
+    }
+  }
+  return filter;
+}
+
+function parseAppForgeEventListParams(params: Record<string, unknown>): {
+  kinds?: string[];
+  scope?: Record<string, string>;
+  sinceId?: number;
+  limit?: number;
+} {
+  const base = parseAppForgeEventFilterParam(params);
+  const out: ReturnType<typeof parseAppForgeEventListParams> = { ...base };
+  const sinceId = params.sinceId;
+  if (typeof sinceId === "number" && Number.isFinite(sinceId)) {
+    out.sinceId = sinceId;
+  }
+  const limit = params.limit;
+  if (typeof limit === "number" && Number.isFinite(limit) && limit >= 0) {
+    out.limit = limit;
+  }
+  return out;
 }
 
 export async function resolveRunnableWorkflowRow(
@@ -3704,12 +3792,28 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const sql = await getSql();
       const event = normalizeAppForgeWorkflowEvent(params);
 
+      // Persist to durable journal BEFORE broadcast so consumers can replay
+      // any event that reached this handler — even if the gateway crashes
+      // before downstream workflow resumption completes.
+      let journalEntry: AppForgeJournalEvent | null = null;
+      try {
+        journalEntry = await getAppForgeEventJournal().append({
+          event,
+          actor: extractAppForgeActor(params),
+          before: extractAppForgeBefore(params),
+          after: extractAppForgeAfter(params),
+        });
+      } catch (journalErr) {
+        log.warn(`appforge event journal append failed: ${String(journalErr)}`);
+      }
+
       context?.broadcast?.("appforge.event.emitted", {
         eventType: event.eventType,
         appId: event.appId,
         capabilityId: event.capabilityId ?? null,
         runId: event.workflowRunId ?? null,
         nodeId: event.nodeId ?? null,
+        journalId: journalEntry?.id ?? null,
       });
       context?.broadcast?.("workflow.event.received", {
         source: "appforge",
@@ -3751,6 +3855,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         startedRunIds: triggered.started,
         errors: result.errors,
         triggerErrors: triggered.errors,
+        journalId: journalEntry?.id ?? null,
       });
     } catch (err) {
       log.warn(`workflows.emitAppForgeEvent failed: ${String(err)}`);
@@ -3759,6 +3864,56 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         ? ErrorCodes.INVALID_REQUEST
         : ErrorCodes.UNAVAILABLE;
       respond(false, undefined, errorShape(code, message));
+    }
+  },
+
+  "appforge.events.list": async ({ params, respond }) => {
+    try {
+      const journal = getAppForgeEventJournal();
+      const opts = parseAppForgeEventListParams(params);
+      const events = await journal.list(opts);
+      const lastId = await journal.getLastId();
+      respond(true, { events, lastId, count: events.length });
+    } catch (err) {
+      log.warn(`appforge.events.list failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "appforge.events.subscribeConsumer": async ({ params, respond }) => {
+    try {
+      const consumerId = requireString(params, "consumerId");
+      const filter = parseAppForgeEventFilterParam(params);
+      const journal = getAppForgeEventJournal();
+      const state = await journal.registerConsumer(consumerId, filter);
+      const pending = await journal.list({
+        ...filter,
+        sinceId: state.lastDeliveredId,
+      });
+      respond(true, {
+        consumer: state,
+        pendingCount: pending.length,
+        nextEventId: state.lastDeliveredId + 1,
+      });
+    } catch (err) {
+      log.warn(`appforge.events.subscribeConsumer failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "appforge.events.acknowledge": async ({ params, respond }) => {
+    try {
+      const consumerId = requireString(params, "consumerId");
+      const eventIdRaw = (params as Record<string, unknown>).eventId;
+      if (typeof eventIdRaw !== "number" || !Number.isFinite(eventIdRaw)) {
+        throw new Error("eventId is required and must be a number");
+      }
+      const journal = getAppForgeEventJournal();
+      const state = await journal.acknowledge(consumerId, eventIdRaw);
+      respond(true, { consumer: state });
+    } catch (err) {
+      log.warn(`appforge.events.acknowledge failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
     }
   },
 

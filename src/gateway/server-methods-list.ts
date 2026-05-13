@@ -167,6 +167,9 @@ const BASE_METHODS = [
   "appforge.views.list",
   "appforge.views.put",
   "appforge.views.delete",
+  "appforge.events.list",
+  "appforge.events.subscribeConsumer",
+  "appforge.events.acknowledge",
   // Intent
   "intent.simulate",
   // Workflows
