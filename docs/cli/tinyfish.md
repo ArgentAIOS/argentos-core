@@ -121,10 +121,10 @@ exposes the TinyFish **Browser API** as two first-class agent tools:
   anti-bot. Argent does **not** wrap Playwright — it returns the `cdp_url`
   the agent (or a higher-level tool) connects to via
   `chromium.connect_over_cdp(cdp_url)`.
-- TinyFish **Agent API** — when you want a natural-language goal ("scrape
-  every product on this site"). Wired separately under the agent tool. The
-  Browser API is the low-level escape hatch when the Agent API's abstraction
-  isn't a fit.
+- TinyFish **Agent API** (`tinyfish_agent`, below) — when you want a
+  natural-language goal ("scrape every product on this site"). The Browser
+  API is the low-level escape hatch when the Agent API's abstraction isn't a
+  fit.
 
 ### Schema
 
@@ -191,20 +191,130 @@ remain free with no credits. When the free-tier wall is hit, the tool returns
 `tinyfish_browser_paid_tier_required` with status 402 or 403. Upgrade at
 <https://agent.tinyfish.ai>.
 
-## Out of scope (for now)
+## Using the `tinyfish_agent` tool (natural-language browser automation)
 
-TinyFish's higher-level automation (`agent.tinyfish.ai/v1/automation/...`) is
-wired separately under the Agent API tool. If you need natural-language goal
-execution, see <https://docs.tinyfish.ai/agent-api>.
+The TinyFish Agent API runs a goal-driven browser-automation agent on real
+websites. Unlike `web_search` (free) and `web_fetch` (free with optional
+TinyFish backend), the **Agent API is a paid feature** — runs are billed
+against your TinyFish account. The tool is **opt-in** and disabled by default.
+
+### When to use it vs `web_search` / `web_fetch`
+
+| Use                                                          | Reach for                           |
+| ------------------------------------------------------------ | ----------------------------------- |
+| "Find me articles about X"                                   | `web_search`                        |
+| "Give me the content of this URL"                            | `web_fetch`                         |
+| "Render this JS-heavy SPA and extract"                       | `web_fetch` with `backend=tinyfish` |
+| "Log into X, navigate menus, extract Y"                      | `tinyfish_agent`                    |
+| "Fill out this form, submit, return the confirmation number" | `tinyfish_agent`                    |
+| Multi-step goal across pages with clicks                     | `tinyfish_agent`                    |
+
+If a static fetch can answer the question, prefer `web_fetch`. Agent runs are
+slower (seconds-to-minutes) and cost credits.
+
+### Enabling
+
+```yaml
+tools:
+  web:
+    agent:
+      enabled: true # required — off by default
+      # apiKey: tf_... # optional; falls back to TINYFISH_API_KEY
+      # baseUrl: https://agent.tinyfish.ai
+      # browserProfile: lite # or "stealth"
+      # maxSteps: 150 # hard cap on per-call max_steps (1-500)
+      # timeoutSeconds: 300 # hard cap on per-call timeout (max 600)
+      # capture:
+      #   screenshots: true
+      #   snapshots: false
+```
+
+The same `TINYFISH_API_KEY` used by Search + Fetch is reused. No second key.
+
+### Tool schema
+
+```json
+{
+  "tool": "tinyfish_agent",
+  "arguments": {
+    "goal": "Find the price of the cheapest non-stop flight from JFK to LAX on Friday and return it",
+    "url": "https://www.google.com/travel/flights",
+    "max_steps": 50,
+    "browser_profile": "lite",
+    "screenshots": true,
+    "timeout_seconds": 180
+  }
+}
+```
+
+| Field             | Required | Notes                                                                     |
+| ----------------- | -------- | ------------------------------------------------------------------------- |
+| `goal`            | yes      | Plain-English description of what success looks like and what to return.  |
+| `url`             | yes      | Starting URL. http/https only.                                            |
+| `max_steps`       | no       | Caller cap (1-500). Clamped to `tools.web.agent.maxSteps`.                |
+| `browser_profile` | no       | `lite` (default) or `stealth`.                                            |
+| `screenshots`     | no       | Capture screenshots at key steps.                                         |
+| `snapshots`       | no       | Capture DOM snapshots.                                                    |
+| `recording`       | no       | Capture a screencast.                                                     |
+| `webhook_url`     | no       | HTTPS-only lifecycle webhook.                                             |
+| `timeout_seconds` | no       | Per-call timeout (max 600). Defaults to `tools.web.agent.timeoutSeconds`. |
+
+### Return shape
+
+On success the tool returns:
+
+```json
+{
+  "provider": "tinyfish",
+  "status": "COMPLETED",
+  "success": true,
+  "run_id": "run_abc123",
+  "num_of_steps": 7,
+  "started_at": "2026-05-13T00:00:00Z",
+  "finished_at": "2026-05-13T00:01:00Z",
+  "browser_profile": "lite",
+  "max_steps": 50,
+  "result": {
+    /* extracted JSON from the agent */
+  }
+}
+```
+
+On failure, you get a structured error payload (one of `error: "tinyfish_agent_paid_feature"`,
+`tinyfish_agent_auth_failed`, `tinyfish_agent_rate_limited`, `tinyfish_agent_timeout`,
+or `tinyfish_agent_error`) plus the upstream `code`, `httpStatus`, and a `docs` link.
+
+### Paid feature — what happens when you're out of credits
+
+When the TinyFish account has no credits or an inactive subscription, the
+agent run returns HTTP 403 with `code: INSUFFICIENT_CREDITS`. The tool maps
+that to a clear `tinyfish_agent_paid_feature` error pointing at
+<https://agent.tinyfish.ai/billing>, not a cryptic upstream response.
+
+### Caveats
+
+- Long-running. Synchronous runs can take seconds-to-minutes. The default
+  300-second timeout matches typical site-automation patterns; raise it via
+  `tools.web.agent.timeoutSeconds` (max 600s) if your goals routinely exceed
+  that.
+- No cache. Each run is a fresh agent invocation. Don't poll.
+- The `result` field is whatever the agent extracted — it may contain
+  untrusted page content. Treat it like any other tool output (don't
+  exec/eval; pass through structured-output guards if your downstream
+  pipeline expects a schema).
 
 ## Troubleshooting
 
-| Error                                       | Fix                                                                            |
-| ------------------------------------------- | ------------------------------------------------------------------------------ |
-| `missing_tinyfish_api_key`                  | Set `TINYFISH_API_KEY` or `tools.web.search.tinyfish.apiKey`.                  |
-| `web_fetch backend="tinyfish" is disabled`  | Set `tools.web.fetch.tinyfish.enabled=true` in config.                         |
-| `TinyFish Search API error (401)`           | Key is missing or revoked. Regenerate at <https://agent.tinyfish.ai/api-keys>. |
-| `TinyFish Fetch returned no content`        | Per-URL fetch failure (anti-bot, timeout, invalid_url). Try a different URL.   |
-| `tinyfish_browser_paid_tier_required`       | Browser is paid. Upgrade at <https://agent.tinyfish.ai>.                       |
-| `tinyfish_browser_error` (4xx/5xx non-paid) | Check status + detail in the tool result; transient TinyFish-side issue.       |
-| `tinyfish_browser_request_failed`           | Network/timeout error talking to TinyFish. Retry; bump `timeoutSeconds`.       |
+| Error                                      | Fix                                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `missing_tinyfish_api_key`                 | Set `TINYFISH_API_KEY` or `tools.web.search.tinyfish.apiKey`.                                                                        |
+| `web_fetch backend="tinyfish" is disabled` | Set `tools.web.fetch.tinyfish.enabled=true` in config.                                                                               |
+| `TinyFish Search API error (401)`          | Key is missing or revoked. Regenerate at <https://agent.tinyfish.ai/api-keys>.                                                       |
+| `TinyFish Fetch returned no content`       | Per-URL fetch failure (anti-bot, timeout, invalid_url). Try a different URL.                                                         |
+| `tinyfish_agent_paid_feature`              | Account is out of TinyFish credits or inactive. Top up at <https://agent.tinyfish.ai/billing>, or disable `tools.web.agent.enabled`. |
+| `tinyfish_agent_auth_failed`               | Agent API rejected the API key. Regenerate at <https://agent.tinyfish.ai/api-keys>.                                                  |
+| `tinyfish_agent_rate_limited`              | Slow down — TinyFish Agent has per-minute rate limits.                                                                               |
+| `tinyfish_agent_timeout`                   | Run exceeded `tools.web.agent.timeoutSeconds`. Raise the timeout (max 600s) or scope the goal more tightly.                          |
+| `tinyfish_browser_paid_tier_required`      | Browser is paid. Upgrade at <https://agent.tinyfish.ai>.                                                                             |
+| `tinyfish_browser_error` (4xx/5xx)         | Check status + detail in the tool result; transient TinyFish-side issue.                                                             |
+| `tinyfish_browser_request_failed`          | Network/timeout error talking to TinyFish. Retry; bump `timeoutSeconds`.                                                             |

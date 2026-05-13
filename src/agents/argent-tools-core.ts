@@ -98,7 +98,11 @@ import { createVercelDeployTool } from "./tools/vercel-deploy-tool.js";
 import { createVideoGenerationTool } from "./tools/video-generation-tool.js";
 import { createVipEmailTool } from "./tools/vip-email-tool.js";
 import { createVisualPresenceTool } from "./tools/visual-presence-tool.js";
-import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+import {
+  createTinyFishAgentTool,
+  createWebFetchTool,
+  createWebSearchTool,
+} from "./tools/web-tools.js";
 import { createWidgetBuilderTool } from "./tools/widget-builder-tool.js";
 import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
 import { createYoutubeNotebookLmTool } from "./tools/youtube-notebooklm-tool.js";
@@ -172,6 +176,11 @@ export function createArgentTools(options?: {
   });
   const tinyfishBrowserCloseTool = createTinyFishBrowserCloseTool({
     config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
+  const tinyfishAgentTool = createTinyFishAgentTool({
+    config: options?.config,
+    sandboxed: options?.sandboxed,
     agentSessionKey: options?.agentSessionKey,
   });
   const messageTool = options?.disableMessageTool
@@ -284,6 +293,7 @@ export function createArgentTools(options?: {
     ...(webFetchTool ? [webFetchTool] : []),
     tinyfishBrowserOpenTool,
     tinyfishBrowserCloseTool,
+    ...(tinyfishAgentTool ? [tinyfishAgentTool] : []),
     ...(imageTool ? [imageTool] : []),
     // ArgentOS tools
     createTasksTool({

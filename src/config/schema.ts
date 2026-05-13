@@ -216,6 +216,16 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.web.fetch.tinyfish.baseUrl": "TinyFish Fetch Base URL",
   "tools.web.fetch.tinyfish.format": "TinyFish Fetch Format",
   "tools.web.fetch.tinyfish.timeoutSeconds": "TinyFish Fetch Timeout (sec)",
+  "tools.web.agent.enabled": "Enable TinyFish Agent Tool",
+  "tools.web.agent.apiKey": "TinyFish API Key (Agent)",
+  "tools.web.agent.baseUrl": "TinyFish Agent Base URL",
+  "tools.web.agent.browserProfile": "TinyFish Agent Browser Profile",
+  "tools.web.agent.maxSteps": "TinyFish Agent Max Steps",
+  "tools.web.agent.timeoutSeconds": "TinyFish Agent Timeout (sec)",
+  "tools.web.agent.capture.screenshots": "TinyFish Agent Capture Screenshots",
+  "tools.web.agent.capture.snapshots": "TinyFish Agent Capture DOM Snapshots",
+  "tools.web.agent.capture.recording": "TinyFish Agent Capture Recording",
+  "tools.web.agent.capture.elements": "TinyFish Agent Capture Elements",
   "gateway.controlUi.basePath": "Control UI Base Path",
   "gateway.controlUi.root": "Control UI Assets Root",
   "gateway.controlUi.allowedOrigins": "Control UI Allowed Origins",
@@ -664,6 +674,22 @@ const FIELD_HELP: Record<string, string> = {
     'TinyFish output format ("markdown" recommended for LLMs; default: "markdown").',
   "tools.web.fetch.tinyfish.timeoutSeconds":
     "Timeout in seconds for TinyFish fetch requests (default: 150).",
+  "tools.web.agent.enabled":
+    "Enable the tinyfish_agent tool (natural-language browser automation). Off by default — Agent runs are billed against the TinyFish account (paid tier).",
+  "tools.web.agent.apiKey":
+    "TinyFish API key for Agent (fallback: TINYFISH_API_KEY env var). Same key used by Search + Fetch.",
+  "tools.web.agent.baseUrl":
+    "TinyFish Agent base URL override (default: https://agent.tinyfish.ai).",
+  "tools.web.agent.browserProfile":
+    'Default browser profile ("lite" = fast; "stealth" = harder to detect). Default: "lite".',
+  "tools.web.agent.maxSteps":
+    "Default cap on the number of browser steps per run (1-500; default: 150). Callers can override per call but cannot exceed this cap.",
+  "tools.web.agent.timeoutSeconds":
+    "Total timeout in seconds for an agent run (default: 300). Synchronous runs can be long.",
+  "tools.web.agent.capture.screenshots": "Default for screenshot capture when caller omits it.",
+  "tools.web.agent.capture.snapshots": "Default for DOM snapshot capture when caller omits it.",
+  "tools.web.agent.capture.recording": "Default for run recording when caller omits it.",
+  "tools.web.agent.capture.elements": "Default for element capture when caller omits it.",
   "channels.slack.allowBots":
     "Allow bot-authored messages to trigger Slack replies (default: false).",
   "channels.slack.thread.historyScope":
