@@ -234,21 +234,28 @@ vi.mock("../agents/pi-model-discovery.js", async () => {
     "../agents/pi-model-discovery.js",
   );
 
-  class MockModelRegistry extends actual.ModelRegistry {
-    override getAll(): ReturnType<typeof actual.ModelRegistry.prototype.getAll> {
-      if (!piSdkMock.enabled) {
-        return super.getAll();
-      }
-      piSdkMock.discoverCalls += 1;
-      // Cast to expected type for testing purposes
-      return piSdkMock.models as ReturnType<typeof actual.ModelRegistry.prototype.getAll>;
+  // pi-coding-agent 0.73+ marks `ModelRegistry`'s constructor private, which
+  // blocks the previous `class MockModelRegistry extends actual.ModelRegistry`
+  // pattern at tsc (TS2675). Patch the prototype instead — this also catches
+  // instances produced by `ModelRegistry.create(...)`, which the inheritance
+  // pattern (whose static factory still returned a parent-class instance) did
+  // not. See bridge wrapper at `src/argent-agent/pi-bridge/model-registry.ts`.
+  // (Note: `InstanceType<typeof actual.ModelRegistry>` is rejected because the
+  // ctor is private — the bridge's `ReturnType<typeof X.create>` pattern is
+  // used here too.)
+  type ModelRegistryInstance = ReturnType<typeof actual.ModelRegistry.create>;
+  type ModelRegistryGetAll = () => ReturnType<typeof actual.ModelRegistry.prototype.getAll>;
+  const proto = actual.ModelRegistry.prototype as { getAll: ModelRegistryGetAll };
+  const realGetAll = proto.getAll;
+  proto.getAll = function (this: ModelRegistryInstance) {
+    if (!piSdkMock.enabled) {
+      return realGetAll.call(this);
     }
-  }
-
-  return {
-    ...actual,
-    ModelRegistry: MockModelRegistry,
+    piSdkMock.discoverCalls += 1;
+    return piSdkMock.models as ReturnType<typeof actual.ModelRegistry.prototype.getAll>;
   };
+
+  return actual;
 });
 
 vi.mock("../cron/isolated-agent.js", () => ({
