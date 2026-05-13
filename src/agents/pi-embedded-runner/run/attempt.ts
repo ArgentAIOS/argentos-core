@@ -3,18 +3,14 @@ import os from "node:os";
 import type { Api, ImageContent, Model } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
 import type { Transport } from "../../../argent-agent/pi-bridge/index.js";
+import type { AgentSessionLike } from "../../../argent-agent/pi-bridge/index.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
   streamSimple,
   createArgentStreamSimple,
   hardenStreamSimple,
 } from "../../../agent-core/ai.js";
-import {
-  createAgentSession,
-  SessionManager,
-  SettingsManager,
-  type AgentSession,
-} from "../../../agent-core/coding.js";
+import { createAgentSession, SessionManager, SettingsManager } from "../../../agent-core/coding.js";
 import {
   createAnthropic as createArgentAnthropic,
   createInception as createArgentInception,
@@ -1126,9 +1122,18 @@ export async function runEmbeddedAttempt(
       if (!session) {
         throw new Error("Embedded agent session missing");
       }
-      // Cast to Pi's AgentSession for downstream compatibility — Argent session
-      // implements the same runtime interface (setSystemPrompt, subscribe, prompt, etc.).
-      const activeSession = session as AgentSession;
+      // Bridge to the pi-bridge structural surface (GH #301). The cast goes
+      // through `unknown` because argent's local `AgentSessionAgent.streamFn`
+      // is intentionally loose (`(unknown, unknown, options?) =>
+      // AsyncIterable<unknown>`) so its default no-op streamFn compiles, while
+      // `AgentSessionAgentLike.streamFn` forwards pi's strict `StreamFn` so the
+      // provider-switch assignments at lines ~1213-1252 stay typed. The
+      // structural type both argent's `AgentSession` interface and pi's class
+      // expose is otherwise identical — this is the single chokepoint that
+      // absorbs the streamFn-variance drift, replacing the previous direct cast
+      // to pi's concrete class (which TS2352-ed against the 78-new-private-
+      // members shape).
+      const activeSession = session as unknown as AgentSessionLike;
       const sessionBootstrapHint = buildSessionBootstrapBlock({
         nowMs: Date.now(),
         status: activeSession.messages.length > 0 ? "resumed" : "fresh",
@@ -1384,7 +1389,13 @@ export async function runEmbeddedAttempt(
 
       markPhase("session_created");
       const subscription = subscribeEmbeddedPiSession({
-        session: activeSession,
+        // `subscribeEmbeddedPiSession` still types `session` as pi's concrete
+        // `AgentSession` class (it only reads `.subscribe(...)`). Forward
+        // through the parameter type so the structural drift from `AgentSessionLike`
+        // is absorbed at the boundary — matches the existing test-double cast.
+        session: activeSession as unknown as Parameters<
+          typeof subscribeEmbeddedPiSession
+        >[0]["session"],
         runId: params.runId,
         verboseLevel: params.verboseLevel,
         reasoningMode: params.reasoningLevel ?? "off",

@@ -63,13 +63,15 @@ When you need a pi symbol that isn't already exposed:
 - **Values + factories:** `AuthStorage` + `createAuthStorage(path)`,
   `ModelRegistry` + `createModelRegistry(authStorage, path)`,
   `supportsXhigh(model)` wrapper (#306 — see `./supports-xhigh.ts`).
+- **Structural session bridge:** `AgentSessionLike`,
+  `AgentSessionAgentLike`, `AgentSessionPromptOptionsLike` (#301 — see
+  `./agent-session.ts` for scope guardrails; `replaceMessages` remains
+  outside this bridge until GH #302 lands).
 - **Mappers:** `mapSessionCompactionResult` (#303), `bridgeToolParameters`
   - `Type`, `TSchema`, `Static`, `Tool`, `Context` typebox identities (#305).
 
 ## What's not here yet (tracked follow-ups under #286)
 
-- `AgentSession` structural type for call sites that cast `as AgentSession`
-  (4+ sites today — affected by pi 0.73's 78-new-private-members drift).
 - `Agent.replaceMessages` callers (4 sites; method removed in pi 0.73+).
 - `BashExecutionMessage.content` callers (7 sites; field removed).
 

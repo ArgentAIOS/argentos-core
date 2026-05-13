@@ -1,5 +1,5 @@
-import type { AgentSession } from "../../agent-core/coding.js";
 import type { AgentTool } from "../../agent-core/core.js";
+import type { AgentSessionLike } from "../../argent-agent/pi-bridge/index.js";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
 import type { ResolvedTimeFormat } from "../date-time.js";
 import type { EmbeddedContextFile } from "../pi-embedded-helpers.js";
@@ -87,7 +87,7 @@ export function createSystemPromptOverride(
 }
 
 export function applySystemPromptOverrideToSession(
-  session: AgentSession,
+  session: AgentSessionLike,
   override: string | ((defaultPrompt?: string) => string),
 ) {
   const prompt = typeof override === "function" ? override() : override.trim();
