@@ -10,6 +10,16 @@ import {
   type AppForgeImportWriteRecordFn,
 } from "../../infra/app-forge-import.js";
 import {
+  APP_FORGE_INTERFACE_BREAKPOINTS,
+  APP_FORGE_INTERFACE_PAGE_KINDS,
+  APP_FORGE_INTERFACE_REGION_KINDS,
+  APP_FORGE_INTERFACE_WIDGET_KINDS,
+  type AppForgeInterfaceLayout,
+  type AppForgeInterfaceLayoutRegionWidget,
+  type AppForgeInterfacePage,
+  type AppForgeInterfaceWidget,
+} from "../../infra/app-forge-interfaces.js";
+import {
   normalizeAppForgeSavedView,
   type AppForgeBase,
   type AppForgeRecord,
@@ -107,6 +117,148 @@ function asAppForgeTable(value: unknown): AppForgeTable | null {
 
 function asAppForgeSavedView(value: unknown): AppForgeSavedView | null {
   return normalizeAppForgeSavedView(value);
+}
+
+function asAppForgeInterfaceSource(value: unknown):
+  | {
+      tableId?: string;
+      viewId?: string;
+      recordId?: string;
+      fieldIds?: string[];
+    }
+  | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const tableId = typeof value.tableId === "string" ? value.tableId.trim() : undefined;
+  const viewId = typeof value.viewId === "string" ? value.viewId.trim() : undefined;
+  const recordId = typeof value.recordId === "string" ? value.recordId.trim() : undefined;
+  const fieldIds = Array.isArray(value.fieldIds)
+    ? value.fieldIds.filter((entry): entry is string => typeof entry === "string")
+    : undefined;
+  const source: ReturnType<typeof asAppForgeInterfaceSource> = {};
+  if (tableId) source.tableId = tableId;
+  if (viewId) source.viewId = viewId;
+  if (recordId) source.recordId = recordId;
+  if (fieldIds?.length) source.fieldIds = fieldIds;
+  return Object.keys(source).length > 0 ? source : undefined;
+}
+
+function asAppForgeInterfacePage(value: unknown): AppForgeInterfacePage | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (typeof value.id !== "string" || typeof value.name !== "string") {
+    return null;
+  }
+  if (typeof value.layoutId !== "string") {
+    return null;
+  }
+  const kind = APP_FORGE_INTERFACE_PAGE_KINDS.includes(
+    value.kind as (typeof APP_FORGE_INTERFACE_PAGE_KINDS)[number],
+  )
+    ? (value.kind as AppForgeInterfacePage["kind"])
+    : "list";
+  return {
+    id: value.id,
+    name: value.name,
+    route: typeof value.route === "string" ? value.route : `/${value.id}`,
+    kind,
+    source: asAppForgeInterfaceSource(value.source),
+    layoutId: value.layoutId,
+    revision: typeof value.revision === "number" ? value.revision : 0,
+  };
+}
+
+function asAppForgeInterfaceLayout(value: unknown): AppForgeInterfaceLayout | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (typeof value.id !== "string" || typeof value.name !== "string") {
+    return null;
+  }
+  const breakpoint = APP_FORGE_INTERFACE_BREAKPOINTS.includes(
+    value.breakpoint as (typeof APP_FORGE_INTERFACE_BREAKPOINTS)[number],
+  )
+    ? (value.breakpoint as AppForgeInterfaceLayout["breakpoint"])
+    : "desktop";
+  const regions = Array.isArray(value.regions)
+    ? value.regions
+        .map((region) => {
+          if (!isRecord(region) || typeof region.id !== "string") {
+            return null;
+          }
+          const kind = APP_FORGE_INTERFACE_REGION_KINDS.includes(
+            region.kind as (typeof APP_FORGE_INTERFACE_REGION_KINDS)[number],
+          )
+            ? (region.kind as AppForgeInterfaceLayout["regions"][number]["kind"])
+            : "main";
+          const widgets = Array.isArray(region.widgets)
+            ? region.widgets
+                .map((entry) => {
+                  if (!isRecord(entry) || typeof entry.widgetId !== "string") {
+                    return null;
+                  }
+                  const order = typeof entry.order === "number" ? entry.order : 0;
+                  const span = typeof entry.span === "number" ? entry.span : undefined;
+                  return span
+                    ? { widgetId: entry.widgetId, order, span }
+                    : { widgetId: entry.widgetId, order };
+                })
+                .filter((entry): entry is AppForgeInterfaceLayoutRegionWidget => Boolean(entry))
+            : [];
+          return { id: region.id, kind, widgets };
+        })
+        .filter((region): region is AppForgeInterfaceLayout["regions"][number] => Boolean(region))
+    : [];
+  return {
+    id: value.id,
+    name: value.name,
+    breakpoint,
+    regions,
+    revision: typeof value.revision === "number" ? value.revision : 0,
+  };
+}
+
+function asAppForgeInterfaceWidget(value: unknown): AppForgeInterfaceWidget | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (typeof value.id !== "string") {
+    return null;
+  }
+  const kind = APP_FORGE_INTERFACE_WIDGET_KINDS.includes(
+    value.kind as (typeof APP_FORGE_INTERFACE_WIDGET_KINDS)[number],
+  )
+    ? (value.kind as AppForgeInterfaceWidget["kind"])
+    : "record_grid";
+  return {
+    id: value.id,
+    kind,
+    title: typeof value.title === "string" ? value.title : undefined,
+    source: asAppForgeInterfaceSource(value.source),
+    config: isRecord(value.config) ? { ...value.config } : undefined,
+    revision: typeof value.revision === "number" ? value.revision : 0,
+  };
+}
+
+function asAppForgeInterfaceRegionWidget(
+  value: unknown,
+): AppForgeInterfaceLayoutRegionWidget | null {
+  if (!isRecord(value) || typeof value.widgetId !== "string") {
+    return null;
+  }
+  const order = typeof value.order === "number" ? value.order : 0;
+  const span = typeof value.span === "number" ? value.span : undefined;
+  return span ? { widgetId: value.widgetId, order, span } : { widgetId: value.widgetId, order };
+}
+
+function asStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const items = value.filter((entry): entry is string => typeof entry === "string");
+  return items.length === value.length ? items : null;
 }
 
 function asAppForgeRecord(value: unknown): AppForgeRecord | null {
@@ -1040,5 +1192,402 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
     respond(true, { base: result.base, table: result.table, view: result.view }, undefined);
+  },
+
+  // -------------------------------------------------------------------------
+  // Editable-interface CRUD (Phase 4 gap #5). The bundle is per-base durable
+  // metadata; permissions inherit base-level ACL through the same gate used
+  // for table writes. Each gateway method maps 1:1 to an adapter helper so
+  // the dashboard never has to hand-roll bundle math.
+  // -------------------------------------------------------------------------
+
+  "appforge.interfaces.get": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    if (!baseId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
+      return;
+    }
+    const bundle = await adapter.getInterfaces(baseId);
+    if (!bundle) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
+      return;
+    }
+    respond(true, { bundle }, undefined);
+  },
+
+  "appforge.interfaces.page.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const page = asAppForgeInterfacePage(params.page);
+    if (!baseId || !page) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId and a valid interface page (id + name + layoutId) are required",
+        ),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.put", {
+      resourceId: `${baseId}/page/${page.id}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.putInterfacePage(baseId, page, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.page.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const pageId = stringParam(params, "pageId");
+    if (!baseId || !pageId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and pageId are required"),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.delete", {
+      resourceId: `${baseId}/page/${pageId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.deleteInterfacePage(baseId, pageId, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.layout.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const layout = asAppForgeInterfaceLayout(params.layout);
+    if (!baseId || !layout) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId and a valid interface layout (id + name) are required",
+        ),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.put", {
+      resourceId: `${baseId}/layout/${layout.id}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.putInterfaceLayout(baseId, layout, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.layout.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const layoutId = stringParam(params, "layoutId");
+    if (!baseId || !layoutId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and layoutId are required"),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.delete", {
+      resourceId: `${baseId}/layout/${layoutId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.deleteInterfaceLayout(baseId, layoutId, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.widget.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const widget = asAppForgeInterfaceWidget(params.widget);
+    if (!baseId || !widget) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId and a valid interface widget (id + kind) are required",
+        ),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.put", {
+      resourceId: `${baseId}/widget/${widget.id}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.putInterfaceWidget(baseId, widget, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.widget.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const widgetId = stringParam(params, "widgetId");
+    if (!baseId || !widgetId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and widgetId are required"),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.delete", {
+      resourceId: `${baseId}/widget/${widgetId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.deleteInterfaceWidget(baseId, widgetId, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.region.place": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const layoutId = stringParam(params, "layoutId");
+    const regionId = stringParam(params, "regionId");
+    const entry = asAppForgeInterfaceRegionWidget(params.entry);
+    if (!baseId || !layoutId || !regionId || !entry) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId, layoutId, regionId, and a valid region entry (widgetId + order) are required",
+        ),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.put", {
+      resourceId: `${baseId}/layout/${layoutId}/region/${regionId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.placeInterfaceWidget(baseId, layoutId, regionId, entry, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.region.unplace": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const layoutId = stringParam(params, "layoutId");
+    const regionId = stringParam(params, "regionId");
+    const widgetId = stringParam(params, "widgetId");
+    if (!baseId || !layoutId || !regionId || !widgetId) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId, layoutId, regionId, and widgetId are required",
+        ),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.delete", {
+      resourceId: `${baseId}/layout/${layoutId}/region/${regionId}/${widgetId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.unplaceInterfaceWidget(baseId, layoutId, regionId, widgetId, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
+  },
+
+  "appforge.interfaces.region.reorder": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const layoutId = stringParam(params, "layoutId");
+    const regionId = stringParam(params, "regionId");
+    const widgetIds = asStringArray(params.widgetIds);
+    if (!baseId || !layoutId || !regionId || !widgetIds) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId, layoutId, regionId, and widgetIds[] are required",
+        ),
+      );
+      return;
+    }
+    const appIdForAudit = await resolveAppIdForAudit(adapter, baseId, params);
+    const guard = appForgeWriteGuard(params, appIdForAudit, "interface.put", {
+      resourceId: `${baseId}/layout/${layoutId}/region/${regionId}`,
+    });
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+    const result = await adapter.reorderInterfaceRegion(baseId, layoutId, regionId, widgetIds, {
+      expectedBundleRevision: optionalNumberParam(params, "expectedBundleRevision"),
+      actor: guard.actor ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, bundle: result.bundle }, undefined);
   },
 };

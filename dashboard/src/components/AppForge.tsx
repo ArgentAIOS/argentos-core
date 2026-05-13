@@ -69,6 +69,7 @@ import {
   UrlCellDisplay,
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
+import { InterfacesEditor } from "./app-forge/InterfacesEditor";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -2197,7 +2198,7 @@ export function AppForge({
         : activeSection === "automations"
           ? "Workflow triggers and actions for the active base. Live enablement remains gated."
           : activeSection === "interfaces"
-            ? "Generated operator surfaces for this base. Editable interfaces are not complete yet."
+            ? "Editable operator surfaces for this base. Add widgets, bind data, and ship a real dashboard."
             : "Forms for collecting records into this base. Form publishing is not complete yet.";
 
   useEffect(() => {
@@ -3084,42 +3085,20 @@ export function AppForge({
                         </div>
                       </div>
                     ) : activeSection === "interfaces" ? (
-                      <div className="min-h-[520px] overflow-hidden rounded-2xl border border-white/10 bg-black/24">
-                        <div className="mx-auto max-w-4xl px-8 py-12 text-center">
-                          <h3 className="text-3xl font-semibold text-white/90">
-                            Visualize and act on your data with interfaces
-                          </h3>
-                          <p className="mx-auto mt-3 max-w-xl text-sm text-white/45">
-                            AppForge does not have editable interface documents yet. This screen is
-                            now truth-labeled until the Phase 4 interface model lands.
-                          </p>
-                          <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left">
-                            <div className="rounded-xl bg-white text-slate-900 shadow-2xl">
-                              <div className="border-b border-slate-200 px-5 py-4 text-sm font-semibold">
-                                Management / Insights
-                              </div>
-                              <div className="grid gap-4 p-5 md:grid-cols-2">
-                                {[
-                                  "Records by status",
-                                  "Open reviews",
-                                  "Due this week",
-                                  "Workflow events",
-                                ].map((label) => (
-                                  <div
-                                    key={label}
-                                    className="rounded-lg border border-slate-200 p-4"
-                                  >
-                                    <div className="text-sm font-semibold text-slate-700">
-                                      {label}
-                                    </div>
-                                    <div className="mt-3 h-20 rounded bg-slate-100" />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <InterfacesEditor
+                        baseId={structured.activeBase?.id ?? null}
+                        baseName={structured.activeBase?.name}
+                        gatewayRequest={effectiveGatewayRequest}
+                        tables={(structured.activeBase?.tables ?? []).map((table) => ({
+                          id: table.id,
+                          name: table.name,
+                          fields: table.fields.map((field) => ({
+                            id: field.id,
+                            name: field.name,
+                          })),
+                          recordCount: table.records.length,
+                        }))}
+                      />
                     ) : activeSection === "forms" ? (
                       <div className="min-h-[520px] overflow-hidden rounded-2xl border border-white/10 bg-black/24">
                         <div className="grid min-h-[520px] grid-cols-[minmax(260px,0.42fr)_minmax(0,1fr)]">
