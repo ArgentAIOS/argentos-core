@@ -145,13 +145,12 @@ export const SEARCH_PROVIDER_CARDS: SearchProviderCard[] = [
     id: "tinyfish",
     label: "TinyFish — Free Search & Fetch (Recommended)",
     description:
-      "Zero credits, no API key wrangling. Fastest path in. Free for every account — agent-tuned search with rank-stable structured results. Also unlocks the TinyFish fetch backend for JS-heavy / anti-bot pages. Get a key at agent.tinyfish.ai/api-keys.",
+      "Zero credits, no API key to manage. Free for every account. Fastest path in for new users — and the only backend that includes JS-heavy / anti-bot fetch out of the box.",
   },
   {
     id: "brave",
     label: "Brave Search",
-    description:
-      "Direct Brave API. Good if you already have a key. Requires a Brave Search subscription / API key.",
+    description: "Direct Brave API. Good if you already have a Brave Search key.",
   },
   {
     id: "perplexity",
@@ -160,6 +159,15 @@ export const SEARCH_PROVIDER_CARDS: SearchProviderCard[] = [
       "Search with synthesized answers and citations. Best when you want richer research-style responses (via Perplexity or OpenRouter).",
   },
 ];
+
+/**
+ * Recommended-default search provider for new ArgentOS users.
+ * Used by onboarding flows (dashboard SetupWizard, CLI configure wizard) when
+ * the user hasn't picked yet. Runtime resolution in
+ * `src/agents/tools/web-search.ts::resolveSearchProvider` still honors explicit
+ * config overrides + falls back to Brave when a Brave key is present.
+ */
+export const DEFAULT_SEARCH_PROVIDER: SearchProviderId = "tinyfish";
 
 const MODEL_FALLBACKS: Record<LlmProviderId, ProviderModelChoice[]> = {
   anthropic: [

@@ -111,7 +111,7 @@ async function promptWebToolsConfig(
 
   const enableTinyFishSearch = guardCancel(
     await confirm({
-      message: "Use TinyFish for web_search? (free, no credits — recommended)",
+      message: "[recommended] Use TinyFish for web_search? Free, no credits, no API key wrangling.",
       initialValue: hasTinyFishSearchKey || !hasBraveSearchKey,
     }),
     runtime,
@@ -222,7 +222,7 @@ async function promptWebToolsConfig(
     const enableTinyFishFetch = guardCancel(
       await confirm({
         message:
-          "Use TinyFish as the recommended fetch backend? (renders JS, bypasses anti-bot, clean LLM-tuned markdown)",
+          "[recommended] Use TinyFish as the fetch backend? Renders JS, bypasses anti-bot, clean LLM-tuned markdown.",
         initialValue: initialTinyFishFetch,
       }),
       runtime,

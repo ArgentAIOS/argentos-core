@@ -615,7 +615,8 @@ const FIELD_HELP: Record<string, string> = {
     'Text suffix for cross-context markers (supports "{channel}").',
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
-  "tools.web.search.provider": 'Search provider ("brave", "perplexity", or "tinyfish").',
+  "tools.web.search.provider":
+    'Search provider ("brave", "perplexity", or "tinyfish"). When omitted, defaults to "tinyfish" (free, no credits — recommended) if a TINYFISH_API_KEY is available, otherwise falls back to Brave when a Brave key is configured.',
   "tools.web.search.apiKey": "Brave Search API key (fallback: BRAVE_API_KEY env var).",
   "tools.web.search.maxResults": "Default number of results to return (1-20).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",

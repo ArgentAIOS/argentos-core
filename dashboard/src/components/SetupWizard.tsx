@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   chooseInitialModelForProvider,
+  DEFAULT_SEARCH_PROVIDER,
   LLM_PROVIDER_CARDS,
   SEARCH_PROVIDER_CARDS,
   VOICE_PROVIDER_CARDS,
@@ -173,6 +174,14 @@ function getServiceKeySpecForSearchProvider(searchProvider: SearchProviderId): S
       name: "Perplexity API Key",
     };
   }
+  if (searchProvider === "tinyfish") {
+    return {
+      variable: "TINYFISH_API_KEY",
+      service: "TinyFish",
+      category: "Search",
+      name: "TinyFish API Key",
+    };
+  }
   return {
     variable: "BRAVE_API_KEY",
     service: "Brave Search",
@@ -247,7 +256,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
   const [llmProvider, setLlmProvider] = useState<LlmProviderId | null>(null);
   const [localRuntime, setLocalRuntime] = useState<LocalRuntimeProviderId>("ollama");
   const [voiceProvider, setVoiceProvider] = useState<VoiceProviderId>("edge");
-  const [searchProvider, setSearchProvider] = useState<SearchProviderId>("brave");
+  const [searchProvider, setSearchProvider] = useState<SearchProviderId>(DEFAULT_SEARCH_PROVIDER);
   const [token, setToken] = useState("");
   const [voiceToken, setVoiceToken] = useState("");
   const [searchToken, setSearchToken] = useState("");
