@@ -49,6 +49,10 @@ function getGeminiBaseUrl(gemini: GeminiEmbeddingClient): string {
   return gemini.baseUrl?.replace(/\/$/, "") ?? "";
 }
 
+function getGeminiFetch(gemini: GeminiEmbeddingClient): typeof fetch {
+  return gemini.fetch ?? fetch;
+}
+
 function getGeminiHeaders(
   gemini: GeminiEmbeddingClient,
   params: { json: boolean },
@@ -134,7 +138,7 @@ async function submitGeminiBatch(params: {
     baseUrl,
     requests: params.requests.length,
   });
-  const fileRes = await fetch(uploadUrl, {
+  const fileRes = await getGeminiFetch(params.gemini)(uploadUrl, {
     method: "POST",
     headers: {
       ...getGeminiHeaders(params.gemini, { json: false }),
@@ -166,7 +170,7 @@ async function submitGeminiBatch(params: {
     batchEndpoint,
     fileId,
   });
-  const batchRes = await fetch(batchEndpoint, {
+  const batchRes = await getGeminiFetch(params.gemini)(batchEndpoint, {
     method: "POST",
     headers: getGeminiHeaders(params.gemini, { json: true }),
     body: JSON.stringify(batchBody),
@@ -193,7 +197,7 @@ async function fetchGeminiBatchStatus(params: {
     : `batches/${params.batchName}`;
   const statusUrl = `${baseUrl}/${name}`;
   debugLog("memory embeddings: gemini batch status", { statusUrl });
-  const res = await fetch(statusUrl, {
+  const res = await getGeminiFetch(params.gemini)(statusUrl, {
     headers: getGeminiHeaders(params.gemini, { json: true }),
   });
   if (!res.ok) {
@@ -211,7 +215,7 @@ async function fetchGeminiFileContent(params: {
   const file = params.fileId.startsWith("files/") ? params.fileId : `files/${params.fileId}`;
   const downloadUrl = `${baseUrl}/${file}:download`;
   debugLog("memory embeddings: gemini batch download", { downloadUrl });
-  const res = await fetch(downloadUrl, {
+  const res = await getGeminiFetch(params.gemini)(downloadUrl, {
     headers: getGeminiHeaders(params.gemini, { json: true }),
   });
   if (!res.ok) {

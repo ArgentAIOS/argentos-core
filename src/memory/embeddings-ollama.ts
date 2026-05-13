@@ -1,10 +1,13 @@
 import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.js";
 import { resolveApiKeyForProvider } from "../agents/model-auth.js";
+import { resolveMemoryProxyFetch } from "./proxy-fetch.js";
 
 export type OllamaEmbeddingClient = {
   baseUrl: string;
   headers: Record<string, string>;
   model: string;
+  /** Proxy-aware fetch impl (undici ProxyAgent) when memory.proxy or HTTPS_PROXY/HTTP_PROXY is set. */
+  fetch?: typeof fetch;
 };
 
 export const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
@@ -26,13 +29,14 @@ export async function createOllamaEmbeddingProvider(
 ): Promise<{ provider: EmbeddingProvider; client: OllamaEmbeddingClient }> {
   const client = await resolveOllamaEmbeddingClient(options);
   const url = `${client.baseUrl.replace(/\/$/, "")}/embeddings`;
+  const fetchImpl = client.fetch ?? fetch;
 
   const embed = async (input: string[]): Promise<number[][]> => {
     if (input.length === 0) {
       return [];
     }
 
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       method: "POST",
       headers: client.headers,
       body: JSON.stringify({ model: client.model, input }),
@@ -101,5 +105,6 @@ export async function resolveOllamaEmbeddingClient(
     headers.Authorization = `Bearer ${resolvedApiKey.trim()}`;
   }
   const model = normalizeOllamaModel(options.model);
-  return { baseUrl, headers, model };
+  const proxyFetch = resolveMemoryProxyFetch(options.config);
+  return { baseUrl, headers, model, fetch: proxyFetch };
 }

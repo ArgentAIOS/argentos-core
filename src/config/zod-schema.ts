@@ -211,6 +211,9 @@ const MemorySchema = z
     qmd: MemoryQmdSchema.optional(),
     vault: MemoryVaultSchema.optional(),
     cognee: MemoryCogneeSchema.optional(),
+    // HTTP/HTTPS proxy URL used by memory outbound clients (embeddings + LLM
+    // batch). Overrides HTTPS_PROXY / HTTP_PROXY env when set. SAFE-PORT #313.
+    proxy: z.string().optional(),
   })
   .strict()
   .optional();
