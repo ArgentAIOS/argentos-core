@@ -9995,6 +9995,51 @@ app.get("/api/settings/service-keys/audit", async (req, res) => {
   }
 });
 
+// GET /api/settings/service-keys/1password/health
+// Reports whether the 1Password Service Account backend is configured
+// and reachable. ADDITIVE — returns active=false for users not opted in.
+app.get("/api/settings/service-keys/1password/health", async (req, res) => {
+  try {
+    const resolverMod = await import("../dist/infra/onepassword-resolver.js");
+    const cryptoMod = await import("../dist/infra/secret-crypto.js");
+    const store = readServiceKeys();
+    let refsDetected = 0;
+    let firstRef;
+    for (const entry of store.keys || []) {
+      if (!entry || entry.enabled === false) continue;
+      try {
+        const decrypted = cryptoMod.decryptSecret(entry.value);
+        if (resolverMod.isOnePasswordRef(decrypted)) {
+          refsDetected += 1;
+          if (!firstRef) firstRef = decrypted;
+        }
+      } catch {
+        /* skip undecryptable */
+      }
+    }
+    const probe = resolverMod.probeOnePasswordHealth({ sampleRef: firstRef });
+    res.json({
+      active: refsDetected > 0,
+      refsDetected,
+      installed: probe.installed,
+      version: probe.version ?? null,
+      tokenPresent: probe.tokenPresent,
+      sample: probe.sample
+        ? {
+            ok: probe.sample.ok,
+            errorCode: probe.sample.errorCode ?? null,
+            // We never echo error messages directly — they may contain item paths;
+            // the CLI doctor exposes details when operators want them.
+            errorMessage: probe.sample.ok ? null : "see CLI doctor for details",
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error("[ServiceKeys] 1Password health error:", err?.message || err);
+    res.status(500).json({ error: "Failed to probe 1Password backend" });
+  }
+});
+
 // ============================================
 // COMPOSIO CONNECTOR API (slice 2.2)
 // ============================================

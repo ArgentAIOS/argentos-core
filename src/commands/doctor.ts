@@ -36,6 +36,7 @@ import {
 } from "./doctor-gateway-services.js";
 import { maybeRepairLegacyInstallSymlinks, noteSourceInstallIssues } from "./doctor-install.js";
 import { noteLaunchAgentInstallPathDrift } from "./doctor-launchagent-paths.js";
+import { noteOnePasswordBackend } from "./doctor-onepassword.js";
 import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
@@ -198,6 +199,13 @@ export async function doctorCommand(
   await noteLaunchAgentInstallPathDrift();
 
   await noteSecurityWarnings(cfg);
+
+  // 1Password backend health — opt-in (no-op when no op:// refs configured).
+  try {
+    noteOnePasswordBackend();
+  } catch {
+    // Never fail doctor on a secrets-backend probe.
+  }
 
   if (cfg.hooks?.gmail?.model?.trim()) {
     const hooksModelRef = resolveHooksGmailModel({
