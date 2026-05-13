@@ -16,6 +16,11 @@ vi.mock("../tools/web-tools.js", () => ({
   createWebFetchTool: () => null,
 }));
 
+vi.mock("../tools/tinyfish-browser.js", () => ({
+  createTinyFishBrowserOpenTool: () => stubTool("tinyfish_browser_open"),
+  createTinyFishBrowserCloseTool: () => stubTool("tinyfish_browser_close"),
+}));
+
 vi.mock("../../plugins/tools.js", () => ({
   resolvePluginTools: () => [],
   getPluginToolMeta: () => undefined,
