@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as serviceKeys from "../../infra/service-keys.js";
 import { __testing } from "./web-search.js";
 
@@ -7,6 +7,12 @@ const {
   resolvePerplexityBaseUrl,
   normalizeFreshness,
   resolveSearchApiKey,
+  resolveSearchProvider,
+  resolveTinyFishApiKey,
+  resolveTinyFishBaseUrl,
+  resolveTinyFishConfig,
+  runTinyFishSearch,
+  DEFAULT_TINYFISH_SEARCH_BASE_URL,
 } = __testing;
 
 afterEach(() => {
@@ -76,6 +82,123 @@ describe("web_search freshness normalization", () => {
     expect(normalizeFreshness("2024-13-01to2024-01-31")).toBeUndefined();
     expect(normalizeFreshness("2024-02-30to2024-03-01")).toBeUndefined();
     expect(normalizeFreshness("2024-03-10to2024-03-01")).toBeUndefined();
+  });
+});
+
+describe("web_search tinyfish resolvers", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("selects tinyfish provider when configured", () => {
+    expect(resolveSearchProvider({ provider: "tinyfish" })).toBe("tinyfish");
+  });
+
+  it("falls back to brave for unknown provider strings", () => {
+    expect(resolveSearchProvider({ provider: "unknown" as never })).toBe("brave");
+  });
+
+  it("returns empty TinyFish config when none provided", () => {
+    expect(resolveTinyFishConfig(undefined)).toEqual({});
+    expect(resolveTinyFishConfig({})).toEqual({});
+  });
+
+  it("prefers config apiKey over TINYFISH_API_KEY env", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "env-key");
+    expect(resolveTinyFishApiKey({ apiKey: "config-key" })).toBe("config-key");
+  });
+
+  it("falls back to TINYFISH_API_KEY env when no config key", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "env-key");
+    expect(resolveTinyFishApiKey({})).toBe("env-key");
+  });
+
+  it("returns undefined when no key is configured anywhere", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "");
+    expect(resolveTinyFishApiKey({})).toBeUndefined();
+  });
+
+  it("defaults baseUrl to the public TinyFish Search endpoint", () => {
+    expect(resolveTinyFishBaseUrl(undefined)).toBe(DEFAULT_TINYFISH_SEARCH_BASE_URL);
+    expect(resolveTinyFishBaseUrl({})).toBe(DEFAULT_TINYFISH_SEARCH_BASE_URL);
+  });
+
+  it("honors configured baseUrl and strips trailing slashes", () => {
+    expect(resolveTinyFishBaseUrl({ baseUrl: "https://tf.example.com/" })).toBe(
+      "https://tf.example.com",
+    );
+  });
+});
+
+describe("runTinyFishSearch", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns parsed TinyFish results on success", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      expect(url).toContain("https://api.search.tinyfish.ai/?query=hello+world");
+      expect(url).toContain("location=US");
+      expect(url).toContain("language=en");
+      return new Response(
+        JSON.stringify({
+          query: "hello world",
+          total_results: 1,
+          page: 0,
+          results: [
+            {
+              position: 1,
+              site_name: "example.com",
+              title: "Hello World",
+              snippet: "An example snippet.",
+              url: "https://example.com/hw",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const data = await runTinyFishSearch({
+      query: "hello world",
+      apiKey: "tf_test",
+      baseUrl: DEFAULT_TINYFISH_SEARCH_BASE_URL,
+      location: "US",
+      language: "en",
+      timeoutSeconds: 5,
+    });
+
+    expect(data.total_results).toBe(1);
+    expect(data.results?.[0]?.url).toBe("https://example.com/hw");
+    // X-API-Key header must be set.
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = (init as RequestInit | undefined)?.headers as Record<string, string>;
+    expect(headers["X-API-Key"]).toBe("tf_test");
+  });
+
+  it("throws a descriptive error on 401 auth failure", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "INVALID_API_KEY", message: "The provided API key is invalid" },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      runTinyFishSearch({
+        query: "anything",
+        apiKey: "bad",
+        baseUrl: DEFAULT_TINYFISH_SEARCH_BASE_URL,
+        timeoutSeconds: 5,
+      }),
+    ).rejects.toThrow(/TinyFish Search API error \(401\)/);
   });
 });
 

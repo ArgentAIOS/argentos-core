@@ -143,6 +143,42 @@ async function promptWebToolsConfig(
     }
   }
 
+  const existingTinyFishSearch = existingSearch?.tinyfish;
+  const hasTinyFishSearchKey = Boolean(existingTinyFishSearch?.apiKey);
+  note(
+    [
+      "Optional: TinyFish offers a free agent-tuned search + fetch API with no credits.",
+      "Get a key at https://agent.tinyfish.ai/api-keys, or skip to keep your current setup.",
+      "Switch to TinyFish by setting tools.web.search.provider=tinyfish.",
+    ].join("\n"),
+    "TinyFish (optional, free)",
+  );
+  const enableTinyFishSearch = guardCancel(
+    await confirm({
+      message: "Add a TinyFish API key now? (skip = keep current)",
+      initialValue: false,
+    }),
+    runtime,
+  );
+  if (enableTinyFishSearch) {
+    const keyInput = guardCancel(
+      await text({
+        message: hasTinyFishSearchKey
+          ? "TinyFish API key (leave blank to keep current, or use TINYFISH_API_KEY env var)"
+          : "TinyFish API key (paste here, or leave blank to use TINYFISH_API_KEY env var)",
+        placeholder: hasTinyFishSearchKey ? "Leave blank to keep current" : "tf_...",
+      }),
+      runtime,
+    );
+    const key = String(keyInput ?? "").trim();
+    if (key) {
+      nextSearch = {
+        ...nextSearch,
+        tinyfish: { ...existingTinyFishSearch, apiKey: key },
+      };
+    }
+  }
+
   const enableFetch = guardCancel(
     await confirm({
       message: "Enable Argent web fetch (keyless HTTP fetch)?",
@@ -151,10 +187,44 @@ async function promptWebToolsConfig(
     runtime,
   );
 
-  const nextFetch = {
+  let nextFetch = {
     ...existingFetch,
     enabled: enableFetch,
   };
+
+  if (enableFetch) {
+    const existingTinyFishFetch = existingFetch?.tinyfish;
+    const enableTinyFishFetch = guardCancel(
+      await confirm({
+        message: "Enable TinyFish as a fetch backend? (renders JS, bypasses anti-bot)",
+        initialValue: existingTinyFishFetch?.enabled ?? false,
+      }),
+      runtime,
+    );
+    if (enableTinyFishFetch) {
+      const keyInput = guardCancel(
+        await text({
+          message: existingTinyFishFetch?.apiKey
+            ? "TinyFish API key (leave blank to keep current, or use TINYFISH_API_KEY env var)"
+            : "TinyFish API key (paste here, or leave blank to use TINYFISH_API_KEY env var)",
+          placeholder: existingTinyFishFetch?.apiKey ? "Leave blank to keep current" : "tf_...",
+        }),
+        runtime,
+      );
+      const key = String(keyInput ?? "").trim();
+      const nextTinyFishFetch = {
+        ...existingTinyFishFetch,
+        enabled: true,
+        ...(key ? { apiKey: key } : {}),
+      };
+      nextFetch = { ...nextFetch, tinyfish: nextTinyFishFetch };
+    } else if (existingTinyFishFetch) {
+      nextFetch = {
+        ...nextFetch,
+        tinyfish: { ...existingTinyFishFetch, enabled: false },
+      };
+    }
+  }
 
   return {
     ...nextConfig,

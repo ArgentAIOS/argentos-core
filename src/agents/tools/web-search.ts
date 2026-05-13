@@ -20,7 +20,7 @@ import {
   writeCache,
 } from "./web-shared.js";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity"] as const;
+const SEARCH_PROVIDERS = ["brave", "perplexity", "tinyfish"] as const;
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 20;
 
@@ -30,6 +30,7 @@ const PERPLEXITY_DIRECT_BASE_URL = "https://api.perplexity.ai";
 const DEFAULT_PERPLEXITY_MODEL = "perplexity/sonar-pro";
 const PERPLEXITY_KEY_PREFIXES = ["pplx-"];
 const OPENROUTER_KEY_PREFIXES = ["sk-or-"];
+const DEFAULT_TINYFISH_SEARCH_BASE_URL = "https://api.search.tinyfish.ai";
 const DEFAULT_ACCEPT_HEADER = "application/json, text/markdown;q=0.9, */*;q=0.8";
 // Brave's API only accepts "application/json" or "*/*" — the markdown
 // preference in DEFAULT_ACCEPT_HEADER causes a 422 validation error.
@@ -110,6 +111,28 @@ type PerplexitySearchResponse = {
 
 type PerplexityBaseUrlHint = "direct" | "openrouter";
 
+type TinyFishConfig = {
+  apiKey?: string;
+  baseUrl?: string;
+  location?: string;
+  language?: string;
+};
+
+type TinyFishSearchResult = {
+  position?: number;
+  site_name?: string;
+  title?: string;
+  snippet?: string;
+  url?: string;
+};
+
+type TinyFishSearchResponse = {
+  query?: string;
+  results?: TinyFishSearchResult[];
+  total_results?: number;
+  page?: number;
+};
+
 function resolveSearchConfig(cfg?: ArgentConfig): WebSearchConfig {
   const search = cfg?.tools?.web?.search;
   if (!search || typeof search !== "object") {
@@ -157,6 +180,14 @@ function missingSearchKeyPayload(provider: (typeof SEARCH_PROVIDERS)[number]) {
       docs: "https://docs.argent.ai/tools/web",
     };
   }
+  if (provider === "tinyfish") {
+    return {
+      error: "missing_tinyfish_api_key",
+      message:
+        "web_search (tinyfish) needs an API key. Set TINYFISH_API_KEY in the Gateway environment, or configure tools.web.search.tinyfish.apiKey. Get a free key at https://agent.tinyfish.ai/api-keys.",
+      docs: "https://docs.argent.ai/tools/web",
+    };
+  }
   return {
     error: "missing_brave_api_key",
     message: `web_search needs a Brave Search API key. Run \`${formatCliCommand("argent configure --section web")}\` to store it, or set BRAVE_API_KEY in the Gateway environment.`,
@@ -172,10 +203,41 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
   if (raw === "perplexity") {
     return "perplexity";
   }
+  if (raw === "tinyfish") {
+    return "tinyfish";
+  }
   if (raw === "brave") {
     return "brave";
   }
   return "brave";
+}
+
+function resolveTinyFishConfig(search?: WebSearchConfig): TinyFishConfig {
+  if (!search || typeof search !== "object") {
+    return {};
+  }
+  const tinyfish = "tinyfish" in search ? search.tinyfish : undefined;
+  if (!tinyfish || typeof tinyfish !== "object") {
+    return {};
+  }
+  return tinyfish as TinyFishConfig;
+}
+
+function resolveTinyFishApiKey(tinyfish?: TinyFishConfig): string | undefined {
+  const fromConfig = normalizeApiKey(tinyfish?.apiKey);
+  if (fromConfig) {
+    return fromConfig;
+  }
+  const fromEnv = normalizeApiKey(process.env.TINYFISH_API_KEY);
+  return fromEnv || undefined;
+}
+
+function resolveTinyFishBaseUrl(tinyfish?: TinyFishConfig): string {
+  const raw =
+    tinyfish && "baseUrl" in tinyfish && typeof tinyfish.baseUrl === "string"
+      ? tinyfish.baseUrl.trim()
+      : "";
+  return (raw || DEFAULT_TINYFISH_SEARCH_BASE_URL).replace(/\/+$/, "");
 }
 
 function resolvePerplexityConfig(search?: WebSearchConfig): PerplexityConfig {
@@ -371,6 +433,40 @@ async function runPerplexitySearch(params: {
   return { content, citations };
 }
 
+async function runTinyFishSearch(params: {
+  query: string;
+  apiKey: string;
+  baseUrl: string;
+  location?: string;
+  language?: string;
+  timeoutSeconds: number;
+}): Promise<TinyFishSearchResponse> {
+  const url = new URL(params.baseUrl);
+  url.searchParams.set("query", params.query);
+  if (params.location) {
+    url.searchParams.set("location", params.location);
+  }
+  if (params.language) {
+    url.searchParams.set("language", params.language);
+  }
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "X-API-Key": params.apiKey,
+    },
+    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
+  });
+
+  if (!res.ok) {
+    const detail = await readResponseText(res);
+    throw new Error(`TinyFish Search API error (${res.status}): ${detail || res.statusText}`);
+  }
+
+  return (await res.json()) as TinyFishSearchResponse;
+}
+
 async function runWebSearch(params: {
   query: string;
   count: number;
@@ -384,11 +480,16 @@ async function runWebSearch(params: {
   freshness?: string;
   perplexityBaseUrl?: string;
   perplexityModel?: string;
+  tinyfishBaseUrl?: string;
+  tinyfishLocation?: string;
+  tinyfishLanguage?: string;
 }): Promise<Record<string, unknown>> {
   const cacheKey = normalizeCacheKey(
     params.provider === "brave"
       ? `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}:${params.freshness || "default"}`
-      : `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}`,
+      : params.provider === "tinyfish"
+        ? `${params.provider}:${params.query}:${params.count}:${params.tinyfishLocation || params.country || "default"}:${params.tinyfishLanguage || params.search_lang || "default"}`
+        : `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}`,
   );
   const cached = readCache(SEARCH_CACHE, cacheKey);
   if (cached) {
@@ -494,6 +595,43 @@ async function runWebSearch(params: {
     return payload;
   }
 
+  if (params.provider === "tinyfish") {
+    const data = await runTinyFishSearch({
+      query: params.query,
+      apiKey: params.apiKey,
+      baseUrl: params.tinyfishBaseUrl ?? DEFAULT_TINYFISH_SEARCH_BASE_URL,
+      location: params.tinyfishLocation ?? params.country,
+      language: params.tinyfishLanguage ?? params.search_lang,
+      timeoutSeconds: params.timeoutSeconds,
+    });
+    const rawResults = Array.isArray(data.results) ? data.results : [];
+    const sliced = rawResults.slice(0, params.count);
+    const mapped = sliced.map((entry) => {
+      const description = entry.snippet ?? "";
+      const title = entry.title ?? "";
+      const url = entry.url ?? "";
+      const rawSiteName = entry.site_name || resolveSiteName(url);
+      return {
+        title: title ? wrapWebContent(title, "web_search") : "",
+        url, // Keep raw for tool chaining
+        description: description ? wrapWebContent(description, "web_search") : "",
+        siteName: rawSiteName || undefined,
+        position: entry.position,
+      };
+    });
+    const payload = {
+      query: params.query,
+      provider: params.provider,
+      count: mapped.length,
+      totalResults: typeof data.total_results === "number" ? data.total_results : undefined,
+      page: typeof data.page === "number" ? data.page : undefined,
+      tookMs: Date.now() - start,
+      results: mapped,
+    };
+    writeCache(SEARCH_CACHE, cacheKey, payload, params.cacheTtlMs);
+    return payload;
+  }
+
   if (params.provider !== "brave") {
     throw new Error("Unsupported web search provider.");
   }
@@ -573,11 +711,14 @@ export function createWebSearchTool(options?: {
 
   const provider = resolveSearchProvider(search);
   const perplexityConfig = resolvePerplexityConfig(search);
+  const tinyfishConfig = resolveTinyFishConfig(search);
 
   const description =
     provider === "perplexity"
       ? "Search the web using Perplexity Sonar (direct or via OpenRouter). Returns AI-synthesized answers with citations from real-time web search."
-      : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+      : provider === "tinyfish"
+        ? "Search the web using TinyFish Search API (free for every account). Returns rank-stable structured results tuned for agent retrieval, with optional geo/language targeting."
+        : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
     label: "Web Search",
@@ -588,15 +729,22 @@ export function createWebSearchTool(options?: {
       const hasDashboardProxy = Boolean(process.env.ARGENT_DASHBOARD_API);
       const perplexityAuth =
         provider === "perplexity" ? resolvePerplexityApiKey(perplexityConfig) : undefined;
-      const apiKey = hasDashboardProxy
-        ? "proxy" // Proxy has its own key; use placeholder to skip missing-key check
-        : provider === "perplexity"
-          ? perplexityAuth?.apiKey
-          : resolveSearchApiKey({
-              search,
-              cfg: options?.config,
-              agentSessionKey: options?.agentSessionKey,
-            });
+      const tinyfishApiKey =
+        provider === "tinyfish" ? resolveTinyFishApiKey(tinyfishConfig) : undefined;
+      // TinyFish currently has no dashboard proxy route, so always use the
+      // direct API key path even when ARGENT_DASHBOARD_API is set.
+      const apiKey =
+        provider === "tinyfish"
+          ? tinyfishApiKey
+          : hasDashboardProxy
+            ? "proxy" // Proxy has its own key; use placeholder to skip missing-key check
+            : provider === "perplexity"
+              ? perplexityAuth?.apiKey
+              : resolveSearchApiKey({
+                  search,
+                  cfg: options?.config,
+                  agentSessionKey: options?.agentSessionKey,
+                });
 
       if (!apiKey) {
         return jsonResult(missingSearchKeyPayload(provider));
@@ -642,6 +790,9 @@ export function createWebSearchTool(options?: {
           perplexityAuth?.apiKey,
         ),
         perplexityModel: resolvePerplexityModel(perplexityConfig),
+        tinyfishBaseUrl: resolveTinyFishBaseUrl(tinyfishConfig),
+        tinyfishLocation: tinyfishConfig.location,
+        tinyfishLanguage: tinyfishConfig.language,
       });
       return jsonResult(result);
     },
@@ -653,4 +804,10 @@ export const __testing = {
   resolvePerplexityBaseUrl,
   normalizeFreshness,
   resolveSearchApiKey,
+  resolveSearchProvider,
+  resolveTinyFishApiKey,
+  resolveTinyFishBaseUrl,
+  resolveTinyFishConfig,
+  runTinyFishSearch,
+  DEFAULT_TINYFISH_SEARCH_BASE_URL,
 } as const;

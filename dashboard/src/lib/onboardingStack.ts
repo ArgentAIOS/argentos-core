@@ -7,7 +7,7 @@ export type HostedLlmProviderId = "anthropic" | "openai" | "minimax" | "zai";
 export type LlmProviderId = HostedLlmProviderId | "local";
 export type LocalRuntimeProviderId = "ollama" | "lmstudio";
 export type VoiceProviderId = "edge" | "openai" | "elevenlabs";
-export type SearchProviderId = "brave" | "perplexity";
+export type SearchProviderId = "brave" | "perplexity" | "tinyfish";
 
 export type AuthProfileSummary = {
   key: string;
@@ -152,6 +152,12 @@ export const SEARCH_PROVIDER_CARDS: SearchProviderCard[] = [
     label: "Perplexity / Sonar",
     description:
       "Search with synthesized answers and citations. Best when you want richer research-style responses.",
+  },
+  {
+    id: "tinyfish",
+    label: "TinyFish (Free)",
+    description:
+      "Agent-tuned web search with rank-stable structured results. Free for every account — get a key at agent.tinyfish.ai/api-keys. Also unlocks the TinyFish fetch backend for JS-heavy / anti-bot pages.",
   },
 ];
 
