@@ -94,7 +94,42 @@ describe("web_search tinyfish resolvers", () => {
     expect(resolveSearchProvider({ provider: "tinyfish" })).toBe("tinyfish");
   });
 
-  it("falls back to brave for unknown provider strings", () => {
+  it("honors explicit brave provider even if a TinyFish key is present", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "tf-key");
+    expect(resolveSearchProvider({ provider: "brave" })).toBe("brave");
+  });
+
+  it("smart-defaults to tinyfish when a TinyFish key is resolvable", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "tf-key");
+    vi.stubEnv("BRAVE_API_KEY", "brave-key");
+    expect(resolveSearchProvider(undefined)).toBe("tinyfish");
+  });
+
+  it("smart-defaults to brave when only Brave is configured", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "");
+    vi.stubEnv("BRAVE_API_KEY", "brave-key");
+    vi.stubEnv("ARGENT_DASHBOARD_API", "");
+    expect(resolveSearchProvider(undefined)).toBe("brave");
+  });
+
+  it("smart-defaults to tinyfish (free path) when no keys are configured", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "");
+    vi.stubEnv("BRAVE_API_KEY", "");
+    vi.stubEnv("ARGENT_DASHBOARD_API", "");
+    expect(resolveSearchProvider(undefined)).toBe("tinyfish");
+  });
+
+  it("smart-defaults to brave when dashboard proxy is configured (proxy uses Brave)", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "");
+    vi.stubEnv("BRAVE_API_KEY", "");
+    vi.stubEnv("ARGENT_DASHBOARD_API", "http://localhost:9242");
+    expect(resolveSearchProvider(undefined)).toBe("brave");
+  });
+
+  it("falls back to brave for unknown provider strings (no TinyFish key)", () => {
+    vi.stubEnv("TINYFISH_API_KEY", "");
+    vi.stubEnv("BRAVE_API_KEY", "brave-key");
+    vi.stubEnv("ARGENT_DASHBOARD_API", "");
     expect(resolveSearchProvider({ provider: "unknown" as never })).toBe("brave");
   });
 

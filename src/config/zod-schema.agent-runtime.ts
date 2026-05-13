@@ -307,7 +307,9 @@ export const ToolPolicySchema = ToolPolicyBaseSchema.superRefine((value, ctx) =>
 export const ToolsWebSearchSchema = z
   .object({
     enabled: z.boolean().optional(),
-    provider: z.union([z.literal("brave"), z.literal("perplexity")]).optional(),
+    provider: z
+      .union([z.literal("brave"), z.literal("perplexity"), z.literal("tinyfish")])
+      .optional(),
     apiKey: z.string().optional(),
     maxResults: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
@@ -317,6 +319,15 @@ export const ToolsWebSearchSchema = z
         apiKey: z.string().optional(),
         baseUrl: z.string().optional(),
         model: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    tinyfish: z
+      .object({
+        apiKey: z.string().optional(),
+        baseUrl: z.string().optional(),
+        location: z.string().optional(),
+        language: z.string().optional(),
       })
       .strict()
       .optional(),
@@ -333,6 +344,28 @@ export const ToolsWebFetchSchema = z
     cacheTtlMinutes: z.number().nonnegative().optional(),
     maxRedirects: z.number().int().nonnegative().optional(),
     userAgent: z.string().optional(),
+    readability: z.boolean().optional(),
+    firecrawl: z
+      .object({
+        enabled: z.boolean().optional(),
+        apiKey: z.string().optional(),
+        baseUrl: z.string().optional(),
+        onlyMainContent: z.boolean().optional(),
+        maxAgeMs: z.number().int().nonnegative().optional(),
+        timeoutSeconds: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
+    tinyfish: z
+      .object({
+        enabled: z.boolean().optional(),
+        apiKey: z.string().optional(),
+        baseUrl: z.string().optional(),
+        format: z.union([z.literal("markdown"), z.literal("html"), z.literal("json")]).optional(),
+        timeoutSeconds: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();

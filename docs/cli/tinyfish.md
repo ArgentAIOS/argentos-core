@@ -1,18 +1,24 @@
 ---
-summary: "Use TinyFish as a free agent-tuned search and fetch backend for ArgentOS"
+summary: "TinyFish — the recommended free default for ArgentOS web_search and web_fetch"
 read_when:
+  - You're setting up Argent for the first time and want web tools working in 30 seconds
   - You want web search results tuned for agent retrieval (rank-stable, structured)
   - You need to fetch JS-heavy pages or pages with anti-bot protection
   - You want a free web-tool option without credit-card sign-up
 title: "tinyfish"
 ---
 
-# TinyFish (`web_search` provider + `web_fetch` backend)
+# TinyFish — Recommended Default for `web_search` + `web_fetch`
 
-TinyFish ships REST APIs for web search and browser-based page fetch that are
-**free for every account** (no credits used). ArgentOS integrates both as
-**first-class, additive** options to the existing `web_search` and `web_fetch`
-tools — alongside Brave / Perplexity (search) and Firecrawl (fetch).
+**TinyFish is the recommended default web-tools provider for ArgentOS.** It ships
+REST APIs for web search and browser-based page fetch that are **free for every
+account, no credits used**. Onboarding and the CLI wizard surface TinyFish first
+because it's the fastest path to working web tools — zero credit-card setup,
+zero quota wrangling.
+
+Brave Search and Perplexity remain fully supported as alternatives for users
+who already have those keys; Firecrawl remains supported as a `web_fetch`
+fallback.
 
 - Sign-up + API key: <https://agent.tinyfish.ai/api-keys>
 - Docs: <https://docs.tinyfish.ai>

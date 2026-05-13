@@ -8,6 +8,10 @@ export type AuthChoiceOption = {
 };
 
 export type AuthChoiceGroupId =
+  // Web-tool credential (not an LLM). Surfaced first because TinyFish gives
+  // every new user a free path to working web_search + web_fetch with zero
+  // credit setup.
+  | "tinyfish"
   | "openai"
   | "anthropic"
   | "local-lmstudio"
@@ -41,6 +45,12 @@ const AUTH_CHOICE_GROUP_DEFS: {
   hint?: string;
   choices: AuthChoice[];
 }[] = [
+  {
+    value: "tinyfish",
+    label: "TinyFish — Free Web Search & Fetch (Recommended)",
+    hint: "Free for every account, no credits. Fastest path to working web tools.",
+    choices: ["tinyfish-api-key"],
+  },
   {
     value: "openai",
     label: "OpenAI",
@@ -163,6 +173,14 @@ export function buildAuthChoiceOptions(params: {
 }): AuthChoiceOption[] {
   void params.store;
   const options: AuthChoiceOption[] = [];
+
+  // TinyFish first — free web tools, zero credits. Surfaced before LLM
+  // credentials because it's the fastest path to a working agent.
+  options.push({
+    value: "tinyfish-api-key",
+    label: "TinyFish API key (recommended)",
+    hint: "Free web_search + web_fetch — no credits. Get a key at agent.tinyfish.ai/api-keys.",
+  });
 
   options.push({
     value: "token",

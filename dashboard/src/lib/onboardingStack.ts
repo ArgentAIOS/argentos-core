@@ -142,22 +142,22 @@ export const VOICE_PROVIDER_CARDS: VoiceProviderCard[] = [
 
 export const SEARCH_PROVIDER_CARDS: SearchProviderCard[] = [
   {
+    id: "tinyfish",
+    label: "TinyFish — Free Search & Fetch (Recommended)",
+    description:
+      "Zero credits, no API key wrangling. Fastest path in. Free for every account — agent-tuned search with rank-stable structured results. Also unlocks the TinyFish fetch backend for JS-heavy / anti-bot pages. Get a key at agent.tinyfish.ai/api-keys.",
+  },
+  {
     id: "brave",
     label: "Brave Search",
     description:
-      "Simple web results with a dedicated search provider. Good default if you want straightforward search tool behavior.",
+      "Direct Brave API. Good if you already have a key. Requires a Brave Search subscription / API key.",
   },
   {
     id: "perplexity",
     label: "Perplexity / Sonar",
     description:
-      "Search with synthesized answers and citations. Best when you want richer research-style responses.",
-  },
-  {
-    id: "tinyfish",
-    label: "TinyFish (Free)",
-    description:
-      "Agent-tuned web search with rank-stable structured results. Free for every account — get a key at agent.tinyfish.ai/api-keys. Also unlocks the TinyFish fetch backend for JS-heavy / anti-bot pages.",
+      "Search with synthesized answers and citations. Best when you want richer research-style responses (via Perplexity or OpenRouter).",
   },
 ];
 

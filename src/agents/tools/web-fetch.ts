@@ -64,7 +64,7 @@ const WebFetchSchema = Type.Object({
   backend: Type.Optional(
     stringEnum(FETCH_BACKENDS, {
       description:
-        'Fetch backend. "direct" (default) uses argent\'s SSRF-guarded HTTP fetch with Readability. "tinyfish" routes the URL through TinyFish\'s browser-based fetch — required to be enabled in config (tools.web.fetch.tinyfish).',
+        'Fetch backend. "tinyfish" (recommended when enabled — free, no credits) routes the URL through TinyFish\'s browser-based fetch for JS-heavy or anti-bot pages with clean LLM-tuned markdown. "direct" (default) uses argent\'s SSRF-guarded HTTP fetch with Readability extraction.',
       default: "direct",
     }),
   ),
@@ -948,7 +948,7 @@ export function createWebFetchTool(options?: {
   const baseDescription =
     "Fetch and extract readable content from a URL. Prefers native markdown when the server supports it (Cloudflare Markdown-for-Agents), otherwise extracts from HTML via Readability. Use for lightweight page access without browser automation.";
   const tinyfishHint = tinyfishEnabled
-    ? ' Pass `backend: "tinyfish"` to render JS-heavy or anti-bot pages via TinyFish.'
+    ? ' Recommended: pass `backend: "tinyfish"` for JS-heavy SPAs, anti-bot pages, or when you want clean LLM-tuned markdown out of the box (free, no credits).'
     : "";
   return {
     label: "Web Fetch",

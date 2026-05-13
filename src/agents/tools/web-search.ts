@@ -184,7 +184,9 @@ function missingSearchKeyPayload(provider: (typeof SEARCH_PROVIDERS)[number]) {
     return {
       error: "missing_tinyfish_api_key",
       message:
-        "web_search (tinyfish) needs an API key. Set TINYFISH_API_KEY in the Gateway environment, or configure tools.web.search.tinyfish.apiKey. Get a free key at https://agent.tinyfish.ai/api-keys.",
+        "web_search needs a TinyFish API key (free, no credits — recommended path). Sign up at https://agent.tinyfish.ai/api-keys, then set TINYFISH_API_KEY in the Gateway environment or run `" +
+        formatCliCommand("argent configure --section web") +
+        "`. Or set tools.web.search.provider=brave to use Brave Search instead.",
       docs: "https://docs.argent.ai/tools/web",
     };
   }
@@ -209,7 +211,31 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
   if (raw === "brave") {
     return "brave";
   }
-  return "brave";
+  // No explicit provider configured. Preference order (recommended-first):
+  //  1. TinyFish when an API key is resolvable (free, no credits — fastest path
+  //     in for new users).
+  //  2. Brave when the dashboard proxy is configured (proxy uses Brave) or a
+  //     Brave key is set.
+  //  3. TinyFish as a final default so the missing-key hint nudges users
+  //     toward the free path.
+  const tinyfishConfig = resolveTinyFishConfig(search);
+  const hasTinyFishKey = Boolean(resolveTinyFishApiKey(tinyfishConfig));
+  if (hasTinyFishKey) {
+    return "tinyfish";
+  }
+  const dashboardProxy = normalizeApiKey(process.env.ARGENT_DASHBOARD_API);
+  if (dashboardProxy) {
+    return "brave";
+  }
+  const hasBraveKey = Boolean(
+    normalizeApiKey(
+      search && "apiKey" in search && typeof search.apiKey === "string" ? search.apiKey : "",
+    ) || normalizeApiKey(process.env.BRAVE_API_KEY),
+  );
+  if (hasBraveKey) {
+    return "brave";
+  }
+  return "tinyfish";
 }
 
 function resolveTinyFishConfig(search?: WebSearchConfig): TinyFishConfig {
@@ -717,7 +743,7 @@ export function createWebSearchTool(options?: {
     provider === "perplexity"
       ? "Search the web using Perplexity Sonar (direct or via OpenRouter). Returns AI-synthesized answers with citations from real-time web search."
       : provider === "tinyfish"
-        ? "Search the web using TinyFish Search API (free for every account). Returns rank-stable structured results tuned for agent retrieval, with optional geo/language targeting."
+        ? "Search the web using TinyFish Search API (recommended — free for every account, no credits). Returns rank-stable structured results tuned for agent retrieval, with optional geo/language targeting."
         : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
