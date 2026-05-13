@@ -64,6 +64,28 @@ export {
 } from "./session-compaction.js";
 
 // ---------------------------------------------------------------------------
+// AGENT SESSION STRUCTURAL BRIDGE (GH #301)
+// ---------------------------------------------------------------------------
+//
+// pi 0.70.2 added ~78 private members to `AgentSession`. The original
+// `as AgentSession` casts target the concrete class identity, so they fail
+// with TS2352 "neither type sufficiently overlaps with the other". The
+// forward-direction unification (PR #275 / #276) introduced 22 new errors
+// because argent's local impl cannot satisfy private members it never owned.
+//
+// `AgentSessionLike` captures only the public surface argent actually uses.
+// Argent's own `AgentSession` interface satisfies it directly; pi's class
+// satisfies the read subset. Either runtime source flows through the same
+// structural type. See `./agent-session.ts` for full rationale + scope
+// guardrails (replaceMessages stays out — that's GH #302).
+//
+export type {
+  AgentSessionLike,
+  AgentSessionAgentLike,
+  AgentSessionPromptOptionsLike,
+} from "./agent-session.js";
+
+// ---------------------------------------------------------------------------
 // TOOL / CONTEXT / TYPEBOX IDENTITY BRIDGE (GH #305)
 // ---------------------------------------------------------------------------
 //

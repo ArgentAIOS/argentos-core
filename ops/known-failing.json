@@ -1,6 +1,6 @@
 {
-  "snapshotAt": "2026-05-12T03:22:58.546Z",
-  "totalErrors": 249,
+  "snapshotAt": "2026-05-13T12:55:27.007Z",
+  "totalErrors": 218,
   "errors": [
     {
       "file": "src/agents/compaction.ts",
@@ -15,18 +15,6 @@
       "message": "Property 'requiredSuites' does not exist on type 'IntentSimulationGateConfig'."
     },
     {
-      "file": "src/agents/model-catalog.ts",
-      "line": 72,
-      "code": "TS2673",
-      "message": "Constructor of class 'AuthStorage' is private and only accessible within the class declaration."
-    },
-    {
-      "file": "src/agents/model-catalog.ts",
-      "line": 73,
-      "code": "TS2673",
-      "message": "Constructor of class 'ModelRegistry' is private and only accessible within the class declaration."
-    },
-    {
       "file": "src/agents/models-config.providers.ts",
       "line": 166,
       "code": "TS2322",
@@ -39,190 +27,16 @@
       "message": "A type predicate's type must be assignable to its parameter's type."
     },
     {
-      "file": "src/agents/pi-embedded-runner/compact.ts",
-      "line": 435,
-      "code": "TS2322",
-      "message": "Type 'ToolDefinition<TSchema, unknown, any>[]' is not assignable to type 'ToolDefinition[]'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/compact.ts",
-      "line": 440,
-      "code": "TS2345",
-      "message": "Argument of type 'import(…)' is not assignable to parameter of type 'import(…)'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/compact.ts",
-      "line": 513,
-      "code": "TS2339",
-      "message": "Property 'firstKeptEntryId' does not exist on type 'SessionCompactionResult'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/compact.ts",
-      "line": 514,
-      "code": "TS2322",
-      "message": "Type 'number | undefined' is not assignable to type 'number'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/compact.ts",
-      "line": 516,
-      "code": "TS2339",
-      "message": "Property 'details' does not exist on type 'SessionCompactionResult'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 809,
-      "code": "TS2322",
-      "message": "Type 'Model<Api> | undefined' is not assignable to type 'Model<Api>'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 823,
-      "code": "TS18048",
-      "message": "'model' is possibly 'undefined'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 829,
-      "code": "TS18048",
-      "message": "'model' is possibly 'undefined'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 835,
-      "code": "TS18048",
-      "message": "'model' is possibly 'undefined'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 837,
-      "code": "TS18048",
-      "message": "'model' is possibly 'undefined'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 1273,
-      "code": "TS2339",
-      "message": "Property 'apiKey' does not exist on type 'never'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 1328,
-      "code": "TS2339",
-      "message": "Property 'apiKey' does not exist on type 'never'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 1329,
-      "code": "TS2339",
-      "message": "Property 'apiKey' does not exist on type 'never'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 1600,
-      "code": "TS2345",
-      "message": "Argument of type 'string | undefined' is not assignable to parameter of type 'never'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run.ts",
-      "line": 1708,
-      "code": "TS2352",
-      "message": "Conversion of type 'ToolCall | TextContent | ThinkingContent' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 234,
-      "code": "TS2532",
-      "message": "Object is possibly 'undefined'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1121,
-      "code": "TS2322",
-      "message": "Type 'ToolDefinition<TSchema, unknown, any>[]' is not assignable to type 'ToolDefinition[]'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1131,
-      "code": "TS2352",
-      "message": "Conversion of type 'import(…)' to type 'import(…)' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1173,
-      "code": "TS2352",
-      "message": "Conversion of type 'AuthStorage' to type 'AuthStorageWithRuntimeOverrides' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1183,
-      "code": "TS2322",
-      "message": "Type 'ModelRegistry' is not assignable to type 'OpenAICodexModelRegistryLike'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1326,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1539,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1550,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
-    },
-    {
-      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
-      "line": 1585,
-      "code": "TS2339",
-      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
-    },
-    {
       "file": "src/agents/pi-embedded-runner/run/message-sanitizer.ts",
       "line": 98,
       "code": "TS2339",
       "message": "Property 'details' does not exist on type 'AgentMessage'."
     },
     {
-      "file": "src/agents/pi-embedded-runner/system-prompt.ts",
-      "line": 94,
-      "code": "TS2339",
-      "message": "Property 'setSystemPrompt' does not exist on type 'Agent'."
-    },
-    {
       "file": "src/agents/pi-extensions/compaction-safeguard.ts",
       "line": 185,
       "code": "TS2339",
       "message": "Property 'getApiKey' does not exist on type 'ModelRegistry'."
-    },
-    {
-      "file": "src/agents/pi-model-discovery.ts",
-      "line": 10,
-      "code": "TS2673",
-      "message": "Constructor of class 'AuthStorage' is private and only accessible within the class declaration."
-    },
-    {
-      "file": "src/agents/pi-model-discovery.ts",
-      "line": 14,
-      "code": "TS2673",
-      "message": "Constructor of class 'ModelRegistry' is private and only accessible within the class declaration."
-    },
-    {
-      "file": "src/agents/pi-tool-definition-adapter.ts",
-      "line": 119,
-      "code": "TS2322",
-      "message": "Type 'AbortSignal | AgentToolUpdateCallback<unknown> | undefined' is not assignable to type 'AgentToolUpdateCallback<unknown> | undefined'."
-    },
-    {
-      "file": "src/agents/pi-tool-definition-adapter.ts",
-      "line": 120,
-      "code": "TS2322",
-      "message": "Type 'AbortSignal | ExtensionContext | undefined' is not assignable to type 'AbortSignal | undefined'."
     },
     {
       "file": "src/agents/pi-tools.loop-detect.ts",
