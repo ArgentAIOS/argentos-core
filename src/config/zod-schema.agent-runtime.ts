@@ -370,10 +370,32 @@ export const ToolsWebFetchSchema = z
   .strict()
   .optional();
 
+export const ToolsWebAgentSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    browserProfile: z.union([z.literal("lite"), z.literal("stealth")]).optional(),
+    maxSteps: z.number().int().positive().max(500).optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
+    capture: z
+      .object({
+        screenshots: z.boolean().optional(),
+        snapshots: z.boolean().optional(),
+        recording: z.boolean().optional(),
+        elements: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .optional();
+
 export const ToolsWebSchema = z
   .object({
     search: ToolsWebSearchSchema,
     fetch: ToolsWebFetchSchema,
+    agent: ToolsWebAgentSchema,
   })
   .strict()
   .optional();

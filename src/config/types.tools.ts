@@ -441,6 +441,33 @@ export type ToolsConfig = {
         timeoutSeconds?: number;
       };
     };
+    /**
+     * TinyFish Agent (natural-language browser automation). Opt-in: requires
+     * `enabled=true` AND a TinyFish API key. Agent runs are billed against
+     * the TinyFish account — paid tier — and surface a clear error if the
+     * account lacks credits. Default behavior is unchanged when disabled.
+     */
+    agent?: {
+      /** Allow tinyfish_agent tool (default: false). */
+      enabled?: boolean;
+      /** TinyFish API key (optional; defaults to TINYFISH_API_KEY env var). */
+      apiKey?: string;
+      /** TinyFish Agent base URL override (default: https://agent.tinyfish.ai). */
+      baseUrl?: string;
+      /** Browser profile ("lite" or "stealth"; default: lite). */
+      browserProfile?: "lite" | "stealth";
+      /** Default max steps cap (1-500; default: 150). */
+      maxSteps?: number;
+      /** Timeout in seconds for agent run requests (default: 300). */
+      timeoutSeconds?: number;
+      /** Default capture flags applied when the caller omits them. */
+      capture?: {
+        screenshots?: boolean;
+        snapshots?: boolean;
+        recording?: boolean;
+        elements?: boolean;
+      };
+    };
   };
   media?: MediaToolsConfig;
   links?: LinkToolsConfig;
