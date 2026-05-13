@@ -11,7 +11,95 @@
 import type { ProviderRegistry, ProviderRegistryEntry } from "../config/types.models.js";
 
 // Current seed version. Bump this to force re-seed on next startup.
-export const SEED_VERSION = 9;
+export const SEED_VERSION = 10;
+
+// ---------------------------------------------------------------------------
+// Onboarding wizard cards
+// ---------------------------------------------------------------------------
+//
+// Single source of truth for the SetupWizard's first-run LLM provider cards
+// (rendered by `dashboard/src/lib/onboardingStack.ts` and `SetupWizard.tsx`).
+// Historically these cards were hardcoded in onboardingStack.ts, which drifted
+// from this seed every time a hosted provider was added or relabelled
+// (see issue #295). Keep this array and the wizard's `LLM_PROVIDER_CARDS`
+// constant in lockstep — scripts/export-provider-catalog.ts regenerates the
+// dashboard-side artifact from this constant during `pnpm build`.
+//
+// Adding a new card:
+//   1. Add an entry below (preserve canonical ordering).
+//   2. Bump SEED_VERSION above.
+//   3. Run `pnpm exec tsx scripts/export-provider-catalog.ts` (or `pnpm build`)
+//      to regenerate dashboard/src/lib/_generated/onboarding-card-seed.ts.
+
+export type OnboardingProviderCardSeed = {
+  /** Stable provider id used by the wizard (anthropic, openai, minimax, zai, local). */
+  id: string;
+  /** Display label rendered on the card. */
+  label: string;
+  /** Tailwind accent colour token consumed by SetupWizard. */
+  accent: string;
+  /** Short recommendation label rendered above the description. */
+  recommended: string;
+  /** One- or two-sentence description rendered on the card body. */
+  description: string;
+  /** URL the wizard surfaces for users who need to create an API key. */
+  keyUrl: string;
+  /** Marks the card as visible in the first-run wizard. Reserved for future filtering. */
+  onboardingVisible: true;
+};
+
+export const ONBOARDING_PROVIDER_CARD_SEEDS: ReadonlyArray<OnboardingProviderCardSeed> = [
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    accent: "amber",
+    recommended: "Best Claude experience",
+    description:
+      "Claude models with strong coding and reasoning. Best if you already use Anthropic or Claude Max.",
+    keyUrl: "https://console.anthropic.com/",
+    onboardingVisible: true,
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    accent: "emerald",
+    recommended: "Balanced hosted default",
+    description:
+      "GPT models plus built-in TTS pairing. Great low-friction path if you already have an OpenAI API account.",
+    keyUrl: "https://platform.openai.com/api-keys",
+    onboardingVisible: true,
+  },
+  {
+    id: "minimax",
+    label: "MiniMax",
+    accent: "violet",
+    recommended: "Great value + media stack",
+    description:
+      "Fast, affordable hosted models with broad media capabilities. Good when you want one provider for a lot of AI surface area.",
+    keyUrl: "https://platform.minimaxi.com/",
+    onboardingVisible: true,
+  },
+  {
+    id: "zai",
+    label: "Z.AI / GLM",
+    accent: "cyan",
+    recommended: "Strong GLM family",
+    description:
+      "GLM hosted models from Z.AI. Best if you specifically want the GLM family or already use bigmodel.cn.",
+    keyUrl: "https://open.bigmodel.cn/",
+    onboardingVisible: true,
+  },
+  {
+    id: "local",
+    label: "Local only",
+    accent: "slate",
+    recommended: "No hosted keys",
+    description:
+      "Use local models only. Best if you are intentionally staying offline or already run Ollama/LM Studio locally.",
+    keyUrl: "https://ollama.com/",
+    onboardingVisible: true,
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Cost presets
