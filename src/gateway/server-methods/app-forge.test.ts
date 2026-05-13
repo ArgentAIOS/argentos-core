@@ -914,4 +914,94 @@ describe("AppForge gateway handlers", () => {
       expect.objectContaining({ message: "csv is required" }),
     );
   });
+
+  it("commits CSV rows into an existing base/table in batches and reports per-row outcomes", async () => {
+    const csv = [
+      "Name,Score",
+      "Asset A,1",
+      "Asset B,2",
+      "Asset C,3",
+      ",4", // invalid: empty Name (required)
+    ].join("\n");
+
+    const respond = await invokeAppForgeHandler("appforge.import.commit", {
+      csv,
+      baseId: "base-1",
+      tableId: "table-1",
+      batchSize: 2,
+      recordIdPrefix: "csv",
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        report: expect.objectContaining({
+          tableName: "Reviews",
+          totalRows: 4,
+          attempted: 3,
+          committed: 3,
+          failed: 0,
+          skippedInvalid: 1,
+          batchSize: 2,
+          batchCount: 2,
+        }),
+      }),
+      undefined,
+    );
+
+    // Confirm rows actually landed in the adapter.
+    const listed = await invokeAppForgeHandler("appforge.records.list", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    const listedCall = listed.mock.calls[0];
+    expect(listedCall?.[0]).toBe(true);
+    const records = (listedCall?.[1] as { records: Array<{ values: Record<string, unknown> }> })
+      .records;
+    expect(records).toHaveLength(3);
+    expect(records.map((record) => record.values.name)).toEqual(["Asset A", "Asset B", "Asset C"]);
+  });
+
+  it("rejects appforge.import.commit when csv/baseId/tableId are missing or base not found", async () => {
+    const missingCsv = await invokeAppForgeHandler("appforge.import.commit", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    expect(missingCsv).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "csv is required" }),
+    );
+
+    const missingIds = await invokeAppForgeHandler("appforge.import.commit", {
+      csv: "Name\nAsset A",
+    });
+    expect(missingIds).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "baseId and tableId are required" }),
+    );
+
+    const unknownBase = await invokeAppForgeHandler("appforge.import.commit", {
+      csv: "Name\nAsset A",
+      baseId: "missing-base",
+      tableId: "table-1",
+    });
+    expect(unknownBase).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "base not found" }),
+    );
+
+    const unknownTable = await invokeAppForgeHandler("appforge.import.commit", {
+      csv: "Name\nAsset A",
+      baseId: "base-1",
+      tableId: "no-such",
+    });
+    expect(unknownTable).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "table not found" }),
+    );
+  });
 });

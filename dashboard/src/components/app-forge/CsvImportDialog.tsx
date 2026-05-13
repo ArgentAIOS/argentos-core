@@ -15,7 +15,54 @@ export type AppForgeImportPreviewColumn = {
   ratingMax?: number;
   /** Glyph for `rating`-typed columns matched to an existing field. */
   ratingIcon?: ForgeRatingIcon;
+  /** When true the caller has chosen to drop this column at commit. */
+  skipped?: boolean;
 };
+
+export type AppForgeImportColumnOverride = {
+  header?: string;
+  fieldId?: string;
+  fieldName?: string;
+  type?: string;
+  skip?: boolean;
+  options?: string[];
+};
+
+export type AppForgeImportCommitRowResult = {
+  rowNumber: number;
+  recordId: string;
+  ok: boolean;
+  reason?: "invalid" | "write_failed" | "skipped";
+  message?: string;
+  errors?: Array<{ fieldId: string; code: string; message: string }>;
+};
+
+export type AppForgeImportCommitReport = {
+  tableName: string;
+  totalRows: number;
+  attempted: number;
+  committed: number;
+  failed: number;
+  skippedInvalid: number;
+  skippedEmpty: number;
+  batchSize: number;
+  batchCount: number;
+  warnings: string[];
+  rows: AppForgeImportCommitRowResult[];
+};
+
+const SUPPORTED_OVERRIDE_TYPES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "text", label: "Text" },
+  { value: "long_text", label: "Long text" },
+  { value: "number", label: "Number" },
+  { value: "checkbox", label: "Checkbox" },
+  { value: "date", label: "Date" },
+  { value: "email", label: "Email" },
+  { value: "url", label: "URL" },
+  { value: "single_select", label: "Single select" },
+  { value: "multi_select", label: "Multi-select" },
+  { value: "rating", label: "Rating" },
+];
 
 const RATING_ICON_GLYPHS: Record<ForgeRatingIcon, ComponentType<{ className?: string }>> = {
   star: Star,
@@ -133,12 +180,28 @@ export type AppForgeImportPreview = {
   warnings: string[];
 };
 
+type CsvImportApplyInput = {
+  baseName: string;
+  tableName: string;
+  csv: string;
+  preview: AppForgeImportPreview;
+  overrides: AppForgeImportColumnOverride[];
+};
+
 type CsvImportDialogProps = {
   open: boolean;
   busy?: boolean;
   gatewayRequest?: GatewayRequestFn;
   onCancel: () => void;
-  onApply: (input: { baseName: string; preview: AppForgeImportPreview }) => Promise<void> | void;
+  onApply: (input: CsvImportApplyInput) => Promise<void> | void;
+  /** Optional post-commit report rendered inside the dialog when present. */
+  commitReport?: AppForgeImportCommitReport | null;
+};
+
+type ColumnOverrideEntry = {
+  fieldName?: string;
+  type?: string;
+  skip?: boolean;
 };
 
 const SAMPLE_CSV =
@@ -153,6 +216,7 @@ export function CsvImportDialog({
   gatewayRequest,
   onCancel,
   onApply,
+  commitReport,
 }: CsvImportDialogProps) {
   const [csvText, setCsvText] = useState("");
   const [tableName, setTableName] = useState("Imported Table");
@@ -160,6 +224,7 @@ export function CsvImportDialog({
   const [preview, setPreview] = useState<AppForgeImportPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [overrideMap, setOverrideMap] = useState<Record<string, ColumnOverrideEntry>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -170,11 +235,67 @@ export function CsvImportDialog({
       setPreview(null);
       setPreviewError(null);
       setPreviewing(false);
+      setOverrideMap({});
     }
   }, [open]);
 
+  const overridesArray = useMemo<AppForgeImportColumnOverride[]>(() => {
+    const entries: AppForgeImportColumnOverride[] = [];
+    for (const [header, override] of Object.entries(overrideMap)) {
+      if (!override.fieldName && !override.type && !override.skip) {
+        continue;
+      }
+      entries.push({
+        header,
+        fieldName: override.fieldName,
+        type: override.type,
+        skip: override.skip,
+      });
+    }
+    return entries;
+  }, [overrideMap]);
+
+  const appliedColumns = useMemo<AppForgeImportPreviewColumn[]>(() => {
+    if (!preview) {
+      return [];
+    }
+    return preview.columns.map((column) => {
+      const override = overrideMap[column.header];
+      if (!override) {
+        return column;
+      }
+      return {
+        ...column,
+        fieldName: override.fieldName ?? column.fieldName,
+        type: override.type ?? column.type,
+        skipped: override.skip === true ? true : column.skipped,
+      };
+    });
+  }, [overrideMap, preview]);
+
+  const appliedFieldCount = useMemo(
+    () => appliedColumns.filter((column) => !column.skipped).length,
+    [appliedColumns],
+  );
+
   const canPreview = !!csvText.trim() && !!gatewayRequest && !previewing && !busy;
-  const canApply = !!preview && !!preview.fields.length && !busy;
+  const canApply = !!preview && appliedFieldCount > 0 && !busy;
+
+  const updateOverride = useCallback((header: string, patch: Partial<ColumnOverrideEntry>) => {
+    setOverrideMap((current) => {
+      const previousEntry = current[header] ?? {};
+      const merged: ColumnOverrideEntry = { ...previousEntry, ...patch };
+      if (!merged.fieldName && !merged.type && !merged.skip) {
+        if (!(header in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[header];
+        return next;
+      }
+      return { ...current, [header]: merged };
+    });
+  }, []);
 
   const requestPreview = useCallback(async () => {
     if (!gatewayRequest) {
@@ -190,6 +311,7 @@ export function CsvImportDialog({
         { timeoutMs: 8_000 },
       );
       setPreview(result.preview);
+      setOverrideMap({});
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to build CSV preview.";
       setPreviewError(message);
@@ -211,6 +333,7 @@ export function CsvImportDialog({
       }
       setPreview(null);
       setPreviewError(null);
+      setOverrideMap({});
     });
     reader.addEventListener("error", () => setPreviewError("Failed to read file."));
     reader.readAsText(file);
@@ -219,6 +342,11 @@ export function CsvImportDialog({
   const totalErrors = useMemo(
     () => preview?.rows.reduce((total, row) => total + row.errors.length, 0) ?? 0,
     [preview],
+  );
+
+  const failedReportRows = useMemo(
+    () => commitReport?.rows.filter((row) => !row.ok) ?? [],
+    [commitReport],
   );
 
   if (!open) {
@@ -347,7 +475,7 @@ export function CsvImportDialog({
               <div className="mt-1 flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-3">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/55">
                   <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-100/85">
-                    {preview.fields.length} fields
+                    {appliedFieldCount} fields
                   </span>
                   <span>{preview.totalRows} data rows</span>
                   <span>delimiter "{preview.delimiter}"</span>
@@ -358,55 +486,134 @@ export function CsvImportDialog({
                     <span className="text-amber-200">{totalErrors} validation issue(s)</span>
                   )}
                 </div>
+                <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/55">
+                    Column mapping
+                  </div>
+                  <ul
+                    className="flex flex-col gap-1"
+                    data-testid="appforge-csv-import-mapping-list"
+                  >
+                    {appliedColumns.map((column) => {
+                      const override = overrideMap[column.header] ?? {};
+                      return (
+                        <li
+                          key={column.header}
+                          className={`flex flex-wrap items-center gap-2 rounded-sm px-1 py-1 text-[11px] ${
+                            column.skipped ? "opacity-55" : ""
+                          }`}
+                          data-testid="appforge-csv-import-mapping-row"
+                          data-column-header={column.header}
+                          data-column-skipped={column.skipped ? "true" : "false"}
+                        >
+                          <span className="min-w-[8rem] truncate text-white/55">
+                            {column.header}
+                          </span>
+                          <input
+                            value={override.fieldName ?? column.fieldName}
+                            disabled={busy || column.skipped}
+                            onChange={(event) =>
+                              updateOverride(column.header, {
+                                fieldName:
+                                  event.target.value.trim() === "" ? undefined : event.target.value,
+                              })
+                            }
+                            data-testid="appforge-csv-import-mapping-name"
+                            className="min-w-[8rem] flex-1 rounded-sm border border-white/10 bg-black/35 px-2 py-0.5 text-white outline-none focus:border-sky-300/55 disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                          <select
+                            value={override.type ?? column.type}
+                            disabled={busy || column.skipped}
+                            onChange={(event) =>
+                              updateOverride(column.header, {
+                                type:
+                                  event.target.value === column.type
+                                    ? undefined
+                                    : event.target.value,
+                              })
+                            }
+                            data-testid="appforge-csv-import-mapping-type"
+                            className="rounded-sm border border-white/10 bg-black/35 px-1.5 py-0.5 text-white outline-none focus:border-sky-300/55 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {SUPPORTED_OVERRIDE_TYPES.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="inline-flex items-center gap-1 text-white/55">
+                            <input
+                              type="checkbox"
+                              checked={column.skipped === true}
+                              disabled={busy}
+                              onChange={(event) =>
+                                updateOverride(column.header, {
+                                  skip: event.target.checked ? true : undefined,
+                                })
+                              }
+                              data-testid="appforge-csv-import-mapping-skip"
+                              className="h-3 w-3"
+                            />
+                            Skip
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
                 <div className="overflow-x-auto rounded-md border border-white/10">
                   <table className="min-w-full text-xs">
                     <thead className="bg-white/[0.06] text-[10px] uppercase tracking-[0.08em] text-white/55">
                       <tr>
-                        {preview.columns.map((column) => (
-                          <th
-                            key={column.fieldId}
-                            className="px-3 py-1.5 text-left font-semibold"
-                            data-testid="appforge-csv-import-column"
-                          >
-                            <div className="text-white/85">{column.fieldName}</div>
-                            <div className="text-[10px] text-white/45">{column.type}</div>
-                          </th>
-                        ))}
+                        {appliedColumns
+                          .filter((column) => !column.skipped)
+                          .map((column) => (
+                            <th
+                              key={column.fieldId}
+                              className="px-3 py-1.5 text-left font-semibold"
+                              data-testid="appforge-csv-import-column"
+                            >
+                              <div className="text-white/85">{column.fieldName}</div>
+                              <div className="text-[10px] text-white/45">{column.type}</div>
+                            </th>
+                          ))}
                       </tr>
                     </thead>
                     <tbody className="text-white/75">
                       {preview.rows.slice(0, 5).map((row) => (
                         <tr key={row.rowNumber} className="border-t border-white/[0.07]">
-                          {preview.columns.map((column) => {
-                            const rawValue = row.raw[column.fieldId] ?? "";
-                            if (column.type === "rating") {
-                              const hasError = row.errors.some(
-                                (error) => error.fieldId === column.fieldId,
-                              );
+                          {appliedColumns
+                            .filter((column) => !column.skipped)
+                            .map((column) => {
+                              const rawValue = row.raw[column.fieldId] ?? "";
+                              if (column.type === "rating") {
+                                const hasError = row.errors.some(
+                                  (error) => error.fieldId === column.fieldId,
+                                );
+                                return (
+                                  <td
+                                    key={column.fieldId}
+                                    className="max-w-[14rem] px-3 py-1 align-top"
+                                  >
+                                    <RatingPreviewCell
+                                      rawValue={rawValue}
+                                      parsedValue={row.values[column.fieldId]}
+                                      ratingMax={column.ratingMax}
+                                      ratingIcon={column.ratingIcon}
+                                      hasError={hasError}
+                                    />
+                                  </td>
+                                );
+                              }
                               return (
                                 <td
                                   key={column.fieldId}
-                                  className="max-w-[14rem] px-3 py-1 align-top"
+                                  className="max-w-[14rem] truncate px-3 py-1 align-top"
                                 >
-                                  <RatingPreviewCell
-                                    rawValue={rawValue}
-                                    parsedValue={row.values[column.fieldId]}
-                                    ratingMax={column.ratingMax}
-                                    ratingIcon={column.ratingIcon}
-                                    hasError={hasError}
-                                  />
+                                  {rawValue}
                                 </td>
                               );
-                            }
-                            return (
-                              <td
-                                key={column.fieldId}
-                                className="max-w-[14rem] truncate px-3 py-1 align-top"
-                              >
-                                {rawValue}
-                              </td>
-                            );
-                          })}
+                            })}
                         </tr>
                       ))}
                     </tbody>
@@ -418,6 +625,62 @@ export function CsvImportDialog({
                       <li key={warning}>{warning}</li>
                     ))}
                   </ul>
+                )}
+              </div>
+            )}
+            {commitReport && (
+              <div
+                data-testid="appforge-csv-import-report"
+                className="mt-1 flex flex-col gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/[0.05] p-3 text-[11px] text-white/75"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-100/85">
+                    Imported
+                  </span>
+                  <span>
+                    <strong className="text-white/85">{commitReport.committed}</strong> of{" "}
+                    {commitReport.totalRows} rows committed
+                  </span>
+                  {commitReport.failed > 0 && (
+                    <span className="text-rose-200">{commitReport.failed} write failure(s)</span>
+                  )}
+                  {commitReport.skippedInvalid > 0 && (
+                    <span className="text-amber-200">
+                      {commitReport.skippedInvalid} invalid row(s) skipped
+                    </span>
+                  )}
+                  <span className="text-white/45">
+                    {commitReport.batchCount} batch(es) of up to {commitReport.batchSize}
+                  </span>
+                </div>
+                {failedReportRows.length > 0 && (
+                  <div
+                    className="max-h-32 overflow-y-auto rounded-sm border border-white/10 bg-black/30"
+                    data-testid="appforge-csv-import-report-failures"
+                  >
+                    <table className="min-w-full text-[11px]">
+                      <thead className="bg-white/[0.06] text-[10px] uppercase tracking-[0.08em] text-white/55">
+                        <tr>
+                          <th className="px-2 py-1 text-left">Row</th>
+                          <th className="px-2 py-1 text-left">Reason</th>
+                          <th className="px-2 py-1 text-left">Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {failedReportRows.map((row) => (
+                          <tr
+                            key={row.rowNumber}
+                            className="border-t border-white/[0.07]"
+                            data-testid="appforge-csv-import-report-failure"
+                          >
+                            <td className="px-2 py-1 text-white/75">{row.rowNumber}</td>
+                            <td className="px-2 py-1 text-white/75">{row.reason ?? "failed"}</td>
+                            <td className="px-2 py-1 text-white/55">{row.message ?? ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             )}
@@ -438,7 +701,13 @@ export function CsvImportDialog({
               if (!preview) {
                 return;
               }
-              void onApply({ baseName: baseName.trim() || "Imported base", preview });
+              void onApply({
+                baseName: baseName.trim() || "Imported base",
+                tableName: tableName.trim() || preview.tableName || "Imported Table",
+                csv: csvText,
+                preview,
+                overrides: overridesArray,
+              });
             }}
             disabled={!canApply}
             data-testid="appforge-csv-import-apply-btn"

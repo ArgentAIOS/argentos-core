@@ -49,7 +49,12 @@ import {
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi, resolveDashboardApiToken } from "../utils/localApiFetch";
-import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
+import {
+  CsvImportDialog,
+  type AppForgeImportCommitReport,
+  type AppForgeImportColumnOverride,
+  type AppForgeImportPreview,
+} from "./app-forge/CsvImportDialog";
 import {
   EmailCellEditor,
   LinkedRecordCellEditor,
@@ -1259,6 +1264,7 @@ export function AppForge({
   const [pendingTemplate, setPendingTemplate] = useState<ForgeBaseTemplate | null>(null);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvImportBusy, setCsvImportBusy] = useState(false);
+  const [csvImportReport, setCsvImportReport] = useState<AppForgeImportCommitReport | null>(null);
   const [localCreatedApps, setLocalCreatedApps] = useState<ForgeApp[]>([]);
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [gatewayReloadNonce, setGatewayReloadNonce] = useState(0);
@@ -1538,7 +1544,19 @@ export function AppForge({
   }, [newAppName, pendingTemplate, apps.length, newAppDescription, gatewayRequest]);
 
   const handleApplyCsvImport = useCallback(
-    async ({ baseName, preview }: { baseName: string; preview: AppForgeImportPreview }) => {
+    async ({
+      baseName,
+      tableName: importedTableName,
+      csv,
+      preview,
+      overrides,
+    }: {
+      baseName: string;
+      tableName: string;
+      csv: string;
+      preview: AppForgeImportPreview;
+      overrides: AppForgeImportColumnOverride[];
+    }) => {
       if (!preview.fields.length) {
         return;
       }
@@ -1547,6 +1565,7 @@ export function AppForge({
       }).`;
       setCsvImportBusy(true);
       setBuilding(true);
+      setCsvImportReport(null);
       appCountAtBuild.current = apps.length;
       try {
         const baseId = createBaseId();
@@ -1564,7 +1583,10 @@ export function AppForge({
             color: SELECT_OPTION_PALETTE[index % SELECT_OPTION_PALETTE.length].id,
           })),
         }));
-        const records: ForgeStructuredRecord[] = preview.rows.map((row, index) => ({
+        // Preview rows are capped (default 25). The metadata fallback shows the
+        // preview window only — the gateway commit pass below is the source of
+        // truth for the full CSV row set.
+        const previewRecords: ForgeStructuredRecord[] = preview.rows.map((row, index) => ({
           id: `${tableId}-rec-${index + 1}`,
           values: row.values as Record<string, ForgeStructuredRecordValue>,
           revision: 0,
@@ -1589,9 +1611,11 @@ export function AppForge({
           tables: [
             {
               id: tableId,
-              name: preview.tableName || "Imported Table",
+              name: importedTableName || preview.tableName || "Imported Table",
               fields,
-              records,
+              // Seed the gateway table with no records — the commit pass writes
+              // every row in batches via appforge.records.put.
+              records: [],
               views: [view],
               activeViewId: view.id,
               defaultViewId: view.id,
@@ -1625,6 +1649,7 @@ export function AppForge({
         }
         const finalBase = { ...pendingBase, appId: created.app.id };
         let gatewayWriteFailed = false;
+        let commitReport: AppForgeImportCommitReport | null = null;
         if (gatewayRequest) {
           try {
             await withTimeout(
@@ -1655,6 +1680,34 @@ export function AppForge({
                 "Gateway table seed timed out",
               );
             }
+            try {
+              const commitResult = await withTimeout(
+                gatewayRequest<{
+                  report: AppForgeImportCommitReport;
+                }>(
+                  "appforge.import.commit",
+                  {
+                    csv,
+                    baseId: finalBase.id,
+                    tableId,
+                    tableName: importedTableName,
+                    overrides,
+                    batchSize: 100,
+                    idempotencyKey: `csv-import:commit:${created.app.id}`,
+                  },
+                  { timeoutMs: 30_000 },
+                ),
+                30_000,
+                "Gateway CSV import commit timed out",
+              );
+              commitReport = commitResult?.report ?? null;
+              setCsvImportReport(commitReport);
+            } catch (commitErr) {
+              console.warn("[AppForge] CSV commit failed; metadata fallback in use.", commitErr);
+              // Treat commit failure as a soft fallback: keep the base/table
+              // shell from the previous steps but warn the user via status.
+              gatewayWriteFailed = true;
+            }
           } catch (err) {
             gatewayWriteFailed = true;
             console.warn(
@@ -1663,7 +1716,19 @@ export function AppForge({
             );
           }
         }
-        const metadata = metadataWithStructuredBase(created.app, finalBase);
+        const metadataBase: ForgeStructuredBase = gatewayWriteFailed
+          ? {
+              ...finalBase,
+              tables: finalBase.tables.map((table) => ({
+                ...table,
+                // In the offline fallback path the gateway never wrote anything,
+                // so the metadata mirror keeps the preview-window records so the
+                // dashboard has something to show until the gateway returns.
+                records: previewRecords,
+              })),
+            }
+          : finalBase;
+        const metadata = metadataWithStructuredBase(created.app, metadataBase);
         const patchResponse = await fetchAppForgeApi(
           `/api/apps/${created.app.id}`,
           {
@@ -1690,17 +1755,25 @@ export function AppForge({
         ]);
         setSelectedAppId(localApp.id);
         setActiveSection("data");
-        setCsvImportOpen(false);
         if (!gatewayWriteFailed) {
           setGatewayReloadNonce((nonce) => nonce + 1);
         }
+        const committed = commitReport?.committed ?? preview.totalRows;
+        const failed = commitReport?.failed ?? 0;
+        const skipped = commitReport?.skippedInvalid ?? 0;
+        const summaryDetails =
+          failed > 0 || skipped > 0 ? ` (${failed} failed, ${skipped} skipped)` : "";
         setWorkflowEventStatus({
-          kind: "success",
+          kind: failed > 0 ? "error" : "success",
           appId: created.app.id,
           message: gatewayWriteFailed
             ? `${baseName} imported in metadata fallback (${preview.totalRows} rows).`
-            : `${baseName} imported with ${preview.totalRows} rows.`,
+            : `${baseName} imported with ${committed} rows${summaryDetails}.`,
         });
+        // Keep the dialog open if there's a report to show; otherwise close.
+        if (!commitReport) {
+          setCsvImportOpen(false);
+        }
       } catch (err) {
         console.warn("[AppForge] CSV import failed.", err);
         setWorkflowEventStatus({
@@ -4898,11 +4971,13 @@ export function AppForge({
             open={csvImportOpen}
             busy={csvImportBusy}
             gatewayRequest={effectiveGatewayRequest}
+            commitReport={csvImportReport}
             onCancel={() => {
               if (csvImportBusy) {
                 return;
               }
               setCsvImportOpen(false);
+              setCsvImportReport(null);
             }}
             onApply={handleApplyCsvImport}
           />

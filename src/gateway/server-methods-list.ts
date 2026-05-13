@@ -162,6 +162,8 @@ const BASE_METHODS = [
   "appforge.records.get",
   "appforge.records.put",
   "appforge.records.delete",
+  "appforge.import.preview",
+  "appforge.import.commit",
   // Intent
   "intent.simulate",
   // Workflows
