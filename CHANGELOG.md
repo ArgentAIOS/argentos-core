@@ -2,6 +2,87 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.5.6.4
+
+Fourth micro release on top of `v2026.5.6`. **10 PRs / 7 issues closed**,
+finishing AppForge Phase 4 (rich field UX, CSV import, durable saved views,
+NL-editing substrate, editable interfaces) and landing the keystone pi-_
+upstream switch from the stale `@mariozechner` fork to the real upstream at
+`@earendil-works/pi-_`0.74.0. Adds durable producer events with journal +
+scope-filtered subscriptions and a single ACL gate at every AppForge write
+boundary. No schema changes, no breaking API changes. Safe drop-in upgrade
+from`v2026.5.6.3`.
+
+### Highlights
+
+- **Pi-_ upstream switch to `@earendil-works/pi-_` 0.74.0
+  ([#341](https://github.com/ArgentAIOS/argentos-core/pull/341)).** Closes
+  [#338](https://github.com/ArgentAIOS/argentos-core/issues/338). Argent
+  was sitting on `@mariozechner/pi-mono` (a stale fork of a fork) when the
+  real upstream lives at `earendil-works/pi`. This release migrates every
+  pi-_ import to the true upstream at `@earendil-works/pi-_` 0.74.0,
+  routed through the pi-bridge cluster from v2026.5.6.3. 59 files
+  touched, 0 net-new TS errors (baseline 217 → 217). The bridge pattern
+  paid off: only bridge files directly imported the pi-\* packages, so
+  the rename was a routine version-pin instead of a multi-day migration.
+- **AppForge Phase 4 substantially complete.** Five Phase 4 PRs land
+  in this release: rich field types UX
+  ([#331](https://github.com/ArgentAIOS/argentos-core/pull/331), gaps #3
+  - #4), CSV import substrate
+    ([#332](https://github.com/ArgentAIOS/argentos-core/pull/332), gap #8
+    partial), durable saved named views
+    ([#333](https://github.com/ArgentAIOS/argentos-core/pull/333), gap #1),
+    natural-language editing substrate
+    ([#343](https://github.com/ArgentAIOS/argentos-core/pull/343), closes
+    [#337](https://github.com/ArgentAIOS/argentos-core/issues/337)), and
+    editable interfaces
+    ([#344](https://github.com/ArgentAIOS/argentos-core/pull/344), closes
+    [#334](https://github.com/ArgentAIOS/argentos-core/issues/334)).
+- **Durable producer events with journal + scope-filtered subscriptions
+  ([#339](https://github.com/ArgentAIOS/argentos-core/pull/339)).** Closes
+  [#335](https://github.com/ArgentAIOS/argentos-core/issues/335). AppForge
+  producer events now write to a durable journal with scope-filtered
+  subscriptions, so subscribers can survive restart and consumers see only
+  the events relevant to their scope. Replaces the in-memory fan-out that
+  silently dropped events on subscriber backpressure.
+- **Single ACL gate at every AppForge write boundary
+  ([#340](https://github.com/ArgentAIOS/argentos-core/pull/340)).** Closes
+  [#336](https://github.com/ArgentAIOS/argentos-core/issues/336). Every
+  AppForge mutation now passes through one centralized ACL gate instead of
+  per-handler ad-hoc checks. Eliminates the "forgot the gate" failure
+  mode and gives operators a single audit point for write-side policy.
+- **`@earendil-works/google-shared` inlined
+  ([#345](https://github.com/ArgentAIOS/argentos-core/pull/345)).** Closes
+  [#342](https://github.com/ArgentAIOS/argentos-core/issues/342).
+  Post-migration follow-up: the upstream's `google-shared` package is not
+  ready for external consumption, so argent inlines the relevant code
+  rather than shipping a broken transitive dependency.
+
+### Dependencies
+
+- **`@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent`,
+  `@mariozechner/pi-agent-core` bumped to 0.73.1
+  ([#330](https://github.com/ArgentAIOS/argentos-core/pull/330)).** Closes
+  [#182](https://github.com/ArgentAIOS/argentos-core/issues/182). Routine
+  version pin enabled by the v2026.5.6.3 pi-bridge cluster. Subsequently
+  superseded by #341 (full migration to `@earendil-works/pi-*` 0.74.0)
+  but kept in the release notes as the bump that proved the bridge
+  pattern works.
+
+### Testing notes
+
+- AppForge: exercise saved views (create / rename / delete / set
+  default), CSV import (paste, mapping, validation), rich field types
+  (attachments, email columns), NL editing (describe an edit, apply,
+  rollback), and editable interfaces (modify shipped interfaces in
+  place). All durability now persists across restart via the new
+  producer-events journal.
+- ACL: confirm write paths still reject unauthenticated mutations and
+  enforce the new single-gate policy. Read paths are unchanged.
+- Pi-_: confirm `argent` startup picks up `@earendil-works/pi-_` 0.74.0
+  without surfacing module-resolution errors. The bridge interfaces
+  shipped in v2026.5.6.3 are unchanged.
+
 ## 2026.5.6.3
 
 Third micro release on top of `v2026.5.6`. **17 commits / 11 issues closed**,

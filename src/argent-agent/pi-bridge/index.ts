@@ -6,7 +6,7 @@
  *
  * Migration policy (enforced by code review):
  * - NEW code MUST import pi shapes from this module, not from
- *   `@mariozechner/pi-*` directly.
+ *   `@earendil-works/pi-*` directly.
  * - LEGACY direct imports are tracked in #286 sub-issues for incremental
  *   migration. When a legacy site is migrated, add a re-export here if the
  *   shape is missing.

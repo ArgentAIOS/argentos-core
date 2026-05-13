@@ -1,5 +1,5 @@
 /**
- * Explicit re-exports from @mariozechner/pi-coding-agent.
+ * Explicit re-exports from @earendil-works/pi-coding-agent.
  *
  * All pi-coding-agent types, classes, and functions should be imported
  * from here rather than directly from the upstream package. This gives
@@ -62,7 +62,7 @@ export {
    * @deprecated Prefer `argentBuildSessionContext`.
    */
   buildSessionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 export type {
   /**
    * @deprecated Prefer `ArgentSkill`.
@@ -88,7 +88,7 @@ export type {
    * @deprecated Prefer `ArgentContextEvent`.
    */
   ContextEvent,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 /**
  * Argent-native Pi-compatible skills system.

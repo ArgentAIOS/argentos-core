@@ -49,8 +49,16 @@ import {
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi, resolveDashboardApiToken } from "../utils/localApiFetch";
-import { CsvImportDialog, type AppForgeImportPreview } from "./app-forge/CsvImportDialog";
 import {
+  CsvImportDialog,
+  type AppForgeImportCommitReport,
+  type AppForgeImportColumnOverride,
+  type AppForgeImportPreview,
+} from "./app-forge/CsvImportDialog";
+import {
+  AttachmentCellDisplay,
+  AttachmentCellEditor,
+  EmailCellDisplay,
   EmailCellEditor,
   LinkedRecordCellEditor,
   MultiSelectCellDisplay,
@@ -61,6 +69,7 @@ import {
   UrlCellDisplay,
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
+import { InterfacesEditor } from "./app-forge/InterfacesEditor";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -1259,6 +1268,7 @@ export function AppForge({
   const [pendingTemplate, setPendingTemplate] = useState<ForgeBaseTemplate | null>(null);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvImportBusy, setCsvImportBusy] = useState(false);
+  const [csvImportReport, setCsvImportReport] = useState<AppForgeImportCommitReport | null>(null);
   const [localCreatedApps, setLocalCreatedApps] = useState<ForgeApp[]>([]);
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [gatewayReloadNonce, setGatewayReloadNonce] = useState(0);
@@ -1538,7 +1548,19 @@ export function AppForge({
   }, [newAppName, pendingTemplate, apps.length, newAppDescription, gatewayRequest]);
 
   const handleApplyCsvImport = useCallback(
-    async ({ baseName, preview }: { baseName: string; preview: AppForgeImportPreview }) => {
+    async ({
+      baseName,
+      tableName: importedTableName,
+      csv,
+      preview,
+      overrides,
+    }: {
+      baseName: string;
+      tableName: string;
+      csv: string;
+      preview: AppForgeImportPreview;
+      overrides: AppForgeImportColumnOverride[];
+    }) => {
       if (!preview.fields.length) {
         return;
       }
@@ -1547,6 +1569,7 @@ export function AppForge({
       }).`;
       setCsvImportBusy(true);
       setBuilding(true);
+      setCsvImportReport(null);
       appCountAtBuild.current = apps.length;
       try {
         const baseId = createBaseId();
@@ -1564,7 +1587,10 @@ export function AppForge({
             color: SELECT_OPTION_PALETTE[index % SELECT_OPTION_PALETTE.length].id,
           })),
         }));
-        const records: ForgeStructuredRecord[] = preview.rows.map((row, index) => ({
+        // Preview rows are capped (default 25). The metadata fallback shows the
+        // preview window only — the gateway commit pass below is the source of
+        // truth for the full CSV row set.
+        const previewRecords: ForgeStructuredRecord[] = preview.rows.map((row, index) => ({
           id: `${tableId}-rec-${index + 1}`,
           values: row.values as Record<string, ForgeStructuredRecordValue>,
           revision: 0,
@@ -1589,9 +1615,11 @@ export function AppForge({
           tables: [
             {
               id: tableId,
-              name: preview.tableName || "Imported Table",
+              name: importedTableName || preview.tableName || "Imported Table",
               fields,
-              records,
+              // Seed the gateway table with no records — the commit pass writes
+              // every row in batches via appforge.records.put.
+              records: [],
               views: [view],
               activeViewId: view.id,
               defaultViewId: view.id,
@@ -1625,6 +1653,7 @@ export function AppForge({
         }
         const finalBase = { ...pendingBase, appId: created.app.id };
         let gatewayWriteFailed = false;
+        let commitReport: AppForgeImportCommitReport | null = null;
         if (gatewayRequest) {
           try {
             await withTimeout(
@@ -1655,6 +1684,34 @@ export function AppForge({
                 "Gateway table seed timed out",
               );
             }
+            try {
+              const commitResult = await withTimeout(
+                gatewayRequest<{
+                  report: AppForgeImportCommitReport;
+                }>(
+                  "appforge.import.commit",
+                  {
+                    csv,
+                    baseId: finalBase.id,
+                    tableId,
+                    tableName: importedTableName,
+                    overrides,
+                    batchSize: 100,
+                    idempotencyKey: `csv-import:commit:${created.app.id}`,
+                  },
+                  { timeoutMs: 30_000 },
+                ),
+                30_000,
+                "Gateway CSV import commit timed out",
+              );
+              commitReport = commitResult?.report ?? null;
+              setCsvImportReport(commitReport);
+            } catch (commitErr) {
+              console.warn("[AppForge] CSV commit failed; metadata fallback in use.", commitErr);
+              // Treat commit failure as a soft fallback: keep the base/table
+              // shell from the previous steps but warn the user via status.
+              gatewayWriteFailed = true;
+            }
           } catch (err) {
             gatewayWriteFailed = true;
             console.warn(
@@ -1663,7 +1720,19 @@ export function AppForge({
             );
           }
         }
-        const metadata = metadataWithStructuredBase(created.app, finalBase);
+        const metadataBase: ForgeStructuredBase = gatewayWriteFailed
+          ? {
+              ...finalBase,
+              tables: finalBase.tables.map((table) => ({
+                ...table,
+                // In the offline fallback path the gateway never wrote anything,
+                // so the metadata mirror keeps the preview-window records so the
+                // dashboard has something to show until the gateway returns.
+                records: previewRecords,
+              })),
+            }
+          : finalBase;
+        const metadata = metadataWithStructuredBase(created.app, metadataBase);
         const patchResponse = await fetchAppForgeApi(
           `/api/apps/${created.app.id}`,
           {
@@ -1690,17 +1759,25 @@ export function AppForge({
         ]);
         setSelectedAppId(localApp.id);
         setActiveSection("data");
-        setCsvImportOpen(false);
         if (!gatewayWriteFailed) {
           setGatewayReloadNonce((nonce) => nonce + 1);
         }
+        const committed = commitReport?.committed ?? preview.totalRows;
+        const failed = commitReport?.failed ?? 0;
+        const skipped = commitReport?.skippedInvalid ?? 0;
+        const summaryDetails =
+          failed > 0 || skipped > 0 ? ` (${failed} failed, ${skipped} skipped)` : "";
         setWorkflowEventStatus({
-          kind: "success",
+          kind: failed > 0 ? "error" : "success",
           appId: created.app.id,
           message: gatewayWriteFailed
             ? `${baseName} imported in metadata fallback (${preview.totalRows} rows).`
-            : `${baseName} imported with ${preview.totalRows} rows.`,
+            : `${baseName} imported with ${committed} rows${summaryDetails}.`,
         });
+        // Keep the dialog open if there's a report to show; otherwise close.
+        if (!commitReport) {
+          setCsvImportOpen(false);
+        }
       } catch (err) {
         console.warn("[AppForge] CSV import failed.", err);
         setWorkflowEventStatus({
@@ -2121,7 +2198,7 @@ export function AppForge({
         : activeSection === "automations"
           ? "Workflow triggers and actions for the active base. Live enablement remains gated."
           : activeSection === "interfaces"
-            ? "Generated operator surfaces for this base. Editable interfaces are not complete yet."
+            ? "Editable operator surfaces for this base. Add widgets, bind data, and ship a real dashboard."
             : "Forms for collecting records into this base. Form publishing is not complete yet.";
 
   useEffect(() => {
@@ -3008,42 +3085,20 @@ export function AppForge({
                         </div>
                       </div>
                     ) : activeSection === "interfaces" ? (
-                      <div className="min-h-[520px] overflow-hidden rounded-2xl border border-white/10 bg-black/24">
-                        <div className="mx-auto max-w-4xl px-8 py-12 text-center">
-                          <h3 className="text-3xl font-semibold text-white/90">
-                            Visualize and act on your data with interfaces
-                          </h3>
-                          <p className="mx-auto mt-3 max-w-xl text-sm text-white/45">
-                            AppForge does not have editable interface documents yet. This screen is
-                            now truth-labeled until the Phase 4 interface model lands.
-                          </p>
-                          <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left">
-                            <div className="rounded-xl bg-white text-slate-900 shadow-2xl">
-                              <div className="border-b border-slate-200 px-5 py-4 text-sm font-semibold">
-                                Management / Insights
-                              </div>
-                              <div className="grid gap-4 p-5 md:grid-cols-2">
-                                {[
-                                  "Records by status",
-                                  "Open reviews",
-                                  "Due this week",
-                                  "Workflow events",
-                                ].map((label) => (
-                                  <div
-                                    key={label}
-                                    className="rounded-lg border border-slate-200 p-4"
-                                  >
-                                    <div className="text-sm font-semibold text-slate-700">
-                                      {label}
-                                    </div>
-                                    <div className="mt-3 h-20 rounded bg-slate-100" />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <InterfacesEditor
+                        baseId={structured.activeBase?.id ?? null}
+                        baseName={structured.activeBase?.name}
+                        gatewayRequest={effectiveGatewayRequest}
+                        tables={(structured.activeBase?.tables ?? []).map((table) => ({
+                          id: table.id,
+                          name: table.name,
+                          fields: table.fields.map((field) => ({
+                            id: field.id,
+                            name: field.name,
+                          })),
+                          recordCount: table.records.length,
+                        }))}
+                      />
                     ) : activeSection === "forms" ? (
                       <div className="min-h-[520px] overflow-hidden rounded-2xl border border-white/10 bg-black/24">
                         <div className="grid min-h-[520px] grid-cols-[minmax(260px,0.42fr)_minmax(0,1fr)]">
@@ -3121,6 +3176,37 @@ export function AppForge({
                                       rows={3}
                                       className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400"
                                     />
+                                  ) : field.type === "multi_select" ||
+                                    field.type === "attachment" ||
+                                    field.type === "linked_record" ? (
+                                    <>
+                                      <textarea
+                                        data-testid={`appforge-form-${field.type}-input`}
+                                        value={formDraft[field.id] ?? ""}
+                                        onChange={(event) =>
+                                          setFormDraft((current) => ({
+                                            ...current,
+                                            [field.id]: event.target.value,
+                                          }))
+                                        }
+                                        rows={2}
+                                        placeholder={
+                                          field.type === "multi_select"
+                                            ? "Comma-separated tags"
+                                            : field.type === "attachment"
+                                              ? "Comma-separated URLs (name|url optional)"
+                                              : "Comma-separated record IDs"
+                                        }
+                                        className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                      />
+                                      <span className="mt-1 block text-[11px] text-slate-400">
+                                        {field.type === "multi_select"
+                                          ? "Separate tags with commas."
+                                          : field.type === "attachment"
+                                            ? "Paste one or more URLs (http(s):, data:, or /path)."
+                                            : "Reference target table records by ID."}
+                                      </span>
+                                    </>
                                   ) : (
                                     <input
                                       type={fieldInputType(field)}
@@ -3132,7 +3218,13 @@ export function AppForge({
                                         }))
                                       }
                                       placeholder={
-                                        field.type === "linked_record" ? "Record names" : ""
+                                        field.type === "linked_record"
+                                          ? "Record names"
+                                          : field.type === "email"
+                                            ? "name@example.com"
+                                            : field.type === "url"
+                                              ? "https://example.com"
+                                              : ""
                                       }
                                       className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-sky-400"
                                     />
@@ -3778,6 +3870,15 @@ export function AppForge({
                                                   onCommit={() => void commitEditingCell()}
                                                   onCancel={() => setEditingCell(null)}
                                                 />
+                                              ) : activeEditingCell &&
+                                                field.type === "attachment" ? (
+                                                <AttachmentCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
                                               ) : activeEditingCell && field.type === "rating" ? (
                                                 <RatingCellEditor
                                                   field={field}
@@ -3884,6 +3985,12 @@ export function AppForge({
                                                 />
                                               ) : field.type === "url" ? (
                                                 <UrlCellDisplay value={value} />
+                                              ) : field.type === "email" ? (
+                                                <EmailCellDisplay value={value} />
+                                              ) : field.type === "attachment" ? (
+                                                <AttachmentCellDisplay
+                                                  value={record.values[field.id]}
+                                                />
                                               ) : field.type === "rating" ? (
                                                 <RatingCellDisplay
                                                   field={field}
@@ -4898,11 +5005,13 @@ export function AppForge({
             open={csvImportOpen}
             busy={csvImportBusy}
             gatewayRequest={effectiveGatewayRequest}
+            commitReport={csvImportReport}
             onCancel={() => {
               if (csvImportBusy) {
                 return;
               }
               setCsvImportOpen(false);
+              setCsvImportReport(null);
             }}
             onApply={handleApplyCsvImport}
           />

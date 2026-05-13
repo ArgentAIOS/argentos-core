@@ -1,6 +1,6 @@
 {
-  "snapshotAt": "2026-05-13T12:55:27.007Z",
-  "totalErrors": 218,
+  "snapshotAt": "2026-05-13T17:08:05.107Z",
+  "totalErrors": 217,
   "errors": [
     {
       "file": "src/agents/compaction.ts",
@@ -517,12 +517,6 @@
       "line": 389,
       "code": "TS2322",
       "message": "Type '{ [x: string]: any; }[]' is not assignable to type 'Lesson[]'."
-    },
-    {
-      "file": "src/argent-ai/google-shared.ts",
-      "line": 16,
-      "code": "TS2307",
-      "message": "Cannot find module '@mariozechner/pi-ai/dist/providers/google-shared.js' or its corresponding type declarations."
     },
     {
       "file": "src/browser/control-auth.ts",

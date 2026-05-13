@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AppForgeAclDeniedError,
+  APP_FORGE_NO_ACL_SCOPE_REASON,
+  assertAppForgeAclWrite,
   buildAppForgePermissionChangeAuditEvent,
   buildAppForgePermissionCheckAuditEvent,
   canAdminAppForge,
@@ -8,8 +11,12 @@ import {
   coerceAppForgePermissionScope,
   createAppForgePermissions,
   createDefaultAppForgePermissions,
+  emitAppForgeAuditEvent,
   normalizeAppForgeActor,
+  resetAppForgeAuditLogger,
   resolveAppForgeAclRole,
+  setAppForgeAuditLogger,
+  type AppForgePermissionCheckAuditEvent,
 } from "./app-forge-permissions.js";
 
 describe("AppForge permissions seam", () => {
@@ -184,5 +191,149 @@ describe("AppForge permissions seam", () => {
         viewers: ["viewer-1"],
       },
     });
+  });
+});
+
+describe("AppForge ACL write gate (#336)", () => {
+  afterEach(() => {
+    resetAppForgeAuditLogger();
+  });
+
+  it("allows actors with write access and emits an allow audit event", () => {
+    const events: AppForgePermissionCheckAuditEvent[] = [];
+    setAppForgeAuditLogger((event) => events.push(event));
+
+    const scope = createAppForgePermissions({
+      creator: "owner-1",
+      editors: ["editor-1"],
+      viewers: ["viewer-1"],
+    });
+
+    const audit = assertAppForgeAclWrite({
+      appId: "app-1",
+      actor: "editor-1",
+      action: "record.put",
+      scope,
+      resourceId: "base/table/rec",
+    });
+
+    expect(audit.allowed).toBe(true);
+    expect(audit.aclRole).toBe("editor");
+    expect(audit.permission).toBe("write");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.allowed).toBe(true);
+    expect(events[0]?.reason).toContain("record.put");
+  });
+
+  it("throws AppForgeAclDeniedError when actor lacks write access and emits deny audit", () => {
+    const events: AppForgePermissionCheckAuditEvent[] = [];
+    setAppForgeAuditLogger((event) => events.push(event));
+
+    const scope = createAppForgePermissions({
+      creator: "owner-1",
+      viewers: ["viewer-1"],
+    });
+
+    expect(() =>
+      assertAppForgeAclWrite({
+        appId: "app-1",
+        actor: { actorId: "viewer-1", actorType: "operator" },
+        action: "record.put",
+        scope,
+      }),
+    ).toThrowError(AppForgeAclDeniedError);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.allowed).toBe(false);
+    expect(events[0]?.aclRole).toBe("viewer");
+    expect(events[0]?.reason).toContain("actor lacks owner/editor");
+  });
+
+  it("attaches the audit event to AppForgeAclDeniedError", () => {
+    setAppForgeAuditLogger(() => {});
+    const scope = createAppForgePermissions({ creator: "owner-1", viewers: ["v-1"] });
+
+    let caught: unknown;
+    try {
+      assertAppForgeAclWrite({
+        appId: "app-acl",
+        actor: "v-1",
+        action: "base.delete",
+        scope,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AppForgeAclDeniedError);
+    const err = caught as AppForgeAclDeniedError;
+    expect(err.code).toBe("appforge_acl_denied");
+    expect(err.audit.allowed).toBe(false);
+    expect(err.audit.appId).toBe("app-acl");
+  });
+
+  it("legacy single-operator mode: no scope provided ⇒ allow + audit with explanatory reason", () => {
+    const events: AppForgePermissionCheckAuditEvent[] = [];
+    setAppForgeAuditLogger((event) => events.push(event));
+
+    const audit = assertAppForgeAclWrite({
+      appId: "app-legacy",
+      actor: null,
+      action: "table.put",
+    });
+
+    expect(audit.allowed).toBe(true);
+    expect(audit.actor.actorId).toBe("system:unauthenticated");
+    expect(audit.reason).toContain(APP_FORGE_NO_ACL_SCOPE_REASON);
+    expect(events).toHaveLength(1);
+  });
+
+  it("setAppForgeAuditLogger swaps the active logger; resetAppForgeAuditLogger restores the default", () => {
+    const stub = vi.fn();
+    setAppForgeAuditLogger(stub);
+    emitAppForgeAuditEvent({
+      eventType: "forge.permissions.checked",
+      source: "appforge",
+      appId: "app-x",
+      permission: "write",
+      allowed: true,
+      actor: { actorId: "a" },
+      aclRole: null,
+      emittedAt: "2026-04-26T00:00:00Z",
+      acl: { owners: [], editors: [], viewers: [] },
+    });
+    expect(stub).toHaveBeenCalledTimes(1);
+
+    resetAppForgeAuditLogger();
+    // default logger only logs deny events; allow should be silent and not throw.
+    expect(() =>
+      emitAppForgeAuditEvent({
+        eventType: "forge.permissions.checked",
+        source: "appforge",
+        appId: "app-x",
+        permission: "write",
+        allowed: true,
+        actor: { actorId: "a" },
+        aclRole: null,
+        emittedAt: "2026-04-26T00:00:00Z",
+        acl: { owners: [], editors: [], viewers: [] },
+      }),
+    ).not.toThrow();
+  });
+
+  it("audit logger errors do not propagate to callers", () => {
+    setAppForgeAuditLogger(() => {
+      throw new Error("logger blew up");
+    });
+    const scope = createAppForgePermissions({ creator: "owner-1" });
+
+    expect(() =>
+      assertAppForgeAclWrite({
+        appId: "app-1",
+        actor: "owner-1",
+        action: "record.put",
+        scope,
+      }),
+    ).not.toThrow();
   });
 });

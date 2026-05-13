@@ -5,9 +5,9 @@
  * They enable consuming code to import from agent-core/ and get Argent-native
  * types without changing any import paths.
  *
- * For the types that bridge into upstream `@mariozechner/pi-agent-core` call
+ * For the types that bridge into upstream `@earendil-works/pi-agent-core` call
  * sites (`AgentMessage`, `StreamFn`, `CustomAgentMessages`), we forward
- * directly to `@mariozechner/pi-agent-core` so the type identity is unified.
+ * directly to `@earendil-works/pi-agent-core` so the type identity is unified.
  * Without this, tsc treats argent's local mirrors and the upstream originals
  * as separate identities even when they're structurally similar, which
  * surfaces as ~19 spurious `T is not assignable to T` errors when
@@ -25,7 +25,7 @@
 // (`AgentState`, `AgentContext`, `AgentLoopConfig`, `PiAgentEvent`) reference
 // the unified identity directly. Without this, `export type { AgentMessage }
 // from "..."` only exposes the name to consumers — not to this file itself.
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "@sinclair/typebox";
 import type {
   AssistantMessageEvent,
@@ -44,11 +44,11 @@ import type {
 // ============================================================================
 
 /**
- * Stream function type — forwarded from `@mariozechner/pi-agent-core` so the
+ * Stream function type — forwarded from `@earendil-works/pi-agent-core` so the
  * type identity is shared with `AgentSessionAgent["streamFn"]` and other
  * upstream call sites. See module-level note above.
  */
-export type { StreamFn } from "@mariozechner/pi-agent-core";
+export type { StreamFn } from "@earendil-works/pi-agent-core";
 
 // ============================================================================
 // THINKING LEVEL
@@ -67,7 +67,7 @@ export type AgentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" |
 /**
  * Extensible interface for custom app messages.
  *
- * Forwarded from `@mariozechner/pi-agent-core` so module-augmentation declared
+ * Forwarded from `@earendil-works/pi-agent-core` so module-augmentation declared
  * against that module (or this re-export) merges into a single declaration
  * site — which keeps `AgentMessage` identity unified with the upstream type.
  *
@@ -75,7 +75,7 @@ export type AgentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" |
  *
  * @example
  * ```typescript
- * declare module "@mariozechner/pi-agent-core" {
+ * declare module "@earendil-works/pi-agent-core" {
  *   interface CustomAgentMessages {
  *     artifact: ArtifactMessage;
  *     notification: NotificationMessage;
@@ -83,15 +83,15 @@ export type AgentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" |
  * }
  * ```
  */
-export type { CustomAgentMessages } from "@mariozechner/pi-agent-core";
+export type { CustomAgentMessages } from "@earendil-works/pi-agent-core";
 
 /**
  * AgentMessage: Union of LLM messages + custom messages.
  *
- * Forwarded from `@mariozechner/pi-agent-core` so the type identity is shared
+ * Forwarded from `@earendil-works/pi-agent-core` so the type identity is shared
  * with `AgentSession["messages"]`. See module-level note above.
  */
-export type { AgentMessage } from "@mariozechner/pi-agent-core";
+export type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 // ============================================================================
 // TOOL TYPES

@@ -1,5 +1,5 @@
 // Import from the pi-bridge (single point of drift) rather than directly from
-// `@mariozechner/pi-coding-agent`. This is the canonical migration pattern for
+// `@earendil-works/pi-coding-agent`. This is the canonical migration pattern for
 // #286: `new AuthStorage(...)` / `new ModelRegistry(...)` are exactly the call
 // sites that break on the pi 0.73+ private-constructor change (#182). Using
 // the bridge factory helpers makes those forward-compatible.

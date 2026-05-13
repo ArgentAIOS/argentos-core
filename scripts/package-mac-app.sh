@@ -262,11 +262,13 @@ cp -R "$ROOT_DIR/docs/reference/templates" "$APP_ROOT/Contents/Resources/referen
 
 echo "📦 Copying model catalog"
 MODEL_CATALOG_DEST="$APP_ROOT/Contents/Resources/models.generated.js"
+MODEL_CATALOG_UPSTREAM_SCOPE="${MODEL_CATALOG_UPSTREAM_SCOPE:-@earendil-works}"
 MODEL_CATALOG_LEGACY_SCOPE="${MODEL_CATALOG_LEGACY_SCOPE:-@mariozechner}"
-MODEL_CATALOG_LEGACY_PACKAGE="${MODEL_CATALOG_LEGACY_PACKAGE:-pi-ai}"
+MODEL_CATALOG_PI_PACKAGE="${MODEL_CATALOG_PI_PACKAGE:-pi-ai}"
 MODEL_CATALOG_CANDIDATES=(
   "$ROOT_DIR/dist/src/argent-ai/models-db.js"
-  "$ROOT_DIR/node_modules/$MODEL_CATALOG_LEGACY_SCOPE/$MODEL_CATALOG_LEGACY_PACKAGE/dist/models.generated.js"
+  "$ROOT_DIR/node_modules/$MODEL_CATALOG_UPSTREAM_SCOPE/$MODEL_CATALOG_PI_PACKAGE/dist/models.generated.js"
+  "$ROOT_DIR/node_modules/$MODEL_CATALOG_LEGACY_SCOPE/$MODEL_CATALOG_PI_PACKAGE/dist/models.generated.js"
 )
 MODEL_CATALOG_SRC=""
 for candidate in "${MODEL_CATALOG_CANDIDATES[@]}"; do

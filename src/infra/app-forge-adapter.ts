@@ -1,8 +1,29 @@
+import type { AppForgeActorEnvelope } from "./app-forge-permissions.js";
+import {
+  addAppForgeInterfaceWidgetToRegion,
+  defaultAppForgeInterfaceBundle,
+  deleteAppForgeInterfaceLayout,
+  deleteAppForgeInterfacePage,
+  deleteAppForgeInterfaceWidget,
+  normalizeAppForgeInterfaceBundle,
+  putAppForgeInterfaceLayout,
+  putAppForgeInterfacePage,
+  putAppForgeInterfaceWidget,
+  removeAppForgeInterfaceWidgetFromRegion,
+  reorderAppForgeInterfaceRegionWidgets,
+  type AppForgeInterfaceBundle,
+  type AppForgeInterfaceLayout,
+  type AppForgeInterfaceLayoutRegionWidget,
+  type AppForgeInterfacePage,
+  type AppForgeInterfaceWidget,
+} from "./app-forge-interfaces.js";
 import {
   checkAppForgeRevision,
+  normalizeAppForgeSavedView,
   type AppForgeBase,
   type AppForgeRecord,
   type AppForgeRevisionCheck,
+  type AppForgeSavedView,
   type AppForgeTable,
 } from "./app-forge-model.js";
 
@@ -10,6 +31,8 @@ export type AppForgeBaseWrite = {
   base: AppForgeBase;
   expectedRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 type AppForgeRevisionConflict = Exclude<AppForgeRevisionCheck, { ok: true }>;
@@ -20,6 +43,8 @@ export type AppForgeTableWriteOptions = {
   expectedBaseRevision?: number;
   expectedTableRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 export type AppForgeTableWriteResult =
@@ -35,6 +60,8 @@ export type AppForgeRecordWriteOptions = {
   expectedTableRevision?: number;
   expectedRecordRevision?: number;
   idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
 };
 
 export type AppForgeRecordWriteResult =
@@ -43,6 +70,43 @@ export type AppForgeRecordWriteResult =
       base: AppForgeBase;
       table: AppForgeTable;
       record: AppForgeRecord;
+    }
+  | AppForgeRevisionConflict;
+
+export type AppForgeSavedViewWriteOptions = {
+  expectedBaseRevision?: number;
+  expectedTableRevision?: number;
+  idempotencyKey?: string;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
+};
+
+export type AppForgeSavedViewWriteResult =
+  | {
+      ok: true;
+      base: AppForgeBase;
+      table: AppForgeTable;
+      view: AppForgeSavedView;
+    }
+  | AppForgeRevisionConflict;
+
+/**
+ * Optimistic-concurrency options for interface CRUD. `expectedBundleRevision`
+ * is the bundle-level revision number (NOT the base revision); supplying it
+ * forces a revision_conflict if another operator has mutated the bundle in
+ * the meantime. See {@link AppForgeInterfaceBundle.revision}.
+ */
+export type AppForgeInterfaceWriteOptions = {
+  expectedBundleRevision?: number;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
+};
+
+export type AppForgeInterfaceWriteResult =
+  | {
+      ok: true;
+      base: AppForgeBase;
+      bundle: AppForgeInterfaceBundle;
     }
   | AppForgeRevisionConflict;
 
@@ -76,6 +140,91 @@ export interface AppForgeAdapter {
     recordId: string,
     opts?: Omit<AppForgeRecordWriteOptions, "idempotencyKey">,
   ): Promise<AppForgeRecordWriteResult>;
+  /**
+   * Saved-view CRUD (Phase 4 gap #1). Views live as durable table metadata,
+   * not in operator-local localStorage. Permissions inherit from the parent
+   * table — anyone who can write the table may upsert/delete views on it.
+   *
+   * `listViews` always returns `[]` (not `null`) for tables without views so
+   * callers don't have to disambiguate "table not found" from "no views" —
+   * that's what `getTable` is for.
+   */
+  listViews(baseId: string, tableId: string): Promise<AppForgeSavedView[]>;
+  putView(
+    baseId: string,
+    tableId: string,
+    view: AppForgeSavedView,
+    opts?: AppForgeSavedViewWriteOptions,
+  ): Promise<AppForgeSavedViewWriteResult>;
+  deleteView(
+    baseId: string,
+    tableId: string,
+    viewId: string,
+    opts?: Omit<AppForgeSavedViewWriteOptions, "idempotencyKey">,
+  ): Promise<AppForgeSavedViewWriteResult>;
+
+  /**
+   * Editable interfaces (Phase 4 gap #5). The bundle is per-base durable
+   * metadata — operators can add/remove/reorder pages, layouts, and widgets
+   * and the state survives reload, browser restart, and is visible to every
+   * other operator on this base.
+   *
+   * `getInterfaces` materializes a default bundle on first read so the
+   * dashboard never has to invent shape — anywhere a base exists, an
+   * interface bundle is reachable.
+   */
+  getInterfaces(baseId: string): Promise<AppForgeInterfaceBundle | null>;
+  putInterfacePage(
+    baseId: string,
+    page: AppForgeInterfacePage,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  deleteInterfacePage(
+    baseId: string,
+    pageId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  putInterfaceLayout(
+    baseId: string,
+    layout: AppForgeInterfaceLayout,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  deleteInterfaceLayout(
+    baseId: string,
+    layoutId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  putInterfaceWidget(
+    baseId: string,
+    widget: AppForgeInterfaceWidget,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  deleteInterfaceWidget(
+    baseId: string,
+    widgetId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  placeInterfaceWidget(
+    baseId: string,
+    layoutId: string,
+    regionId: string,
+    entry: AppForgeInterfaceLayoutRegionWidget,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  unplaceInterfaceWidget(
+    baseId: string,
+    layoutId: string,
+    regionId: string,
+    widgetId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  reorderInterfaceRegion(
+    baseId: string,
+    layoutId: string,
+    regionId: string,
+    widgetIds: string[],
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
 }
 
 function nowIso(): string {
@@ -103,6 +252,13 @@ function cloneRecord(record: AppForgeRecord): AppForgeRecord {
   };
 }
 
+function cloneSavedView(view: AppForgeSavedView): AppForgeSavedView {
+  return {
+    ...view,
+    visibleFieldIds: view.visibleFieldIds ? [...view.visibleFieldIds] : undefined,
+  };
+}
+
 function cloneTable(table: AppForgeTable): AppForgeTable {
   return {
     ...table,
@@ -111,13 +267,7 @@ function cloneTable(table: AppForgeTable): AppForgeTable {
       options: field.options ? [...field.options] : undefined,
     })),
     records: table.records.map(cloneRecord),
-    views: table.views
-      ? table.views.map((view) =>
-          view !== null && typeof view === "object" && !Array.isArray(view)
-            ? { ...(view as Record<string, unknown>) }
-            : view,
-        )
-      : undefined,
+    views: table.views ? table.views.map(cloneSavedView) : undefined,
     activeCell: table.activeCell ? { ...table.activeCell } : undefined,
   };
 }
@@ -140,6 +290,69 @@ export function createInMemoryAppForgeAdapter(seed: AppForgeBase[] = []): AppFor
     string,
     { base: AppForgeBase; table: AppForgeTable; record: AppForgeRecord }
   >();
+  const appliedSavedViewIdempotencyKeys = new Map<
+    string,
+    { base: AppForgeBase; table: AppForgeTable; view: AppForgeSavedView }
+  >();
+  // Interfaces are durable per-base metadata. Kept in a sibling Map so
+  // existing AppForgeBase shape stays untouched — adding `interfaces` to the
+  // base would force every test fixture and serialization path to flush
+  // along with this change. See `getInterfaces` for the lazy default.
+  const interfaceBundles = new Map<string, AppForgeInterfaceBundle>();
+
+  function bundleFor(baseId: string): AppForgeInterfaceBundle | null {
+    const base = bases.get(baseId);
+    if (!base) {
+      return null;
+    }
+    const existing = interfaceBundles.get(baseId);
+    if (existing) {
+      return existing;
+    }
+    const seeded = defaultAppForgeInterfaceBundle(base);
+    interfaceBundles.set(baseId, seeded);
+    return seeded;
+  }
+
+  function applyInterfaceMutation(
+    baseId: string,
+    opts: AppForgeInterfaceWriteOptions | undefined,
+    mutate: (bundle: AppForgeInterfaceBundle) => AppForgeInterfaceBundle,
+  ): AppForgeInterfaceWriteResult {
+    const base = bases.get(baseId);
+    if (!base) {
+      return missingConflict("Base", baseId, opts?.expectedBundleRevision);
+    }
+    const current = bundleFor(baseId);
+    if (!current) {
+      return missingConflict("Base", baseId, opts?.expectedBundleRevision);
+    }
+    const revisionCheck = checkAppForgeRevision(current.revision, opts?.expectedBundleRevision);
+    if (!revisionCheck.ok) {
+      return revisionCheck;
+    }
+    const next = mutate(current);
+    // Helpers return the same reference when the mutation was a no-op (e.g.
+    // deleting a missing widget). We still bump the base's updated_at so
+    // the dashboard can observe the no-op — but we DON'T persist a new
+    // bundle revision, because nothing changed.
+    if (next === current) {
+      return {
+        ok: true,
+        base: cloneBase(base),
+        bundle: normalizeAppForgeInterfaceBundle(next),
+      };
+    }
+    const normalized = normalizeAppForgeInterfaceBundle(next);
+    interfaceBundles.set(baseId, normalized);
+    const nextBase = cloneBase({
+      ...base,
+      revision: base.revision,
+      updatedAt: nowIso(),
+    });
+    bases.set(baseId, nextBase);
+    return { ok: true, base: cloneBase(nextBase), bundle: normalized };
+  }
 
   return {
     async listBases(opts) {
@@ -461,6 +674,217 @@ export function createInMemoryAppForgeAdapter(seed: AppForgeBase[] = []): AppFor
         base: cloneBase(nextBase),
         table: cloneTable(nextTable),
         record: cloneRecord({ ...currentRecord, revision: currentRecord.revision + 1 }),
+      };
+    },
+
+    async listViews(baseId, tableId) {
+      const base = bases.get(baseId);
+      const table = base?.tables.find((item) => item.id === tableId);
+      if (!table?.views) {
+        return [];
+      }
+      return table.views.map(cloneSavedView);
+    },
+
+    async putView(baseId, tableId, view, opts) {
+      if (opts?.idempotencyKey) {
+        const applied = appliedSavedViewIdempotencyKeys.get(opts.idempotencyKey);
+        if (applied) {
+          return {
+            ok: true,
+            base: cloneBase(applied.base),
+            table: cloneTable(applied.table),
+            view: cloneSavedView(applied.view),
+          };
+        }
+      }
+
+      const normalized = normalizeAppForgeSavedView(view);
+      if (!normalized) {
+        return {
+          ok: false,
+          code: "revision_conflict",
+          expectedRevision: opts?.expectedTableRevision ?? 0,
+          actualRevision: 0,
+          message: `View ${view?.id ?? ""} in table ${tableId} requires id, name, and type.`,
+        };
+      }
+
+      const base = bases.get(baseId);
+      if (!base) {
+        return missingConflict("Base", baseId, opts?.expectedBaseRevision);
+      }
+      const baseRevisionCheck = checkAppForgeRevision(base.revision, opts?.expectedBaseRevision);
+      if (!baseRevisionCheck.ok) {
+        return baseRevisionCheck;
+      }
+
+      const currentTable = base.tables.find((item) => item.id === tableId);
+      if (!currentTable) {
+        return missingConflict(`Table ${tableId} in base`, baseId, opts?.expectedTableRevision);
+      }
+      const tableRevisionCheck = checkAppForgeRevision(
+        currentTable.revision,
+        opts?.expectedTableRevision,
+      );
+      if (!tableRevisionCheck.ok) {
+        return tableRevisionCheck;
+      }
+
+      const timestamp = nowIso();
+      const existingViews = currentTable.views ?? [];
+      const existingView = existingViews.find((item) => item.id === normalized.id);
+      const nextView: AppForgeSavedView = {
+        ...normalized,
+        createdAt: existingView?.createdAt ?? normalized.createdAt ?? timestamp,
+        updatedAt: normalized.updatedAt ?? timestamp,
+      };
+      const nextViews = existingView
+        ? existingViews.map((item) => (item.id === nextView.id ? nextView : item))
+        : [...existingViews, nextView];
+      const nextTable = cloneTable({
+        ...currentTable,
+        views: nextViews,
+        revision: currentTable.revision + 1,
+      });
+      const nextBase = cloneBase({
+        ...base,
+        tables: base.tables.map((item) => (item.id === tableId ? nextTable : item)),
+        revision: base.revision + 1,
+        updatedAt: timestamp,
+      });
+
+      bases.set(baseId, nextBase);
+      if (opts?.idempotencyKey) {
+        appliedSavedViewIdempotencyKeys.set(opts.idempotencyKey, {
+          base: nextBase,
+          table: nextTable,
+          view: nextView,
+        });
+      }
+      return {
+        ok: true,
+        base: cloneBase(nextBase),
+        table: cloneTable(nextTable),
+        view: cloneSavedView(nextView),
+      };
+    },
+
+    async getInterfaces(baseId) {
+      return bundleFor(baseId);
+    },
+
+    async putInterfacePage(baseId, page, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        putAppForgeInterfacePage(bundle, page),
+      );
+    },
+
+    async deleteInterfacePage(baseId, pageId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        deleteAppForgeInterfacePage(bundle, pageId),
+      );
+    },
+
+    async putInterfaceLayout(baseId, layout, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        putAppForgeInterfaceLayout(bundle, layout),
+      );
+    },
+
+    async deleteInterfaceLayout(baseId, layoutId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        deleteAppForgeInterfaceLayout(bundle, layoutId),
+      );
+    },
+
+    async putInterfaceWidget(baseId, widget, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        putAppForgeInterfaceWidget(bundle, widget),
+      );
+    },
+
+    async deleteInterfaceWidget(baseId, widgetId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        deleteAppForgeInterfaceWidget(bundle, widgetId),
+      );
+    },
+
+    async placeInterfaceWidget(baseId, layoutId, regionId, entry, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        addAppForgeInterfaceWidgetToRegion(bundle, layoutId, regionId, entry),
+      );
+    },
+
+    async unplaceInterfaceWidget(baseId, layoutId, regionId, widgetId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        removeAppForgeInterfaceWidgetFromRegion(bundle, layoutId, regionId, widgetId),
+      );
+    },
+
+    async reorderInterfaceRegion(baseId, layoutId, regionId, widgetIds, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        reorderAppForgeInterfaceRegionWidgets(bundle, layoutId, regionId, widgetIds),
+      );
+    },
+
+    async deleteView(baseId, tableId, viewId, opts) {
+      const base = bases.get(baseId);
+      if (!base) {
+        return missingConflict("Base", baseId, opts?.expectedBaseRevision);
+      }
+      const baseRevisionCheck = checkAppForgeRevision(base.revision, opts?.expectedBaseRevision);
+      if (!baseRevisionCheck.ok) {
+        return baseRevisionCheck;
+      }
+
+      const currentTable = base.tables.find((item) => item.id === tableId);
+      if (!currentTable) {
+        return missingConflict(`Table ${tableId} in base`, baseId, opts?.expectedTableRevision);
+      }
+      const tableRevisionCheck = checkAppForgeRevision(
+        currentTable.revision,
+        opts?.expectedTableRevision,
+      );
+      if (!tableRevisionCheck.ok) {
+        return tableRevisionCheck;
+      }
+
+      const existingViews = currentTable.views ?? [];
+      const removed = existingViews.find((item) => item.id === viewId);
+      if (!removed) {
+        return missingConflict(
+          `View ${viewId} in table ${tableId}`,
+          baseId,
+          opts?.expectedTableRevision,
+        );
+      }
+      const nextViews = existingViews.filter((item) => item.id !== viewId);
+      const timestamp = nowIso();
+      const nextTable = cloneTable({
+        ...currentTable,
+        views: nextViews,
+        // Clear the activeViewId when the operator deletes the active view so
+        // the next render picks a surviving view (or none) — without this,
+        // selectView would dangle on a stale id.
+        activeViewId:
+          currentTable.activeViewId === viewId ? nextViews[0]?.id : currentTable.activeViewId,
+        defaultViewId:
+          currentTable.defaultViewId === viewId ? undefined : currentTable.defaultViewId,
+        revision: currentTable.revision + 1,
+      });
+      const nextBase = cloneBase({
+        ...base,
+        tables: base.tables.map((item) => (item.id === tableId ? nextTable : item)),
+        revision: base.revision + 1,
+        updatedAt: timestamp,
+      });
+      bases.set(baseId, nextBase);
+      return {
+        ok: true,
+        base: cloneBase(nextBase),
+        table: cloneTable(nextTable),
+        view: cloneSavedView(removed),
       };
     },
   };

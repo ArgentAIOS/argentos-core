@@ -2,17 +2,24 @@ import { describe, expect, it } from "vitest";
 import {
   buildRelationPickerCandidates,
   filterRelationPickerCandidates,
+  isImageAttachment,
+  isValidAttachmentUrl,
   isValidEmailInput,
   isValidNumberInput,
   isValidUrlInput,
+  parseAttachmentEntry,
+  parseAttachmentValue,
   parseLinkedRecordValue,
   parseMultiSelectValue,
   parseRatingDraftValue,
   pickRelationTitleField,
   resolveRelationLabel,
+  serializeAttachmentEntry,
+  serializeAttachmentValue,
   serializeLinkedRecordValue,
   serializeMultiSelectValue,
   serializeRatingDraftValue,
+  type AttachmentEntry,
   type RelationPickerCandidate,
   type RelationPickerSourceField,
   type RelationPickerSourceRecord,
@@ -330,6 +337,190 @@ describe("app-forge cell editing — rating draft helpers", () => {
     it("treats empty/zero as a cleared cell even with allowHalf on", () => {
       expect(parseRatingDraftValue("", 5, true)).toBe(0);
       expect(serializeRatingDraftValue(0, true)).toBe("");
+    });
+  });
+});
+
+describe("app-forge cell editing — attachment helpers", () => {
+  describe("isValidAttachmentUrl", () => {
+    it("rejects empty input (attachment entries are positive — empty cells are an empty list)", () => {
+      expect(isValidAttachmentUrl("")).toBe(false);
+      expect(isValidAttachmentUrl("   ")).toBe(false);
+    });
+
+    it("accepts http(s), data:, blob:, and path URLs", () => {
+      expect(isValidAttachmentUrl("https://example.com/file.png")).toBe(true);
+      expect(isValidAttachmentUrl("http://example.com/file.png")).toBe(true);
+      expect(isValidAttachmentUrl("data:image/png;base64,abc")).toBe(true);
+      expect(isValidAttachmentUrl("blob:https://app.example.com/abc-123")).toBe(true);
+      expect(isValidAttachmentUrl("/uploads/file.pdf")).toBe(true);
+    });
+
+    it("rejects malformed input and non-http(s) protocols", () => {
+      expect(isValidAttachmentUrl("not a url")).toBe(false);
+      expect(isValidAttachmentUrl("ftp://example.com/file.png")).toBe(false);
+      expect(isValidAttachmentUrl("javascript:alert(1)")).toBe(false);
+    });
+  });
+
+  describe("parseAttachmentEntry", () => {
+    it("parses bare URLs and derives a filename from the path", () => {
+      expect(parseAttachmentEntry("https://example.com/path/photo.jpg")).toEqual({
+        name: "photo.jpg",
+        url: "https://example.com/path/photo.jpg",
+      });
+    });
+
+    it("parses the pipe-delimited name|url form", () => {
+      expect(parseAttachmentEntry("Receipt.pdf|https://files.example.com/abc.pdf")).toEqual({
+        name: "Receipt.pdf",
+        url: "https://files.example.com/abc.pdf",
+      });
+    });
+
+    it("strips whitespace around both sides of the delimiter", () => {
+      expect(parseAttachmentEntry("  My Photo  |  https://example.com/p.png  ")).toEqual({
+        name: "My Photo",
+        url: "https://example.com/p.png",
+      });
+    });
+
+    it("returns null for unparseable entries", () => {
+      expect(parseAttachmentEntry("")).toBeNull();
+      expect(parseAttachmentEntry("garbage")).toBeNull();
+      expect(parseAttachmentEntry("name only|")).toBeNull();
+    });
+
+    it("falls back to a generic label for data: URLs", () => {
+      const entry = parseAttachmentEntry("data:image/png;base64,iVBORw0KGgo");
+      expect(entry).not.toBeNull();
+      expect(entry?.url).toBe("data:image/png;base64,iVBORw0KGgo");
+      expect(entry?.name).toBe("Attachment (image/png)");
+    });
+
+    it("preserves an explicit name even when the URL has its own filename", () => {
+      expect(parseAttachmentEntry("Receipt|https://example.com/path/raw-token.pdf")).toEqual({
+        name: "Receipt",
+        url: "https://example.com/path/raw-token.pdf",
+      });
+    });
+  });
+
+  describe("serializeAttachmentEntry", () => {
+    it("emits the bare URL when the name matches the derived filename", () => {
+      expect(
+        serializeAttachmentEntry({
+          name: "photo.jpg",
+          url: "https://example.com/path/photo.jpg",
+        }),
+      ).toBe("https://example.com/path/photo.jpg");
+    });
+
+    it("emits the name|url form when the name is custom", () => {
+      expect(
+        serializeAttachmentEntry({
+          name: "Receipt",
+          url: "https://example.com/path/raw-token.pdf",
+        }),
+      ).toBe("Receipt|https://example.com/path/raw-token.pdf");
+    });
+
+    it("collapses pipes inside the name field so the form stays parseable", () => {
+      expect(
+        serializeAttachmentEntry({
+          name: "A|B|C",
+          url: "https://example.com/x.pdf",
+        }),
+      ).toBe("A B C|https://example.com/x.pdf");
+    });
+
+    it("returns an empty string for entries with no URL (will be dropped on serialize)", () => {
+      expect(serializeAttachmentEntry({ name: "Orphan", url: "" })).toBe("");
+    });
+  });
+
+  describe("parseAttachmentValue / serializeAttachmentValue", () => {
+    it("parses comma-separated stored values into structured entries", () => {
+      expect(
+        parseAttachmentValue("Receipt|https://example.com/r.pdf, https://example.com/photo.jpg"),
+      ).toEqual([
+        { name: "Receipt", url: "https://example.com/r.pdf" },
+        { name: "photo.jpg", url: "https://example.com/photo.jpg" },
+      ]);
+    });
+
+    it("parses array-shaped values (gateway-mirrored)", () => {
+      expect(
+        parseAttachmentValue(["https://example.com/a.png", "Receipt|https://example.com/r.pdf"]),
+      ).toEqual([
+        { name: "a.png", url: "https://example.com/a.png" },
+        { name: "Receipt", url: "https://example.com/r.pdf" },
+      ]);
+    });
+
+    it("dedupes by URL so two entries pointing at the same file collapse", () => {
+      const result = parseAttachmentValue(
+        "https://example.com/dup.png, Renamed|https://example.com/dup.png",
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].url).toBe("https://example.com/dup.png");
+    });
+
+    it("drops unparseable entries silently", () => {
+      expect(parseAttachmentValue("garbage, https://example.com/ok.png, ftp://bad/no")).toEqual([
+        { name: "ok.png", url: "https://example.com/ok.png" },
+      ]);
+    });
+
+    it("returns an empty list for null / undefined / empty input", () => {
+      expect(parseAttachmentValue(null)).toEqual([]);
+      expect(parseAttachmentValue(undefined)).toEqual([]);
+      expect(parseAttachmentValue("")).toEqual([]);
+      expect(parseAttachmentValue([])).toEqual([]);
+    });
+
+    it("round-trips parse/serialize without drift on a canonical value", () => {
+      const stored = "https://example.com/photo.jpg, Receipt|https://example.com/raw-token.pdf";
+      expect(serializeAttachmentValue(parseAttachmentValue(stored))).toBe(stored);
+    });
+
+    it("dedupes on serialize as well so a malformed in-memory list cleans up", () => {
+      const entries: AttachmentEntry[] = [
+        { name: "photo.jpg", url: "https://example.com/photo.jpg" },
+        { name: "Same file", url: "https://example.com/photo.jpg" },
+      ];
+      expect(serializeAttachmentValue(entries)).toBe("https://example.com/photo.jpg");
+    });
+  });
+
+  describe("isImageAttachment", () => {
+    it("returns true for common image extensions", () => {
+      for (const ext of ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"]) {
+        expect(isImageAttachment({ name: `pic.${ext}`, url: `https://example.com/p.${ext}` })).toBe(
+          true,
+        );
+      }
+    });
+
+    it("ignores casing and query strings when sniffing the extension", () => {
+      expect(
+        isImageAttachment({
+          name: "p.PNG",
+          url: "https://example.com/p.PNG?signature=abc",
+        }),
+      ).toBe(true);
+    });
+
+    it("returns true for data:image/* URLs", () => {
+      expect(isImageAttachment({ name: "screenshot", url: "data:image/png;base64,abc" })).toBe(
+        true,
+      );
+    });
+
+    it("returns false for non-image extensions and unknown shapes", () => {
+      expect(isImageAttachment({ name: "r.pdf", url: "https://example.com/r.pdf" })).toBe(false);
+      expect(isImageAttachment({ name: "", url: "https://example.com/no-ext" })).toBe(false);
+      expect(isImageAttachment({ name: "", url: "" })).toBe(false);
     });
   });
 });

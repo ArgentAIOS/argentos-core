@@ -21,7 +21,7 @@
  * @module argent-agent/pi-bridge/auth-storage
  */
 
-import { AuthStorage as PiAuthStorage } from "@mariozechner/pi-coding-agent";
+import { AuthStorage as PiAuthStorage } from "@earendil-works/pi-coding-agent";
 
 /**
  * Argent's bridge-typed `AuthStorage` value. Consumers should import from

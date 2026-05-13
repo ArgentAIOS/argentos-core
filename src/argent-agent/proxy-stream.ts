@@ -5,7 +5,7 @@
  * LLM calls through a server. The server manages auth and proxies
  * requests to LLM providers.
  *
- * Replaces @mariozechner/pi-agent-core streamProxy.
+ * Replaces @earendil-works/pi-agent-core streamProxy.
  *
  * @module argent-agent/proxy-stream
  */
