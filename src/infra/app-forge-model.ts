@@ -25,6 +25,62 @@ export const APP_FORGE_MAX_RATING_MAX = 10;
 
 export type AppForgeFieldType = (typeof APP_FORGE_FIELD_TYPES)[number];
 
+/**
+ * Saved-view kinds that AppForge tables can render. Mirrors the dashboard's
+ * `ForgeStructuredViewType` plus `calendar` (Phase 4 parity gap #1) so that
+ * saved views travel with the table as durable metadata rather than living
+ * in the operator-local localStorage cache.
+ */
+export const APP_FORGE_SAVED_VIEW_TYPES = ["grid", "kanban", "form", "review", "calendar"] as const;
+
+export type AppForgeSavedViewType = (typeof APP_FORGE_SAVED_VIEW_TYPES)[number];
+
+export type AppForgeSavedViewSortDirection = "asc" | "desc";
+
+/**
+ * A durable saved named view persisted on a table. Carries the per-operator
+ * preferences (filter / sort / group / visible-fields) that used to live in
+ * localStorage, so views are now shareable across operators and survive
+ * browser restart / token rotation.
+ *
+ * Permissions inherit from the parent table — anyone with table-write access
+ * may upsert/delete views on it. The migration path from the legacy
+ * localStorage-only views is handled in `migrateLegacyLocalStorageSavedViews`
+ * which projects the operator's stored shape onto this typed model.
+ */
+export type AppForgeSavedView = {
+  id: string;
+  name: string;
+  type: AppForgeSavedViewType;
+  filterText?: string;
+  sortFieldId?: string;
+  sortDirection?: AppForgeSavedViewSortDirection;
+  groupFieldId?: string;
+  visibleFieldIds?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AppForgeSavedViewConfigError = {
+  viewId: string;
+  code:
+    | "missing_id"
+    | "missing_name"
+    | "duplicate_view_id"
+    | "duplicate_view_name"
+    | "invalid_type"
+    | "unknown_sort_field"
+    | "unknown_group_field"
+    | "unknown_visible_field"
+    | "invalid_sort_direction";
+  message: string;
+};
+
+export type AppForgeSavedViewConfigValidationResult = {
+  ok: boolean;
+  errors: AppForgeSavedViewConfigError[];
+};
+
 export type AppForgeRecordValue = string | number | boolean | string[] | null;
 
 export type AppForgeSelectOption = {
@@ -75,7 +131,12 @@ export type AppForgeTable = {
     recordId: string;
     fieldId: string;
   };
-  views?: unknown[];
+  /**
+   * Durable saved named views on this table. Each view is a first-class
+   * metadata entry — view selection survives browser restart, token rotation,
+   * and is shareable across operators. See {@link AppForgeSavedView}.
+   */
+  views?: AppForgeSavedView[];
   metadata?: Record<string, unknown>;
 };
 
@@ -687,4 +748,232 @@ export function projectLegacyAppForgeBase(app: LegacyAppForgeApp): AppForgeBase 
     revision: numberValue(structured.revision) ?? 1,
     updatedAt: stringValue(structured.updatedAt) ?? app.updatedAt ?? app.createdAt ?? nowIso(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Saved-view durable model (Phase 4 gap #1)
+// ---------------------------------------------------------------------------
+
+function savedViewTypeValue(value: unknown): AppForgeSavedViewType {
+  return APP_FORGE_SAVED_VIEW_TYPES.includes(value as AppForgeSavedViewType)
+    ? (value as AppForgeSavedViewType)
+    : "grid";
+}
+
+function sortDirectionValue(value: unknown): AppForgeSavedViewSortDirection | undefined {
+  return value === "asc" || value === "desc" ? value : undefined;
+}
+
+/**
+ * Normalize an unknown candidate into a typed {@link AppForgeSavedView}.
+ *
+ * - Unknown `type` values fall back to `"grid"` (matches dashboard behavior).
+ * - `sortDirection` is dropped when not `"asc" | "desc"` (avoids storing the
+ *   string `"none"` legacy callers used to write).
+ * - Identifier and name are required; if either is missing/blank the function
+ *   returns `null` so callers can drop the view from the durable list.
+ */
+export function normalizeAppForgeSavedView(value: unknown): AppForgeSavedView | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = stringValue(value.id);
+  const name = stringValue(value.name);
+  if (!id || !name) {
+    return null;
+  }
+  const view: AppForgeSavedView = {
+    id,
+    name,
+    type: savedViewTypeValue(value.type),
+  };
+  const filterText = typeof value.filterText === "string" ? value.filterText : undefined;
+  if (filterText !== undefined) {
+    view.filterText = filterText;
+  }
+  const sortFieldId = typeof value.sortFieldId === "string" ? value.sortFieldId : undefined;
+  if (sortFieldId !== undefined) {
+    view.sortFieldId = sortFieldId;
+  }
+  const sortDirection = sortDirectionValue(value.sortDirection);
+  if (sortDirection !== undefined) {
+    view.sortDirection = sortDirection;
+  }
+  const groupFieldId = typeof value.groupFieldId === "string" ? value.groupFieldId : undefined;
+  if (groupFieldId !== undefined) {
+    view.groupFieldId = groupFieldId;
+  }
+  const visibleFieldIds = stringArrayValue(value.visibleFieldIds);
+  if (visibleFieldIds !== undefined) {
+    view.visibleFieldIds = visibleFieldIds;
+  }
+  const createdAt = stringValue(value.createdAt);
+  if (createdAt) {
+    view.createdAt = createdAt;
+  }
+  const updatedAt = stringValue(value.updatedAt);
+  if (updatedAt) {
+    view.updatedAt = updatedAt;
+  }
+  return view;
+}
+
+/**
+ * Normalize an arbitrary array of view candidates, dropping invalid entries.
+ * Used by stores when projecting persisted metadata back into the model so
+ * callers always see typed views (no `unknown[]` escape hatches).
+ */
+export function normalizeAppForgeSavedViews(value: unknown): AppForgeSavedView[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized: AppForgeSavedView[] = [];
+  for (const candidate of value) {
+    const view = normalizeAppForgeSavedView(candidate);
+    if (view) {
+      normalized.push(view);
+    }
+  }
+  return normalized;
+}
+
+function savedViewConfigError(
+  viewId: string,
+  code: AppForgeSavedViewConfigError["code"],
+  message: string,
+): AppForgeSavedViewConfigError {
+  return { viewId, code, message };
+}
+
+/**
+ * Validate a list of saved views against the field set on their parent table.
+ * Catches duplicate ids/names, unknown sort/group/visible field references,
+ * and bad enum values before the views become durable table metadata.
+ *
+ * Backward-compat: fields are optional. When omitted, only structural checks
+ * (id/name/type/sortDirection/duplicate-id/duplicate-name) run — this is the
+ * mode legacy callers without table context get.
+ */
+export function validateAppForgeSavedViews(
+  views: AppForgeSavedView[],
+  fields?: Pick<AppForgeField, "id">[],
+): AppForgeSavedViewConfigValidationResult {
+  const errors: AppForgeSavedViewConfigError[] = [];
+  const seenIds = new Set<string>();
+  const seenNameKeys = new Set<string>();
+  const fieldIds = fields ? new Set(fields.map((field) => field.id)) : null;
+
+  for (const view of views) {
+    if (!view.id.trim()) {
+      errors.push(savedViewConfigError(view.id ?? "", "missing_id", "View id is required."));
+    }
+    if (!view.name.trim()) {
+      errors.push(savedViewConfigError(view.id, "missing_name", "View name is required."));
+    }
+
+    if (seenIds.has(view.id)) {
+      errors.push(
+        savedViewConfigError(view.id, "duplicate_view_id", `Duplicate view id "${view.id}".`),
+      );
+    }
+    seenIds.add(view.id);
+
+    const nameKey = view.name.trim().toLowerCase();
+    if (nameKey) {
+      if (seenNameKeys.has(nameKey)) {
+        errors.push(
+          savedViewConfigError(
+            view.id,
+            "duplicate_view_name",
+            `Duplicate view name "${view.name}".`,
+          ),
+        );
+      }
+      seenNameKeys.add(nameKey);
+    }
+
+    if (!APP_FORGE_SAVED_VIEW_TYPES.includes(view.type)) {
+      errors.push(
+        savedViewConfigError(view.id, "invalid_type", `View "${view.name}" has an invalid type.`),
+      );
+    }
+
+    if (
+      view.sortDirection !== undefined &&
+      view.sortDirection !== "asc" &&
+      view.sortDirection !== "desc"
+    ) {
+      errors.push(
+        savedViewConfigError(
+          view.id,
+          "invalid_sort_direction",
+          `View "${view.name}" sort direction must be "asc" or "desc".`,
+        ),
+      );
+    }
+
+    if (fieldIds) {
+      if (view.sortFieldId && view.sortFieldId.trim() && !fieldIds.has(view.sortFieldId)) {
+        errors.push(
+          savedViewConfigError(
+            view.id,
+            "unknown_sort_field",
+            `View "${view.name}" sorts by unknown field "${view.sortFieldId}".`,
+          ),
+        );
+      }
+      if (view.groupFieldId && view.groupFieldId.trim() && !fieldIds.has(view.groupFieldId)) {
+        errors.push(
+          savedViewConfigError(
+            view.id,
+            "unknown_group_field",
+            `View "${view.name}" groups by unknown field "${view.groupFieldId}".`,
+          ),
+        );
+      }
+      if (view.visibleFieldIds?.length) {
+        for (const fieldId of view.visibleFieldIds) {
+          if (!fieldIds.has(fieldId)) {
+            errors.push(
+              savedViewConfigError(
+                view.id,
+                "unknown_visible_field",
+                `View "${view.name}" exposes unknown field "${fieldId}".`,
+              ),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * One-time migration helper: project the operator's legacy localStorage view
+ * shape into the durable {@link AppForgeSavedView} model. Existing operators'
+ * stored views are translated lazily on first read so no manual data
+ * migration is required — and missing/extra fields default cleanly.
+ *
+ * Returns `null` when the candidate has neither an `id` nor a `name`,
+ * matching the dashboard's drop-stale-cache behavior.
+ */
+export function migrateLegacyLocalStorageSavedView(value: unknown): AppForgeSavedView | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  // Legacy entries used "kind" instead of "type" in one short-lived format.
+  const normalized: Record<string, unknown> = {
+    ...value,
+    type: value.type ?? (value as { kind?: unknown }).kind,
+  };
+  // Fold "viewMode" (older AppForgeNamedView shape) into type as last resort.
+  if (
+    normalized.type === undefined &&
+    typeof (value as { viewMode?: unknown }).viewMode === "string"
+  ) {
+    normalized.type = (value as { viewMode: string }).viewMode;
+  }
+  return normalizeAppForgeSavedView(normalized);
 }
