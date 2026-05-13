@@ -280,3 +280,214 @@ export function parseLinkedRecordValue(
 export function serializeLinkedRecordValue(ids: ReadonlyArray<string>): string {
   return serializeMultiSelectValue(ids);
 }
+
+/**
+ * Helpers for AppForge attachment cells.
+ *
+ * Attachment cells store an array of entries on the wire (sharing the array
+ * shape with `multi_select` and `linked_record`). Each entry is either a bare
+ * URL — `"https://example.com/img.png"` — or a pipe-delimited `"name|url"`
+ * pair — `"Receipt.pdf|https://files.example.com/receipt.pdf"`. The pipe form
+ * lets the cell display a friendly name when the URL alone would be a long
+ * opaque token (e.g. signed-storage URLs). Both forms round-trip through the
+ * dashboard editor without data loss.
+ *
+ * Empty input clears the cell. Unparseable entries are dropped on serialize
+ * so a corrupt cell can't crash the editor.
+ */
+
+/** Single attachment entry as displayed/edited in the grid. */
+export type AttachmentEntry = {
+  /** Friendly name shown on the chip (file name, image alt, etc.). */
+  name: string;
+  /** Resolvable URL — http(s), data:, blob:, or mailto:. Empty entries are invalid. */
+  url: string;
+};
+
+const ATTACHMENT_DELIMITER = "|";
+
+/** Image extensions the display path renders as inline thumbnails. */
+const ATTACHMENT_IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "avif",
+]);
+
+function stripDelimiter(value: string): string {
+  // The on-the-wire form is `name|url`; collapse pipes inside the user-typed
+  // name field so we never round-trip into a corrupt 3-part entry.
+  return value.replace(/\|/g, " ");
+}
+
+function deriveAttachmentName(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return "";
+  }
+  // data: / blob: URLs have no meaningful filename — surface a generic label.
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
+    const mime = trimmed.startsWith("data:") ? trimmed.slice(5).split(/[;,]/)[0] : "";
+    return mime ? `Attachment (${mime})` : "Attachment";
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const tail = segments.length ? decodeURIComponent(segments[segments.length - 1]) : "";
+    if (tail) {
+      return tail;
+    }
+    return parsed.hostname || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
+ * Parse a single entry from the stored `name|url` (or bare `url`) form into a
+ * structured {@link AttachmentEntry}. Returns `null` for unparseable input so
+ * the caller can drop it cleanly.
+ */
+export function parseAttachmentEntry(raw: string): AttachmentEntry | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const delimiterIndex = trimmed.indexOf(ATTACHMENT_DELIMITER);
+  if (delimiterIndex === -1) {
+    // Bare URL form — derive a friendly name from the path.
+    const url = trimmed;
+    if (!isValidAttachmentUrl(url)) {
+      return null;
+    }
+    return { name: deriveAttachmentName(url), url };
+  }
+  const name = trimmed.slice(0, delimiterIndex).trim();
+  const url = trimmed.slice(delimiterIndex + 1).trim();
+  if (!url || !isValidAttachmentUrl(url)) {
+    return null;
+  }
+  return { name: name || deriveAttachmentName(url), url };
+}
+
+/**
+ * Serialize a single entry into the stored `name|url` form. When the name is
+ * empty or equals the derived name, the entry is emitted as a bare URL so the
+ * stored form stays compact.
+ */
+export function serializeAttachmentEntry(entry: AttachmentEntry): string {
+  const url = entry.url.trim();
+  if (!url) {
+    return "";
+  }
+  const name = stripDelimiter(entry.name.trim());
+  if (!name || name === deriveAttachmentName(url)) {
+    return url;
+  }
+  return `${name}${ATTACHMENT_DELIMITER}${url}`;
+}
+
+/**
+ * Parse a stored attachment cell value (string or array form) into a deduped
+ * list of attachment entries. Dedupe is by URL so two entries pointing at the
+ * same file collapse to one. Unparseable entries are dropped silently.
+ */
+export function parseAttachmentValue(
+  value: string | ReadonlyArray<string> | null | undefined,
+): AttachmentEntry[] {
+  if (value === null || value === undefined) {
+    return [];
+  }
+  const rawEntries = Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : typeof value === "string"
+      ? value.split(/[\n,]/)
+      : [];
+  const seenUrls = new Set<string>();
+  const result: AttachmentEntry[] = [];
+  for (const raw of rawEntries) {
+    const parsed = parseAttachmentEntry(raw);
+    if (!parsed) {
+      continue;
+    }
+    if (seenUrls.has(parsed.url)) {
+      continue;
+    }
+    seenUrls.add(parsed.url);
+    result.push(parsed);
+  }
+  return result;
+}
+
+/**
+ * Serialize a list of attachment entries into the canonical comma-separated
+ * form for storage. Invalid / empty entries are dropped.
+ */
+export function serializeAttachmentValue(entries: ReadonlyArray<AttachmentEntry>): string {
+  const seenUrls = new Set<string>();
+  const parts: string[] = [];
+  for (const entry of entries) {
+    const serialized = serializeAttachmentEntry(entry);
+    if (!serialized) {
+      continue;
+    }
+    const url = entry.url.trim();
+    if (seenUrls.has(url)) {
+      continue;
+    }
+    seenUrls.add(url);
+    parts.push(serialized);
+  }
+  return parts.join(", ");
+}
+
+/**
+ * True iff `value` parses as an attachment URL. Accepts http(s), data:, blob:,
+ * and protocol-relative paths starting with `/`. Empty input is rejected
+ * (different from the URL field's "empty = cleared" rule because attachment
+ * entries are individually positive — emptiness is represented by an empty
+ * list).
+ */
+export function isValidAttachmentUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:") || trimmed.startsWith("/")) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True iff this attachment renders as an inline thumbnail. We sniff by either
+ * the URL extension (after stripping query/hash) or the data: MIME prefix so
+ * pasted screenshots get thumbnails too.
+ */
+export function isImageAttachment(entry: AttachmentEntry): boolean {
+  const url = entry.url.trim();
+  if (!url) {
+    return false;
+  }
+  if (url.startsWith("data:image/") || url.startsWith("data:application/svg")) {
+    return true;
+  }
+  // Match the last extension before any query / fragment. Avoid `new URL`
+  // here so we still detect images on protocol-relative / bare paths.
+  const withoutQuery = url.split(/[?#]/)[0];
+  const lastDot = withoutQuery.lastIndexOf(".");
+  if (lastDot === -1 || lastDot < withoutQuery.lastIndexOf("/")) {
+    return false;
+  }
+  const ext = withoutQuery.slice(lastDot + 1).toLowerCase();
+  return ATTACHMENT_IMAGE_EXTENSIONS.has(ext);
+}
