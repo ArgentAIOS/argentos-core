@@ -1356,4 +1356,207 @@ describe("AppForge gateway handlers", () => {
       }),
     );
   });
+
+  // ------------------------------------------------------------------------
+  // Phase 4 gap #5 — editable interfaces. The bundle is per-base durable
+  // metadata reachable through the gateway. These tests pin the same
+  // contract used for saved views: discovery, list/upsert/delete, ACL gate,
+  // and bundle-revision OCC.
+  // ------------------------------------------------------------------------
+
+  it("registers appforge.interfaces.* methods for discovery", () => {
+    expect(listGatewayMethods()).toEqual(
+      expect.arrayContaining([
+        "appforge.interfaces.get",
+        "appforge.interfaces.page.put",
+        "appforge.interfaces.page.delete",
+        "appforge.interfaces.layout.put",
+        "appforge.interfaces.layout.delete",
+        "appforge.interfaces.widget.put",
+        "appforge.interfaces.widget.delete",
+        "appforge.interfaces.region.place",
+        "appforge.interfaces.region.unplace",
+        "appforge.interfaces.region.reorder",
+      ]),
+    );
+    expect(coreGatewayHandlers["appforge.interfaces.widget.put"]).toBe(
+      appForgeHandlers["appforge.interfaces.widget.put"],
+    );
+  });
+
+  it("returns a default interface bundle for an existing base", async () => {
+    const respond = await invokeAppForgeHandler("appforge.interfaces.get", { baseId: "base-1" });
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        bundle: expect.objectContaining({
+          version: 1,
+          pages: expect.arrayContaining([expect.objectContaining({ id: "page-main" })]),
+        }),
+      }),
+      undefined,
+    );
+
+    const missing = await invokeAppForgeHandler("appforge.interfaces.get", { baseId: "ghost" });
+    expect(missing).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "base not found" }),
+    );
+  });
+
+  it("upserts and deletes widgets and pages through the gateway with bundle revision OCC", async () => {
+    const initial = await invokeAppForgeHandler("appforge.interfaces.get", { baseId: "base-1" });
+    const bundle = (initial as ReturnType<typeof createResponder>).mock.calls[0]?.[1] as {
+      bundle: { revision: number };
+    };
+    const startRevision = bundle.bundle.revision;
+
+    const addedWidget = await invokeAppForgeHandler("appforge.interfaces.widget.put", {
+      baseId: "base-1",
+      widget: {
+        id: "widget-form",
+        kind: "record_form",
+        title: "New review",
+        source: { tableId: "table-1" },
+      },
+      expectedBundleRevision: startRevision,
+    });
+    expect(addedWidget).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        bundle: expect.objectContaining({
+          revision: startRevision + 1,
+          widgets: expect.arrayContaining([expect.objectContaining({ id: "widget-form" })]),
+        }),
+      }),
+      undefined,
+    );
+
+    const placed = await invokeAppForgeHandler("appforge.interfaces.region.place", {
+      baseId: "base-1",
+      layoutId: "layout-main",
+      regionId: "main",
+      entry: { widgetId: "widget-form", order: 1, span: 6 },
+      expectedBundleRevision: startRevision + 1,
+    });
+    expect(placed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        bundle: expect.objectContaining({ revision: startRevision + 2 }),
+      }),
+      undefined,
+    );
+
+    const newPage = await invokeAppForgeHandler("appforge.interfaces.page.put", {
+      baseId: "base-1",
+      page: {
+        id: "page-form",
+        name: "Form",
+        kind: "form",
+        layoutId: "layout-main",
+      },
+      expectedBundleRevision: startRevision + 2,
+    });
+    expect(newPage).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        bundle: expect.objectContaining({
+          pages: expect.arrayContaining([expect.objectContaining({ id: "page-form" })]),
+        }),
+      }),
+      undefined,
+    );
+
+    const stale = await invokeAppForgeHandler("appforge.interfaces.widget.put", {
+      baseId: "base-1",
+      widget: { id: "widget-late", kind: "metric" },
+      expectedBundleRevision: startRevision,
+    });
+    expect(stale).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "INVALID_REQUEST" }),
+    );
+
+    const removedWidget = await invokeAppForgeHandler("appforge.interfaces.widget.delete", {
+      baseId: "base-1",
+      widgetId: "widget-form",
+      expectedBundleRevision: startRevision + 3,
+    });
+    expect(removedWidget).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        bundle: expect.objectContaining({
+          widgets: expect.not.arrayContaining([expect.objectContaining({ id: "widget-form" })]),
+        }),
+      }),
+      undefined,
+    );
+
+    const removedPage = await invokeAppForgeHandler("appforge.interfaces.page.delete", {
+      baseId: "base-1",
+      pageId: "page-form",
+    });
+    expect(removedPage).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ bundle: expect.objectContaining({ version: 1 }) }),
+      undefined,
+    );
+  });
+
+  it("rejects malformed interface payloads with a clear message", async () => {
+    const missingPage = await invokeAppForgeHandler("appforge.interfaces.page.put", {
+      baseId: "base-1",
+      page: { id: "p" /* no name / no layoutId */ },
+    });
+    expect(missingPage).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "INVALID_REQUEST" }),
+    );
+
+    const missingLayoutId = await invokeAppForgeHandler("appforge.interfaces.layout.delete", {
+      baseId: "base-1",
+      // layoutId missing
+    });
+    expect(missingLayoutId).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "baseId and layoutId are required" }),
+    );
+  });
+
+  it("enforces base-level ACL on interface writes", async () => {
+    const denied = await invokeAppForgeHandler("appforge.interfaces.widget.put", {
+      baseId: "base-1",
+      widget: { id: "widget-by-viewer", kind: "metric" },
+      actor: "viewer-1",
+      permissions: permissions({ creator: "owner-1", viewers: ["viewer-1"] }),
+    });
+    expect(denied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+      }),
+    );
+
+    const allowed = await invokeAppForgeHandler("appforge.interfaces.widget.put", {
+      baseId: "base-1",
+      widget: { id: "widget-by-owner", kind: "metric" },
+      actor: "owner-1",
+      permissions: permissions(),
+    });
+    expect(allowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        bundle: expect.objectContaining({
+          widgets: expect.arrayContaining([expect.objectContaining({ id: "widget-by-owner" })]),
+        }),
+      }),
+      undefined,
+    );
+  });
 });

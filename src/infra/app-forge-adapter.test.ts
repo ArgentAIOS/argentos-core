@@ -267,4 +267,82 @@ describe("AppForge adapter contract", () => {
       expect.objectContaining({ id: "record-1" }),
     ]);
   });
+
+  it("seeds and mutates an interface bundle per base, with revision conflicts", async () => {
+    const adapter = createInMemoryAppForgeAdapter([base()]);
+
+    const bundle = await adapter.getInterfaces("base-1");
+    expect(bundle).not.toBeNull();
+    expect(bundle?.pages.map((page) => page.id)).toEqual(["page-main"]);
+    expect(bundle?.widgets.map((widget) => widget.id)).toEqual(["widget-table-1-grid"]);
+    const startRevision = bundle!.revision;
+
+    const addedWidget = await adapter.putInterfaceWidget(
+      "base-1",
+      {
+        id: "widget-form",
+        kind: "record_form",
+        title: "New review",
+        source: { tableId: "table-1", fieldIds: ["name"] },
+        revision: 0,
+      },
+      { expectedBundleRevision: startRevision },
+    );
+    expect(addedWidget.ok).toBe(true);
+    if (addedWidget.ok) {
+      expect(addedWidget.bundle.widgets.map((widget) => widget.id)).toEqual([
+        "widget-table-1-grid",
+        "widget-form",
+      ]);
+      expect(addedWidget.bundle.revision).toBe(startRevision + 1);
+    }
+
+    const stale = await adapter.putInterfaceWidget(
+      "base-1",
+      {
+        id: "widget-late",
+        kind: "metric",
+        revision: 0,
+      },
+      { expectedBundleRevision: startRevision },
+    );
+    expect(stale).toMatchObject({
+      ok: false,
+      code: "revision_conflict",
+      expectedRevision: startRevision,
+      actualRevision: startRevision + 1,
+    });
+
+    const placed = await adapter.placeInterfaceWidget(
+      "base-1",
+      "layout-main",
+      "main",
+      { widgetId: "widget-form", order: 1, span: 6 },
+      { expectedBundleRevision: startRevision + 1 },
+    );
+    expect(placed.ok).toBe(true);
+    if (placed.ok) {
+      expect(placed.bundle.layouts[0]?.regions[0]?.widgets.map((entry) => entry.widgetId)).toEqual([
+        "widget-table-1-grid",
+        "widget-form",
+      ]);
+    }
+
+    const removed = await adapter.deleteInterfaceWidget("base-1", "widget-form", {
+      expectedBundleRevision: startRevision + 2,
+    });
+    expect(removed.ok).toBe(true);
+    if (removed.ok) {
+      expect(removed.bundle.widgets.map((widget) => widget.id)).toEqual(["widget-table-1-grid"]);
+      expect(removed.bundle.layouts[0]?.regions[0]?.widgets.map((entry) => entry.widgetId)).toEqual(
+        ["widget-table-1-grid"],
+      );
+    }
+  });
+
+  it("returns a revision conflict when the interface base does not exist", async () => {
+    const adapter = createInMemoryAppForgeAdapter([base()]);
+    const result = await adapter.deleteInterfaceWidget("missing-base", "widget-x");
+    expect(result).toMatchObject({ ok: false, code: "revision_conflict" });
+  });
 });

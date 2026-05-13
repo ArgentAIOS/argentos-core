@@ -1,5 +1,23 @@
 import type { AppForgeActorEnvelope } from "./app-forge-permissions.js";
 import {
+  addAppForgeInterfaceWidgetToRegion,
+  defaultAppForgeInterfaceBundle,
+  deleteAppForgeInterfaceLayout,
+  deleteAppForgeInterfacePage,
+  deleteAppForgeInterfaceWidget,
+  normalizeAppForgeInterfaceBundle,
+  putAppForgeInterfaceLayout,
+  putAppForgeInterfacePage,
+  putAppForgeInterfaceWidget,
+  removeAppForgeInterfaceWidgetFromRegion,
+  reorderAppForgeInterfaceRegionWidgets,
+  type AppForgeInterfaceBundle,
+  type AppForgeInterfaceLayout,
+  type AppForgeInterfaceLayoutRegionWidget,
+  type AppForgeInterfacePage,
+  type AppForgeInterfaceWidget,
+} from "./app-forge-interfaces.js";
+import {
   checkAppForgeRevision,
   normalizeAppForgeSavedView,
   type AppForgeBase,
@@ -72,6 +90,26 @@ export type AppForgeSavedViewWriteResult =
     }
   | AppForgeRevisionConflict;
 
+/**
+ * Optimistic-concurrency options for interface CRUD. `expectedBundleRevision`
+ * is the bundle-level revision number (NOT the base revision); supplying it
+ * forces a revision_conflict if another operator has mutated the bundle in
+ * the meantime. See {@link AppForgeInterfaceBundle.revision}.
+ */
+export type AppForgeInterfaceWriteOptions = {
+  expectedBundleRevision?: number;
+  /** Actor that initiated the write — threaded for audit trail (#336). */
+  actor?: AppForgeActorEnvelope;
+};
+
+export type AppForgeInterfaceWriteResult =
+  | {
+      ok: true;
+      base: AppForgeBase;
+      bundle: AppForgeInterfaceBundle;
+    }
+  | AppForgeRevisionConflict;
+
 export interface AppForgeAdapter {
   listBases(opts?: { appId?: string }): Promise<AppForgeBase[]>;
   getBase(baseId: string): Promise<AppForgeBase | null>;
@@ -124,6 +162,69 @@ export interface AppForgeAdapter {
     viewId: string,
     opts?: Omit<AppForgeSavedViewWriteOptions, "idempotencyKey">,
   ): Promise<AppForgeSavedViewWriteResult>;
+
+  /**
+   * Editable interfaces (Phase 4 gap #5). The bundle is per-base durable
+   * metadata — operators can add/remove/reorder pages, layouts, and widgets
+   * and the state survives reload, browser restart, and is visible to every
+   * other operator on this base.
+   *
+   * `getInterfaces` materializes a default bundle on first read so the
+   * dashboard never has to invent shape — anywhere a base exists, an
+   * interface bundle is reachable.
+   */
+  getInterfaces(baseId: string): Promise<AppForgeInterfaceBundle | null>;
+  putInterfacePage(
+    baseId: string,
+    page: AppForgeInterfacePage,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  deleteInterfacePage(
+    baseId: string,
+    pageId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  putInterfaceLayout(
+    baseId: string,
+    layout: AppForgeInterfaceLayout,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  deleteInterfaceLayout(
+    baseId: string,
+    layoutId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  putInterfaceWidget(
+    baseId: string,
+    widget: AppForgeInterfaceWidget,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  deleteInterfaceWidget(
+    baseId: string,
+    widgetId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  placeInterfaceWidget(
+    baseId: string,
+    layoutId: string,
+    regionId: string,
+    entry: AppForgeInterfaceLayoutRegionWidget,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  unplaceInterfaceWidget(
+    baseId: string,
+    layoutId: string,
+    regionId: string,
+    widgetId: string,
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
+  reorderInterfaceRegion(
+    baseId: string,
+    layoutId: string,
+    regionId: string,
+    widgetIds: string[],
+    opts?: AppForgeInterfaceWriteOptions,
+  ): Promise<AppForgeInterfaceWriteResult>;
 }
 
 function nowIso(): string {
@@ -193,6 +294,65 @@ export function createInMemoryAppForgeAdapter(seed: AppForgeBase[] = []): AppFor
     string,
     { base: AppForgeBase; table: AppForgeTable; view: AppForgeSavedView }
   >();
+  // Interfaces are durable per-base metadata. Kept in a sibling Map so
+  // existing AppForgeBase shape stays untouched — adding `interfaces` to the
+  // base would force every test fixture and serialization path to flush
+  // along with this change. See `getInterfaces` for the lazy default.
+  const interfaceBundles = new Map<string, AppForgeInterfaceBundle>();
+
+  function bundleFor(baseId: string): AppForgeInterfaceBundle | null {
+    const base = bases.get(baseId);
+    if (!base) {
+      return null;
+    }
+    const existing = interfaceBundles.get(baseId);
+    if (existing) {
+      return existing;
+    }
+    const seeded = defaultAppForgeInterfaceBundle(base);
+    interfaceBundles.set(baseId, seeded);
+    return seeded;
+  }
+
+  function applyInterfaceMutation(
+    baseId: string,
+    opts: AppForgeInterfaceWriteOptions | undefined,
+    mutate: (bundle: AppForgeInterfaceBundle) => AppForgeInterfaceBundle,
+  ): AppForgeInterfaceWriteResult {
+    const base = bases.get(baseId);
+    if (!base) {
+      return missingConflict("Base", baseId, opts?.expectedBundleRevision);
+    }
+    const current = bundleFor(baseId);
+    if (!current) {
+      return missingConflict("Base", baseId, opts?.expectedBundleRevision);
+    }
+    const revisionCheck = checkAppForgeRevision(current.revision, opts?.expectedBundleRevision);
+    if (!revisionCheck.ok) {
+      return revisionCheck;
+    }
+    const next = mutate(current);
+    // Helpers return the same reference when the mutation was a no-op (e.g.
+    // deleting a missing widget). We still bump the base's updated_at so
+    // the dashboard can observe the no-op — but we DON'T persist a new
+    // bundle revision, because nothing changed.
+    if (next === current) {
+      return {
+        ok: true,
+        base: cloneBase(base),
+        bundle: normalizeAppForgeInterfaceBundle(next),
+      };
+    }
+    const normalized = normalizeAppForgeInterfaceBundle(next);
+    interfaceBundles.set(baseId, normalized);
+    const nextBase = cloneBase({
+      ...base,
+      revision: base.revision,
+      updatedAt: nowIso(),
+    });
+    bases.set(baseId, nextBase);
+    return { ok: true, base: cloneBase(nextBase), bundle: normalized };
+  }
 
   return {
     async listBases(opts) {
@@ -608,6 +768,64 @@ export function createInMemoryAppForgeAdapter(seed: AppForgeBase[] = []): AppFor
         table: cloneTable(nextTable),
         view: cloneSavedView(nextView),
       };
+    },
+
+    async getInterfaces(baseId) {
+      return bundleFor(baseId);
+    },
+
+    async putInterfacePage(baseId, page, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        putAppForgeInterfacePage(bundle, page),
+      );
+    },
+
+    async deleteInterfacePage(baseId, pageId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        deleteAppForgeInterfacePage(bundle, pageId),
+      );
+    },
+
+    async putInterfaceLayout(baseId, layout, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        putAppForgeInterfaceLayout(bundle, layout),
+      );
+    },
+
+    async deleteInterfaceLayout(baseId, layoutId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        deleteAppForgeInterfaceLayout(bundle, layoutId),
+      );
+    },
+
+    async putInterfaceWidget(baseId, widget, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        putAppForgeInterfaceWidget(bundle, widget),
+      );
+    },
+
+    async deleteInterfaceWidget(baseId, widgetId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        deleteAppForgeInterfaceWidget(bundle, widgetId),
+      );
+    },
+
+    async placeInterfaceWidget(baseId, layoutId, regionId, entry, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        addAppForgeInterfaceWidgetToRegion(bundle, layoutId, regionId, entry),
+      );
+    },
+
+    async unplaceInterfaceWidget(baseId, layoutId, regionId, widgetId, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        removeAppForgeInterfaceWidgetFromRegion(bundle, layoutId, regionId, widgetId),
+      );
+    },
+
+    async reorderInterfaceRegion(baseId, layoutId, regionId, widgetIds, opts) {
+      return applyInterfaceMutation(baseId, opts, (bundle) =>
+        reorderAppForgeInterfaceRegionWidgets(bundle, layoutId, regionId, widgetIds),
+      );
     },
 
     async deleteView(baseId, tableId, viewId, opts) {
