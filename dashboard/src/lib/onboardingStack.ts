@@ -7,7 +7,7 @@ export type HostedLlmProviderId = "anthropic" | "openai" | "minimax" | "zai";
 export type LlmProviderId = HostedLlmProviderId | "local";
 export type LocalRuntimeProviderId = "ollama" | "lmstudio";
 export type VoiceProviderId = "edge" | "openai" | "elevenlabs";
-export type SearchProviderId = "brave" | "perplexity";
+export type SearchProviderId = "brave" | "perplexity" | "tinyfish";
 
 export type AuthProfileSummary = {
   key: string;
@@ -142,18 +142,32 @@ export const VOICE_PROVIDER_CARDS: VoiceProviderCard[] = [
 
 export const SEARCH_PROVIDER_CARDS: SearchProviderCard[] = [
   {
+    id: "tinyfish",
+    label: "TinyFish — Free Search & Fetch (Recommended)",
+    description:
+      "Zero credits, no API key to manage. Free for every account. Fastest path in for new users — and the only backend that includes JS-heavy / anti-bot fetch out of the box.",
+  },
+  {
     id: "brave",
     label: "Brave Search",
-    description:
-      "Simple web results with a dedicated search provider. Good default if you want straightforward search tool behavior.",
+    description: "Direct Brave API. Good if you already have a Brave Search key.",
   },
   {
     id: "perplexity",
     label: "Perplexity / Sonar",
     description:
-      "Search with synthesized answers and citations. Best when you want richer research-style responses.",
+      "Search with synthesized answers and citations. Best when you want richer research-style responses (via Perplexity or OpenRouter).",
   },
 ];
+
+/**
+ * Recommended-default search provider for new ArgentOS users.
+ * Used by onboarding flows (dashboard SetupWizard, CLI configure wizard) when
+ * the user hasn't picked yet. Runtime resolution in
+ * `src/agents/tools/web-search.ts::resolveSearchProvider` still honors explicit
+ * config overrides + falls back to Brave when a Brave key is present.
+ */
+export const DEFAULT_SEARCH_PROVIDER: SearchProviderId = "tinyfish";
 
 const MODEL_FALLBACKS: Record<LlmProviderId, ProviderModelChoice[]> = {
   anthropic: [

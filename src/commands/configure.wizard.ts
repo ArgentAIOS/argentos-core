@@ -94,67 +94,163 @@ async function promptWebToolsConfig(
 ): Promise<ArgentConfig> {
   const existingSearch = nextConfig.tools?.web?.search;
   const existingFetch = nextConfig.tools?.web?.fetch;
-  const hasSearchKey = Boolean(existingSearch?.apiKey);
+  const existingTinyFishSearch = existingSearch?.tinyfish;
+  const hasTinyFishSearchKey = Boolean(existingTinyFishSearch?.apiKey);
+  const hasBraveSearchKey = Boolean(existingSearch?.apiKey);
 
+  // TinyFish first — free, recommended path. Anyone who wants a working
+  // web_search tool with no credit-card setup can stop here.
   note(
     [
-      "Web search lets Argent look things up online with the `web_search` tool.",
-      "It uses a Brave Search API key stored in config or provided through BRAVE_API_KEY.",
-      "Docs: https://docs.argent.ai/tools/web",
+      "Recommended: TinyFish offers free agent-tuned web search + fetch.",
+      "Zero credits, no API key wrangling. Fastest path in.",
+      "Get a key at https://agent.tinyfish.ai/api-keys.",
     ].join("\n"),
-    "Argent web search",
+    "TinyFish — Free Web Tools (Recommended)",
   );
 
-  const enableSearch = guardCancel(
+  const enableTinyFishSearch = guardCancel(
     await confirm({
-      message: "Enable Argent web search (Brave Search)?",
-      initialValue: existingSearch?.enabled ?? hasSearchKey,
+      message: "[recommended] Use TinyFish for web_search? Free, no credits, no API key wrangling.",
+      initialValue: hasTinyFishSearchKey || !hasBraveSearchKey,
     }),
     runtime,
   );
 
-  let nextSearch = {
+  let nextSearch: NonNullable<NonNullable<ArgentConfig["tools"]>["web"]>["search"] = {
     ...existingSearch,
-    enabled: enableSearch,
   };
 
-  if (enableSearch) {
+  if (enableTinyFishSearch) {
     const keyInput = guardCancel(
       await text({
-        message: hasSearchKey
-          ? "Brave Search API key (leave blank to keep the current value or use BRAVE_API_KEY)"
-          : "Brave Search API key (paste it here, or leave blank to use BRAVE_API_KEY)",
-        placeholder: hasSearchKey ? "Leave blank to keep current" : "BSA...",
+        message: hasTinyFishSearchKey
+          ? "TinyFish API key (leave blank to keep current, or use TINYFISH_API_KEY env var)"
+          : "TinyFish API key (paste here, or leave blank to use TINYFISH_API_KEY env var)",
+        placeholder: hasTinyFishSearchKey ? "Leave blank to keep current" : "tf_...",
       }),
       runtime,
     );
     const key = String(keyInput ?? "").trim();
-    if (key) {
-      nextSearch = { ...nextSearch, apiKey: key };
-    } else if (!hasSearchKey) {
-      note(
-        [
-          "No key stored yet, so web_search will stay unavailable.",
-          "Store a key here or set BRAVE_API_KEY in the Gateway environment.",
-          "Docs: https://docs.argent.ai/tools/web",
-        ].join("\n"),
-        "Argent web search",
+    nextSearch = {
+      ...nextSearch,
+      enabled: true,
+      provider: "tinyfish",
+      tinyfish: {
+        ...existingTinyFishSearch,
+        ...(key ? { apiKey: key } : {}),
+      },
+    };
+  }
+
+  // Existing Brave path stays available for users who already have a key
+  // or want the dedicated Brave endpoint. Skipped by default when TinyFish
+  // is the active provider.
+  const offerBrave = !enableTinyFishSearch || hasBraveSearchKey;
+  if (offerBrave) {
+    note(
+      [
+        "Brave Search uses a dedicated API key (BRAVE_API_KEY).",
+        "Good if you already have a Brave key or want region/freshness filters.",
+        "Docs: https://docs.argent.ai/tools/web",
+      ].join("\n"),
+      "Argent web search (Brave)",
+    );
+
+    const enableSearch = guardCancel(
+      await confirm({
+        message: enableTinyFishSearch
+          ? "Also configure Brave Search? (optional — TinyFish is already wired)"
+          : "Enable Argent web search (Brave Search)?",
+        initialValue: !enableTinyFishSearch && (existingSearch?.enabled ?? hasBraveSearchKey),
+      }),
+      runtime,
+    );
+    nextSearch = {
+      ...nextSearch,
+      enabled: enableTinyFishSearch || enableSearch,
+    };
+
+    if (enableSearch) {
+      const keyInput = guardCancel(
+        await text({
+          message: hasBraveSearchKey
+            ? "Brave Search API key (leave blank to keep the current value or use BRAVE_API_KEY)"
+            : "Brave Search API key (paste it here, or leave blank to use BRAVE_API_KEY)",
+          placeholder: hasBraveSearchKey ? "Leave blank to keep current" : "BSA...",
+        }),
+        runtime,
       );
+      const key = String(keyInput ?? "").trim();
+      if (key) {
+        nextSearch = { ...nextSearch, apiKey: key };
+      } else if (!hasBraveSearchKey) {
+        note(
+          [
+            "No Brave key stored yet. Brave search will stay unavailable until you add one.",
+            "Store a key here or set BRAVE_API_KEY in the Gateway environment.",
+            "Docs: https://docs.argent.ai/tools/web",
+          ].join("\n"),
+          "Argent web search",
+        );
+      }
     }
+  } else {
+    nextSearch = { ...nextSearch, enabled: true };
   }
 
   const enableFetch = guardCancel(
     await confirm({
-      message: "Enable Argent web fetch (keyless HTTP fetch)?",
+      message: "Enable Argent web fetch?",
       initialValue: existingFetch?.enabled ?? true,
     }),
     runtime,
   );
 
-  const nextFetch = {
+  let nextFetch: NonNullable<NonNullable<ArgentConfig["tools"]>["web"]>["fetch"] = {
     ...existingFetch,
     enabled: enableFetch,
   };
+
+  if (enableFetch) {
+    const existingTinyFishFetch = existingFetch?.tinyfish;
+    // Default to ON when a TinyFish key is already set (during search step)
+    // or already configured in fetch.tinyfish — recommended path.
+    const initialTinyFishFetch =
+      existingTinyFishFetch?.enabled ??
+      (enableTinyFishSearch || Boolean(existingTinyFishFetch?.apiKey));
+    const enableTinyFishFetch = guardCancel(
+      await confirm({
+        message:
+          "[recommended] Use TinyFish as the fetch backend? Renders JS, bypasses anti-bot, clean LLM-tuned markdown.",
+        initialValue: initialTinyFishFetch,
+      }),
+      runtime,
+    );
+    if (enableTinyFishFetch) {
+      const keyInput = guardCancel(
+        await text({
+          message: existingTinyFishFetch?.apiKey
+            ? "TinyFish API key (leave blank to keep current, or use TINYFISH_API_KEY env var)"
+            : "TinyFish API key (paste here, or leave blank to use TINYFISH_API_KEY env var)",
+          placeholder: existingTinyFishFetch?.apiKey ? "Leave blank to keep current" : "tf_...",
+        }),
+        runtime,
+      );
+      const key = String(keyInput ?? "").trim();
+      const nextTinyFishFetch = {
+        ...existingTinyFishFetch,
+        enabled: true,
+        ...(key ? { apiKey: key } : {}),
+      };
+      nextFetch = { ...nextFetch, tinyfish: nextTinyFishFetch };
+    } else if (existingTinyFishFetch) {
+      nextFetch = {
+        ...nextFetch,
+        tinyfish: { ...existingTinyFishFetch, enabled: false },
+      };
+    }
+  }
 
   return {
     ...nextConfig,
