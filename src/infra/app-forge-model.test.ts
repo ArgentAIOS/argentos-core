@@ -3,13 +3,19 @@ import {
   APP_FORGE_DEFAULT_RATING_MAX,
   APP_FORGE_MAX_RATING_MAX,
   APP_FORGE_MIN_RATING_MAX,
+  APP_FORGE_SAVED_VIEW_TYPES,
   checkAppForgeRevision,
   coerceAppForgeRatingValue,
+  migrateLegacyLocalStorageSavedView,
+  normalizeAppForgeSavedView,
+  normalizeAppForgeSavedViews,
   projectLegacyAppForgeBase,
   resolveAppForgeRatingMax,
   validateAppForgeFieldDefinitions,
   validateAppForgeRecordValues,
+  validateAppForgeSavedViews,
   type AppForgeField,
+  type AppForgeSavedView,
 } from "./app-forge-model.js";
 
 describe("AppForge core model", () => {
@@ -437,5 +443,173 @@ describe("AppForge core model", () => {
       options: ["Review"],
       selectOptions: [{ id: "opt-review", label: "Review", color: "amber" }],
     });
+  });
+});
+
+describe("AppForge durable saved views (Phase 4 gap #1)", () => {
+  it("exposes the full set of Airtable-parity view kinds", () => {
+    expect(APP_FORGE_SAVED_VIEW_TYPES).toEqual(["grid", "kanban", "form", "review", "calendar"]);
+  });
+
+  it("normalizes a candidate into a typed saved view, defaulting unknown types to grid", () => {
+    const view = normalizeAppForgeSavedView({
+      id: "view-pipeline",
+      name: "Pipeline",
+      type: "calendar",
+      filterText: "Open",
+      sortFieldId: "close_date",
+      sortDirection: "desc",
+      groupFieldId: "stage",
+      visibleFieldIds: ["name", "stage", "close_date"],
+      createdAt: "2026-05-12T10:00:00.000Z",
+      updatedAt: "2026-05-12T10:05:00.000Z",
+    });
+    expect(view).toEqual({
+      id: "view-pipeline",
+      name: "Pipeline",
+      type: "calendar",
+      filterText: "Open",
+      sortFieldId: "close_date",
+      sortDirection: "desc",
+      groupFieldId: "stage",
+      visibleFieldIds: ["name", "stage", "close_date"],
+      createdAt: "2026-05-12T10:00:00.000Z",
+      updatedAt: "2026-05-12T10:05:00.000Z",
+    });
+
+    // Unknown / missing type folds to "grid" rather than dropping the view —
+    // we want the operator's named view to survive an upstream schema bump.
+    expect(normalizeAppForgeSavedView({ id: "v", name: "Untyped", type: "gantt" })).toMatchObject({
+      id: "v",
+      name: "Untyped",
+      type: "grid",
+    });
+    expect(normalizeAppForgeSavedView({ id: "v", name: "No type" })).toMatchObject({
+      type: "grid",
+    });
+
+    // sortDirection that isn't asc/desc must NOT round-trip — otherwise a
+    // legacy "none" entry would leak back out of the durable store.
+    expect(
+      normalizeAppForgeSavedView({
+        id: "v",
+        name: "Bad sort",
+        type: "grid",
+        sortDirection: "none",
+      }),
+    ).not.toHaveProperty("sortDirection");
+  });
+
+  it("drops candidates that are missing required identity fields", () => {
+    expect(normalizeAppForgeSavedView(null)).toBeNull();
+    expect(normalizeAppForgeSavedView("not an object")).toBeNull();
+    expect(normalizeAppForgeSavedView({ name: "No id", type: "grid" })).toBeNull();
+    expect(normalizeAppForgeSavedView({ id: "v", type: "grid" })).toBeNull();
+    expect(normalizeAppForgeSavedView({ id: "  ", name: "Whitespace", type: "grid" })).toBeNull();
+  });
+
+  it("normalizes an array of views and drops invalid entries silently", () => {
+    expect(
+      normalizeAppForgeSavedViews([
+        { id: "view-1", name: "All", type: "grid" },
+        null,
+        { name: "No id", type: "grid" },
+        { id: "view-2", name: "Kanban", type: "kanban", visibleFieldIds: ["a", "b"] },
+        "not-an-object",
+      ]),
+    ).toEqual([
+      expect.objectContaining({ id: "view-1", name: "All", type: "grid" }),
+      expect.objectContaining({ id: "view-2", name: "Kanban", type: "kanban" }),
+    ]);
+    expect(normalizeAppForgeSavedViews(undefined)).toEqual([]);
+    expect(normalizeAppForgeSavedViews("not an array")).toEqual([]);
+  });
+
+  it("validates saved views against the parent table fields", () => {
+    const fields: Pick<AppForgeField, "id">[] = [{ id: "name" }, { id: "stage" }];
+    const views: AppForgeSavedView[] = [
+      { id: "v-1", name: "Pipeline", type: "kanban", groupFieldId: "stage" },
+      { id: "v-1", name: "Duplicate Id", type: "grid" },
+      { id: "v-2", name: "Pipeline", type: "grid" }, // duplicate name (case-insensitive)
+      {
+        id: "v-3",
+        name: "Unknown Sort",
+        type: "grid",
+        sortFieldId: "ghost",
+        sortDirection: "asc",
+      },
+      { id: "v-4", name: "Unknown Group", type: "kanban", groupFieldId: "ghost" },
+      {
+        id: "v-5",
+        name: "Unknown Visible",
+        type: "grid",
+        visibleFieldIds: ["name", "ghost"],
+      },
+    ];
+    const result = validateAppForgeSavedViews(views, fields);
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((error) => error.code)).toEqual([
+      "duplicate_view_id",
+      "duplicate_view_name",
+      "unknown_sort_field",
+      "unknown_group_field",
+      "unknown_visible_field",
+    ]);
+  });
+
+  it("only runs structural checks when fields are omitted (backward-compat for legacy callers)", () => {
+    const result = validateAppForgeSavedViews([
+      { id: "v-1", name: "Stage", type: "kanban", groupFieldId: "stage-that-does-not-exist" },
+      { id: "v-2", name: "Default", type: "grid", visibleFieldIds: ["ghost"] },
+    ]);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("rejects views with missing names or ids when running structural checks", () => {
+    const result = validateAppForgeSavedViews([
+      { id: "", name: "No id", type: "grid" },
+      { id: "v-2", name: "  ", type: "grid" },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((error) => error.code)).toEqual(["missing_id", "missing_name"]);
+  });
+
+  it("migrates legacy localStorage view shapes into the durable model", () => {
+    // The localStorage cache used "kind" before settling on "type". Confirm
+    // legacy entries cross over cleanly so operators don't lose their views.
+    expect(
+      migrateLegacyLocalStorageSavedView({
+        id: "view-leads",
+        name: "Leads",
+        kind: "kanban",
+        groupFieldId: "stage",
+      }),
+    ).toMatchObject({ id: "view-leads", name: "Leads", type: "kanban", groupFieldId: "stage" });
+
+    // The even-older AppForgeNamedView shape used "viewMode" — verify that
+    // legacy shape also folds without losing data.
+    expect(
+      migrateLegacyLocalStorageSavedView({
+        id: "view-review",
+        name: "Needs Review",
+        viewMode: "review",
+        filterText: "urgent",
+      }),
+    ).toMatchObject({
+      id: "view-review",
+      name: "Needs Review",
+      type: "review",
+      filterText: "urgent",
+    });
+
+    // Modern entries continue to round-trip unchanged.
+    expect(
+      migrateLegacyLocalStorageSavedView({
+        id: "view-grid",
+        name: "All",
+        type: "grid",
+      }),
+    ).toMatchObject({ id: "view-grid", name: "All", type: "grid" });
   });
 });

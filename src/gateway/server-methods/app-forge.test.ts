@@ -1004,4 +1004,154 @@ describe("AppForge gateway handlers", () => {
       expect.objectContaining({ message: "table not found" }),
     );
   });
+
+  // ------------------------------------------------------------------------
+  // Saved views (Phase 4 gap #1). These verify that the durable view CRUD
+  // path is wired through the gateway, returns typed payloads, enforces
+  // table-level permissions, and rejects malformed shapes.
+  // ------------------------------------------------------------------------
+
+  it("registers appforge.views.* methods for discovery", () => {
+    expect(listGatewayMethods()).toEqual(
+      expect.arrayContaining([
+        "appforge.views.list",
+        "appforge.views.put",
+        "appforge.views.delete",
+      ]),
+    );
+    expect(coreGatewayHandlers["appforge.views.put"]).toBe(appForgeHandlers["appforge.views.put"]);
+  });
+
+  it("lists, upserts, and deletes durable saved views through the gateway", async () => {
+    // Empty list before any view exists.
+    const initial = await invokeAppForgeHandler("appforge.views.list", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    expect(initial).toHaveBeenCalledWith(true, { views: [] }, undefined);
+
+    // Create a view.
+    const created = await invokeAppForgeHandler("appforge.views.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      view: {
+        id: "view-pipeline",
+        name: "Pipeline",
+        type: "kanban",
+        groupFieldId: "name",
+        visibleFieldIds: ["name"],
+      },
+      idempotencyKey: "gw-view-1",
+    });
+    expect(created).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        view: expect.objectContaining({
+          id: "view-pipeline",
+          name: "Pipeline",
+          type: "kanban",
+        }),
+        table: expect.objectContaining({ id: "table-1" }),
+        base: expect.objectContaining({ id: "base-1" }),
+      }),
+      undefined,
+    );
+
+    // Replaying the idempotency key returns the same payload.
+    const replay = await invokeAppForgeHandler("appforge.views.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      view: { id: "view-pipeline", name: "Should be ignored", type: "grid" },
+      idempotencyKey: "gw-view-1",
+    });
+    const firstCall = (created as ReturnType<typeof createResponder>).mock.calls[0];
+    const replayCall = (replay as ReturnType<typeof createResponder>).mock.calls[0];
+    expect(replayCall?.[1]).toEqual(firstCall?.[1]);
+
+    // List now reflects the new view.
+    const listed = await invokeAppForgeHandler("appforge.views.list", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    expect(listed).toHaveBeenCalledWith(
+      true,
+      { views: [expect.objectContaining({ id: "view-pipeline", name: "Pipeline" })] },
+      undefined,
+    );
+
+    // Delete and confirm.
+    const deleted = await invokeAppForgeHandler("appforge.views.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+      viewId: "view-pipeline",
+    });
+    expect(deleted).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        view: expect.objectContaining({ id: "view-pipeline" }),
+      }),
+      undefined,
+    );
+    const afterDelete = await invokeAppForgeHandler("appforge.views.list", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    expect(afterDelete).toHaveBeenCalledWith(true, { views: [] }, undefined);
+  });
+
+  it("rejects malformed view writes and missing identifiers", async () => {
+    const missingTable = await invokeAppForgeHandler("appforge.views.put", {
+      baseId: "base-1",
+      view: { id: "v", name: "x", type: "grid" },
+    });
+    expect(missingTable).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: "baseId, tableId, and a valid view (id+name+type) are required",
+      }),
+    );
+
+    const invalidView = await invokeAppForgeHandler("appforge.views.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      view: { id: "v" /* no name */ },
+    });
+    expect(invalidView).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: "baseId, tableId, and a valid view (id+name+type) are required",
+      }),
+    );
+
+    const missingViewId = await invokeAppForgeHandler("appforge.views.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    expect(missingViewId).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: "baseId, tableId, and viewId are required",
+      }),
+    );
+  });
+
+  it("rejects view writes from actors without table-write access", async () => {
+    // Same permission model as appforge.tables.put: views inherit table-level
+    // permissions, so a non-editor actor must not be able to upsert views.
+    const respond = await invokeAppForgeHandler("appforge.views.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      view: { id: "v-1", name: "Visitor", type: "grid" },
+      actor: { actorId: "viewer-1", actorType: "operator", sessionKey: "agent:viewer-1:main" },
+      permissions: permissions({ creator: "owner-1" }),
+    });
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "unauthorized appforge write" }),
+    );
+  });
 });

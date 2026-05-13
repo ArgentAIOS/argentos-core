@@ -1,8 +1,10 @@
 import {
   checkAppForgeRevision,
+  normalizeAppForgeSavedView,
   type AppForgeBase,
   type AppForgeRecord,
   type AppForgeRevisionCheck,
+  type AppForgeSavedView,
   type AppForgeTable,
 } from "./app-forge-model.js";
 
@@ -46,6 +48,21 @@ export type AppForgeRecordWriteResult =
     }
   | AppForgeRevisionConflict;
 
+export type AppForgeSavedViewWriteOptions = {
+  expectedBaseRevision?: number;
+  expectedTableRevision?: number;
+  idempotencyKey?: string;
+};
+
+export type AppForgeSavedViewWriteResult =
+  | {
+      ok: true;
+      base: AppForgeBase;
+      table: AppForgeTable;
+      view: AppForgeSavedView;
+    }
+  | AppForgeRevisionConflict;
+
 export interface AppForgeAdapter {
   listBases(opts?: { appId?: string }): Promise<AppForgeBase[]>;
   getBase(baseId: string): Promise<AppForgeBase | null>;
@@ -76,6 +93,28 @@ export interface AppForgeAdapter {
     recordId: string,
     opts?: Omit<AppForgeRecordWriteOptions, "idempotencyKey">,
   ): Promise<AppForgeRecordWriteResult>;
+  /**
+   * Saved-view CRUD (Phase 4 gap #1). Views live as durable table metadata,
+   * not in operator-local localStorage. Permissions inherit from the parent
+   * table — anyone who can write the table may upsert/delete views on it.
+   *
+   * `listViews` always returns `[]` (not `null`) for tables without views so
+   * callers don't have to disambiguate "table not found" from "no views" —
+   * that's what `getTable` is for.
+   */
+  listViews(baseId: string, tableId: string): Promise<AppForgeSavedView[]>;
+  putView(
+    baseId: string,
+    tableId: string,
+    view: AppForgeSavedView,
+    opts?: AppForgeSavedViewWriteOptions,
+  ): Promise<AppForgeSavedViewWriteResult>;
+  deleteView(
+    baseId: string,
+    tableId: string,
+    viewId: string,
+    opts?: Omit<AppForgeSavedViewWriteOptions, "idempotencyKey">,
+  ): Promise<AppForgeSavedViewWriteResult>;
 }
 
 function nowIso(): string {
@@ -103,6 +142,13 @@ function cloneRecord(record: AppForgeRecord): AppForgeRecord {
   };
 }
 
+function cloneSavedView(view: AppForgeSavedView): AppForgeSavedView {
+  return {
+    ...view,
+    visibleFieldIds: view.visibleFieldIds ? [...view.visibleFieldIds] : undefined,
+  };
+}
+
 function cloneTable(table: AppForgeTable): AppForgeTable {
   return {
     ...table,
@@ -111,13 +157,7 @@ function cloneTable(table: AppForgeTable): AppForgeTable {
       options: field.options ? [...field.options] : undefined,
     })),
     records: table.records.map(cloneRecord),
-    views: table.views
-      ? table.views.map((view) =>
-          view !== null && typeof view === "object" && !Array.isArray(view)
-            ? { ...(view as Record<string, unknown>) }
-            : view,
-        )
-      : undefined,
+    views: table.views ? table.views.map(cloneSavedView) : undefined,
     activeCell: table.activeCell ? { ...table.activeCell } : undefined,
   };
 }
@@ -139,6 +179,10 @@ export function createInMemoryAppForgeAdapter(seed: AppForgeBase[] = []): AppFor
   const appliedRecordIdempotencyKeys = new Map<
     string,
     { base: AppForgeBase; table: AppForgeTable; record: AppForgeRecord }
+  >();
+  const appliedSavedViewIdempotencyKeys = new Map<
+    string,
+    { base: AppForgeBase; table: AppForgeTable; view: AppForgeSavedView }
   >();
 
   return {
@@ -461,6 +505,159 @@ export function createInMemoryAppForgeAdapter(seed: AppForgeBase[] = []): AppFor
         base: cloneBase(nextBase),
         table: cloneTable(nextTable),
         record: cloneRecord({ ...currentRecord, revision: currentRecord.revision + 1 }),
+      };
+    },
+
+    async listViews(baseId, tableId) {
+      const base = bases.get(baseId);
+      const table = base?.tables.find((item) => item.id === tableId);
+      if (!table?.views) {
+        return [];
+      }
+      return table.views.map(cloneSavedView);
+    },
+
+    async putView(baseId, tableId, view, opts) {
+      if (opts?.idempotencyKey) {
+        const applied = appliedSavedViewIdempotencyKeys.get(opts.idempotencyKey);
+        if (applied) {
+          return {
+            ok: true,
+            base: cloneBase(applied.base),
+            table: cloneTable(applied.table),
+            view: cloneSavedView(applied.view),
+          };
+        }
+      }
+
+      const normalized = normalizeAppForgeSavedView(view);
+      if (!normalized) {
+        return {
+          ok: false,
+          code: "revision_conflict",
+          expectedRevision: opts?.expectedTableRevision ?? 0,
+          actualRevision: 0,
+          message: `View ${view?.id ?? ""} in table ${tableId} requires id, name, and type.`,
+        };
+      }
+
+      const base = bases.get(baseId);
+      if (!base) {
+        return missingConflict("Base", baseId, opts?.expectedBaseRevision);
+      }
+      const baseRevisionCheck = checkAppForgeRevision(base.revision, opts?.expectedBaseRevision);
+      if (!baseRevisionCheck.ok) {
+        return baseRevisionCheck;
+      }
+
+      const currentTable = base.tables.find((item) => item.id === tableId);
+      if (!currentTable) {
+        return missingConflict(`Table ${tableId} in base`, baseId, opts?.expectedTableRevision);
+      }
+      const tableRevisionCheck = checkAppForgeRevision(
+        currentTable.revision,
+        opts?.expectedTableRevision,
+      );
+      if (!tableRevisionCheck.ok) {
+        return tableRevisionCheck;
+      }
+
+      const timestamp = nowIso();
+      const existingViews = currentTable.views ?? [];
+      const existingView = existingViews.find((item) => item.id === normalized.id);
+      const nextView: AppForgeSavedView = {
+        ...normalized,
+        createdAt: existingView?.createdAt ?? normalized.createdAt ?? timestamp,
+        updatedAt: normalized.updatedAt ?? timestamp,
+      };
+      const nextViews = existingView
+        ? existingViews.map((item) => (item.id === nextView.id ? nextView : item))
+        : [...existingViews, nextView];
+      const nextTable = cloneTable({
+        ...currentTable,
+        views: nextViews,
+        revision: currentTable.revision + 1,
+      });
+      const nextBase = cloneBase({
+        ...base,
+        tables: base.tables.map((item) => (item.id === tableId ? nextTable : item)),
+        revision: base.revision + 1,
+        updatedAt: timestamp,
+      });
+
+      bases.set(baseId, nextBase);
+      if (opts?.idempotencyKey) {
+        appliedSavedViewIdempotencyKeys.set(opts.idempotencyKey, {
+          base: nextBase,
+          table: nextTable,
+          view: nextView,
+        });
+      }
+      return {
+        ok: true,
+        base: cloneBase(nextBase),
+        table: cloneTable(nextTable),
+        view: cloneSavedView(nextView),
+      };
+    },
+
+    async deleteView(baseId, tableId, viewId, opts) {
+      const base = bases.get(baseId);
+      if (!base) {
+        return missingConflict("Base", baseId, opts?.expectedBaseRevision);
+      }
+      const baseRevisionCheck = checkAppForgeRevision(base.revision, opts?.expectedBaseRevision);
+      if (!baseRevisionCheck.ok) {
+        return baseRevisionCheck;
+      }
+
+      const currentTable = base.tables.find((item) => item.id === tableId);
+      if (!currentTable) {
+        return missingConflict(`Table ${tableId} in base`, baseId, opts?.expectedTableRevision);
+      }
+      const tableRevisionCheck = checkAppForgeRevision(
+        currentTable.revision,
+        opts?.expectedTableRevision,
+      );
+      if (!tableRevisionCheck.ok) {
+        return tableRevisionCheck;
+      }
+
+      const existingViews = currentTable.views ?? [];
+      const removed = existingViews.find((item) => item.id === viewId);
+      if (!removed) {
+        return missingConflict(
+          `View ${viewId} in table ${tableId}`,
+          baseId,
+          opts?.expectedTableRevision,
+        );
+      }
+      const nextViews = existingViews.filter((item) => item.id !== viewId);
+      const timestamp = nowIso();
+      const nextTable = cloneTable({
+        ...currentTable,
+        views: nextViews,
+        // Clear the activeViewId when the operator deletes the active view so
+        // the next render picks a surviving view (or none) — without this,
+        // selectView would dangle on a stale id.
+        activeViewId:
+          currentTable.activeViewId === viewId ? nextViews[0]?.id : currentTable.activeViewId,
+        defaultViewId:
+          currentTable.defaultViewId === viewId ? undefined : currentTable.defaultViewId,
+        revision: currentTable.revision + 1,
+      });
+      const nextBase = cloneBase({
+        ...base,
+        tables: base.tables.map((item) => (item.id === tableId ? nextTable : item)),
+        revision: base.revision + 1,
+        updatedAt: timestamp,
+      });
+      bases.set(baseId, nextBase);
+      return {
+        ok: true,
+        base: cloneBase(nextBase),
+        table: cloneTable(nextTable),
+        view: cloneSavedView(removed),
       };
     },
   };

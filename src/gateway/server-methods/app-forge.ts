@@ -1,4 +1,3 @@
-import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "../../infra/app-forge-model.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { getPgClient } from "../../data/pg-client.js";
 import { isPostgresEnabled } from "../../data/storage-config.js";
@@ -10,6 +9,13 @@ import {
   type AppForgeImportColumnOverride,
   type AppForgeImportWriteRecordFn,
 } from "../../infra/app-forge-import.js";
+import {
+  normalizeAppForgeSavedView,
+  type AppForgeBase,
+  type AppForgeRecord,
+  type AppForgeSavedView,
+  type AppForgeTable,
+} from "../../infra/app-forge-model.js";
 import {
   buildAppForgePermissionCheckAuditEvent,
   canWriteAppForge,
@@ -93,6 +99,10 @@ function asAppForgeTable(value: unknown): AppForgeTable | null {
     return null;
   }
   return value as AppForgeTable;
+}
+
+function asAppForgeSavedView(value: unknown): AppForgeSavedView | null {
+  return normalizeAppForgeSavedView(value);
 }
 
 function asAppForgeRecord(value: unknown): AppForgeRecord | null {
@@ -805,5 +815,124 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       });
     }
     respond(true, { base: result.base, table: result.table, record: result.record }, undefined);
+  },
+
+  // -------------------------------------------------------------------------
+  // Saved-view CRUD (Phase 4 gap #1). Views are durable table metadata; the
+  // operator-local localStorage cache used to be the only home, so anyone
+  // who joined the project couldn't see the same views. These methods make
+  // views shareable across operators by routing them through the table
+  // metadata path with table-level permission inheritance.
+  // -------------------------------------------------------------------------
+
+  "appforge.views.list": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    if (!baseId || !tableId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and tableId are required"),
+      );
+      return;
+    }
+    const views = await adapter.listViews(baseId, tableId);
+    respond(true, { views }, undefined);
+  },
+
+  "appforge.views.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    const view = asAppForgeSavedView(params.view);
+    if (!baseId || !tableId || !view) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "baseId, tableId, and a valid view (id+name+type) are required",
+        ),
+      );
+      return;
+    }
+    // Permissions: views inherit table-level permissions. Reuse the existing
+    // appforge write guard so we get a single audit-event source of truth for
+    // unauthorized view writes.
+    if (params.actor !== undefined || params.permissions !== undefined) {
+      const base = await adapter.getBase(baseId);
+      if (!base) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
+        return;
+      }
+      const guard = appForgeWriteGuard(params, base.appId);
+      if (!guard.ok) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+        );
+        return;
+      }
+    }
+    const result = await adapter.putView(baseId, tableId, view, {
+      expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
+      expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
+      idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, table: result.table, view: result.view }, undefined);
+  },
+
+  "appforge.views.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    const viewId = stringParam(params, "viewId");
+    if (!baseId || !tableId || !viewId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId, tableId, and viewId are required"),
+      );
+      return;
+    }
+    if (params.actor !== undefined || params.permissions !== undefined) {
+      const base = await adapter.getBase(baseId);
+      if (!base) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
+        return;
+      }
+      const guard = appForgeWriteGuard(params, base.appId);
+      if (!guard.ok) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+        );
+        return;
+      }
+    }
+    const result = await adapter.deleteView(baseId, tableId, viewId, {
+      expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
+      expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, table: result.table, view: result.view }, undefined);
   },
 };

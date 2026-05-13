@@ -5,17 +5,22 @@ import {
   type AppForgeBaseWrite,
   type AppForgeRecordWriteOptions,
   type AppForgeRecordWriteResult,
+  type AppForgeSavedViewWriteOptions,
+  type AppForgeSavedViewWriteResult,
   type AppForgeTableWriteOptions,
   type AppForgeTableWriteResult,
   type AppForgeWriteResult,
 } from "./app-forge-adapter.js";
 import {
   checkAppForgeRevision,
+  normalizeAppForgeSavedView,
+  normalizeAppForgeSavedViews,
   normalizeLegacyAppForgeField,
   type AppForgeBase,
   type AppForgeField,
   type AppForgeRecord,
   type AppForgeRecordValue,
+  type AppForgeSavedView,
   type AppForgeTable,
 } from "./app-forge-model.js";
 
@@ -180,6 +185,13 @@ function cloneRecord(record: AppForgeRecord): AppForgeRecord {
   };
 }
 
+function cloneSavedView(view: AppForgeSavedView): AppForgeSavedView {
+  return {
+    ...view,
+    visibleFieldIds: view.visibleFieldIds ? [...view.visibleFieldIds] : undefined,
+  };
+}
+
 function cloneTable(table: AppForgeTable): AppForgeTable {
   return {
     ...table,
@@ -191,13 +203,7 @@ function cloneTable(table: AppForgeTable): AppForgeTable {
         : undefined,
     })),
     records: table.records.map(cloneRecord),
-    views: table.views
-      ? table.views.map((view) =>
-          view !== null && typeof view === "object" && !Array.isArray(view)
-            ? { ...(view as Record<string, unknown>) }
-            : view,
-        )
-      : undefined,
+    views: table.views ? table.views.map(cloneSavedView) : undefined,
     activeCell: table.activeCell ? { ...table.activeCell } : undefined,
   };
 }
@@ -247,11 +253,7 @@ function tableMetadataFromTable(table: AppForgeTable): Record<string, unknown> {
   const source = table as unknown as Record<string, unknown>;
   const metadata = metadataFromJson(source.metadata);
   if (table.views !== undefined) {
-    metadata.views = table.views.map((view) =>
-      view !== null && typeof view === "object" && !Array.isArray(view)
-        ? { ...(view as Record<string, unknown>) }
-        : view,
-    );
+    metadata.views = table.views.map((view) => ({ ...cloneSavedView(view) }));
   }
   if (table.activeViewId !== undefined) {
     metadata.activeViewId = table.activeViewId;
@@ -305,14 +307,31 @@ function baseRowToBase(row: AppForgeBaseRow, tables: AppForgeTable[]): AppForgeB
 }
 
 function tableRowToTable(row: AppForgeTableRow, records: AppForgeRecord[]): AppForgeTable {
-  return {
-    ...metadataFromJson(row.metadata),
+  // Spread the parsed metadata into a fresh object — `metadataFromJson` will
+  // hand back the stored object reference verbatim when `row.metadata` is
+  // already parsed, so a naive `delete metadata.views` here would mutate the
+  // durable row in place. The spread isolates our typed projection from the
+  // adapter's stored state.
+  const metadata = { ...metadataFromJson(row.metadata) };
+  // Project the persisted views blob through the typed normalizer so callers
+  // never see `unknown[]` shapes — invalid entries are dropped, and legacy
+  // localStorage-shaped views are folded into the durable AppForgeSavedView
+  // model. The raw `views` key is removed from the spread metadata to avoid
+  // shadowing the typed assignment below.
+  const rawViews = metadata.views;
+  delete metadata.views;
+  const table: AppForgeTable = {
+    ...metadata,
     id: row.id,
     name: row.name,
     fields: fieldsFromJson(row.fields),
     records,
     revision: row.revision,
   };
+  if (rawViews !== undefined) {
+    table.views = normalizeAppForgeSavedViews(rawViews);
+  }
+  return table;
 }
 
 function recordRowToRecord(row: AppForgeRecordRow): AppForgeRecord {
@@ -1119,6 +1138,232 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
           base: cloneBase(nextBase),
           table: cloneTable(nextTable!),
           record: cloneRecord({ ...currentRecord, revision: currentRecord.revision + 1 }),
+        };
+      });
+    },
+
+    async listViews(baseId: string, tableId: string): Promise<AppForgeSavedView[]> {
+      await ensureReady();
+      const tableRow = await selectTableRow(sql, baseId, tableId);
+      if (!tableRow) {
+        return [];
+      }
+      const table = await hydrateTable(sql, baseId, tableRow);
+      return table.views?.map((view) => cloneSavedView(view)) ?? [];
+    },
+
+    async putView(
+      baseId: string,
+      tableId: string,
+      view: AppForgeSavedView,
+      opts?: AppForgeSavedViewWriteOptions,
+    ): Promise<AppForgeSavedViewWriteResult> {
+      await ensureReady();
+      const replay = await readIdempotency<AppForgeSavedViewWriteResult>(sql, opts?.idempotencyKey);
+      if (replay) {
+        return replay;
+      }
+
+      return await sql.begin(async (transaction) => {
+        const tx = transactionSql(transaction);
+        const baseRow = await selectBaseRow(tx, baseId);
+        if (!baseRow) {
+          return missingConflict("Base", baseId, opts?.expectedBaseRevision);
+        }
+        const baseRevisionCheck = checkAppForgeRevision(
+          baseRow.revision,
+          opts?.expectedBaseRevision,
+        );
+        if (!baseRevisionCheck.ok) {
+          return baseRevisionCheck;
+        }
+
+        const currentTableRow = await selectTableRow(tx, baseId, tableId);
+        if (!currentTableRow) {
+          return missingConflict(`Table ${tableId} in base`, baseId, opts?.expectedTableRevision);
+        }
+        const tableRevisionCheck = checkAppForgeRevision(
+          currentTableRow.revision,
+          opts?.expectedTableRevision,
+        );
+        if (!tableRevisionCheck.ok) {
+          return tableRevisionCheck;
+        }
+
+        const normalized = normalizeAppForgeSavedView(view);
+        if (!normalized) {
+          return {
+            ok: false,
+            code: "revision_conflict",
+            expectedRevision: opts?.expectedTableRevision ?? 0,
+            actualRevision: 0,
+            message: `View ${view?.id ?? ""} in table ${tableId} requires id, name, and type.`,
+          };
+        }
+
+        const currentTable = await hydrateTable(tx, baseId, currentTableRow);
+        const existingView = currentTable.views?.find((item) => item.id === normalized.id);
+        const timestamp = nowIso();
+        const nextView: AppForgeSavedView = {
+          ...normalized,
+          createdAt: existingView?.createdAt ?? normalized.createdAt ?? timestamp,
+          updatedAt: normalized.updatedAt ?? timestamp,
+        };
+        const nextViews = existingView
+          ? (currentTable.views ?? []).map((item) => (item.id === nextView.id ? nextView : item))
+          : [...(currentTable.views ?? []), nextView];
+        const nextTable: AppForgeTable = {
+          ...currentTable,
+          views: nextViews,
+        };
+        const metadata = tableMetadataJson(nextTable);
+
+        const updatedTableRows = await tx<AppForgeTableRow[]>`
+          UPDATE appforge_tables
+          SET
+            metadata = ${tx.json(metadata)},
+            revision = revision + 1,
+            updated_at = ${timestamp}
+          WHERE base_id = ${baseId} AND id = ${tableId}
+          RETURNING
+            id,
+            base_id AS "baseId",
+            name,
+            fields,
+            revision,
+            position,
+            metadata,
+            updated_at AS "updatedAt"
+        `;
+        const updatedBaseRows = await tx<AppForgeBaseRow[]>`
+          UPDATE appforge_bases
+          SET revision = revision + 1, updated_at = ${timestamp}
+          WHERE id = ${baseId}
+          RETURNING
+            id,
+            app_id AS "appId",
+            name,
+            description,
+            active_table_id AS "activeTableId",
+            revision,
+            updated_at AS "updatedAt"
+        `;
+        const persistedTable = updatedTableRows[0]
+          ? await hydrateTable(tx, baseId, updatedTableRows[0])
+          : null;
+        const persistedBase = await hydrateBase(tx, updatedBaseRows[0]);
+        const response: AppForgeSavedViewWriteResult = {
+          ok: true,
+          base: cloneBase(persistedBase),
+          table: cloneTable(persistedTable!),
+          view: cloneSavedView(nextView),
+        };
+        await writeIdempotency(tx, {
+          idempotencyKey: opts?.idempotencyKey,
+          operation: "view.put",
+          resourceType: "view",
+          resourceId: nextView.id,
+          response,
+        });
+        return response;
+      });
+    },
+
+    async deleteView(
+      baseId: string,
+      tableId: string,
+      viewId: string,
+      opts?: Omit<AppForgeSavedViewWriteOptions, "idempotencyKey">,
+    ): Promise<AppForgeSavedViewWriteResult> {
+      await ensureReady();
+      return await sql.begin(async (transaction) => {
+        const tx = transactionSql(transaction);
+        const baseRow = await selectBaseRow(tx, baseId);
+        if (!baseRow) {
+          return missingConflict("Base", baseId, opts?.expectedBaseRevision);
+        }
+        const baseRevisionCheck = checkAppForgeRevision(
+          baseRow.revision,
+          opts?.expectedBaseRevision,
+        );
+        if (!baseRevisionCheck.ok) {
+          return baseRevisionCheck;
+        }
+
+        const currentTableRow = await selectTableRow(tx, baseId, tableId);
+        if (!currentTableRow) {
+          return missingConflict(`Table ${tableId} in base`, baseId, opts?.expectedTableRevision);
+        }
+        const tableRevisionCheck = checkAppForgeRevision(
+          currentTableRow.revision,
+          opts?.expectedTableRevision,
+        );
+        if (!tableRevisionCheck.ok) {
+          return tableRevisionCheck;
+        }
+
+        const currentTable = await hydrateTable(tx, baseId, currentTableRow);
+        const removed = currentTable.views?.find((item) => item.id === viewId);
+        if (!removed) {
+          return missingConflict(
+            `View ${viewId} in table ${tableId}`,
+            baseId,
+            opts?.expectedTableRevision,
+          );
+        }
+        const nextViews = (currentTable.views ?? []).filter((item) => item.id !== viewId);
+        const nextTable: AppForgeTable = {
+          ...currentTable,
+          views: nextViews,
+          // Drop the active/default view pointer when it referenced the
+          // deleted view so callers don't dangle on a stale id after reload.
+          activeViewId:
+            currentTable.activeViewId === viewId ? nextViews[0]?.id : currentTable.activeViewId,
+          defaultViewId:
+            currentTable.defaultViewId === viewId ? undefined : currentTable.defaultViewId,
+        };
+        const metadata = tableMetadataJson(nextTable);
+        const timestamp = nowIso();
+
+        const updatedTableRows = await tx<AppForgeTableRow[]>`
+          UPDATE appforge_tables
+          SET
+            metadata = ${tx.json(metadata)},
+            revision = revision + 1,
+            updated_at = ${timestamp}
+          WHERE base_id = ${baseId} AND id = ${tableId}
+          RETURNING
+            id,
+            base_id AS "baseId",
+            name,
+            fields,
+            revision,
+            position,
+            metadata,
+            updated_at AS "updatedAt"
+        `;
+        const updatedBaseRows = await tx<AppForgeBaseRow[]>`
+          UPDATE appforge_bases
+          SET revision = revision + 1, updated_at = ${timestamp}
+          WHERE id = ${baseId}
+          RETURNING
+            id,
+            app_id AS "appId",
+            name,
+            description,
+            active_table_id AS "activeTableId",
+            revision,
+            updated_at AS "updatedAt"
+        `;
+        const persistedTable = updatedTableRows[0]
+          ? await hydrateTable(tx, baseId, updatedTableRows[0])
+          : null;
+        const persistedBase = await hydrateBase(tx, updatedBaseRows[0]);
+        return {
+          ok: true,
+          base: cloneBase(persistedBase),
+          table: cloneTable(persistedTable!),
+          view: cloneSavedView(removed),
         };
       });
     },

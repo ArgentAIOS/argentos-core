@@ -261,6 +261,64 @@ function createFakeDurableSql() {
         }));
     }
 
+    // Handle the appforge.views.put / delete cascade UPDATE on appforge_bases.
+    // This bumps the base revision so callers see the cascading mutation.
+    if (
+      query.includes("UPDATE appforge_bases") &&
+      query.includes("revision = revision + 1") &&
+      query.includes("RETURNING")
+    ) {
+      const [updatedAt, baseId] = values;
+      const row = state.bases.get(String(baseId));
+      if (!row) {
+        return [];
+      }
+      row.revision = row.revision + 1;
+      row.updatedAt = String(updatedAt);
+      return [
+        {
+          id: row.id,
+          appId: row.appId,
+          name: row.name,
+          description: row.description,
+          activeTableId: row.activeTableId,
+          revision: row.revision,
+          updatedAt: row.updatedAt,
+        },
+      ];
+    }
+
+    // Handle the appforge.views.put / delete metadata UPDATE: rewrites the
+    // table metadata column with the new views blob, bumps revision, and
+    // returns the updated row so callers can rehydrate without a second read.
+    if (
+      query.includes("UPDATE appforge_tables") &&
+      query.includes("metadata = ?") &&
+      query.includes("revision = revision + 1") &&
+      query.includes("RETURNING")
+    ) {
+      const [metadata, updatedAt, baseId, tableId] = values;
+      const row = state.tables.get(String(tableId));
+      if (!row || row.baseId !== String(baseId)) {
+        return [];
+      }
+      row.metadata = metadata;
+      row.revision = row.revision + 1;
+      row.updatedAt = String(updatedAt);
+      return [
+        {
+          id: row.id,
+          baseId: row.baseId,
+          name: row.name,
+          fields: row.fields,
+          revision: row.revision,
+          position: row.position,
+          metadata: row.metadata,
+          updatedAt: row.updatedAt,
+        },
+      ];
+    }
+
     throw new Error(`Unhandled fake AppForge SQL query: ${query}`);
   };
 
@@ -626,5 +684,185 @@ describe("AppForge store contract", () => {
       }),
     ]);
     expect(state.schemaEnsuredCount).toBe(2);
+  });
+
+  // ------------------------------------------------------------------------
+  // Saved-view durable CRUD (Phase 4 gap #1). These cover the new dedicated
+  // adapter methods: listViews / putView / deleteView. The earlier section
+  // covers views-as-table-metadata via putBase/putTable; this section
+  // verifies the lighter-weight per-view path the gateway exposes.
+  // ------------------------------------------------------------------------
+
+  it("supports view-level CRUD without rewriting the entire table", async () => {
+    const store = createInMemoryAppForgeStore([base()]);
+
+    await expect(store.listViews("base-1", "table-1")).resolves.toEqual([]);
+
+    const created = await store.putView(
+      "base-1",
+      "table-1",
+      {
+        id: "view-leads",
+        name: "Leads",
+        type: "kanban",
+        filterText: "Open",
+        sortFieldId: "name",
+        sortDirection: "asc",
+        groupFieldId: "stage",
+        visibleFieldIds: ["name", "stage"],
+      },
+      { expectedBaseRevision: 1, expectedTableRevision: 1, idempotencyKey: "view-create-1" },
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
+    expect(created.view).toMatchObject({
+      id: "view-leads",
+      name: "Leads",
+      type: "kanban",
+      groupFieldId: "stage",
+      visibleFieldIds: ["name", "stage"],
+    });
+    expect(created.view.createdAt).toBeTypeOf("string");
+    expect(created.view.updatedAt).toBeTypeOf("string");
+    expect(created.table.revision).toBe(2);
+    expect(created.base.revision).toBe(2);
+
+    // Idempotency: replay returns the same view without bumping revisions.
+    const replay = await store.putView(
+      "base-1",
+      "table-1",
+      {
+        id: "view-leads",
+        name: "Should be ignored",
+        type: "grid",
+      },
+      { expectedBaseRevision: 1, expectedTableRevision: 1, idempotencyKey: "view-create-1" },
+    );
+    expect(replay).toEqual(created);
+
+    // Upsert: updates preserve createdAt but bump updatedAt.
+    const updated = await store.putView(
+      "base-1",
+      "table-1",
+      {
+        id: "view-leads",
+        name: "Hot Leads",
+        type: "review",
+        filterText: "Hot",
+      },
+      { expectedBaseRevision: 2, expectedTableRevision: 2 },
+    );
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) throw new Error("unreachable");
+    expect(updated.view).toMatchObject({
+      id: "view-leads",
+      name: "Hot Leads",
+      type: "review",
+      filterText: "Hot",
+    });
+    expect(updated.view.createdAt).toBe(created.view.createdAt);
+    expect(updated.table.views).toEqual([expect.objectContaining({ id: "view-leads" })]);
+
+    const stillThere = await store.listViews("base-1", "table-1");
+    expect(stillThere).toEqual([expect.objectContaining({ id: "view-leads", name: "Hot Leads" })]);
+
+    // Deleting the active view clears activeViewId so the next render picks
+    // a surviving view (or none) instead of dangling on a stale id.
+    await store.putTable(
+      "base-1",
+      {
+        ...(await store.getTable("base-1", "table-1"))!,
+        activeViewId: "view-leads",
+      },
+      { expectedBaseRevision: 3, expectedTableRevision: 3 },
+    );
+
+    const deleted = await store.deleteView("base-1", "table-1", "view-leads");
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) throw new Error("unreachable");
+    expect(deleted.view.id).toBe("view-leads");
+    expect(deleted.table.activeViewId).toBeUndefined();
+    await expect(store.listViews("base-1", "table-1")).resolves.toEqual([]);
+  });
+
+  it("returns a revision conflict when a saved view target is missing or shape is invalid", async () => {
+    const store = createInMemoryAppForgeStore([base()]);
+
+    const missingTable = await store.putView("base-1", "ghost-table", {
+      id: "v",
+      name: "x",
+      type: "grid",
+    });
+    expect(missingTable.ok).toBe(false);
+
+    const missingBase = await store.deleteView("ghost-base", "table-1", "view");
+    expect(missingBase.ok).toBe(false);
+
+    const invalidView = await store.putView("base-1", "table-1", {
+      id: "",
+      name: "",
+      type: "grid",
+    } as unknown as AppForgeBase["tables"][number]["views"] extends (infer V) | undefined
+      ? V extends Array<infer Item>
+        ? Item
+        : never
+      : never);
+    expect(invalidView.ok).toBe(false);
+  });
+
+  it("preserves durable saved views across postgres store recreation", async () => {
+    const { sql, state } = createFakeDurableSql();
+    const firstStore = createPostgresAppForgeStore(sql);
+
+    await firstStore.putBase({ base: base({ revision: 0 }), expectedRevision: 0 });
+
+    const created = await firstStore.putView(
+      "base-1",
+      "table-1",
+      {
+        id: "view-pipeline",
+        name: "Pipeline",
+        type: "calendar",
+        filterText: "Open",
+        sortFieldId: "name",
+        sortDirection: "asc",
+        groupFieldId: "name",
+        visibleFieldIds: ["name"],
+      },
+      { idempotencyKey: "view-pg-1" },
+    );
+    expect(created.ok).toBe(true);
+
+    // Replay returns the cached idempotency response without re-running.
+    const replay = await firstStore.putView(
+      "base-1",
+      "table-1",
+      { id: "view-pipeline", name: "ignored", type: "grid" },
+      { idempotencyKey: "view-pg-1" },
+    );
+    expect(replay).toEqual(created);
+
+    // Re-open the store (simulates close/reopen / token rotation). Persisted
+    // JSON columns get stringified by Postgres on the wire so mimic that
+    // before reading back.
+    const reopened = createPostgresAppForgeStore(sql);
+    const storedTable = state.tables.get("table-1");
+    if (storedTable) {
+      storedTable.fields = JSON.stringify(storedTable.fields);
+      storedTable.metadata = JSON.stringify(storedTable.metadata);
+    }
+
+    await expect(reopened.listViews("base-1", "table-1")).resolves.toEqual([
+      expect.objectContaining({
+        id: "view-pipeline",
+        name: "Pipeline",
+        type: "calendar",
+        filterText: "Open",
+        sortFieldId: "name",
+        sortDirection: "asc",
+        groupFieldId: "name",
+        visibleFieldIds: ["name"],
+      }),
+    ]);
   });
 });
