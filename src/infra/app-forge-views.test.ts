@@ -220,13 +220,76 @@ describe("AppForge saved named views", () => {
     });
   });
 
+  it("round-trips a timeline named view through metadata projection", () => {
+    // Timeline is the AppForge Phase-4 parity-gap view mode #3 (date-range
+    // / Gantt-style view — Airtable's 3rd most-requested view after Grid
+    // and Gallery). This regression locks in that the named-view union
+    // accepts `"timeline"` without silently downgrading it to `"grid"`.
+    // Mirrors the calendar / gallery coverage immediately above.
+    const views = projectAppForgeNamedViewsFromMetadata(
+      {
+        appForge: {
+          structured: {
+            baseId: "base-1",
+            activeTableId: "table-roadmap",
+            views: {
+              version: 1,
+              activeViewIdByTable: { "table-roadmap": "view-launch-timeline" },
+              items: [
+                {
+                  id: "view-launch-timeline",
+                  tableId: "table-roadmap",
+                  name: "Launch Timeline",
+                  viewMode: "timeline",
+                  settings: {
+                    filterText: "",
+                    sortFieldId: "",
+                    sortDirection: "asc",
+                    // Timeline reuses the kanban/calendar/gallery
+                    // `groupFieldId` slot to remember which field
+                    // (e.g., `owner` / `status`) groups records into
+                    // vertical swimlanes. Start / end date fields are
+                    // auto-detected from the table's date columns
+                    // since the durable saved-view shape only carries
+                    // one optional grouping field id.
+                    groupFieldId: "owner",
+                  },
+                  createdAt: "2026-05-16T18:00:00.000Z",
+                  updatedAt: "2026-05-16T18:00:00.000Z",
+                },
+              ],
+            },
+          },
+        },
+      },
+      base(["table-roadmap"]),
+    );
+
+    expect(views.activeViewIdByTable).toEqual({ "table-roadmap": "view-launch-timeline" });
+    expect(views.items).toHaveLength(1);
+    expect(views.items[0]).toEqual({
+      id: "view-launch-timeline",
+      tableId: "table-roadmap",
+      name: "Launch Timeline",
+      viewMode: "timeline",
+      settings: {
+        filterText: "",
+        sortFieldId: "",
+        sortDirection: "asc",
+        groupFieldId: "owner",
+      },
+      createdAt: "2026-05-16T18:00:00.000Z",
+      updatedAt: "2026-05-16T18:00:00.000Z",
+    });
+  });
+
   it("falls back to grid when viewMode is an unknown value", () => {
     // Regression: any unrecognized viewMode string MUST normalize to the
     // safe default ("grid"). Previously this guarded "calendar"; after
-    // #358 + this PR the union also accepts `"gallery"`. The guard still
-    // has to fire for genuinely unknown future-or-typo values like
-    // "gantt" so dashboards never crash on persisted state from a newer
-    // build.
+    // #358 + #362 + this PR the union also accepts `"gallery"` and
+    // `"timeline"`. The guard still has to fire for genuinely unknown
+    // future-or-typo values like "gantt" so dashboards never crash on
+    // persisted state from a newer build.
     const views = projectAppForgeNamedViewsFromMetadata(
       {
         appForge: {

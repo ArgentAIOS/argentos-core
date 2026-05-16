@@ -97,7 +97,11 @@ describe("forge structured data metadata", () => {
                     createdAt: "2026-04-25T21:00:00.000Z",
                     updatedAt: "2026-04-25T21:00:00.000Z",
                   },
-                  { id: "bad-view", name: "Bad view", type: "timeline" },
+                  // `gantt` is intentionally bogus — keeps this assertion
+                  // honest as the saved-view union expands (Calendar /
+                  // Gallery / Timeline have all been added since this
+                  // test was originally written).
+                  { id: "bad-view", name: "Bad view", type: "gantt" },
                 ],
                 activeViewId: "view-review",
               },
