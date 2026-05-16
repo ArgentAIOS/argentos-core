@@ -56,6 +56,7 @@ import {
   type AppForgeImportColumnOverride,
   type AppForgeImportPreview,
 } from "./app-forge/CsvImportDialog";
+import { GalleryView } from "./app-forge/GalleryView";
 import {
   AttachmentCellDisplay,
   AttachmentCellEditor,
@@ -96,7 +97,7 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
-type ForgeViewMode = "grid" | "kanban" | "form" | "review" | "calendar";
+type ForgeViewMode = "grid" | "kanban" | "form" | "review" | "calendar" | "gallery";
 type ForgeInspectorMode = "field" | "table";
 type ForgeSortDirection = "asc" | "desc";
 
@@ -248,6 +249,7 @@ const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
   { id: "form", label: "Form" },
   { id: "review", label: "Review" },
   { id: "calendar", label: "Calendar" },
+  { id: "gallery", label: "Gallery" },
 ];
 
 const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
@@ -4235,6 +4237,21 @@ export function AppForge({
                                 records={viewRecords}
                                 fields={structured.activeTable?.fields ?? []}
                                 preferredDateFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "gallery" && (
+                              <GalleryView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredThumbnailFieldId={viewSettings.groupFieldId}
                                 getRecordTitle={(record) =>
                                   recordTitle(structured.activeTable, record)
                                 }
