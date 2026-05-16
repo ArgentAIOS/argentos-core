@@ -49,6 +49,7 @@ import {
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi, resolveDashboardApiToken } from "../utils/localApiFetch";
+import { CalendarView } from "./app-forge/CalendarView";
 import {
   CsvImportDialog,
   type AppForgeImportCommitReport,
@@ -95,7 +96,7 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
-type ForgeViewMode = "grid" | "kanban" | "form" | "review";
+type ForgeViewMode = "grid" | "kanban" | "form" | "review" | "calendar";
 type ForgeInspectorMode = "field" | "table";
 type ForgeSortDirection = "asc" | "desc";
 
@@ -246,6 +247,7 @@ const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
   { id: "kanban", label: "Kanban" },
   { id: "form", label: "Form" },
   { id: "review", label: "Review" },
+  { id: "calendar", label: "Calendar" },
 ];
 
 const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
@@ -4226,6 +4228,21 @@ export function AppForge({
                                   ))}
                                 </div>
                               </div>
+                            )}
+
+                            {activeViewMode === "calendar" && (
+                              <CalendarView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredDateFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
                             )}
 
                             {activeViewMode === "review" && (

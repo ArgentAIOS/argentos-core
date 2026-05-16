@@ -77,7 +77,7 @@ export type ForgeStructuredRecord = {
   updatedAt: string;
 };
 
-export type ForgeStructuredViewType = "grid" | "kanban" | "form" | "review";
+export type ForgeStructuredViewType = "grid" | "kanban" | "form" | "review" | "calendar";
 
 export type ForgeStructuredView = {
   id: string;
@@ -350,6 +350,9 @@ function defaultViewName(type: ForgeStructuredViewType): string {
   if (type === "review") {
     return "Review queue";
   }
+  if (type === "calendar") {
+    return "Calendar";
+  }
   return "All records";
 }
 
@@ -361,11 +364,18 @@ function defaultViewSettings(
   "filterText" | "sortFieldId" | "sortDirection" | "groupFieldId" | "visibleFieldIds"
 > {
   const statusField = fieldByName(table, "status");
+  const firstDateField = table.fields.find((field) => field.type === "date");
+  let groupFieldId = "";
+  if (type === "kanban" && statusField) {
+    groupFieldId = statusField.id;
+  } else if (type === "calendar" && firstDateField) {
+    groupFieldId = firstDateField.id;
+  }
   return {
     filterText: type === "review" && statusField ? "Review" : "",
     sortFieldId: "",
     sortDirection: "asc",
-    groupFieldId: type === "kanban" && statusField ? statusField.id : "",
+    groupFieldId,
     visibleFieldIds: table.fields.map((field) => field.id),
   };
 }
@@ -756,7 +766,13 @@ function defaultFields(): ForgeStructuredField[] {
 }
 
 function isViewType(value: unknown): value is ForgeStructuredViewType {
-  return value === "grid" || value === "kanban" || value === "form" || value === "review";
+  return (
+    value === "grid" ||
+    value === "kanban" ||
+    value === "form" ||
+    value === "review" ||
+    value === "calendar"
+  );
 }
 
 function defaultViews(type: ForgeStructuredViewType = "grid"): ForgeStructuredView[] {

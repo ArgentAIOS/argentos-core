@@ -97,7 +97,7 @@ describe("AppForge saved named views", () => {
       id: "view-design",
       tableId: "table-design",
       name: "Design Board",
-      viewMode: "grid",
+      viewMode: "calendar",
       settings: {
         filterText: "brand",
         sortFieldId: "",
@@ -105,6 +105,96 @@ describe("AppForge saved named views", () => {
         groupFieldId: "status",
       },
     });
+  });
+
+  it("round-trips a calendar named view through metadata projection", () => {
+    // Calendar is the AppForge Phase-4 parity-gap view mode. The saved-view
+    // union (`APP_FORGE_SAVED_VIEW_TYPES`) has known about it for a while;
+    // this regression locks in that the *named-view* union no longer
+    // silently downgrades it to "grid".
+    const views = projectAppForgeNamedViewsFromMetadata(
+      {
+        appForge: {
+          structured: {
+            baseId: "base-1",
+            activeTableId: "table-launches",
+            views: {
+              version: 1,
+              activeViewIdByTable: { "table-launches": "view-launch-cal" },
+              items: [
+                {
+                  id: "view-launch-cal",
+                  tableId: "table-launches",
+                  name: "Launch Calendar",
+                  viewMode: "calendar",
+                  settings: {
+                    filterText: "",
+                    sortFieldId: "",
+                    sortDirection: "asc",
+                    groupFieldId: "ship_date",
+                  },
+                  createdAt: "2026-05-16T18:00:00.000Z",
+                  updatedAt: "2026-05-16T18:00:00.000Z",
+                },
+              ],
+            },
+          },
+        },
+      },
+      base(["table-launches"]),
+    );
+
+    expect(views.activeViewIdByTable).toEqual({ "table-launches": "view-launch-cal" });
+    expect(views.items).toHaveLength(1);
+    expect(views.items[0]).toEqual({
+      id: "view-launch-cal",
+      tableId: "table-launches",
+      name: "Launch Calendar",
+      viewMode: "calendar",
+      settings: {
+        filterText: "",
+        sortFieldId: "",
+        sortDirection: "asc",
+        groupFieldId: "ship_date",
+      },
+      createdAt: "2026-05-16T18:00:00.000Z",
+      updatedAt: "2026-05-16T18:00:00.000Z",
+    });
+  });
+
+  it("falls back to grid when viewMode is an unknown value", () => {
+    // Regression: any unrecognized viewMode string MUST normalize to the
+    // safe default ("grid"). Previously this guarded "calendar"; the guard
+    // still has to fire for genuinely unknown future-or-typo values like
+    // "gantt" so dashboards never crash on persisted state from a newer
+    // build.
+    const views = projectAppForgeNamedViewsFromMetadata(
+      {
+        appForge: {
+          structured: {
+            baseId: "base-1",
+            activeTableId: "table-deals",
+            views: {
+              version: 1,
+              activeViewIdByTable: {},
+              items: [
+                {
+                  id: "view-gantt",
+                  tableId: "table-deals",
+                  name: "Roadmap",
+                  viewMode: "gantt",
+                  settings: {},
+                },
+              ],
+            },
+          },
+        },
+      },
+      base(["table-deals"]),
+    );
+
+    expect(views.items).toHaveLength(1);
+    expect(views.items[0]?.viewMode).toBe("grid");
   });
 
   it("merges saved named views into structured metadata without clobbering other fields", () => {
