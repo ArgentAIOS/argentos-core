@@ -162,10 +162,69 @@ describe("AppForge saved named views", () => {
     });
   });
 
+  it("round-trips a gallery named view through metadata projection", () => {
+    // Gallery is the AppForge Phase-4 parity-gap view mode #2 (Airtable's
+    // 2nd-most-used view after Grid). This regression locks in that the
+    // named-view union accepts `"gallery"` without silently downgrading
+    // it to `"grid"`. Mirrors the calendar coverage immediately above.
+    const views = projectAppForgeNamedViewsFromMetadata(
+      {
+        appForge: {
+          structured: {
+            baseId: "base-1",
+            activeTableId: "table-assets",
+            views: {
+              version: 1,
+              activeViewIdByTable: { "table-assets": "view-asset-gallery" },
+              items: [
+                {
+                  id: "view-asset-gallery",
+                  tableId: "table-assets",
+                  name: "Asset Gallery",
+                  viewMode: "gallery",
+                  settings: {
+                    filterText: "",
+                    sortFieldId: "",
+                    sortDirection: "asc",
+                    // Gallery reuses the kanban/calendar `groupFieldId`
+                    // slot to remember which attachment field powers the
+                    // card thumbnails.
+                    groupFieldId: "cover_image",
+                  },
+                  createdAt: "2026-05-16T18:00:00.000Z",
+                  updatedAt: "2026-05-16T18:00:00.000Z",
+                },
+              ],
+            },
+          },
+        },
+      },
+      base(["table-assets"]),
+    );
+
+    expect(views.activeViewIdByTable).toEqual({ "table-assets": "view-asset-gallery" });
+    expect(views.items).toHaveLength(1);
+    expect(views.items[0]).toEqual({
+      id: "view-asset-gallery",
+      tableId: "table-assets",
+      name: "Asset Gallery",
+      viewMode: "gallery",
+      settings: {
+        filterText: "",
+        sortFieldId: "",
+        sortDirection: "asc",
+        groupFieldId: "cover_image",
+      },
+      createdAt: "2026-05-16T18:00:00.000Z",
+      updatedAt: "2026-05-16T18:00:00.000Z",
+    });
+  });
+
   it("falls back to grid when viewMode is an unknown value", () => {
     // Regression: any unrecognized viewMode string MUST normalize to the
-    // safe default ("grid"). Previously this guarded "calendar"; the guard
-    // still has to fire for genuinely unknown future-or-typo values like
+    // safe default ("grid"). Previously this guarded "calendar"; after
+    // #358 + this PR the union also accepts `"gallery"`. The guard still
+    // has to fire for genuinely unknown future-or-typo values like
     // "gantt" so dashboards never crash on persisted state from a newer
     // build.
     const views = projectAppForgeNamedViewsFromMetadata(

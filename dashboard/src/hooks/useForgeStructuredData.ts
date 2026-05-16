@@ -77,7 +77,13 @@ export type ForgeStructuredRecord = {
   updatedAt: string;
 };
 
-export type ForgeStructuredViewType = "grid" | "kanban" | "form" | "review" | "calendar";
+export type ForgeStructuredViewType =
+  | "grid"
+  | "kanban"
+  | "form"
+  | "review"
+  | "calendar"
+  | "gallery";
 
 export type ForgeStructuredView = {
   id: string;
@@ -353,6 +359,9 @@ function defaultViewName(type: ForgeStructuredViewType): string {
   if (type === "calendar") {
     return "Calendar";
   }
+  if (type === "gallery") {
+    return "Gallery";
+  }
   return "All records";
 }
 
@@ -364,12 +373,20 @@ function defaultViewSettings(
   "filterText" | "sortFieldId" | "sortDirection" | "groupFieldId" | "visibleFieldIds"
 > {
   const statusField = fieldByName(table, "status");
+  // Gallery reuses the kanban/calendar `groupFieldId` slot to remember
+  // which attachment field (if any) powers the card thumbnails. Auto-pick
+  // the first attachment field so a freshly created gallery view shows
+  // thumbnails immediately when the table has one — same trick Calendar
+  // uses for the first date field.
   const firstDateField = table.fields.find((field) => field.type === "date");
+  const firstAttachmentField = table.fields.find((field) => field.type === "attachment");
   let groupFieldId = "";
   if (type === "kanban" && statusField) {
     groupFieldId = statusField.id;
   } else if (type === "calendar" && firstDateField) {
     groupFieldId = firstDateField.id;
+  } else if (type === "gallery" && firstAttachmentField) {
+    groupFieldId = firstAttachmentField.id;
   }
   return {
     filterText: type === "review" && statusField ? "Review" : "",
@@ -771,7 +788,8 @@ function isViewType(value: unknown): value is ForgeStructuredViewType {
     value === "kanban" ||
     value === "form" ||
     value === "review" ||
-    value === "calendar"
+    value === "calendar" ||
+    value === "gallery"
   );
 }
 

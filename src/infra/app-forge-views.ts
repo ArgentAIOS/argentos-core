@@ -1,6 +1,13 @@
 import type { AppForgeBase } from "./app-forge-model.js";
 
-export const APP_FORGE_VIEW_MODES = ["grid", "kanban", "form", "review", "calendar"] as const;
+export const APP_FORGE_VIEW_MODES = [
+  "grid",
+  "kanban",
+  "form",
+  "review",
+  "calendar",
+  "gallery",
+] as const;
 export const APP_FORGE_VIEW_SORT_DIRECTIONS = ["asc", "desc"] as const;
 
 export type AppForgeViewMode = (typeof APP_FORGE_VIEW_MODES)[number];

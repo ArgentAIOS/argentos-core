@@ -448,7 +448,14 @@ describe("AppForge core model", () => {
 
 describe("AppForge durable saved views (Phase 4 gap #1)", () => {
   it("exposes the full set of Airtable-parity view kinds", () => {
-    expect(APP_FORGE_SAVED_VIEW_TYPES).toEqual(["grid", "kanban", "form", "review", "calendar"]);
+    expect(APP_FORGE_SAVED_VIEW_TYPES).toEqual([
+      "grid",
+      "kanban",
+      "form",
+      "review",
+      "calendar",
+      "gallery",
+    ]);
   });
 
   it("normalizes a candidate into a typed saved view, defaulting unknown types to grid", () => {
