@@ -72,6 +72,7 @@ import {
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
 import { InterfacesEditor } from "./app-forge/InterfacesEditor";
+import { TimelineView } from "./app-forge/TimelineView";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -97,7 +98,7 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
-type ForgeViewMode = "grid" | "kanban" | "form" | "review" | "calendar" | "gallery";
+type ForgeViewMode = "grid" | "kanban" | "form" | "review" | "calendar" | "gallery" | "timeline";
 type ForgeInspectorMode = "field" | "table";
 type ForgeSortDirection = "asc" | "desc";
 
@@ -250,6 +251,7 @@ const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
   { id: "review", label: "Review" },
   { id: "calendar", label: "Calendar" },
   { id: "gallery", label: "Gallery" },
+  { id: "timeline", label: "Timeline" },
 ];
 
 const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
@@ -4252,6 +4254,21 @@ export function AppForge({
                                 records={viewRecords}
                                 fields={structured.activeTable?.fields ?? []}
                                 preferredThumbnailFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "timeline" && (
+                              <TimelineView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredLaneFieldId={viewSettings.groupFieldId}
                                 getRecordTitle={(record) =>
                                   recordTitle(structured.activeTable, record)
                                 }
