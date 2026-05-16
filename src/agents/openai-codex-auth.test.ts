@@ -1,13 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildOpenAIAuthHeaders,
+  decodeChatgptAccountId,
+  decodeJwtExpSeconds,
   exchangeOpenAICodexDeviceCode,
+  isAccessTokenExpiring,
   loginOpenAICodexDevice,
   OPENAI_CODEX_DEVICE_TOKEN_URL,
   OPENAI_CODEX_DEVICE_USER_CODE_URL,
   OPENAI_CODEX_TOKEN_URL,
+  REFRESH_SKEW_SECONDS,
   refreshOpenAICodexCredentials,
   startOpenAICodexDeviceLogin,
 } from "./openai-codex-auth.js";
+
+function makeJwt(claims: Record<string, unknown>): string {
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  return `${header}.${payload}.signature-not-verified`;
+}
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -136,6 +147,112 @@ describe("openai-codex-auth", () => {
     const body = fetchFn.mock.calls[0]?.[1]?.body as URLSearchParams;
     expect(body.get("grant_type")).toBe("refresh_token");
     expect(body.get("refresh_token")).toBe("old-refresh");
+  });
+
+  it("attaches argent identification headers to every auth.openai.com request", async () => {
+    const headers = buildOpenAIAuthHeaders("application/json");
+    expect(headers.originator).toBe("argent");
+    expect(headers["User-Agent"]).toMatch(/^argent\/.+/);
+    expect(headers.version).toBe(headers["User-Agent"].replace(/^argent\//, ""));
+    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers.Accept).toBe("application/json");
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          user_code: "CODE",
+          device_auth_id: "device",
+          interval: 3,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authorization_code: "auth-code",
+          code_verifier: "verifier",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: makeJwt({
+            exp: Math.floor((1_000_000 + 3600 * 1000) / 1000),
+            "https://api.openai.com/auth": { chatgpt_account_id: "acct-xyz" },
+          }),
+          refresh_token: "r",
+          expires_in: 3600,
+        }),
+      );
+
+    await loginOpenAICodexDevice({
+      fetchFn,
+      sleep: async () => {},
+      now: () => 1_000_000,
+    });
+
+    for (const call of fetchFn.mock.calls) {
+      const init = call[1] as RequestInit;
+      const requestHeaders = init.headers as Record<string, string>;
+      expect(requestHeaders.originator).toBe("argent");
+      expect(requestHeaders["User-Agent"]).toMatch(/^argent\/.+/);
+      expect(requestHeaders.version).toBeTruthy();
+    }
+
+    // Refresh path also carries headers
+    const refreshFetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        expires_in: 3600,
+      }),
+    );
+    await refreshOpenAICodexCredentials(
+      { access: "old", refresh: "r", expires: 1 },
+      { fetchFn: refreshFetch, now: 2_000 },
+    );
+    const refreshHeaders = refreshFetch.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(refreshHeaders.originator).toBe("argent");
+    expect(refreshHeaders["User-Agent"]).toMatch(/^argent\/.+/);
+  });
+
+  it("decodes the JWT exp claim and treats near-expiry tokens as expiring", () => {
+    const nowMs = 1_700_000_000_000;
+    // exp is 200 seconds away — well inside the 5-min skew → expiring
+    const nearExp = makeJwt({ exp: Math.floor(nowMs / 1000) + 200 });
+    expect(decodeJwtExpSeconds(nearExp)).toBe(Math.floor(nowMs / 1000) + 200);
+    expect(isAccessTokenExpiring(nearExp, REFRESH_SKEW_SECONDS, nowMs)).toBe(true);
+
+    // exp is 10 min away — outside the skew → not expiring
+    const safeExp = makeJwt({ exp: Math.floor(nowMs / 1000) + 600 });
+    expect(isAccessTokenExpiring(safeExp, REFRESH_SKEW_SECONDS, nowMs)).toBe(false);
+
+    // Missing token / unparseable → defensively report "expiring"
+    expect(isAccessTokenExpiring(undefined, REFRESH_SKEW_SECONDS, nowMs)).toBe(true);
+    expect(isAccessTokenExpiring("not.a.jwt", REFRESH_SKEW_SECONDS, nowMs)).toBe(true);
+  });
+
+  it("extracts chatgpt_account_id from the OpenAI auth JWT namespace claim", () => {
+    const accessToken = makeJwt({
+      exp: 1_900_000_000,
+      "https://api.openai.com/auth": { chatgpt_account_id: "acct-12345" },
+    });
+    expect(decodeChatgptAccountId(accessToken)).toBe("acct-12345");
+
+    // Surface on exchange so the dashboard can display the account
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({
+        access_token: accessToken,
+        refresh_token: "r",
+        expires_in: 60,
+      }),
+    );
+    return exchangeOpenAICodexDeviceCode({
+      authorizationCode: "auth",
+      codeVerifier: "verifier",
+      fetchFn,
+      now: 10_000,
+    }).then((creds) => {
+      expect(creds.chatgptAccountId).toBe("acct-12345");
+    });
   });
 
   it("surfaces reused refresh tokens as re-authentication errors", async () => {
