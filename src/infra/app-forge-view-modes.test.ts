@@ -20,6 +20,7 @@ describe("AppForge view-mode registry", () => {
       "gallery",
       "timeline",
       "gantt",
+      "list",
     ]);
   });
 
@@ -39,7 +40,6 @@ describe("AppForge view-mode registry", () => {
   });
 
   it("isAppForgeViewMode rejects unknown values", () => {
-    expect(isAppForgeViewMode("list")).toBe(false);
     expect(isAppForgeViewMode("")).toBe(false);
     expect(isAppForgeViewMode(undefined)).toBe(false);
     expect(isAppForgeViewMode(null)).toBe(false);
@@ -63,6 +63,7 @@ describe("AppForge view-mode registry", () => {
     expect(getAppForgeViewModeLabel("gallery")).toBe("Gallery");
     expect(getAppForgeViewModeLabel("timeline")).toBe("Timeline");
     expect(getAppForgeViewModeLabel("gantt")).toBe("Gantt");
+    expect(getAppForgeViewModeLabel("list")).toBe("List");
   });
 
   it("getAppForgeViewModeDefaultName preserves the dashboard's per-mode names", () => {
@@ -77,6 +78,7 @@ describe("AppForge view-mode registry", () => {
     expect(getAppForgeViewModeDefaultName("gallery")).toBe("Gallery");
     expect(getAppForgeViewModeDefaultName("timeline")).toBe("Timeline");
     expect(getAppForgeViewModeDefaultName("gantt")).toBe("Gantt");
+    expect(getAppForgeViewModeDefaultName("list")).toBe("List");
   });
 
   it("getAppForgeViewModeGroupFieldHint preserves the dashboard's seeding hints", () => {
@@ -107,5 +109,6 @@ describe("AppForge view-mode registry", () => {
       kind: "fieldName",
       value: "status",
     });
+    expect(getAppForgeViewModeGroupFieldHint("list")).toEqual({ kind: "none" });
   });
 });
