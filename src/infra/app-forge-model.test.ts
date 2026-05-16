@@ -455,6 +455,7 @@ describe("AppForge durable saved views (Phase 4 gap #1)", () => {
       "review",
       "calendar",
       "gallery",
+      "timeline",
     ]);
   });
 

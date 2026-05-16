@@ -7,6 +7,7 @@ export const APP_FORGE_VIEW_MODES = [
   "review",
   "calendar",
   "gallery",
+  "timeline",
 ] as const;
 export const APP_FORGE_VIEW_SORT_DIRECTIONS = ["asc", "desc"] as const;
 
