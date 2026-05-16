@@ -59,6 +59,7 @@ import {
   type AppForgeImportPreview,
 } from "./app-forge/CsvImportDialog";
 import { GalleryView } from "./app-forge/GalleryView";
+import { GanttView } from "./app-forge/GanttView";
 import {
   AttachmentCellDisplay,
   AttachmentCellEditor,
@@ -4268,6 +4269,21 @@ export function AppForge({
 
                             {activeViewMode === "timeline" && (
                               <TimelineView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredLaneFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "gantt" && (
+                              <GanttView
                                 records={viewRecords}
                                 fields={structured.activeTable?.fields ?? []}
                                 preferredLaneFieldId={viewSettings.groupFieldId}

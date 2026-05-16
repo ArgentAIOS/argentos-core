@@ -32,18 +32,7 @@
  */
 
 import type { ForgeStructuredField } from "../../hooks/useForgeStructuredData";
-import {
-  type TimelineEntry,
-  buildDayAxis,
-  buildTimelineEntries,
-  groupEntriesByLane,
-  parseTimelineDate,
-  positionEntry,
-  resolveTimelineDateFields,
-  resolveTimelineLaneField,
-  shiftDays,
-  startOfDay,
-} from "./timeline-bucket";
+import { type TimelineEntry } from "./timeline-bucket";
 
 // Re-export the Timeline date helpers under aliased names so GanttView
 // imports cleanly from gantt-bucket without dragging in timeline-bucket
