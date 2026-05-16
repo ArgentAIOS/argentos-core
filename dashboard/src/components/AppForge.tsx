@@ -26,8 +26,10 @@ import {
   Zap,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent } from "react";
+import type { AppForgeViewMode } from "../../../src/infra/app-forge-view-modes.js";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
+import { APP_FORGE_VIEW_MODE_REGISTRY } from "../../../src/infra/app-forge-view-modes.js";
 import {
   FORGE_DEFAULT_RATING_MAX,
   FORGE_MAX_RATING_MAX,
@@ -98,7 +100,11 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
-type ForgeViewMode = "grid" | "kanban" | "form" | "review" | "calendar" | "gallery" | "timeline";
+// `ForgeViewMode` aliases the canonical `AppForgeViewMode` union (single
+// source of truth lives in `src/infra/app-forge-view-modes.ts`). The alias
+// preserves the legacy local name so call sites in this file stay
+// self-documenting after the refactor.
+type ForgeViewMode = AppForgeViewMode;
 type ForgeInspectorMode = "field" | "table";
 type ForgeSortDirection = "asc" | "desc";
 
@@ -244,15 +250,11 @@ const APP_FORGE_NAV = [
 
 const BASE_EDITOR_NAV = APP_FORGE_NAV.filter((item) => item.id !== "home");
 
-const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
-  { id: "grid", label: "Grid" },
-  { id: "kanban", label: "Kanban" },
-  { id: "form", label: "Form" },
-  { id: "review", label: "Review" },
-  { id: "calendar", label: "Calendar" },
-  { id: "gallery", label: "Gallery" },
-  { id: "timeline", label: "Timeline" },
-];
+// Surfaced for the view-picker UI — derived from the canonical registry so
+// the picker order and labels are guaranteed to match every other AppForge
+// site (substrate models, structured-data hook, saved-view validation).
+const FORGE_VIEW_MODES: ReadonlyArray<{ id: ForgeViewMode; label: string }> =
+  APP_FORGE_VIEW_MODE_REGISTRY.map((entry) => ({ id: entry.id, label: entry.label }));
 
 const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
 const DEFAULT_VIEW_SETTINGS: ForgeViewSettings = {
