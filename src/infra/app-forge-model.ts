@@ -27,11 +27,19 @@ export type AppForgeFieldType = (typeof APP_FORGE_FIELD_TYPES)[number];
 
 /**
  * Saved-view kinds that AppForge tables can render. Mirrors the dashboard's
- * `ForgeStructuredViewType` plus `calendar` (Phase 4 parity gap #1) so that
- * saved views travel with the table as durable metadata rather than living
- * in the operator-local localStorage cache.
+ * `ForgeStructuredViewType` plus `calendar` (Phase 4 parity gap #1) and
+ * `gallery` (Phase 4 parity gap #2 — Airtable's 2nd-most-used view after
+ * Grid) so saved views travel with the table as durable metadata rather
+ * than living in the operator-local localStorage cache.
  */
-export const APP_FORGE_SAVED_VIEW_TYPES = ["grid", "kanban", "form", "review", "calendar"] as const;
+export const APP_FORGE_SAVED_VIEW_TYPES = [
+  "grid",
+  "kanban",
+  "form",
+  "review",
+  "calendar",
+  "gallery",
+] as const;
 
 export type AppForgeSavedViewType = (typeof APP_FORGE_SAVED_VIEW_TYPES)[number];
 
