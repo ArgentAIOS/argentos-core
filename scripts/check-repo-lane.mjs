@@ -89,7 +89,12 @@ if (packageRepo && !matchesRepo(packageRepo, expectedRepo)) {
 }
 
 const targetBranch = process.env.GITHUB_BASE_REF || process.env.ARGENT_TARGET_BRANCH || "";
-if (targetBranch && targetBranch !== expectedBranch) {
+const isReleaseBranchPR = process.env.GITHUB_HEAD_REF?.startsWith("release/") ?? false;
+if (
+  targetBranch &&
+  targetBranch !== expectedBranch &&
+  !(isReleaseBranchPR && targetBranch === "main")
+) {
   fail(`target branch is ${targetBranch}, expected ${expectedBranch}`);
 }
 
