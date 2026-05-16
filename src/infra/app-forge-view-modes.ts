@@ -140,6 +140,17 @@ export const APP_FORGE_VIEW_MODE_REGISTRY = [
     defaultViewName: "Timeline",
     defaultGroupFieldHint: { kind: "fieldName", value: "status" },
   },
+  {
+    id: "gantt",
+    label: "Gantt",
+    defaultViewName: "Gantt",
+    // Match Timeline's seed: groups records into lanes by `status` if the
+    // field exists. The Gantt component layers an optional parent-record
+    // hierarchy (indent + chevrons) ON TOP of the lane grouping when a
+    // self-referential `linked_record` field is auto-detected — the two
+    // axes are orthogonal so the seed stays familiar to Timeline users.
+    defaultGroupFieldHint: { kind: "fieldName", value: "status" },
+  },
 ] as const satisfies readonly AppForgeViewModeRegistryEntry[];
 
 /**

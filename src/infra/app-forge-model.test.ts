@@ -456,6 +456,7 @@ describe("AppForge durable saved views (Phase 4 gap #1)", () => {
       "calendar",
       "gallery",
       "timeline",
+      "gantt",
     ]);
   });
 
@@ -487,7 +488,16 @@ describe("AppForge durable saved views (Phase 4 gap #1)", () => {
 
     // Unknown / missing type folds to "grid" rather than dropping the view —
     // we want the operator's named view to survive an upstream schema bump.
-    expect(normalizeAppForgeSavedView({ id: "v", name: "Untyped", type: "gantt" })).toMatchObject({
+    // Uses the permanent `__never_a_real_view_mode__` sentinel so this probe
+    // stops migrating each time a new view mode (calendar/gallery/timeline/
+    // gantt) ships — see the structured-data test comment for the convention.
+    expect(
+      normalizeAppForgeSavedView({
+        id: "v",
+        name: "Untyped",
+        type: "__never_a_real_view_mode__",
+      }),
+    ).toMatchObject({
       id: "v",
       name: "Untyped",
       type: "grid",
