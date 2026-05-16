@@ -140,6 +140,16 @@ export const APP_FORGE_VIEW_MODE_REGISTRY = [
     defaultViewName: "Timeline",
     defaultGroupFieldHint: { kind: "fieldName", value: "status" },
   },
+  {
+    id: "gantt",
+    label: "Gantt",
+    defaultViewName: "Gantt",
+    // Same swimlane convention as Timeline — operators typically split
+    // Gantt rows by status. Gantt v1 is otherwise a thin bars-on-axis
+    // renderer that reuses Timeline's date-math helpers wholesale; see
+    // dashboard/src/components/app-forge/GanttView.tsx.
+    defaultGroupFieldHint: { kind: "fieldName", value: "status" },
+  },
 ] as const satisfies readonly AppForgeViewModeRegistryEntry[];
 
 /**
