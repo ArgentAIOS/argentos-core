@@ -75,6 +75,7 @@ import {
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
 import { InterfacesEditor } from "./app-forge/InterfacesEditor";
+import { ListView } from "./app-forge/ListView";
 import { TimelineView } from "./app-forge/TimelineView";
 import { AppDock } from "./AppDock";
 
@@ -4287,6 +4288,22 @@ export function AppForge({
                                 records={viewRecords}
                                 fields={structured.activeTable?.fields ?? []}
                                 preferredLaneFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "list" && (
+                              <ListView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredGroupFieldId={viewSettings.groupFieldId}
+                                preferredVisibleFieldIds={structured.activeView?.visibleFieldIds}
                                 getRecordTitle={(record) =>
                                   recordTitle(structured.activeTable, record)
                                 }
