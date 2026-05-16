@@ -83,7 +83,8 @@ export type ForgeStructuredViewType =
   | "form"
   | "review"
   | "calendar"
-  | "gallery";
+  | "gallery"
+  | "timeline";
 
 export type ForgeStructuredView = {
   id: string;
@@ -362,6 +363,9 @@ function defaultViewName(type: ForgeStructuredViewType): string {
   if (type === "gallery") {
     return "Gallery";
   }
+  if (type === "timeline") {
+    return "Timeline";
+  }
   return "All records";
 }
 
@@ -377,7 +381,10 @@ function defaultViewSettings(
   // which attachment field (if any) powers the card thumbnails. Auto-pick
   // the first attachment field so a freshly created gallery view shows
   // thumbnails immediately when the table has one — same trick Calendar
-  // uses for the first date field.
+  // uses for the first date field. Timeline reuses the same slot as its
+  // optional swimlane (vertical grouping) field, defaulting to the
+  // canonical `status` field when present so a freshly created timeline
+  // view shows roadmap-style swimlanes out of the box.
   const firstDateField = table.fields.find((field) => field.type === "date");
   const firstAttachmentField = table.fields.find((field) => field.type === "attachment");
   let groupFieldId = "";
@@ -387,6 +394,8 @@ function defaultViewSettings(
     groupFieldId = firstDateField.id;
   } else if (type === "gallery" && firstAttachmentField) {
     groupFieldId = firstAttachmentField.id;
+  } else if (type === "timeline" && statusField) {
+    groupFieldId = statusField.id;
   }
   return {
     filterText: type === "review" && statusField ? "Review" : "",
@@ -789,7 +798,8 @@ function isViewType(value: unknown): value is ForgeStructuredViewType {
     value === "form" ||
     value === "review" ||
     value === "calendar" ||
-    value === "gallery"
+    value === "gallery" ||
+    value === "timeline"
   );
 }
 
