@@ -3,6 +3,7 @@ import type {
   CommandHandlerResult,
   HandleCommandsParams,
 } from "./commands-types.js";
+import { buildClearedGoalState, persistGoalState } from "../../agents/goal-runner.js";
 import { logVerbose } from "../../globals.js";
 import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
@@ -12,6 +13,7 @@ import { handleApproveCommand } from "./commands-approve.js";
 import { handleBashCommand } from "./commands-bash.js";
 import { handleCompactCommand } from "./commands-compact.js";
 import { handleConfigCommand, handleDebugCommand } from "./commands-config.js";
+import { handleGoalCommand } from "./commands-goal.js";
 import {
   handleCommandsListCommand,
   handleContextCommand,
@@ -59,6 +61,7 @@ export async function handleCommands(params: HandleCommandsParams): Promise<Comm
       handleModelsCommand,
       handleStopCommand,
       handleCompactCommand,
+      handleGoalCommand,
       handleAbortTrigger,
     ];
   }
@@ -69,6 +72,24 @@ export async function handleCommands(params: HandleCommandsParams): Promise<Comm
       `Ignoring /reset from unauthorized sender: ${params.command.senderId || "<unknown>"}`,
     );
     return { shouldContinue: false };
+  }
+
+  // On reset/new, mark any active goal `cleared` (preserved for audit). Matches
+  // Hermes' behavior — the goal stays in the store with status=cleared so an
+  // operator can still inspect what was attempted before the wipe.
+  if (resetRequested && params.command.isAuthorizedSender) {
+    const goal = params.sessionEntry?.goal;
+    if (goal && goal.status !== "cleared" && params.storePath && params.sessionKey) {
+      try {
+        await persistGoalState({
+          storePath: params.storePath,
+          sessionKey: params.sessionKey,
+          state: buildClearedGoalState(goal),
+        });
+      } catch {
+        // Best-effort — don't block the reset on a goal-persist failure.
+      }
+    }
   }
 
   // Trigger internal hook for reset/new commands

@@ -7,14 +7,21 @@ import type { TypingController } from "./typing.js";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
+import {
+  isGoalActive,
+  maybeEnqueueGoalContinuation,
+  resolveJudgeProvider,
+} from "../../agents/goal-runner.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { resolveAgentIdFromSessionKey, type SessionEntry } from "../../config/sessions.js";
+import { loadSessionStore } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
+import { resolveQueueSettings } from "./queue.js";
 import {
   applyReplyThreading,
   filterMessagingToolDuplicates,
@@ -275,6 +282,67 @@ export function createFollowupRunner(params: {
           finalPayloads.unshift({
             text: `🧹 Auto-compaction complete${suffix}.`,
           });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // Goal-loop post-turn hook for the followup path. Same shape as the
+      // hook in agent-runner.ts — re-load goal from store, run the judge,
+      // enqueue the next continuation. Fail-open on every layer.
+      // ----------------------------------------------------------------
+      if (sessionKey && storePath) {
+        try {
+          const store = loadSessionStore(storePath, { skipCache: true });
+          const entry = store[sessionKey];
+          if (isGoalActive(entry?.goal)) {
+            const provider = fallbackProvider ?? queued.run.provider;
+            const modelId = fallbackModel ?? queued.run.model ?? defaultModel;
+            const judgeProvider = await resolveJudgeProvider(provider);
+            if (judgeProvider) {
+              const lastAssistantText = (() => {
+                for (let i = finalPayloads.length - 1; i >= 0; i--) {
+                  const t = finalPayloads[i]?.text;
+                  if (t && t.trim()) {
+                    return t;
+                  }
+                }
+                return "";
+              })();
+              const resolvedQueue = resolveQueueSettings({
+                cfg: queued.run.config,
+                channel: queued.run.messageProvider,
+                sessionEntry: entry,
+              });
+              const goalResult = await maybeEnqueueGoalContinuation({
+                sessionKey,
+                storePath,
+                sessionEntry: entry,
+                lastAssistantText,
+                judgeProvider,
+                judgeModelId: modelId,
+                continuation: {
+                  followupRunTemplate: queued,
+                  resolvedQueue,
+                  queueKey: sessionKey,
+                  originatingChannel: queued.originatingChannel,
+                  originatingTo: queued.originatingTo,
+                  originatingAccountId: queued.originatingAccountId,
+                  originatingThreadId: queued.originatingThreadId,
+                  originatingChatType: queued.originatingChatType,
+                },
+              });
+              if (
+                goalResult.message &&
+                (queued.run.verboseLevel !== "off" ||
+                  goalResult.decision?.nextState.status === "done" ||
+                  goalResult.decision?.nextState.status === "paused")
+              ) {
+                finalPayloads.push({ text: goalResult.message });
+              }
+            }
+          }
+        } catch (err) {
+          defaultRuntime.error?.(`goal: followup post-turn hook failed: ${String(err)}`);
         }
       }
 

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Skill } from "../../agent-core/coding.js";
+import type { GoalState } from "../../agents/goal-state.js";
 import type { SkillMatchCandidate } from "../../agents/skills/types.js";
 import type { NormalizedChatType } from "../../channels/chat-type.js";
 import type { ChannelId } from "../../channels/plugins/types.js";
@@ -133,6 +134,15 @@ export type SessionEntry = {
     selectedCommands?: string[];
     scope?: Record<string, unknown>;
   }>;
+  /**
+   * Persistent cross-turn goal state (Ralph-loop style). Set via /goal,
+   * evaluated by a small judge call after each finalized turn, re-entered
+   * via the existing FollowupRun queue. Backwards-compatible: defaults to
+   * undefined so older session stores load unchanged.
+   *
+   * See `src/agents/goal-state.ts` for the type and lifecycle helpers.
+   */
+  goal?: GoalState;
 };
 
 export function mergeSessionEntry(

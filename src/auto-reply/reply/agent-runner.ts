@@ -6,6 +6,11 @@ import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import type { TypingController } from "./typing.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
+import {
+  isGoalActive,
+  maybeEnqueueGoalContinuation,
+  resolveJudgeProvider,
+} from "../../agents/goal-runner.js";
 import { resolveModelAuthMode } from "../../agents/model-auth.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { queueEmbeddedPiMessage } from "../../agents/pi-embedded.js";
@@ -595,6 +600,67 @@ export async function runReplyAgent(params: {
     }
     if (responseUsageLine) {
       finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
+    }
+
+    // ----------------------------------------------------------------
+    // Goal-loop post-turn hook (see src/agents/goal-runner.ts).
+    //
+    // Only runs when the session has an active goal. The judge call
+    // (one toolless model invocation) decides whether to enqueue a
+    // continuation FollowupRun for the next turn. Fail-open: any error
+    // path leaves the goal active and lets the next turn retry.
+    //
+    // No effect on the per-turn loop, the prompt cache, or the system
+    // prompt — the continuation enters via the existing FollowupRun
+    // queue exactly the way steer/followup runs already do.
+    // ----------------------------------------------------------------
+    if (sessionKey && storePath && isGoalActive(activeSessionEntry?.goal)) {
+      try {
+        const judgeProvider = await resolveJudgeProvider(providerUsed);
+        if (judgeProvider) {
+          const lastAssistantText = (() => {
+            for (let i = finalPayloads.length - 1; i >= 0; i--) {
+              const t = finalPayloads[i]?.text;
+              if (t && t.trim()) {
+                return t;
+              }
+            }
+            return "";
+          })();
+          const goalResult = await maybeEnqueueGoalContinuation({
+            sessionKey,
+            storePath,
+            sessionEntry: activeSessionEntry,
+            lastAssistantText,
+            judgeProvider,
+            judgeModelId: modelUsed,
+            continuation: {
+              followupRunTemplate: followupRun,
+              resolvedQueue,
+              queueKey,
+              originatingChannel:
+                followupRun.originatingChannel ??
+                (sessionCtx.OriginatingChannel as OriginatingChannelType | undefined),
+              originatingTo: followupRun.originatingTo ?? sessionCtx.OriginatingTo,
+              originatingAccountId: followupRun.originatingAccountId ?? sessionCtx.AccountId,
+              originatingThreadId: followupRun.originatingThreadId ?? sessionCtx.MessageThreadId,
+              originatingChatType: followupRun.originatingChatType ?? sessionCtx.ChatType,
+            },
+          });
+          if (goalResult.message) {
+            const verboseEnabled = resolvedVerboseLevel !== "off";
+            if (
+              verboseEnabled ||
+              goalResult.decision?.nextState.status === "done" ||
+              goalResult.decision?.nextState.status === "paused"
+            ) {
+              finalPayloads = [...finalPayloads, { text: goalResult.message }];
+            }
+          }
+        }
+      } catch (err) {
+        defaultRuntime.error?.(`goal: post-turn hook failed: ${String(err)}`);
+      }
     }
 
     return finalizeReply(finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads);
