@@ -19,6 +19,7 @@ describe("AppForge view-mode registry", () => {
       "calendar",
       "gallery",
       "timeline",
+      "gantt",
     ]);
   });
 
@@ -38,7 +39,11 @@ describe("AppForge view-mode registry", () => {
   });
 
   it("isAppForgeViewMode rejects unknown values", () => {
-    expect(isAppForgeViewMode("gantt")).toBe(false);
+    // NOTE: "gantt" used to be the canonical "definitely unknown" probe in
+    // this suite; it's now a real view mode (this PR), so the probe migrates
+    // to the permanent `__never_a_real_view_mode__` sentinel that the
+    // structured-data test already established. That sentinel is documented
+    // to never collide with a real view mode.
     expect(isAppForgeViewMode("list")).toBe(false);
     expect(isAppForgeViewMode("")).toBe(false);
     expect(isAppForgeViewMode(undefined)).toBe(false);
@@ -62,6 +67,7 @@ describe("AppForge view-mode registry", () => {
     expect(getAppForgeViewModeLabel("calendar")).toBe("Calendar");
     expect(getAppForgeViewModeLabel("gallery")).toBe("Gallery");
     expect(getAppForgeViewModeLabel("timeline")).toBe("Timeline");
+    expect(getAppForgeViewModeLabel("gantt")).toBe("Gantt");
   });
 
   it("getAppForgeViewModeDefaultName preserves the dashboard's per-mode names", () => {
@@ -75,6 +81,7 @@ describe("AppForge view-mode registry", () => {
     expect(getAppForgeViewModeDefaultName("calendar")).toBe("Calendar");
     expect(getAppForgeViewModeDefaultName("gallery")).toBe("Gallery");
     expect(getAppForgeViewModeDefaultName("timeline")).toBe("Timeline");
+    expect(getAppForgeViewModeDefaultName("gantt")).toBe("Gantt");
   });
 
   it("getAppForgeViewModeGroupFieldHint preserves the dashboard's seeding hints", () => {
@@ -98,6 +105,13 @@ describe("AppForge view-mode registry", () => {
       value: "attachment",
     });
     expect(getAppForgeViewModeGroupFieldHint("timeline")).toEqual({
+      kind: "fieldName",
+      value: "status",
+    });
+    // Gantt mirrors Timeline's status-as-lane seed; the optional parent-
+    // record hierarchy auto-detect in `gantt-bucket.ts` is orthogonal to
+    // the lane field, so the two don't conflict.
+    expect(getAppForgeViewModeGroupFieldHint("gantt")).toEqual({
       kind: "fieldName",
       value: "status",
     });

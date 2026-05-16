@@ -285,11 +285,11 @@ describe("AppForge saved named views", () => {
 
   it("falls back to grid when viewMode is an unknown value", () => {
     // Regression: any unrecognized viewMode string MUST normalize to the
-    // safe default ("grid"). Previously this guarded "calendar"; after
-    // #358 + #362 + this PR the union also accepts `"gallery"` and
-    // `"timeline"`. The guard still has to fire for genuinely unknown
-    // future-or-typo values like "gantt" so dashboards never crash on
-    // persisted state from a newer build.
+    // safe default ("grid"). The probe value used to migrate every time a
+    // new view mode shipped (calendar → gallery → timeline → gantt). The
+    // structured-data test established `__never_a_real_view_mode__` as a
+    // permanent sentinel; this test now uses the same convention so it
+    // stops churning.
     const views = projectAppForgeNamedViewsFromMetadata(
       {
         appForge: {
@@ -301,10 +301,10 @@ describe("AppForge saved named views", () => {
               activeViewIdByTable: {},
               items: [
                 {
-                  id: "view-gantt",
+                  id: "view-bogus",
                   tableId: "table-deals",
                   name: "Roadmap",
-                  viewMode: "gantt",
+                  viewMode: "__never_a_real_view_mode__",
                   settings: {},
                 },
               ],
