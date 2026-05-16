@@ -150,6 +150,16 @@ export const APP_FORGE_VIEW_MODE_REGISTRY = [
     // dashboard/src/components/app-forge/GanttView.tsx.
     defaultGroupFieldHint: { kind: "fieldName", value: "status" },
   },
+  {
+    id: "list",
+    label: "List",
+    defaultViewName: "List",
+    // No default group-field hint: a List view's natural shape is a flat
+    // vertical sequence. Operators can opt into section headers by
+    // picking `groupFieldId` manually in the view settings — but we
+    // don't auto-seed one (unlike Kanban/Timeline/Gantt, where the
+    // swimlane is the whole point).
+  },
 ] as const satisfies readonly AppForgeViewModeRegistryEntry[];
 
 /**
