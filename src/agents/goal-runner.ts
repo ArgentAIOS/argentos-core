@@ -34,6 +34,16 @@
 import type { Provider } from "../argent-ai/types.js";
 import type { FollowupRun, QueueSettings } from "../auto-reply/reply/queue.js";
 import type { OriginatingChannelType } from "../auto-reply/templating.js";
+import {
+  createAnthropic,
+  createGoogle,
+  createInception,
+  createMiniMax,
+  createOpenAI,
+  createOpenAICodex,
+  createXAI,
+  createZAI,
+} from "../argent-agent/providers.js";
 import { enqueueFollowupRun } from "../auto-reply/reply/queue.js";
 import { type SessionEntry, updateSessionStoreEntry } from "../config/sessions.js";
 import { defaultRuntime } from "../runtime.js";
@@ -348,6 +358,51 @@ export async function maybeEnqueueGoalContinuation(
     decision,
     message: decision.message,
   };
+}
+
+/**
+ * Resolve a Provider instance for the judge call by provider name. v1 uses
+ * the session's main provider (so it auto-loads keys via the same factory
+ * the agent-runtime uses). Returns null for unknown providers; the caller
+ * fail-opens.
+ *
+ * v1.1 TODO: honor a `goals.judge.provider` / `goals.judge.model` config
+ * knob so operators can route the judge to a cheap/fast model.
+ */
+export async function resolveJudgeProvider(providerName: string): Promise<Provider | null> {
+  try {
+    switch (providerName) {
+      case "anthropic":
+        return await createAnthropic();
+      case "openai":
+      case "azure-openai":
+        return await createOpenAI();
+      case "google":
+      case "google-vertex":
+        return await createGoogle();
+      case "xai":
+        return await createXAI();
+      case "minimax":
+        return await createMiniMax();
+      case "zai":
+      case "zai-coding":
+        return await createZAI();
+      case "inception":
+        return await createInception();
+      case "openai-codex":
+        return await createOpenAICodex();
+      case "nvidia":
+      case "ollama":
+        return await createOpenAI();
+      default:
+        return null;
+    }
+  } catch (err) {
+    defaultRuntime.error?.(
+      `goal: could not resolve judge provider "${providerName}": ${String(err)}`,
+    );
+    return null;
+  }
 }
 
 /**

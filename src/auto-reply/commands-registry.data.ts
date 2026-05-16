@@ -423,6 +423,16 @@ function buildChatCommands(): ChatCommandDefinition[] {
       ],
     }),
     defineChatCommand({
+      key: "goal",
+      description:
+        "Set a standing goal Argent works toward across turns (status | pause | resume | clear).",
+      textAlias: "/goal",
+      scope: "text",
+      category: "session",
+      acceptsArgs: true,
+      argsParsing: "none",
+    }),
+    defineChatCommand({
       key: "think",
       nativeName: "think",
       description: "Set thinking level.",
