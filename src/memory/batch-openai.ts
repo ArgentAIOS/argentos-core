@@ -39,6 +39,10 @@ function getOpenAiBaseUrl(openAi: OpenAiEmbeddingClient): string {
   return openAi.baseUrl?.replace(/\/$/, "") ?? "";
 }
 
+function getOpenAiFetch(openAi: OpenAiEmbeddingClient): typeof fetch {
+  return openAi.fetch ?? fetch;
+}
+
 function getOpenAiHeaders(
   openAi: OpenAiEmbeddingClient,
   params: { json: boolean },
@@ -81,7 +85,7 @@ async function submitOpenAiBatch(params: {
     `memory-embeddings.${hashText(String(Date.now()))}.jsonl`,
   );
 
-  const fileRes = await fetch(`${baseUrl}/files`, {
+  const fileRes = await getOpenAiFetch(params.openAi)(`${baseUrl}/files`, {
     method: "POST",
     headers: getOpenAiHeaders(params.openAi, { json: false }),
     body: form,
@@ -97,7 +101,7 @@ async function submitOpenAiBatch(params: {
 
   const batchRes = await retryAsync(
     async () => {
-      const res = await fetch(`${baseUrl}/batches`, {
+      const res = await getOpenAiFetch(params.openAi)(`${baseUrl}/batches`, {
         method: "POST",
         headers: getOpenAiHeaders(params.openAi, { json: true }),
         body: JSON.stringify({
@@ -139,7 +143,7 @@ async function fetchOpenAiBatchStatus(params: {
   batchId: string;
 }): Promise<OpenAiBatchStatus> {
   const baseUrl = getOpenAiBaseUrl(params.openAi);
-  const res = await fetch(`${baseUrl}/batches/${params.batchId}`, {
+  const res = await getOpenAiFetch(params.openAi)(`${baseUrl}/batches/${params.batchId}`, {
     headers: getOpenAiHeaders(params.openAi, { json: true }),
   });
   if (!res.ok) {
@@ -154,7 +158,7 @@ async function fetchOpenAiFileContent(params: {
   fileId: string;
 }): Promise<string> {
   const baseUrl = getOpenAiBaseUrl(params.openAi);
-  const res = await fetch(`${baseUrl}/files/${params.fileId}/content`, {
+  const res = await getOpenAiFetch(params.openAi)(`${baseUrl}/files/${params.fileId}/content`, {
     headers: getOpenAiHeaders(params.openAi, { json: true }),
   });
   if (!res.ok) {

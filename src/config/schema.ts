@@ -319,6 +319,7 @@ const FIELD_LABELS: Record<string, string> = {
   memory: "Memory",
   "memory.backend": "Memory Backend",
   "memory.citations": "Memory Citations Mode",
+  "memory.proxy": "Memory HTTP/HTTPS Proxy",
   "memory.memu": "MemU",
   "memory.memu.llm": "MemU LLM",
   "memory.memu.llm.provider": "MemU LLM Provider",
@@ -833,6 +834,8 @@ const FIELD_HELP: Record<string, string> = {
   memory: "Memory backend configuration (global).",
   "memory.backend": 'Memory backend ("builtin" for Argent embeddings, "qmd" for QMD sidecar).',
   "memory.citations": 'Default citation behavior ("auto", "on", or "off").',
+  "memory.proxy":
+    "HTTP/HTTPS proxy URL used by memory embeddings + LLM clients. Overrides HTTPS_PROXY/HTTP_PROXY env when set.",
   "memory.memu":
     "MemU extraction/retrieval/category-summary runtime tuning for background memory workloads.",
   "memory.memu.llm":

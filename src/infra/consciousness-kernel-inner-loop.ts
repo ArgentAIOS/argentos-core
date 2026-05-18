@@ -476,6 +476,8 @@ async function completeLmStudioKernelReflection(params: {
       model: selectedModelId,
       temperature: 0.2,
       max_tokens: KERNEL_REFLECTION_MAX_TOKENS,
+      // llama.cpp KV-cache reuse hint; LM Studio (llama.cpp-backed) honors it.
+      cache_prompt: true,
       response_format: {
         type: "json_schema",
         json_schema: {

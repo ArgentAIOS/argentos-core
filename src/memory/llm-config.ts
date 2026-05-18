@@ -1,6 +1,7 @@
 import type { ArgentConfig } from "../config/config.js";
 import { normalizeThinkLevel, type ThinkLevel } from "../auto-reply/thinking.js";
 import { BUILTIN_PROFILES, DEFAULT_TIER_MODELS } from "../models/builtin-profiles.js";
+import { resolveMemoryProxyUrl } from "./proxy-fetch.js";
 
 export const MEMU_LLM_REPLACEMENT_GUIDANCE =
   "Use a text-generation model such as openai-codex/gpt-5.3-codex, anthropic/claude-sonnet-4-6, or ollama/qwen3:14b.";
@@ -10,6 +11,12 @@ type MemuLlmRunConfig = {
   model?: string;
   thinkLevel?: ThinkLevel;
   timeoutMs: number;
+  /**
+   * Resolved HTTP/HTTPS proxy URL for outbound MemU LLM calls. Sourced from
+   * `memory.proxy` config (precedence) or `HTTPS_PROXY` / `HTTP_PROXY` env
+   * (fallback). Undefined when no proxy is configured. SAFE-PORT #313.
+   */
+  proxyUrl?: string;
 };
 
 export type MemuLlmRunAttempt = MemuLlmRunConfig & {
@@ -101,8 +108,9 @@ export function resolveMemuLlmRunConfig(
       : undefined;
   const thinkLevel = parseThinkLevel(llm?.thinkLevel);
   const timeoutMs = parseTimeoutMs(llm?.timeoutMs) ?? defaults.timeoutMs;
+  const proxyUrl = resolveMemoryProxyUrl(config);
 
-  return { provider, model, thinkLevel, timeoutMs };
+  return { provider, model, thinkLevel, timeoutMs, proxyUrl };
 }
 
 function resolveMemuOllamaFallbackModel(config: ArgentConfig): string {
@@ -142,6 +150,7 @@ export function buildMemuLlmRunAttempts(
           model: defaultOllamaModel,
           thinkLevel: primaryResolved.thinkLevel ?? "low",
           timeoutMs: primaryResolved.timeoutMs,
+          proxyUrl: primaryResolved.proxyUrl,
         }
       : primaryResolved;
   const primaryProvider = String(primary.provider ?? "")
@@ -169,6 +178,7 @@ export function buildMemuLlmRunAttempts(
       model: ollamaModel,
       thinkLevel: primary.thinkLevel ?? "low",
       timeoutMs: primary.timeoutMs,
+      proxyUrl: primary.proxyUrl,
       label: "ollama-fallback",
       respectProvidedModel: true,
     });

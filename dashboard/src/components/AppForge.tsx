@@ -26,8 +26,10 @@ import {
   Zap,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent } from "react";
+import type { AppForgeViewMode } from "../../../src/infra/app-forge-view-modes.js";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
+import { APP_FORGE_VIEW_MODE_REGISTRY } from "../../../src/infra/app-forge-view-modes.js";
 import {
   FORGE_DEFAULT_RATING_MAX,
   FORGE_MAX_RATING_MAX,
@@ -49,12 +51,15 @@ import {
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi, resolveDashboardApiToken } from "../utils/localApiFetch";
+import { CalendarView } from "./app-forge/CalendarView";
 import {
   CsvImportDialog,
   type AppForgeImportCommitReport,
   type AppForgeImportColumnOverride,
   type AppForgeImportPreview,
 } from "./app-forge/CsvImportDialog";
+import { GalleryView } from "./app-forge/GalleryView";
+import { GanttView } from "./app-forge/GanttView";
 import {
   AttachmentCellDisplay,
   AttachmentCellEditor,
@@ -70,6 +75,8 @@ import {
   UrlCellEditor,
 } from "./app-forge/GridCellEditor";
 import { InterfacesEditor } from "./app-forge/InterfacesEditor";
+import { ListView } from "./app-forge/ListView";
+import { TimelineView } from "./app-forge/TimelineView";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -95,7 +102,11 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
-type ForgeViewMode = "grid" | "kanban" | "form" | "review";
+// `ForgeViewMode` aliases the canonical `AppForgeViewMode` union (single
+// source of truth lives in `src/infra/app-forge-view-modes.ts`). The alias
+// preserves the legacy local name so call sites in this file stay
+// self-documenting after the refactor.
+type ForgeViewMode = AppForgeViewMode;
 type ForgeInspectorMode = "field" | "table";
 type ForgeSortDirection = "asc" | "desc";
 
@@ -241,12 +252,11 @@ const APP_FORGE_NAV = [
 
 const BASE_EDITOR_NAV = APP_FORGE_NAV.filter((item) => item.id !== "home");
 
-const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
-  { id: "grid", label: "Grid" },
-  { id: "kanban", label: "Kanban" },
-  { id: "form", label: "Form" },
-  { id: "review", label: "Review" },
-];
+// Surfaced for the view-picker UI — derived from the canonical registry so
+// the picker order and labels are guaranteed to match every other AppForge
+// site (substrate models, structured-data hook, saved-view validation).
+const FORGE_VIEW_MODES: ReadonlyArray<{ id: ForgeViewMode; label: string }> =
+  APP_FORGE_VIEW_MODE_REGISTRY.map((entry) => ({ id: entry.id, label: entry.label }));
 
 const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
 const DEFAULT_VIEW_SETTINGS: ForgeViewSettings = {
@@ -4226,6 +4236,82 @@ export function AppForge({
                                   ))}
                                 </div>
                               </div>
+                            )}
+
+                            {activeViewMode === "calendar" && (
+                              <CalendarView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredDateFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "gallery" && (
+                              <GalleryView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredThumbnailFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "timeline" && (
+                              <TimelineView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredLaneFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "gantt" && (
+                              <GanttView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredLaneFieldId={viewSettings.groupFieldId}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
+                            )}
+
+                            {activeViewMode === "list" && (
+                              <ListView
+                                records={viewRecords}
+                                fields={structured.activeTable?.fields ?? []}
+                                preferredGroupFieldId={viewSettings.groupFieldId}
+                                preferredVisibleFieldIds={structured.activeView?.visibleFieldIds}
+                                getRecordTitle={(record) =>
+                                  recordTitle(structured.activeTable, record)
+                                }
+                                onSelectRecord={(recordId) => {
+                                  setFormRecordId(recordId);
+                                  setActiveViewMode("form");
+                                }}
+                              />
                             )}
 
                             {activeViewMode === "review" && (

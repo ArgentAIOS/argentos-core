@@ -22,6 +22,30 @@ import type {
 } from "./types.js";
 import { getApiProvider } from "./registry.js";
 
+// LM Studio (llama.cpp-backed) honors `cache_prompt: true` for KV-cache
+// reuse between requests. pi-ai doesn't emit it; we inject via onPayload.
+function isLmStudioModel(model: Model<Api>): boolean {
+  const url = model.baseUrl ?? "";
+  return url.includes("localhost:1234") || url.includes("127.0.0.1:1234");
+}
+
+function withLmStudioCachePrompt<O extends { onPayload?: StreamOptions["onPayload"] }>(
+  model: Model<Api>,
+  options: O | undefined,
+): O | undefined {
+  if (!isLmStudioModel(model)) return options;
+  const upstream = options?.onPayload;
+  const onPayload: StreamOptions["onPayload"] = async (payload, m) => {
+    const upstreamResult = upstream ? await upstream(payload, m) : undefined;
+    const target = upstreamResult ?? payload;
+    if (target && typeof target === "object") {
+      return { ...(target as Record<string, unknown>), cache_prompt: true };
+    }
+    return upstreamResult;
+  };
+  return { ...(options ?? ({} as O)), onPayload };
+}
+
 /**
  * Stream a response from the LLM using the raw provider API.
  *
@@ -47,7 +71,7 @@ export function stream<TApi extends Api>(
         `Register one with registerApiProvider() before calling stream().`,
     );
   }
-  return provider.stream(model, context, options);
+  return provider.stream(model, context, withLmStudioCachePrompt(model as Model<Api>, options));
 }
 
 /**
@@ -75,7 +99,11 @@ export function streamSimple<TApi extends Api>(
         `Register one with registerApiProvider() before calling streamSimple().`,
     );
   }
-  return provider.streamSimple(model, context, options);
+  return provider.streamSimple(
+    model,
+    context,
+    withLmStudioCachePrompt(model as Model<Api>, options),
+  );
 }
 
 /**

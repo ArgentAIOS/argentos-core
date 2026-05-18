@@ -8807,7 +8807,66 @@ const OPENAI_CODEX_AUDIENCE = "https://api.openai.com/v1";
 const OPENAI_CODEX_SCOPE =
   "openid profile email offline_access api.connectors.read api.connectors.invoke";
 const OPENAI_CODEX_OAUTH_TTL_MS = 10 * 60 * 1000;
+// In-memory session registry. Keyed by `state` (random hex). Each entry can
+// carry a Set<res> of SSE subscribers and an AbortController for the cancel
+// endpoint introduced alongside the SSE handler.
 const openAICodexAuthSessions = new Map();
+
+// Resolve the package version for identification headers. Mirrors src/version.ts
+// (TS side) — both paths must converge on the same string so OpenAI's auth
+// backend sees a consistent caller identity regardless of which surface fired
+// the request.
+function resolveArgentVersion() {
+  try {
+    const pkg = require(path.join(__dirname, "..", "package.json"));
+    if (typeof pkg.version === "string" && pkg.version.trim()) {
+      return pkg.version.trim();
+    }
+  } catch {
+    // ignore
+  }
+  return process.env.ARGENT_BUNDLED_VERSION || "0.0.0";
+}
+const ARGENT_VERSION = resolveArgentVersion();
+
+// Identification headers attached to every outbound auth.openai.com request.
+// Without these Argent looks anonymous to OpenAI's auth backend and is at
+// risk of silent enforcement downgrades. We identify honestly as `argent` —
+// do NOT impersonate `codex` or `openclaw`. Mirrors subctl codex-oauth.ts
+// L73-L81. Keep in sync with src/agents/openai-codex-auth.ts:buildOpenAIAuthHeaders.
+function buildOpenAIAuthHeadersCjs(contentType) {
+  return {
+    "Content-Type": contentType,
+    Accept: "application/json",
+    originator: "argent",
+    "User-Agent": `argent/${ARGENT_VERSION}`,
+    version: ARGENT_VERSION,
+  };
+}
+
+// Decode the chatgpt_account_id from the OpenAI access-token JWT.
+// Claim lives under the `https://api.openai.com/auth` namespace key. Returns
+// undefined on any decode/parse failure. Mirrors decodeChatgptAccountId in
+// src/agents/openai-codex-auth.ts and subctl codex-oauth.ts L522-L536.
+function decodeChatgptAccountIdCjs(accessToken) {
+  if (!accessToken || typeof accessToken !== "string") return undefined;
+  const parts = accessToken.trim().split(".");
+  if (parts.length < 2) return undefined;
+  try {
+    const padLen = (4 - (parts[1].length % 4)) % 4;
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/") + "=".repeat(padLen);
+    const json = Buffer.from(padded, "base64").toString("utf8");
+    const parsed = JSON.parse(json);
+    const claim = parsed && parsed["https://api.openai.com/auth"];
+    if (claim && typeof claim === "object") {
+      const id = claim.chatgpt_account_id;
+      if (typeof id === "string" && id.trim()) return id.trim();
+    }
+  } catch {
+    // ignore — malformed token
+  }
+  return undefined;
+}
 
 function maskKey(key) {
   if (!key || key.length < 8) return "***";
@@ -8853,6 +8912,9 @@ function writeOpenAICodexOAuthProfile(tokenData) {
   const data = readAuthProfiles();
   const existingProfile = data.profiles?.["openai-codex:default"] || {};
   if (!data.profiles) data.profiles = {};
+  const chatgptAccountId =
+    decodeChatgptAccountIdCjs(tokenData.access_token) || existingProfile.chatgptAccountId;
+  const mintedAt = new Date().toISOString();
   data.profiles["openai-codex:default"] = {
     type: "oauth",
     provider: "openai-codex",
@@ -8863,6 +8925,11 @@ function writeOpenAICodexOAuthProfile(tokenData) {
       : existingProfile.expires,
     accountId: existingProfile.accountId,
     email: existingProfile.email,
+    ...(chatgptAccountId ? { chatgptAccountId } : {}),
+    _argent: {
+      mintedBy: "dashboard",
+      mintedAt,
+    },
   };
   if (!data.order) data.order = {};
   if (!Array.isArray(data.order["openai-codex"])) {
@@ -8874,6 +8941,7 @@ function writeOpenAICodexOAuthProfile(tokenData) {
   if (!data.lastGood) data.lastGood = {};
   data.lastGood["openai-codex"] = "openai-codex:default";
   writeAuthProfiles(data);
+  return { chatgptAccountId, mintedAt };
 }
 
 async function pollOpenAICodexDeviceSession(state) {
@@ -8893,11 +8961,12 @@ async function pollOpenAICodexDeviceSession(state) {
       }
       const pollResp = await fetch(OPENAI_CODEX_DEVICE_TOKEN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: buildOpenAIAuthHeadersCjs("application/json"),
         body: JSON.stringify({
           device_auth_id: session.deviceAuthId,
           user_code: session.userCode,
         }),
+        signal: session.abortController ? session.abortController.signal : undefined,
       });
       if (pollResp.status === 403 || pollResp.status === 404) {
         continue;
@@ -8925,7 +8994,7 @@ async function pollOpenAICodexDeviceSession(state) {
       });
       const tokenRes = await fetch(OPENAI_CODEX_TOKEN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: buildOpenAIAuthHeadersCjs("application/x-www-form-urlencoded"),
         body: tokenBody.toString(),
       });
       if (!tokenRes.ok) {
@@ -8933,21 +9002,89 @@ async function pollOpenAICodexDeviceSession(state) {
         throw new Error(`Token exchange failed (${tokenRes.status}): ${detail || "unknown error"}`);
       }
       const tokenData = await tokenRes.json();
-      writeOpenAICodexOAuthProfile(tokenData);
+      const written = writeOpenAICodexOAuthProfile(tokenData);
       session.status = "success";
       session.error = null;
       session.completedAt = Date.now();
+      session.chatgptAccountId = written && written.chatgptAccountId;
+      session.expiresAt = tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : null;
+      emitOpenAICodexAuthEvent(session, "success", {
+        chatgpt_account_id: session.chatgptAccountId || null,
+        expires_at: session.expiresAt ? new Date(session.expiresAt).toISOString() : null,
+      });
+      emitOpenAICodexAuthEvent(session, "closed", { reason: "success" });
+      closeOpenAICodexAuthSubscribers(session);
       return;
     }
     throw new Error("OpenAI Codex device login timed out");
   } catch (err) {
+    const aborted =
+      err && (err.name === "AbortError" || (err.cause && err.cause.name === "AbortError"));
     if (openAICodexAuthSessions.has(state)) {
-      session.status = "error";
+      session.status = aborted ? "cancelled" : "error";
       session.error = err.message || String(err);
       session.completedAt = Date.now();
+      if (aborted) {
+        emitOpenAICodexAuthEvent(session, "closed", { reason: "cancelled" });
+      } else {
+        emitOpenAICodexAuthEvent(session, "failed", { error: session.error });
+        emitOpenAICodexAuthEvent(session, "closed", { reason: "failed" });
+      }
+      closeOpenAICodexAuthSubscribers(session);
     }
-    console.error("[AuthProfiles] OpenAI Codex device login failed:", err);
+    if (!aborted) {
+      console.error("[AuthProfiles] OpenAI Codex device login failed:", err);
+    }
   }
+}
+
+// ---------------------------------------------------------------------------
+// SSE helpers for the OpenAI Codex OAuth flow (events endpoint).
+// Mirrors subctl dashboard/server.ts L5145-L5195 but adapted for Express:
+// `res.flushHeaders()` rather than Bun's ReadableStream, periodic keepalive
+// comments, buffered replay for late subscribers, AbortController-driven
+// cancellation. Plain-CommonJS module so we don't need a separate SSE library.
+// ---------------------------------------------------------------------------
+function ensureSseStructures(session) {
+  if (!session.subscribers) session.subscribers = new Set();
+  if (!Array.isArray(session.eventBuffer)) session.eventBuffer = [];
+  if (!session.abortController) session.abortController = new AbortController();
+}
+
+function emitOpenAICodexAuthEvent(session, type, data) {
+  ensureSseStructures(session);
+  const evt = {
+    id: session.eventBuffer.length + 1,
+    type,
+    data: data || {},
+    at: new Date().toISOString(),
+  };
+  session.eventBuffer.push(evt);
+  // Trim buffer so a long-running session doesn't grow unbounded — we only
+  // need recent context to bring a late subscriber up to speed.
+  if (session.eventBuffer.length > 64) {
+    session.eventBuffer.splice(0, session.eventBuffer.length - 64);
+  }
+  const frame = `id: ${evt.id}\nevent: ${type}\ndata: ${JSON.stringify(evt.data)}\n\n`;
+  for (const sub of session.subscribers) {
+    try {
+      sub.write(frame);
+    } catch {
+      // ignore; the subscriber will be cleaned up on close
+    }
+  }
+}
+
+function closeOpenAICodexAuthSubscribers(session) {
+  if (!session.subscribers) return;
+  for (const sub of session.subscribers) {
+    try {
+      sub.end();
+    } catch {
+      // ignore
+    }
+  }
+  session.subscribers.clear();
 }
 
 function readAuthProfiles() {
@@ -8961,12 +9098,54 @@ function readAuthProfiles() {
   return { version: 1, profiles: {} };
 }
 
+// Atomic O_EXCL+0600 write for the auth-profiles JSON. Mirrors the hardened
+// `saveJsonFile` in src/infra/json-file.ts. Closes the TOCTOU window where
+// `fs.writeFileSync` followed by `fs.chmodSync` could briefly leave the secret
+// file at default umask (often 0644). Pattern ported from subctl's
+// `atomicWriteAuthFile()` (codex-oauth.ts L150-L177).
 function writeAuthProfiles(data) {
   const dir = path.dirname(AUTH_PROFILES_PATH);
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  fs.writeFileSync(AUTH_PROFILES_PATH, JSON.stringify(data, null, 2), "utf-8");
+  const payload = `${JSON.stringify(data, null, 2)}\n`;
+  const tempPath = `${AUTH_PROFILES_PATH}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
+  let fd;
+  try {
+    fd = fs.openSync(
+      tempPath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+      0o600,
+    );
+    fs.writeSync(fd, payload);
+    try {
+      fs.fsyncSync(fd);
+    } catch {
+      // best-effort durability
+    }
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(tempPath, AUTH_PROFILES_PATH);
+  } catch (err) {
+    if (typeof fd === "number") {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      fs.unlinkSync(tempPath);
+    } catch {
+      // ignore — may not exist
+    }
+    throw err;
+  }
+  try {
+    fs.chmodSync(AUTH_PROFILES_PATH, 0o600);
+  } catch {
+    // ignore — belt and braces
+  }
 }
 
 // GET /api/settings/auth - Returns current auth profiles with masked keys
@@ -15980,7 +16159,7 @@ app.post("/api/settings/auth-profiles/openai-codex/oauth/start", (req, res) => {
     const state = generateOAuthState();
     const deviceResp = await fetch(OPENAI_CODEX_DEVICE_USER_CODE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: buildOpenAIAuthHeadersCjs("application/json"),
       body: JSON.stringify({ client_id: OPENAI_CODEX_CLIENT_ID }),
     });
     if (!deviceResp.ok) {
@@ -15996,13 +16175,29 @@ app.post("/api/settings/auth-profiles/openai-codex/oauth/start", (req, res) => {
       throw new Error("Device code response missing user_code or device_auth_id");
     }
     const pollIntervalSeconds = Math.max(3, Number.parseInt(String(deviceData.interval || 5), 10));
-    openAICodexAuthSessions.set(state, {
+    const session = {
       kind: "device",
       userCode,
       deviceAuthId,
       pollIntervalSeconds: Number.isFinite(pollIntervalSeconds) ? pollIntervalSeconds : 5,
       createdAt: Date.now(),
       status: "pending",
+      verificationUri: OPENAI_CODEX_DEVICE_URL,
+      subscribers: new Set(),
+      eventBuffer: [],
+      abortController: new AbortController(),
+    };
+    openAICodexAuthSessions.set(state, session);
+    // First event: verification info. Subscribers that connect after this
+    // will replay it from the buffer.
+    emitOpenAICodexAuthEvent(session, "verification", {
+      verification_uri: OPENAI_CODEX_DEVICE_URL,
+      user_code: userCode,
+      poll_interval_seconds: session.pollIntervalSeconds,
+      expires_in_ms: OPENAI_CODEX_OAUTH_TTL_MS,
+    });
+    emitOpenAICodexAuthEvent(session, "progress", {
+      message: "Open the verification URL, enter the code, and click Authorize. Waiting…",
     });
     void pollOpenAICodexDeviceSession(state);
     res.json({
@@ -16011,6 +16206,9 @@ app.post("/api/settings/auth-profiles/openai-codex/oauth/start", (req, res) => {
       authUrl: OPENAI_CODEX_DEVICE_URL,
       userCode,
       expiresInMs: OPENAI_CODEX_OAUTH_TTL_MS,
+      // Discoverable hint so clients can prefer SSE over polling. The polling
+      // endpoint at /oauth/status remains supported for backward-compat.
+      eventsUrl: `/api/settings/auth-profiles/openai-codex/oauth/events?state=${encodeURIComponent(state)}`,
     });
   })().catch((err) => {
     console.error("[AuthProfiles] Failed to start OpenAI Codex OAuth:", err);
@@ -16018,7 +16216,117 @@ app.post("/api/settings/auth-profiles/openai-codex/oauth/start", (req, res) => {
   });
 });
 
+// GET /api/settings/auth-profiles/openai-codex/oauth/events?state=<>
+//
+// Server-Sent Events stream for an in-progress OpenAI Codex device-code flow.
+// Event types emitted by `pollOpenAICodexDeviceSession`:
+//   - `verification` { verification_uri, user_code, poll_interval_seconds }
+//   - `progress`     { message }
+//   - `success`      { chatgpt_account_id, expires_at }
+//   - `failed`       { error }
+//   - `closed`       { reason }
+//
+// Buffered events are replayed on subscribe so a late client doesn't miss the
+// verification URL. Keepalive comments every 15s keep middleware-buffered
+// connections open. The existing `/oauth/status` polling endpoint remains as
+// backward-compat for clients that don't speak SSE.
+app.get("/api/settings/auth-profiles/openai-codex/oauth/events", (req, res) => {
+  cleanupOpenAICodexAuthSessions();
+  const state = String(req.query.state || "").trim();
+  if (!state) {
+    res.status(400).json({ error: "state is required" });
+    return;
+  }
+  const session = openAICodexAuthSessions.get(state);
+  if (!session) {
+    res.status(404).json({ error: "OAuth session not found or expired" });
+    return;
+  }
+  ensureSseStructures(session);
+
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // disable nginx proxy buffering when present
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+
+  // Replay buffered events so a late subscriber catches the verification URL.
+  for (const evt of session.eventBuffer) {
+    try {
+      res.write(`id: ${evt.id}\nevent: ${evt.type}\ndata: ${JSON.stringify(evt.data)}\n\n`);
+    } catch {
+      // ignore
+    }
+  }
+
+  // If the session is already settled, close cleanly after replay.
+  if (
+    session.status === "success" ||
+    session.status === "error" ||
+    session.status === "cancelled"
+  ) {
+    try {
+      res.end();
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  session.subscribers.add(res);
+  const keepalive = setInterval(() => {
+    try {
+      res.write(`: keepalive ${Date.now()}\n\n`);
+    } catch {
+      clearInterval(keepalive);
+    }
+  }, 15_000);
+
+  const cleanup = () => {
+    clearInterval(keepalive);
+    if (session.subscribers) session.subscribers.delete(res);
+  };
+  req.on("close", cleanup);
+  req.on("error", cleanup);
+});
+
+// POST /api/settings/auth-profiles/openai-codex/oauth/cancel
+//
+// Abort an in-flight device-code session. The poll loop observes the
+// AbortController via fetch(signal) and exits within one poll interval.
+// Mirrors subctl dashboard/server.ts L5197-L5207.
+app.post("/api/settings/auth-profiles/openai-codex/oauth/cancel", (req, res) => {
+  cleanupOpenAICodexAuthSessions();
+  const state = String((req.body && req.body.state) || req.query.state || "").trim();
+  if (!state) {
+    res.status(400).json({ error: "state is required" });
+    return;
+  }
+  const session = openAICodexAuthSessions.get(state);
+  if (!session) {
+    res.status(404).json({ error: "OAuth session not found or expired" });
+    return;
+  }
+  try {
+    if (session.abortController) {
+      session.abortController.abort();
+    }
+  } catch {
+    // ignore
+  }
+  session.status = "cancelled";
+  session.completedAt = Date.now();
+  emitOpenAICodexAuthEvent(session, "closed", { reason: "cancelled" });
+  closeOpenAICodexAuthSubscribers(session);
+  res.json({ ok: true, status: "cancelled" });
+});
+
 // GET /api/settings/auth-profiles/openai-codex/oauth/status — Poll dashboard OAuth flow status
+// @deprecated Prefer the SSE endpoint at /oauth/events. Kept for backward
+// compatibility with older dashboard clients that don't speak SSE.
 app.get("/api/settings/auth-profiles/openai-codex/oauth/status", (req, res) => {
   cleanupOpenAICodexAuthSessions();
   const state = String(req.query.state || "").trim();
@@ -16034,6 +16342,8 @@ app.get("/api/settings/auth-profiles/openai-codex/oauth/status", (req, res) => {
     status: session.status,
     error: session.error || null,
     completedAt: session.completedAt || null,
+    chatgptAccountId: session.chatgptAccountId || null,
+    expiresAt: session.expiresAt ? new Date(session.expiresAt).toISOString() : null,
   });
 });
 
@@ -16098,7 +16408,7 @@ app.get("/api/settings/auth-profiles/openai-codex/oauth/callback", async (req, r
     });
     const tokenRes = await fetch(OPENAI_CODEX_TOKEN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: buildOpenAIAuthHeadersCjs("application/x-www-form-urlencoded"),
       body: tokenBody.toString(),
     });
     if (!tokenRes.ok) {
@@ -16106,10 +16416,11 @@ app.get("/api/settings/auth-profiles/openai-codex/oauth/callback", async (req, r
       throw new Error(`Token exchange failed (${tokenRes.status}): ${detail || "unknown error"}`);
     }
     const tokenData = await tokenRes.json();
-    writeOpenAICodexOAuthProfile(tokenData);
+    const written = writeOpenAICodexOAuthProfile(tokenData);
     session.status = "success";
     session.error = null;
     session.completedAt = Date.now();
+    session.chatgptAccountId = written && written.chatgptAccountId;
     res.end(
       '<!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:4rem">' +
         "<h1>OpenAI Codex Connected</h1><p>The auth profile was updated successfully.</p>" +

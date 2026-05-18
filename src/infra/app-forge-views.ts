@@ -1,9 +1,22 @@
 import type { AppForgeBase } from "./app-forge-model.js";
+import type { AppForgeViewMode } from "./app-forge-view-modes.js";
+import {
+  APP_FORGE_VIEW_MODES as APP_FORGE_VIEW_MODES_CANONICAL,
+  isAppForgeViewMode,
+} from "./app-forge-view-modes.js";
 
-export const APP_FORGE_VIEW_MODES = ["grid", "kanban", "form", "review"] as const;
+/**
+ * Re-export of the canonical view-mode tuple. The single source of truth
+ * lives in `app-forge-view-modes.ts`; this re-export preserves the legacy
+ * `APP_FORGE_VIEW_MODES` import path so call sites that read it as "active
+ * named-view mode" don't all need new imports. `AppForgeViewMode` is the
+ * canonical union type (used for both saved-view `type` and named-view
+ * `viewMode` — they've always been identical).
+ */
+export const APP_FORGE_VIEW_MODES = APP_FORGE_VIEW_MODES_CANONICAL;
 export const APP_FORGE_VIEW_SORT_DIRECTIONS = ["asc", "desc"] as const;
 
-export type AppForgeViewMode = (typeof APP_FORGE_VIEW_MODES)[number];
+export type { AppForgeViewMode };
 export type AppForgeViewSortDirection = (typeof APP_FORGE_VIEW_SORT_DIRECTIONS)[number];
 
 export type AppForgeNamedViewSettings = {
@@ -68,9 +81,7 @@ function nowIso(): string {
 }
 
 function viewModeValue(value: unknown): AppForgeViewMode {
-  return APP_FORGE_VIEW_MODES.includes(value as AppForgeViewMode)
-    ? (value as AppForgeViewMode)
-    : "grid";
+  return isAppForgeViewMode(value) ? value : "grid";
 }
 
 function sortDirectionValue(value: unknown): AppForgeViewSortDirection {

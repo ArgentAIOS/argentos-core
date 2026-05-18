@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AppForgeViewMode } from "../../../src/infra/app-forge-view-modes.js";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "./useApps";
+import {
+  getAppForgeViewModeDefaultName,
+  getAppForgeViewModeGroupFieldHint,
+  isAppForgeViewMode,
+} from "../../../src/infra/app-forge-view-modes.js";
 import { fetchLocalApi } from "../utils/localApiFetch";
 
 export type ForgeFieldType =
@@ -77,7 +83,14 @@ export type ForgeStructuredRecord = {
   updatedAt: string;
 };
 
-export type ForgeStructuredViewType = "grid" | "kanban" | "form" | "review";
+/**
+ * The set of view modes a structured forge view can render. Aliased to the
+ * canonical `AppForgeViewMode` union which lives in
+ * `src/infra/app-forge-view-modes.ts` and is shared with the substrate. The
+ * alias is kept under the legacy `ForgeStructuredViewType` name so call
+ * sites that read it as "type of a structured view" stay self-documenting.
+ */
+export type ForgeStructuredViewType = AppForgeViewMode;
 
 export type ForgeStructuredView = {
   id: string;
@@ -341,16 +354,25 @@ function uniqueViewName(name: string, views: ForgeStructuredView[]): string {
 }
 
 function defaultViewName(type: ForgeStructuredViewType): string {
-  if (type === "kanban") {
-    return "By status";
+  return getAppForgeViewModeDefaultName(type);
+}
+
+function resolveDefaultGroupFieldId(
+  table: ForgeStructuredTable,
+  type: ForgeStructuredViewType,
+): string {
+  // The per-mode seeding policy ("Kanban groups by status / Calendar by
+  // first date field / Gallery by first attachment field / Timeline by
+  // status") lives in the canonical registry; this helper just resolves
+  // the hint against the live table.
+  const hint = getAppForgeViewModeGroupFieldHint(type);
+  if (hint.kind === "fieldType") {
+    return table.fields.find((field) => field.type === hint.value)?.id ?? "";
   }
-  if (type === "form") {
-    return "Intake form";
+  if (hint.kind === "fieldName") {
+    return fieldByName(table, hint.value)?.id ?? "";
   }
-  if (type === "review") {
-    return "Review queue";
-  }
-  return "All records";
+  return "";
 }
 
 function defaultViewSettings(
@@ -362,10 +384,13 @@ function defaultViewSettings(
 > {
   const statusField = fieldByName(table, "status");
   return {
+    // The pre-registry behavior seeded the Review view's `filterText` with
+    // "Review" iff the table has a status field — preserved here so
+    // operator-visible defaults are bit-identical after the refactor.
     filterText: type === "review" && statusField ? "Review" : "",
     sortFieldId: "",
     sortDirection: "asc",
-    groupFieldId: type === "kanban" && statusField ? statusField.id : "",
+    groupFieldId: resolveDefaultGroupFieldId(table, type),
     visibleFieldIds: table.fields.map((field) => field.id),
   };
 }
@@ -755,9 +780,11 @@ function defaultFields(): ForgeStructuredField[] {
   ];
 }
 
-function isViewType(value: unknown): value is ForgeStructuredViewType {
-  return value === "grid" || value === "kanban" || value === "form" || value === "review";
-}
+// `isViewType` is the dashboard-flavored alias for `isAppForgeViewMode`. It
+// preserves the legacy name at the call site so refactors don't churn
+// dozens of call lines; the underlying check now consults the canonical
+// registry in `src/infra/app-forge-view-modes.ts`.
+const isViewType = isAppForgeViewMode;
 
 function defaultViews(type: ForgeStructuredViewType = "grid"): ForgeStructuredView[] {
   const createdAt = nowIso();

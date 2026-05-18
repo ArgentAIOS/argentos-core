@@ -22,7 +22,7 @@ import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { CommandLane } from "../../process/lanes.js";
 import { buildMemuLlmRunAttempts } from "../llm-config.js";
-import { buildCategorySummaryPrompt } from "./prompts.js";
+import { buildCategorySummaryPrompt, buildCategorySummaryWithRefsPrompt } from "./prompts.js";
 import { sanitizeCategorySummary } from "./sanitize.js";
 
 // ── Circuit breaker ──
@@ -36,12 +36,18 @@ const MEMU_CIRCUIT_COOLDOWN_MS = 30_000;
 /**
  * Generate or refresh a category's LLM summary based on its items.
  * Skips categories with no items.
+ *
+ * When `withItemRefs` is true, the prompt is built from the
+ * `category_with_refs` template (see prompts.ts) so the resulting summary
+ * embeds inline `[ref:<id>]` tokens that point back at the source items.
+ * Default is `false`, preserving existing behavior for all current callers.
  */
 export async function refreshCategorySummary(params: {
   categoryId: string;
   config: ArgentConfig;
   store?: MemoryAdapter;
   maxItems?: number;
+  withItemRefs?: boolean;
 }): Promise<string | null> {
   const store = params.store ?? (await getMemoryAdapter());
   const maxItems = params.maxItems ?? 30;
@@ -59,11 +65,21 @@ export async function refreshCategorySummary(params: {
   // Sort by reinforcement count (most reinforced = most important)
   items.sort((a, b) => b.reinforcementCount - a.reinforcementCount);
 
-  const prompt = buildCategorySummaryPrompt({
-    name: category.name,
-    description: category.description,
-    itemSummaries: items.map((item) => item.summary),
-  });
+  const prompt = params.withItemRefs
+    ? buildCategorySummaryWithRefsPrompt({
+        name: category.name,
+        description: category.description,
+        items: items.map((item) => ({
+          id: item.id,
+          summary: item.summary,
+          contentHash: item.contentHash,
+        })),
+      })
+    : buildCategorySummaryPrompt({
+        name: category.name,
+        description: category.description,
+        itemSummaries: items.map((item) => item.summary),
+      });
 
   const summary = await callLlm(prompt, "category-summary", params.config);
   const sanitized = sanitizeCategorySummary(summary);
@@ -78,11 +94,15 @@ export async function refreshCategorySummary(params: {
 /**
  * Refresh summaries for all categories that were touched during extraction.
  * Runs in background — non-blocking.
+ *
+ * The optional `withItemRefs` flag is forwarded to `refreshCategorySummary`
+ * for every category. Default `false`, preserving existing behavior.
  */
 export async function refreshTouchedCategorySummaries(params: {
   categoryIds: string[];
   config: ArgentConfig;
   store?: MemoryAdapter;
+  withItemRefs?: boolean;
 }): Promise<{ updated: number; errors: number }> {
   const store = params.store ?? (await getMemoryAdapter());
   let updated = 0;
@@ -94,6 +114,7 @@ export async function refreshTouchedCategorySummaries(params: {
         categoryId: catId,
         config: params.config,
         store,
+        withItemRefs: params.withItemRefs,
       });
       if (summary) {
         updated++;
