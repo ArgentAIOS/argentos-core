@@ -2,6 +2,823 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.5.6.4
+
+Fourth micro release on top of `v2026.5.6`. **10 PRs / 7 issues closed**,
+finishing AppForge Phase 4 (rich field UX, CSV import, durable saved views,
+NL-editing substrate, editable interfaces) and landing the keystone pi-_
+upstream switch from the stale `@mariozechner` fork to the real upstream at
+`@earendil-works/pi-_`0.74.0. Adds durable producer events with journal +
+scope-filtered subscriptions and a single ACL gate at every AppForge write
+boundary. No schema changes, no breaking API changes. Safe drop-in upgrade
+from`v2026.5.6.3`.
+
+### Highlights
+
+- **Pi-_ upstream switch to `@earendil-works/pi-_` 0.74.0
+  ([#341](https://github.com/ArgentAIOS/argentos-core/pull/341)).** Closes
+  [#338](https://github.com/ArgentAIOS/argentos-core/issues/338). Argent
+  was sitting on `@mariozechner/pi-mono` (a stale fork of a fork) when the
+  real upstream lives at `earendil-works/pi`. This release migrates every
+  pi-_ import to the true upstream at `@earendil-works/pi-_` 0.74.0,
+  routed through the pi-bridge cluster from v2026.5.6.3. 59 files
+  touched, 0 net-new TS errors (baseline 217 → 217). The bridge pattern
+  paid off: only bridge files directly imported the pi-\* packages, so
+  the rename was a routine version-pin instead of a multi-day migration.
+- **AppForge Phase 4 substantially complete.** Five Phase 4 PRs land
+  in this release: rich field types UX
+  ([#331](https://github.com/ArgentAIOS/argentos-core/pull/331), gaps #3
+  - #4), CSV import substrate
+    ([#332](https://github.com/ArgentAIOS/argentos-core/pull/332), gap #8
+    partial), durable saved named views
+    ([#333](https://github.com/ArgentAIOS/argentos-core/pull/333), gap #1),
+    natural-language editing substrate
+    ([#343](https://github.com/ArgentAIOS/argentos-core/pull/343), closes
+    [#337](https://github.com/ArgentAIOS/argentos-core/issues/337)), and
+    editable interfaces
+    ([#344](https://github.com/ArgentAIOS/argentos-core/pull/344), closes
+    [#334](https://github.com/ArgentAIOS/argentos-core/issues/334)).
+- **Durable producer events with journal + scope-filtered subscriptions
+  ([#339](https://github.com/ArgentAIOS/argentos-core/pull/339)).** Closes
+  [#335](https://github.com/ArgentAIOS/argentos-core/issues/335). AppForge
+  producer events now write to a durable journal with scope-filtered
+  subscriptions, so subscribers can survive restart and consumers see only
+  the events relevant to their scope. Replaces the in-memory fan-out that
+  silently dropped events on subscriber backpressure.
+- **Single ACL gate at every AppForge write boundary
+  ([#340](https://github.com/ArgentAIOS/argentos-core/pull/340)).** Closes
+  [#336](https://github.com/ArgentAIOS/argentos-core/issues/336). Every
+  AppForge mutation now passes through one centralized ACL gate instead of
+  per-handler ad-hoc checks. Eliminates the "forgot the gate" failure
+  mode and gives operators a single audit point for write-side policy.
+- **`@earendil-works/google-shared` inlined
+  ([#345](https://github.com/ArgentAIOS/argentos-core/pull/345)).** Closes
+  [#342](https://github.com/ArgentAIOS/argentos-core/issues/342).
+  Post-migration follow-up: the upstream's `google-shared` package is not
+  ready for external consumption, so argent inlines the relevant code
+  rather than shipping a broken transitive dependency.
+
+### Dependencies
+
+- **`@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent`,
+  `@mariozechner/pi-agent-core` bumped to 0.73.1
+  ([#330](https://github.com/ArgentAIOS/argentos-core/pull/330)).** Closes
+  [#182](https://github.com/ArgentAIOS/argentos-core/issues/182). Routine
+  version pin enabled by the v2026.5.6.3 pi-bridge cluster. Subsequently
+  superseded by #341 (full migration to `@earendil-works/pi-*` 0.74.0)
+  but kept in the release notes as the bump that proved the bridge
+  pattern works.
+
+### Testing notes
+
+- AppForge: exercise saved views (create / rename / delete / set
+  default), CSV import (paste, mapping, validation), rich field types
+  (attachments, email columns), NL editing (describe an edit, apply,
+  rollback), and editable interfaces (modify shipped interfaces in
+  place). All durability now persists across restart via the new
+  producer-events journal.
+- ACL: confirm write paths still reject unauthenticated mutations and
+  enforce the new single-gate policy. Read paths are unchanged.
+- Pi-_: confirm `argent` startup picks up `@earendil-works/pi-_` 0.74.0
+  without surfacing module-resolution errors. The bridge interfaces
+  shipped in v2026.5.6.3 are unchanged.
+
+## 2026.5.6.3
+
+Third micro release on top of `v2026.5.6`. **17 commits / 11 issues closed**,
+combining the full TinyFish web toolkit (search + fetch + browser + agent),
+1Password Service Account as a first-class secrets backend, and the
+pi-bridge cluster that unblocks the long-pending pi-ai 0.73.1+ bump (#182).
+No schema changes, no breaking API changes. Safe drop-in upgrade from
+`v2026.5.6.2`.
+
+### Highlights
+
+- **TinyFish becomes the recommended default web stack.** Free Search +
+  Fetch ship as the first-class default for every account (no API-key
+  wrangling, no credits), and the paid Browser API + Agent API now ship
+  as first-class agent tools alongside them. Operators get a working
+  web stack in 30 seconds; agents can drive a real browser
+  (Playwright/CDP) or describe goals in natural language and have
+  TinyFish navigate / click / fill on their behalf.
+- **1Password Service Accounts as a first-class secrets backend.**
+  Per-key `op://Vault/Item/field` references on any entry in
+  `service-keys` are now detected at resolve time and resolved through
+  the `op` CLI. Existing literal values continue to work unchanged —
+  fully additive and opt-in per key. Tokens are never logged, output
+  is always masked, and 5-minute in-memory caching keeps the resolver
+  cheap. `argent secrets backend 1password setup`, `doctor`, and
+  `test <variable>` ship with the CLI; `argent doctor` reports
+  1Password health only when refs exist.
+- **Pi-bridge cluster closes — pi-ai 0.73.1+ bump (#182) is now
+  unblocked.** Six bridge PRs land in this release (#321, #322, #323,
+  #324, #327 plus the foundation cluster #299/#308/#309/#310). Argent's
+  runtime now consumes pi-coding-agent's `AgentSession`, `Agent.state`,
+  `AgentMessage`, `BashExecutionMessage`, `supportsXhigh`, `Transport`,
+  `AuthStorage`, `ModelRegistry`, `SessionCompactionResult`, and the
+  typebox `Tool`/`Context` types through structural bridge interfaces
+  in `pi-bridge/`. The next pi-ai bump becomes a routine version-pin
+  rather than a multi-day migration.
+- **SetupWizard cards derived from the provider seed.** The dashboard's
+  first-run LLM provider cards (anthropic, openai, minimax, zai, local)
+  are now generated from `src/agents/provider-registry-seed.ts` at
+  build time, eliminating the drift between the runtime registry and
+  the onboarding wizard that #295 catalogued.
+
+### TinyFish web toolkit
+
+- **TinyFish first-class default — `web_search` + `web_fetch`** (PR
+  [#317](https://github.com/ArgentAIOS/argentos-core/pull/317)):
+  `tinyfish` joins `SEARCH_PROVIDERS`; `resolveSearchProvider` picks
+  TinyFish whenever a `TINYFISH_API_KEY` is resolvable (env, dashboard
+  service-keys, or `tools.web.search.tinyfish.apiKey`). `web_fetch`
+  gains an opt-in `backend: "tinyfish"` param that posts JS-heavy or
+  anti-bot pages through `api.fetch.tinyfish.ai`. CLI wizard surfaces
+  TinyFish **first** in `promptWebToolsConfig`; dashboard onboarding
+  reorders `SEARCH_PROVIDER_CARDS` with TinyFish at the top labelled
+  "Free Search & Fetch (Recommended)". Brave + Perplexity remain
+  fully supported. Strict-Zod gap closed for `firecrawl`, `readability`,
+  and `tinyfish` sub-objects so valid `argent.json` configs are no
+  longer rejected. 30 tests in `web-search.test.ts` cover every
+  smart-default branch, resolver units, and 401 auth-failure transport.
+- **TinyFish Browser API — remote Playwright/CDP session** (PR
+  [#325](https://github.com/ArgentAIOS/argentos-core/pull/325), closes
+  [#320](https://github.com/ArgentAIOS/argentos-core/issues/320)):
+  New `tinyfish_browser_open` / `tinyfish_browser_close` agent tools.
+  `open` posts to `api.browser.tinyfish.ai` and returns
+  `{session_id, cdp_url, base_url}` — the agent (or a higher-level
+  tool) connects via `chromium.connect_over_cdp(cdp_url)`. Argent
+  itself does **not** wrap Playwright. `close` is acknowledgement-only
+  (sessions auto-terminate after 1 hour of inactivity; the API has no
+  explicit delete endpoint). Paid-tier walls surface as
+  `tinyfish_browser_paid_tier_required` with an upgrade message; 401
+  is mapped separately so the agent doesn't suggest an upgrade on
+  auth failures. 21 tests cover registration, schema, auth, transport,
+  and error mapping.
+- **TinyFish Agent API — natural-language web automation** (PR
+  [#326](https://github.com/ArgentAIOS/argentos-core/pull/326), closes
+  [#319](https://github.com/ArgentAIOS/argentos-core/issues/319)):
+  New `tinyfish_agent` tool. Operators describe a goal in natural
+  language plus a starting URL; TinyFish navigates / clicks / fills
+  on real sites and returns structured results. Optional
+  `max_steps`, `browser_profile` (`lite`/`stealth`), `screenshots`,
+  `snapshots`, `recording`, `webhook_url`, `timeout_seconds`.
+  Hard caps: 500 steps, 600s timeout. New config surface
+  `tools.web.agent.*`. Opt-in (defaults `enabled: false`) because
+  Agent is a paid tier. Error mapping for `INSUFFICIENT_CREDITS` /
+  paid-feature wall, `RATE_LIMIT_EXCEEDED`, auth failures, and
+  client-side timeout. 35 tests covering config, auth, URL guards,
+  registration, transport, and error mapping.
+
+### 1Password Service Accounts (first-class secrets backend)
+
+- **`op://` references resolved at service-key resolution time** (PR
+  [#318](https://github.com/ArgentAIOS/argentos-core/pull/318)):
+  Per-key `op://Vault/Item/field` references in any service-keys entry
+  are detected at resolve time and resolved through the `op` CLI.
+  New `src/infra/onepassword-resolver.ts` exposes `isOnePasswordRef`,
+  `parseOnePasswordRef`, `maskRef`, and `resolveOnePasswordRef` with
+  a 5-minute in-memory cache (TTL configurable per call; `ttl=0`
+  disables). `OP_SERVICE_ACCOUNT_TOKEN` is read from `process.env`
+  or from argent's encrypted secret store and is **never logged or
+  printed** — all `op` output passes through `redactToken` first, and
+  the subprocess env is whitelist-built so unrelated env doesn't leak
+  into `op`. Graceful fallback when the `op` CLI is absent
+  (`op_cli_missing`). New CLI: `argent secrets backend 1password
+setup [--token ops_...] [--migrate-existing]`, `doctor [--sample
+op://...]`, and `test <variable>`. `argent doctor` reports a
+  1Password block only when refs are present, with clear remediation
+  steps; never fails the parent doctor run. Dashboard exposes
+  `GET /api/settings/service-keys/1password/health` with the same
+  probe data (UI toggle is a follow-up). 20 tests cover parse, mask,
+  redact, token resolution priority, cache TTL boundary (hit / miss
+  / `ttl=0`), `op-missing` fallback, ref detection, and env-fallback
+  on resolver failure. Ships **flavor A** (per-key refs) from the
+  spec; flavor B (global `secrets.backend = "1password"` flag) is a
+  follow-up.
+
+### Pi-bridge cluster (unblocks #182)
+
+The pi-coding-agent 0.70.2+ surface added ~78 private members,
+removed `replaceMessages`, privatized `AuthStorage` / `ModelRegistry`
+constructors, switched to `typebox@1.x`, and reshaped
+`BashExecutionMessage` and `supportsXhigh`. PR #275 / #276 attempted
+forward-direction unification (argent's `AgentSession` impl wrapping
+pi's class) and correctly stopped — class extension can't satisfy
+private members it doesn't own. This release ships the **structural**
+bridge instead: argent's runtime consumes pi's surface through
+interfaces in `pi-bridge/` that capture only the public shape
+argent reads. Future pi bumps absorb drift at one chokepoint per type.
+
+- **Foundation + AuthStorage / ModelRegistry / SessionCompactionResult /
+  typebox `Tool`+`Context`** (PRs
+  [#299](https://github.com/ArgentAIOS/argentos-core/pull/299) /
+  [#308](https://github.com/ArgentAIOS/argentos-core/pull/308) /
+  [#309](https://github.com/ArgentAIOS/argentos-core/pull/309) /
+  [#310](https://github.com/ArgentAIOS/argentos-core/pull/310), partial
+  [#286](https://github.com/ArgentAIOS/argentos-core/issues/286);
+  closes [#300](https://github.com/ArgentAIOS/argentos-core/issues/300),
+  [#303](https://github.com/ArgentAIOS/argentos-core/issues/303),
+  [#305](https://github.com/ArgentAIOS/argentos-core/issues/305)):
+  Establishes `src/argent-agent/pi-bridge/` as the single chokepoint
+  for argent ↔ pi-coding-agent type identity. Migrates the remaining
+  `AuthStorage` and `ModelRegistry` call sites off direct pi imports;
+  adds a `SessionCompactionResult` mapper; bridges the typebox
+  `Tool`/`Context` surface so 0.34 → 1.x drift is absorbed in one
+  place.
+- **`supportsXhigh` + `Transport` cleanup** (PR
+  [#321](https://github.com/ArgentAIOS/argentos-core/pull/321), closes
+  [#306](https://github.com/ArgentAIOS/argentos-core/issues/306)):
+  Drift-absorbing `supportsXhigh(model)` wrapper in pi-bridge (local
+  re-implementation, not a re-export — pi 0.73+ removed the named
+  export and replaced it with
+  `getSupportedThinkingLevels().includes("xhigh")`). `Transport` type
+  alias forwards pi's `"sse" | "websocket" | "auto"` union; audited
+  `src/` for the removed `"websocket-cached"` variant and confirmed
+  zero occurrences. The two #182-catalogued sites (`agent-core/ai.ts`
+  re-export and `pi-embedded-runner/run/attempt.ts`
+  `resolveOpenAICodexTransport`) migrated through the bridge.
+- **`AgentSessionLike` structural bridge** (PR
+  [#323](https://github.com/ArgentAIOS/argentos-core/pull/323), closes
+  [#301](https://github.com/ArgentAIOS/argentos-core/issues/301)):
+  `pi-bridge/agent-session.ts` exposes `AgentSessionLike` and
+  `AgentSessionAgentLike` — interfaces capturing only the public
+  surface `pi-embedded-runner` actually reads. Both argent's
+  `AgentSession` interface and pi's class satisfy the read subset;
+  argent's interface additionally satisfies `agent.setSystemPrompt`
+  (the runtime source is always argent — `agent-core/coding.ts`
+  rebinds `createAgentSession` → `createArgentAgentSession`).
+  `attempt.ts:1130` TS2352 cast and `system-prompt.ts:94` TS2339
+  `setSystemPrompt`-on-Agent error retire. Baseline: 227 → 225.
+- **`Agent.replaceMessages` migration** (PR
+  [#324](https://github.com/ArgentAIOS/argentos-core/pull/324), closes
+  [#302](https://github.com/ArgentAIOS/argentos-core/issues/302)):
+  Migrates the 4 `Agent.replaceMessages(...)` call sites in
+  `attempt.ts` to pi 0.70.2+'s new API: `agent.state.messages = msgs`
+  (the `AgentState.messages` setter copies the top-level array).
+  Pi-bridge gains `AgentSessionAgentStateLike` plus a
+  `replaceAgentMessages(agent, msgs)` helper — single chokepoint
+  wrapping the assignment so future drift only touches one file.
+  Retires the optional `replaceMessages?` shim that PR #323 had
+  added as a stopgap (it type-checked but was a silent no-op on any
+  pi-class instance). Argent's internal `AgentSession` retains its
+  own `replaceMessages` method for internal callers (tests,
+  compaction, session bootstrap).
+- **`SetupWizard` cards from registry seed** (PR
+  [#322](https://github.com/ArgentAIOS/argentos-core/pull/322), closes
+  [#295](https://github.com/ArgentAIOS/argentos-core/issues/295)):
+  Refactors `dashboard/src/lib/onboardingStack.ts` so the SetupWizard's
+  5 first-run LLM provider cards (anthropic, openai, minimax, zai,
+  local) derive from `provider-registry-seed.ts` instead of being
+  hand-maintained in two places. `ONBOARDING_PROVIDER_CARD_SEEDS`
+  added to the core seed with an `onboardingVisible: true` flag;
+  `SEED_VERSION` bumped 9 → 10 so existing installs re-seed.
+  `scripts/export-provider-catalog.ts` (introduced for #268) extends
+  to regenerate a typed TS artifact at
+  `dashboard/src/lib/_generated/onboarding-card-seed.ts` during
+  `pnpm build`. The 5 existing cards render with identical IDs,
+  labels, accents, recommended labels, descriptions, key URLs, and
+  ordering — verified by direct field-by-field comparison.
+  `MODEL_FALLBACKS` and `ROUTER_TIER_PREFERENCES` migrations remain
+  follow-ups under #295.
+- **`BashExecutionMessage.content` migration** (PR
+  [#327](https://github.com/ArgentAIOS/argentos-core/pull/327), closes
+  [#304](https://github.com/ArgentAIOS/argentos-core/issues/304)):
+  Last `attempt.ts` site in the pi-bridge cluster. New
+  `pi-bridge/bash-execution.ts` exposes `getBashExecutionContent(msg)`
+  plus a `BashExecutionMessage` alias sourced via the
+  `CustomAgentMessages["bashExecution"]` merged-map indirect (no deep
+  pi-coding-agent import). `attempt.ts` now imports `AgentMessage`
+  from `argent-agent/pi-bridge` (was `agent-core/core.js`); the 7
+  sites that hand `activeSession.messages` to consumers
+  (sanitizeSessionHistory, sanitizeMessagesForModelAdapter,
+  injectHistoryImagesIntoMessages, detectAndLoadPromptImages,
+  cacheTrace.recordStage × 3) consume the bridge identity directly.
+  Helper prefers `.output` and falls back to legacy `.content` so any
+  future cross-link to older pi typings still type-checks. With this
+  in place, **#182 (pi-ai 0.73.1+ bump) becomes a routine
+  version-pin.**
+
+### Other fixes + ergonomics
+
+- **Routing de-prioritizes models with recent empty-response failures**
+  (PR [#307](https://github.com/ArgentAIOS/argentos-core/pull/307),
+  closes [#281](https://github.com/ArgentAIOS/argentos-core/issues/281)):
+  Models that recently emitted empty responses are temporarily
+  de-prioritized in the routing layer, complementing the per-model
+  fallback retry shipped in v2026.5.6.2 (#254 / #280).
+- **Keychain: pin `login.keychain-db` explicitly** (PR
+  [#298](https://github.com/ArgentAIOS/argentos-core/pull/298), closes
+  [#292](https://github.com/ArgentAIOS/argentos-core/issues/292)):
+  Pins the explicit `login.keychain-db` path when issuing
+  `security` CLI commands so macOS doesn't pop the keychain-access
+  prompt under contention from concurrent agents.
+- **Provider hygiene: drop dead `nvidia-free`; refresh `minimax-mix`
+  ids** (PR [#294](https://github.com/ArgentAIOS/argentos-core/pull/294)).
+
+### Known carry-overs
+
+- [#276](https://github.com/ArgentAIOS/argentos-core/issues/276)
+  AgentSession identity unify — **superseded** by the
+  `AgentSessionLike` structural bridge in #323 (closing soon as
+  obsolete; the structural approach replaces the forward-extension
+  approach attempted in #275 / #276).
+- [#286](https://github.com/ArgentAIOS/argentos-core/issues/286)
+  Pi-bridge module — **substantially closed.** The foundation
+  (#299) plus the AuthStorage/ModelRegistry/SessionCompactionResult/
+  typebox/AgentSessionLike/replaceMessages/BashExecutionMessage/
+  supportsXhigh/Transport bridges are in. Remaining work is the
+  actual pi-ai 0.73.1+ version bump.
+- [#182](https://github.com/ArgentAIOS/argentos-core/issues/182)
+  pi-ai 0.73.1+ bump — **unblocked.** The bridge cluster removes
+  every previously-flagged drift surface. Next bump becomes a
+  routine version-pin.
+
+### Validation
+
+- ✅ `pnpm exec tsc --noEmit` baseline 218 errors (down from 227 on
+  v2026.5.6.2 thanks to #323's -2 delta) — net-zero new errors from
+  any PR in this release.
+- ✅ `pnpm build` succeeds.
+- ✅ Architectural invariants (INV-1 / INV-2 / INV-4) pass.
+- ✅ `pnpm check:repo-lane` passes.
+- ✅ 100+ new tests across TinyFish (30 search + 21 browser + 35
+  agent), 1Password (20), and pi-bridge cluster. All passing.
+- ⚠️ Pre-existing failures in `run.overflow-compaction.test.ts`
+  (missing `isModelUnavailableErrorMessage` mock export) reproduce on
+  origin/dev unchanged — not introduced by this release.
+
+### Testing notes
+
+- `argent update` from `v2026.5.6.2` should land cleanly on
+  `2026.5.6.3`. Validate post-update: `argent doctor` reports 0
+  plugin errors, gateway running on the new version stamp.
+- **TinyFish**: `TINYFISH_API_KEY=tf_... pnpm dev` → confirm
+  `web_search` routes to TinyFish without `provider` config. Open
+  dashboard onboarding → search provider step → confirm TinyFish
+  card is first with the "Recommended" badge.
+- **TinyFish Browser**: with a paid key, `tinyfish_browser_open` →
+  connect via Playwright `connect_over_cdp(cdp_url)` → verify
+  navigation works.
+- **TinyFish Agent**: with `tools.web.agent.enabled=true` and a paid
+  key, call `tinyfish_agent {goal, url, max_steps: 20}` → expect a
+  structured result.
+- **1Password**: `argent secrets backend 1password setup --token
+ops_...` against a real Service Account → token stored encrypted,
+  `op vault list` probe succeeds. Set a service-keys value to
+  `op://Argent/<Item>/<field>` → `argent secrets backend 1password
+test <variable>` resolves end-to-end with masked output.
+- **Pi-bridge cluster**: tracker validation — apply the bridge in
+  the pi-ai 0.73.1+ bump worktree and confirm all previously-flagged
+  drift surfaces type-check.
+
+## 2026.5.6.2
+
+Second micro release on top of `v2026.5.6`. **18 issues closed**, all bug
+fixes, install/update hardening, and ergonomics — no schema changes, no
+breaking API changes. Safe drop-in upgrade.
+
+### Highlights
+
+- **Auto-close-on-dev-merge pipeline is live.** Issues referenced with
+  `closes/fixes/resolves` in commits that land on `dev` now auto-close,
+  even though `dev` isn't the default branch. Catches the long-standing
+  pain of having to manually close issues after PR merges
+  ([#180](https://github.com/ArgentAIOS/argentos-core/issues/180)).
+- **AOS subctl connector lands.** Bridges ArgentOS workflows and the AOS
+  worker harness to [subctl](https://github.com/webdevtodayjason/subctl)
+  — multi-account AI subscription control plane. Mirrors the
+  `aos-telegram` connector pattern. Read commands work in `readonly`
+  mode; write commands gated behind `mode=write` (PR #192).
+- **Install + update get serious hardening.** Five compound install
+  fixes: legacy `pnpm` symlink sweep, postgres@17 restart-not-start +
+  port-conflict diagnosis with `ARGENT_PG_REPURPOSE_EXISTING` opt-in,
+  `pg_dump` snapshot before takeover, dashboard `node_modules/react`
+  postinstall sweep, and dashboard provider-catalog populated from
+  seed at build time.
+- **Type-identity work continues.** `AgentMessage`/`StreamFn` between
+  argent's local `pi-types` and `@mariozechner/pi-agent-core` are
+  unified — `tsc` baseline shrinks 267 → 249. The band-aid in #256
+  stays as defensive (orthogonal to drift).
+- **Z.AI thinking-only responses surface correctly.** Two-layer fix:
+  fallback retry to `glm-4.7` when `glm-5*` returns empty, plus
+  adapter-layer `reasoning_content` extraction in
+  `openai-completions` so the wasted round-trip goes away over time.
+
+### Bug fixes — Install / Update / Gateway
+
+- **Legacy pnpm symlink sweep**
+  ([#168](https://github.com/ArgentAIOS/argentos-core/issues/168)):
+  `argent update` now sweeps 7,892+ legacy pnpm symlinks that pointed
+  at `/Users/sem/argentos/` (the pre-canonical install path) and
+  rewrites them to the canonical install root. `argent doctor --repair`
+  invokes the same sweep so existing affected installs self-heal in
+  place. Idempotent.
+- **Postgres@17 already-running handling**
+  ([#109](https://github.com/ArgentAIOS/argentos-core/issues/109)):
+  Hosted installer detects `postgresql@17` already running, uses
+  `brew services restart` (not `start`) so config rewrites actually
+  take effect, polls psql for 20s after restart, and reports a clear
+  port-conflict diagnosis with the listener identity if 5433 is held
+  by something else. Data-loss guard: aborts with a warning if the
+  existing postgres has user data unless
+  `ARGENT_PG_REPURPOSE_EXISTING=1` is set.
+- **Postgres pre-takeover snapshot**
+  ([#278](https://github.com/ArgentAIOS/argentos-core/issues/278)):
+  When `ARGENT_PG_REPURPOSE_EXISTING=1` triggers an actual takeover,
+  `pg_dumpall` snapshots the existing data to
+  `~/.argentos/backups/postgres-pre-takeover-<timestamp>.sql` before
+  the port rewrite. Auth-required clusters fail fast (`-w`) with a
+  pgpass/PGPASSWORD hint. Any dump failure aborts the takeover and
+  leaves the port untouched.
+- **Dashboard react symlink postinstall sweep**
+  ([#264](https://github.com/ArgentAIOS/argentos-core/issues/264)):
+  Pre-existing `dashboard/node_modules/react` symlinks that pointed at
+  removed worktrees (a pnpm hoist artifact) are auto-rewritten by a
+  postinstall script. Fresh worktrees pass React tests on first
+  install. Silent on healthy installs.
+- **Dashboard provider-catalog populated from seed**
+  ([#268](https://github.com/ArgentAIOS/argentos-core/issues/268)):
+  `dashboard/provider-catalog/index.cjs` is now generated from
+  `provider-registry-seed.ts` at build time. Previously shipped with
+  `providers: {}`, causing the Models page to render blank on
+  headless launches before the user's `~/.argentos/provider-registry.json`
+  existed. 12 providers ship in the fallback.
+
+### Bug fixes — Providers / Models / Auth
+
+- **Provider registry seed adds zai**
+  ([#269](https://github.com/ArgentAIOS/argentos-core/issues/269)):
+  `zai` was offered in CLI + dashboard onboarding with 8 GLM models in
+  `models-db.ts`, but `provider-registry-seed.ts` had no entry — so
+  `ensureArgentModelsJson` never wrote a zai block. Z.AI worked only
+  via pi-coding-agent's anthropic-compat fallback. Now seeded
+  directly. SEED_VERSION bumped to 9 so existing installs re-seed.
+- **Chutes reachable from grouped wizard**
+  ([#267](https://github.com/ArgentAIOS/argentos-core/issues/267)):
+  `chutes` was in the flat `buildAuthChoiceOptions` list but missing
+  from `AUTH_CHOICE_GROUP_DEFS`, so the grouped wizard couldn't reach
+  it. Added as a standalone group modeled on `qwen`.
+- **zai/glm-5-turbo empty response fallback**
+  ([#254](https://github.com/ArgentAIOS/argentos-core/issues/254)):
+  Generalized the empty-response fallback retry to cover
+  `zai`/`zai-coding` providers. When `glm-5-turbo` defaults to
+  thinking-on and emits reasoning-only content (a known Z.AI quirk)
+  via the openai-completions path, the runtime now retries on
+  `glm-4.7` rather than surfacing a blank assistant message.
+- **openai-completions surfaces reasoning_content**
+  ([#280](https://github.com/ArgentAIOS/argentos-core/issues/280)):
+  Adapter-layer fix paired with the retry-fallback in #254. When
+  `content` is empty AND `toolCalls` is empty AND `reasoning_content`
+  is non-empty, the openai-completions adapter now uses
+  `reasoning_content` as visible text. Provider-agnostic conditional
+  gate — OpenAI-proper (always emits content) and tool-call responses
+  are unaffected.
+
+### Bug fixes — Channels / Plugins
+
+- **Agent-tag transform extends to all text channels**
+  ([#202](https://github.com/ArgentAIOS/argentos-core/issues/202)):
+  The MOOD/TTS tag transform added in #198 for Telegram + Discord now
+  also strips/transforms tags for Signal, Slack, iMessage, WhatsApp,
+  and MS Teams. Channels not covered in core are explicitly
+  documented in the PR body.
+- **Mood→emoji map via plugin config**
+  ([#203](https://github.com/ArgentAIOS/argentos-core/issues/203)):
+  `channels.defaults.agentTags.moodEmojiMap` is now a typed,
+  zod-validated plugin-config field. Plugins can override individual
+  mood entries or supply a full replacement map for deployment
+  branding. Empty-string values suppress a default mood.
+  Case-insensitive keys. Backward-compatible — default map kept for
+  deployments without overrides.
+
+### Bug fixes — UI / Build / CI
+
+- **fetchLocalApi migration completes**
+  ([#173](https://github.com/ArgentAIOS/argentos-core/issues/173)):
+  All 23 grandfathered dashboard files migrated from direct `fetch()`
+  to `fetchLocalApi()`. INV-2 baseline shrunk to empty — the
+  invariant now enforces uniformly. ChatPanel's external-URL fetches
+  (lines 95/136 for blob downloads) correctly preserved.
+- **pi-types unify with pi-agent-core**
+  ([#257](https://github.com/ArgentAIOS/argentos-core/issues/257)):
+  `AgentMessage`/`StreamFn`/`CustomAgentMessages` now forwarded
+  directly from `@mariozechner/pi-agent-core` so type identity
+  unifies across the runtime. Three latent type-soundness fixes
+  surfaced and corrected:
+  `Extract<AgentMessage, { role: "user" }>` after a role filter in
+  `create-agent-session.ts`; `null` narrowing in `estimateTokens`;
+  `onPayload(payload, model)` contract in `anthropic-payload-log.ts`
+  (pi's contract was always 2-arg). Baseline 267 → 249. Type-only —
+  no runtime behavior change.
+- **Oxlint shadow-warnings cleared**
+  ([#204](https://github.com/ArgentAIOS/argentos-core/issues/204)):
+  Cleared the 2 oxlint shadow errors in
+  `src/infra/outbound/deliver.ts`. 3-line diff with no semantic change.
+- **Oxlint per-rule sweep begins**
+  ([#285](https://github.com/ArgentAIOS/argentos-core/issues/285)):
+  First per-rule safe `--fix` (no-useless-escape, 12 files, +20/-20).
+  Methodology fix documented: `pnpm exec oxlint -A all -D <rule> --fix`
+  to isolate per-rule changes (the naive `-D <rule>` flag ADDS to
+  enabled categories rather than isolating). `eslint(curly)` found
+  unsafe in this codebase (defeats TS narrowing on single-statement
+  guards) — documented in the closed PR #288.
+
+### CI / Workflow infrastructure
+
+- **Auto-close on dev-merge** ([#180](https://github.com/ArgentAIOS/argentos-core/issues/180)):
+  New `.github/workflows/auto-close-on-dev-merge.yml`. On every push
+  to `dev`, scans each commit's message for verb-prefixed issue
+  references (`closes/fixes/resolves #N`, including multi-issue
+  groups), and auto-closes them with a back-linked comment. Verb
+  required, so trailing `(#PR-N)` squash artifacts don't trigger
+  false closures. Self-validating cutover: PR #266's own merge
+  closed `#180`.
+
+### New features
+
+- **AOS subctl connector** (PR
+  [#192](https://github.com/ArgentAIOS/argentos-core/pull/192)):
+  New `tools/aos/aos-subctl/` module mirroring `aos-telegram`. Bridges
+  ArgentOS workflows + AOS worker harness to subctl's HTTP API +
+  notify shell. Read commands: capabilities, health, doctor,
+  state.get, orchestration.list/status, notify.inbox. Write commands
+  (gated): orchestration.spawn/msg/kill, notify.send,
+  notify.inbox_ack. Configurable via `SUBCTL_API` and `SUBCTL_BIN`
+  env vars. No service keys required (subctl is localhost-only).
+
+### Known carry-overs
+
+- [#276](https://github.com/ArgentAIOS/argentos-core/issues/276)
+  AgentSession identity unify — deferred to #182 (broader pi-ai bump);
+  the structural fix touches the wider `StreamFn`/`Agent`/`AgentSession`
+  cluster simultaneously, not a one-off.
+- [#182](https://github.com/ArgentAIOS/argentos-core/issues/182)
+  pi-ai 0.73.1+ bump — meta-tracker; intentionally not attempted as a
+  single-PR task because the current pi-coding-agent API has 78 new
+  private members on `AgentSession`, removed `replaceMessages`,
+  privatized `AuthStorage`/`ModelRegistry` constructors, and switched
+  to `typebox@1.x`. Routine bumps will require the bridge-module
+  refactor proposed in #286 first.
+- [#286](https://github.com/ArgentAIOS/argentos-core/issues/286)
+  Bridge module for pi-ai/pi-coding-agent — proposed architecture
+  to reduce per-bump cost from multi-day to a few hours. Not yet
+  scheduled.
+
+### Testing notes
+
+- `argent update` from `v2026.5.6.1` should land cleanly on
+  `2026.5.6.2`. Validate post-update: `argent doctor` reports 0 plugin
+  errors, gateway running on the new version stamp, no legacy
+  `ARGENT_GIT_DIR`/`ARGENTOS_GIT_DIR` env vars in the gateway plist.
+- Telegram: configure two bots simultaneously to verify the 409
+  conflict logs include each bot's ID.
+- LM Studio: with at least one model loaded, the Models page should
+  show that model + suggestion engine routes to it.
+- Multi-channel: send a message through Signal/Slack/iMessage/WhatsApp
+  with `[MOOD:happy]` tags from an agent — tags must be stripped from
+  the outbound text.
+- AppForge: create a rating field with `allowHalf: true`; verify
+  4.5★ rendering and click-to-set-half-rating.
+- subctl: from a worker, run
+  `tools/aos/aos-subctl/agent-harness/shims/aos-subctl --json health`
+  against a live subctl instance.
+
+## 2026.5.6.1
+
+A micro release on top of `v2026.5.6`. **29 issues closed**, all bug fixes and
+ergonomics — no schema changes, no breaking API changes. Safe drop-in upgrade.
+
+### Highlights
+
+- **`argent update` is fully unblocked.** The `tsc --noEmit` pre-bundle gate
+  introduced in `v2026.5.6` was rejecting updates past `dev.36` because its
+  identity comparison didn't account for tsc's environment-dependent error
+  message truncation. The gate now uses a path-length-independent fingerprint,
+  so updates run from any checkout depth.
+- **Install + update hygiene pass.** Eight issues that made fresh installs and
+  in-place updates fragile are fixed: missing LaunchAgents, port-collision
+  during gateway restart, legacy env vars in the gateway plist, residual
+  admin surfaces in public Core, doctor inconsistency during transitions,
+  Google Workspace preflight resolution, gateway-token rotation on update
+  (now preserved), and localStorage quota issues from cron-jobs cache.
+- **Local-model UX truth-telling.** LM Studio dropdown now distinguishes
+  loaded vs catalog-only models (previously listed everything as if
+  usable). New "LM Studio Models" section on the Models page parallels
+  Ollama. Routing-suggestion engine filters to currently-loaded models
+  only. `agent_status` distinguishes "not-configured" from
+  "configured-but-down" for Ollama.
+- **Auth that self-heals.** `auth-profiles.json` now repairs itself when the
+  `order` array references a missing profile. `--set-default` for
+  plugin-backed providers (zai, openrouter, etc.) now actually sticks via
+  a `recommendedModel` manifest field instead of being silently dropped.
+- **AppForge progress.** New rating cell field type (star/heart/thumb/flame
+  glyphs) and click-to-sort grid column headers with visual indicators.
+
+### Bug fixes — Update / Install / Gateway
+
+- **`argent update` LaunchAgent install**
+  ([#175](https://github.com/ArgentAIOS/argentos-core/issues/175)):
+  `argent update` now installs missing `ai.argent.dashboard-ui` and
+  `ai.argent.dashboard-api` LaunchAgents for new install paths instead of
+  leaving them out.
+- **`argent update` gateway-restart cycle**
+  ([#155](https://github.com/ArgentAIOS/argentos-core/issues/155)):
+  Wait for port 18789 to release before restarting the gateway, and let
+  `argent doctor` detect transition-state rather than falsely reporting
+  "Gateway not running" mid-cycle.
+- **`argent update` gateway-token preservation**
+  ([#167](https://github.com/ArgentAIOS/argentos-core/issues/167)): Stop
+  rotating `gateway.auth.token` on every `argent update`. Token rotation
+  is now gated behind an explicit user action — open sessions don't get
+  silently invalidated by routine updates.
+- **Legacy plist env vars purged**
+  ([#169](https://github.com/ArgentAIOS/argentos-core/issues/169)):
+  `ai.argent.gateway.plist` no longer ships with `ARGENT_GIT_DIR` or
+  `ARGENTOS_GIT_DIR` pointing at the legacy `/Users/sem/argentos`
+  location. New installs get a clean plist.
+- **`argent doctor` plist binary validation**
+  ([#172](https://github.com/ArgentAIOS/argentos-core/issues/172)):
+  `argent doctor` now validates `ai.argent.*.plist` `BinaryPath` against
+  the canonical install location and flags drift.
+- **Google Workspace connector setup**
+  ([#128](https://github.com/ArgentAIOS/argentos-core/issues/128)):
+  Resolve `preflight_gws.py` from the package root in the installed CLI
+  rather than the source tree — setup no longer 404s on installed
+  Argent.
+- **Public Core admin-surfaces hidden**
+  ([#105](https://github.com/ArgentAIOS/argentos-core/issues/105)):
+  Public Core dashboard no longer exposes the residual internal/admin
+  surfaces (broken routes that previously rendered a confusing 404 in
+  the sidebar).
+- **Dashboard cron-jobs cache quota**
+  ([#157](https://github.com/ArgentAIOS/argentos-core/issues/157)):
+  Cap the cron-jobs localStorage cache to prevent `QuotaExceededError`
+  on accounts with long heartbeat history.
+
+### Bug fixes — Models / Providers / Auth
+
+- **`--set-default` for plugin-backed providers**
+  ([#190](https://github.com/ArgentAIOS/argentos-core/issues/190)):
+  `argent models auth login --set-default --provider <zai|openrouter|...>`
+  now actually sets the default model. Previously honored only for
+  `openai-codex`; other providers silently dropped the flag.
+- **auth-profiles.json self-heal**
+  ([#193](https://github.com/ArgentAIOS/argentos-core/issues/193)):
+  `argent agent` no longer throws `No API key found for provider
+'openai-codex'` when `auth-profiles.json` has a valid profile but an
+  `order` array pointing at a missing alias. The store now self-repairs
+  on load.
+- **LM Studio loaded vs catalog**
+  ([#220](https://github.com/ArgentAIOS/argentos-core/issues/220)):
+  The LM Studio model dropdown now lists currently-loaded models, not
+  the full catalog. Catalog entries no longer mislead users into
+  selecting a model that isn't actually loaded in LM Studio.
+- **LM Studio Models page parity**
+  ([#219](https://github.com/ArgentAIOS/argentos-core/issues/219)):
+  Models page now has an "LM Studio Models" section parallel to the
+  "Ollama Models" section instead of asymmetric coverage.
+- **Routing suggestion filter**
+  ([#218](https://github.com/ArgentAIOS/argentos-core/issues/218)):
+  The routing-suggestion engine no longer recommends unloaded LM Studio
+  models or Ollama models when Ollama is down.
+- **agent_status reflects configuration**
+  ([#214](https://github.com/ArgentAIOS/argentos-core/issues/214)):
+  `agent_status` now distinguishes "not-configured" from
+  "configured-but-down" for Ollama so DOWN messages aren't shown for
+  providers the user never set up.
+
+### Bug fixes — Channels / Telegram / Discord
+
+- **MOOD/TTS tag leak fix**
+  ([#198](https://github.com/ArgentAIOS/argentos-core/issues/198)):
+  Agent `[MOOD:X]` and `[TTS:Y]` tags no longer leak into Telegram and
+  Discord channel output as raw text. They are stripped from outbound
+  text and translated into channel-appropriate metadata where supported.
+- **Telegram 409 logging + UX**
+  ([#194](https://github.com/ArgentAIOS/argentos-core/issues/194)):
+  `argent-gateway` now includes the bot ID in 409-conflict logs and
+  surfaces a persistent-conflict UX warning so users see _which_ bot is
+  fighting for the long-poll lock when there are multiple bots
+  configured.
+
+### Bug fixes — UI / Chat
+
+- **Re-auth command preserved in chat error**
+  ([#224](https://github.com/ArgentAIOS/argentos-core/issues/224)):
+  When an OAuth token is invalidated mid-chat, the error message now
+  includes the literal re-auth command (e.g.
+  `argent models auth login --provider openai-codex`) so the user can
+  copy-paste rather than guess.
+- **Personal skills promotion**
+  ([#210](https://github.com/ArgentAIOS/argentos-core/issues/210)):
+  `promoteCandidate` now increments `recurrenceCount` on dedup-skip so
+  the "promoted" bucket fills correctly. Previously, repeat invocations
+  of the same candidate were treated as no-ops and the bucket stayed
+  empty.
+- **Connectors catalog popup spam**
+  ([#152](https://github.com/ArgentAIOS/argentos-core/issues/152)):
+  Cache the `connectors.catalog` probe so the Settings → System tab
+  stops triggering a node popup every render.
+
+### Bug fixes — Build / Type / CI
+
+- **tsc-since.mjs identity hardening** (this release's headline,
+  [#255](https://github.com/ArgentAIOS/argentos-core/issues/255)):
+  tsc's per-message length cap truncates error tails with `...'` based
+  on the _un-elided_ string length, which differs by checkout path.
+  `argent update`'s preflight worktree at `/private/var/folders/.../`
+  has paths ~50 chars longer than the baseline-snapshot worktree at
+  `/Users/sem/code/argent-core/worktrees/<name>/`, so the same
+  conceptual error got truncated at a different point and missed the
+  baseline as net-new. The fix collapses `'import("…")…'` blocks to a
+  stable placeholder during normalization, making identity
+  path-length-independent.
+- **tsc pre-bundle gate added**
+  ([#178](https://github.com/ArgentAIOS/argentos-core/issues/178)):
+  Run `tsc --noEmit` before `tsdown` bundles, comparing against a
+  267-entry baseline at `ops/known-failing.json`. Catches net-new type
+  errors before they reach `dist/`.
+- **Bundle emits composio + builtin-profiles**
+  ([#196](https://github.com/ArgentAIOS/argentos-core/issues/196)):
+  `tsdown` now emits `dist/connectors/composio` and
+  `dist/models/builtin-profiles`. These features were dead at runtime
+  because the bundler was skipping them.
+- **pi-embedded-runner symlinked worktrees**
+  ([#211](https://github.com/ArgentAIOS/argentos-core/issues/211)):
+  `tsconfig.json` resolution now works when type-checking from a
+  worktree whose `node_modules` is a symlink (the common bump-worktree
+  case).
+- **Worktree-aware pre-commit hook**
+  ([#176](https://github.com/ArgentAIOS/argentos-core/issues/176)):
+  Pre-commit hooks no longer fail in bump worktrees that lack their
+  own `node_modules`. The hook resolves `oxfmt` from the canonical
+  install instead of requiring a per-worktree symlink.
+- **Label-issues workflow auth fix**
+  ([#199](https://github.com/ArgentAIOS/argentos-core/issues/199)):
+  Use `GITHUB_TOKEN` for the label / label-issues workflow instead of
+  the broken GitHub App private-key secret. Stops the workflow from
+  failing on every PR.
+
+### Refactors
+
+- **`isHeadlessSession` consolidation**
+  ([#206](https://github.com/ArgentAIOS/argentos-core/issues/206)):
+  `isHeadlessSession` now delegates to `isRemoteEnvironment` with a
+  documented override, removing duplicate detection logic.
+
+### Documentation
+
+- **CLI docs depth audit**
+  ([#189](https://github.com/ArgentAIOS/argentos-core/issues/189)):
+  Sibling `docs/cli/*` pages audited and expanded — shallow stubs
+  filled in.
+- **Marketplace + license CLI entries**
+  ([#191](https://github.com/ArgentAIOS/argentos-core/issues/191)):
+  `docs/cli/index.md` now includes marketplace + license commands;
+  personal-skills page added; marketplace command coverage verified.
+- **zh-CN sidebar 404 cleanup**
+  ([#200](https://github.com/ArgentAIOS/argentos-core/issues/200)):
+  Remove orphan zh-CN sidebar entries that referenced files no longer
+  on disk and 404'd in Mintlify navigation.
+
+### New features
+
+- **AppForge: rating cell field type.** Star / heart / thumb / flame
+  glyph variants for visualizing 0–5 values inside grid cells.
+- **AppForge: click-to-sort grid headers.** Column headers are
+  interactive with visual ascending/descending indicators.
+
+### Testing notes
+
+- `argent update` from any prior dev.X version should land cleanly on
+  `2026.5.6.1`. Validate post-update: `argent doctor` reports 0 plugin
+  errors, the gateway plist has no `ARGENT_GIT_DIR` / `ARGENTOS_GIT_DIR`
+  env vars, and `auth-profiles.json` has correctly-shaped profile keys
+  (object keyed by `<provider>:<alias>`, not an empty array).
+- LM Studio: with at least one model loaded, the Models page should
+  show that model in the LM Studio dropdown and the routing engine
+  should suggest it. Stop the loaded model; the dropdown should remove
+  it within one probe cycle.
+- Telegram: configure two bots simultaneously; the 409 conflict log
+  must include each bot's ID, and the persistent-conflict UX warning
+  appears in the dashboard after ~3 cycles.
+- Public Core: install from scratch as a non-admin user; the
+  dashboard sidebar should not show admin-only surfaces.
+- AppForge: create a rating field on a table; verify the glyph
+  variants render; click column headers to confirm sort indicators.
+
+### Known carry-overs (open follow-ups)
+
+- [#257](https://github.com/ArgentAIOS/argentos-core/issues/257)
+  Real fix for the `pi-types` ↔ `@mariozechner/pi-agent-core` type drift
+  underlying `#255` — the band-aid in this release suppresses the
+  symptom; the drift itself remains and the baseline carries 19
+  pi-types-related entries until the re-export is unified.
+- [#254](https://github.com/ArgentAIOS/argentos-core/issues/254)
+  `zai/glm-5-turbo` returns empty assistant payloads (`stopReason=stop`,
+  0 content). Triaged but not fixed in this release.
+
 ## 2026.4.30
 
 ### Highlights
