@@ -63,9 +63,7 @@ export class EventStream<TEvent, TResult> implements AsyncIterable<TEvent> {
    * End the stream and resolve the result.
    */
   end(result?: TResult): void {
-    if (this.ended) {
-      return;
-    }
+    if (this.ended) return;
     this.ended = true;
 
     const finalResult = result ?? this.finalResult;
@@ -84,9 +82,7 @@ export class EventStream<TEvent, TResult> implements AsyncIterable<TEvent> {
    * End the stream with an error.
    */
   error(err: unknown): void {
-    if (this.ended) {
-      return;
-    }
+    if (this.ended) return;
     this.ended = true;
     this.rejectResult(err);
 

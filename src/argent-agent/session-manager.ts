@@ -180,9 +180,7 @@ export function buildSessionContext(
   let currentId = leafId ?? (entries.length > 0 ? entries[entries.length - 1]!.id : null);
   while (currentId) {
     const entry = index.get(currentId);
-    if (!entry) {
-      break;
-    }
+    if (!entry) break;
     branch.unshift(entry);
     currentId = entry.parentId;
   }
@@ -218,9 +216,7 @@ export function buildSessionContext(
           ? cm.content
           : cm.content
               .map((b) => {
-                if (b.type === "text") {
-                  return (b as TextContent).text;
-                }
+                if (b.type === "text") return (b as TextContent).text;
                 return "[image]";
               })
               .join("");
@@ -376,16 +372,12 @@ export class ArgentSessionManager {
   /** Walk from an entry to root, returning all entries in path order. */
   getBranch(fromId?: string): SessionEntry[] {
     const id = fromId ?? this.leafId;
-    if (!id) {
-      return [];
-    }
+    if (!id) return [];
     const branch: SessionEntry[] = [];
     let currentId: string | null = id;
     while (currentId) {
       const entry = this.byId.get(currentId);
-      if (!entry) {
-        break;
-      }
+      if (!entry) break;
       branch.unshift(entry);
       currentId = entry.parentId;
     }
@@ -570,20 +562,15 @@ export class ArgentSessionManager {
         const allText = messages
           .map((m) => {
             const msg = m.message;
-            if (typeof msg === "string") {
-              return msg;
-            }
+            if (typeof msg === "string") return msg;
             if (msg && typeof msg === "object" && "content" in msg) {
               const c = msg.content;
-              if (typeof c === "string") {
-                return c;
-              }
+              if (typeof c === "string") return c;
               if (Array.isArray(c)) {
                 return c
                   .map((b: unknown) => {
-                    if (b && typeof b === "object" && "text" in b) {
+                    if (b && typeof b === "object" && "text" in b)
                       return (b as { text: string }).text;
-                    }
                     return "";
                   })
                   .join(" ");
@@ -678,9 +665,7 @@ export class ArgentSessionManager {
 
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
+      if (!trimmed) continue;
       try {
         const entry = JSON.parse(trimmed) as FileEntry;
         this.fileEntries.push(entry);

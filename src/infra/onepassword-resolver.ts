@@ -74,9 +74,7 @@ const cache = new Map<string, CacheEntry>();
  * detailed validation happens inside `resolveOnePasswordRef`.
  */
 export function isOnePasswordRef(value: string | null | undefined): boolean {
-  if (!value) {
-    return false;
-  }
+  if (!value) return false;
   return value.startsWith(OP_REF_PREFIX);
 }
 
@@ -89,15 +87,11 @@ export function isOnePasswordRef(value: string | null | undefined): boolean {
 export function parseOnePasswordRef(
   value: string,
 ): { vault: string; item: string; field: string } | null {
-  if (!isOnePasswordRef(value)) {
-    return null;
-  }
+  if (!isOnePasswordRef(value)) return null;
   const rest = value.slice(OP_REF_PREFIX.length);
   // Must have at least vault/item/field (three non-empty segments).
   const parts = rest.split("/").filter((p) => p.length > 0);
-  if (parts.length < 3) {
-    return null;
-  }
+  if (parts.length < 3) return null;
   // Field may itself contain slashes (sections/field). Reconstruct the tail.
   const [vault, item, ...fieldParts] = parts;
   return { vault: vault!, item: item!, field: fieldParts.join("/") };
@@ -129,15 +123,11 @@ export function resolveServiceAccountToken(
     return opts.serviceAccountToken.trim();
   }
   const fromEnv = process.env.OP_SERVICE_ACCOUNT_TOKEN?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
+  if (fromEnv) return fromEnv;
   if (reader) {
     try {
       const v = reader();
-      if (v && v.trim().length > 0) {
-        return v.trim();
-      }
+      if (v && v.trim().length > 0) return v.trim();
     } catch {
       // Fall through.
     }
@@ -296,13 +286,9 @@ export function resolveOnePasswordRef(
  * operators can tell which entry is in trouble, but hides the item/field.
  */
 export function maskRef(ref: string): string {
-  if (!isOnePasswordRef(ref)) {
-    return "(not-a-ref)";
-  }
+  if (!isOnePasswordRef(ref)) return "(not-a-ref)";
   const parsed = parseOnePasswordRef(ref);
-  if (!parsed) {
-    return `${OP_REF_PREFIX}<malformed>`;
-  }
+  if (!parsed) return `${OP_REF_PREFIX}<malformed>`;
   return `${OP_REF_PREFIX}${parsed.vault}/<item>/<field>`;
 }
 
@@ -311,9 +297,7 @@ export function maskRef(ref: string): string {
  * literal "[redacted]". Used before we emit any error text to logs.
  */
 export function redactToken(message: string, token: string | null | undefined): string {
-  if (!token || token.length < 8) {
-    return message;
-  }
+  if (!token || token.length < 8) return message;
   const safe = message.split(token).join("[redacted]");
   return safe;
 }
@@ -359,9 +343,7 @@ export function verifyServiceAccountToken(opts: { token: string; opBinary?: stri
   errorMessage?: string;
 } {
   const opBinary = opts.opBinary ?? DEFAULT_OP_BINARY;
-  if (!opts.token) {
-    return { ok: false, errorMessage: "token is empty" };
-  }
+  if (!opts.token) return { ok: false, errorMessage: "token is empty" };
   try {
     const result = execFileSync(opBinary, ["vault", "list", "--format=json"], {
       encoding: "utf-8",

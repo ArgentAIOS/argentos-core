@@ -3,9 +3,7 @@ import { createYoutubeMetadataTool } from "./youtube-metadata-tool.js";
 
 function parseResultJson(result: { content?: Array<{ type?: string; text?: string }> }): any {
   const text = result.content?.find((entry) => entry.type === "text")?.text;
-  if (!text) {
-    throw new Error("missing text output");
-  }
+  if (!text) throw new Error("missing text output");
   return JSON.parse(text);
 }
 

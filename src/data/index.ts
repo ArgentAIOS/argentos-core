@@ -54,9 +54,7 @@ export class DataAPI {
    * Initialize the data API
    */
   async init(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
+    if (this.initialized) return;
 
     await this.conn.init();
     await this._tasks.init();

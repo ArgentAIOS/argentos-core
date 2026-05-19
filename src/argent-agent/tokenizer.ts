@@ -36,9 +36,7 @@ const MESSAGE_OVERHEAD = 4;
  * Good enough for compaction decisions — not billing.
  */
 export function estimateTextTokens(text: string): number {
-  if (!text) {
-    return 0;
-  }
+  if (!text) return 0;
   return Math.ceil(text.length / 4);
 }
 

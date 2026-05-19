@@ -380,9 +380,7 @@ function cloneView(view: AppForgeSavedView): AppForgeSavedView {
 function pickActorEnvelope(
   actor: AppForgeActorInput | null | undefined,
 ): AppForgeActorEnvelope | undefined {
-  if (!actor) {
-    return undefined;
-  }
+  if (!actor) return undefined;
   if (typeof actor === "string") {
     return actor.trim() ? { actorId: actor.trim() } : undefined;
   }
@@ -390,12 +388,8 @@ function pickActorEnvelope(
 }
 
 function actorId(actor: AppForgeActorInput | null | undefined): string {
-  if (!actor) {
-    return "system:unauthenticated";
-  }
-  if (typeof actor === "string") {
-    return actor.trim() || "system:unauthenticated";
-  }
+  if (!actor) return "system:unauthenticated";
+  if (typeof actor === "string") return actor.trim() || "system:unauthenticated";
   return actor.actorId || "system:unauthenticated";
 }
 
@@ -566,15 +560,9 @@ export function previewPlan(plan: AppForgeNlPlan): AppForgeNlPlanPreview {
     const destructive = isDestructive(op.kind);
     const text = describeOp(op);
     const line: AppForgeNlPreviewLine = { kind: op.kind, text, destructive };
-    if ("tableId" in op && op.tableId) {
-      line.tableId = op.tableId;
-    }
-    if ("fieldId" in op && typeof op.fieldId === "string") {
-      line.fieldId = op.fieldId;
-    }
-    if ("recordId" in op && typeof op.recordId === "string") {
-      line.recordId = op.recordId;
-    }
+    if ("tableId" in op && op.tableId) line.tableId = op.tableId;
+    if ("fieldId" in op && typeof op.fieldId === "string") line.fieldId = op.fieldId;
+    if ("recordId" in op && typeof op.recordId === "string") line.recordId = op.recordId;
     return line;
   });
   return {
@@ -594,23 +582,17 @@ export function previewPlan(plan: AppForgeNlPlan): AppForgeNlPlanPreview {
 // ---------------------------------------------------------------------------
 
 function fieldById(table: AppForgeTable | null, fieldId: string): AppForgeField | null {
-  if (!table) {
-    return null;
-  }
+  if (!table) return null;
   return table.fields.find((field) => field.id === fieldId) ?? null;
 }
 
 function recordById(table: AppForgeTable | null, recordId: string): AppForgeRecord | null {
-  if (!table) {
-    return null;
-  }
+  if (!table) return null;
   return table.records.find((record) => record.id === recordId) ?? null;
 }
 
 function viewById(table: AppForgeTable | null, viewId: string): AppForgeSavedView | null {
-  if (!table?.views) {
-    return null;
-  }
+  if (!table?.views) return null;
   return table.views.find((view) => view.id === viewId) ?? null;
 }
 
@@ -695,18 +677,14 @@ async function applySingleOp(
     }
 
     case "table.rename": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const nextTable: AppForgeTable = { ...cloneTable(table), name: op.to };
       const result = await adapter.putTable(baseId, nextTable, {
         expectedBaseRevision: base.revision,
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -720,9 +698,7 @@ async function applySingleOp(
     }
 
     case "field.add": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const nextTable: AppForgeTable = {
         ...cloneTable(table),
         fields: [...table.fields.map(cloneField), cloneField(op.field)],
@@ -732,9 +708,7 @@ async function applySingleOp(
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -743,9 +717,7 @@ async function applySingleOp(
     }
 
     case "field.delete": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const removed = fieldById(table, op.fieldId);
       if (!removed) {
         return missingTargetResult(`Field ${op.fieldId} not found in table ${op.tableId}.`);
@@ -770,9 +742,7 @@ async function applySingleOp(
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -790,9 +760,7 @@ async function applySingleOp(
     }
 
     case "field.rename": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const target = fieldById(table, op.fieldId);
       if (!target) {
         return missingTargetResult(`Field ${op.fieldId} not found in table ${op.tableId}.`);
@@ -808,9 +776,7 @@ async function applySingleOp(
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -825,9 +791,7 @@ async function applySingleOp(
     }
 
     case "field.retype": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const target = fieldById(table, op.fieldId);
       if (!target) {
         return missingTargetResult(`Field ${op.fieldId} not found in table ${op.tableId}.`);
@@ -843,9 +807,7 @@ async function applySingleOp(
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -860,9 +822,7 @@ async function applySingleOp(
     }
 
     case "record.add": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const validation = validateAppForgeRecordValues(table.fields, op.record.values);
       const recordWrite: AppForgeRecordWriteOptions = {
         expectedBaseRevision: base.revision,
@@ -874,9 +834,7 @@ async function applySingleOp(
         values: validation.values,
       };
       const result = await adapter.putRecord(baseId, op.tableId, record, recordWrite);
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -885,9 +843,7 @@ async function applySingleOp(
     }
 
     case "record.update": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const current = recordById(table, op.recordId);
       if (!current) {
         return missingTargetResult(`Record ${op.recordId} not found in table ${op.tableId}.`);
@@ -905,9 +861,7 @@ async function applySingleOp(
         expectedRecordRevision: current.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -921,9 +875,7 @@ async function applySingleOp(
     }
 
     case "record.delete": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const current = recordById(table, op.recordId);
       if (!current) {
         return missingTargetResult(`Record ${op.recordId} not found in table ${op.tableId}.`);
@@ -935,9 +887,7 @@ async function applySingleOp(
         expectedRecordRevision: current.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -946,18 +896,14 @@ async function applySingleOp(
     }
 
     case "view.add": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const viewWrite: AppForgeSavedViewWriteOptions = {
         expectedBaseRevision: base.revision,
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       };
       const result = await adapter.putView(baseId, op.tableId, op.view, viewWrite);
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,
@@ -966,9 +912,7 @@ async function applySingleOp(
     }
 
     case "view.delete": {
-      if (!table) {
-        return missingTargetResult(`Table ${op.tableId} not found.`);
-      }
+      if (!table) return missingTargetResult(`Table ${op.tableId} not found.`);
       const captured = viewById(table, op.viewId);
       if (!captured) {
         return missingTargetResult(`View ${op.viewId} not found in table ${op.tableId}.`);
@@ -978,9 +922,7 @@ async function applySingleOp(
         expectedTableRevision: table.revision,
         actor: actorEnvelope,
       });
-      if (!result.ok) {
-        return revisionConflictResult(result);
-      }
+      if (!result.ok) return revisionConflictResult(result);
       return {
         ok: true,
         base: result.base,

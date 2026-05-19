@@ -18,9 +18,7 @@ export function resolveMinimaxApiKey(): string | undefined {
   const configuredKey =
     resolveServiceKey("MINIMAX_CODE_PLAN_KEY")?.trim() ||
     resolveServiceKey("MINIMAX_API_KEY")?.trim();
-  if (configuredKey) {
-    return configuredKey;
-  }
+  if (configuredKey) return configuredKey;
 
   try {
     const stateDir =
@@ -31,16 +29,12 @@ export function resolveMinimaxApiKey(): string | undefined {
       process.env.PI_CODING_AGENT_DIR?.trim() ||
       path.join(stateDir, "agents", agentId, "agent");
     const modelsPath = path.join(agentDir, "argent-models.json");
-    if (!fs.existsSync(modelsPath)) {
-      return undefined;
-    }
+    if (!fs.existsSync(modelsPath)) return undefined;
     const json = JSON.parse(fs.readFileSync(modelsPath, "utf-8")) as {
       providers?: { minimax?: { apiKey?: string } };
     };
     const storedKey = json.providers?.minimax?.apiKey?.trim();
-    if (!storedKey) {
-      return undefined;
-    }
+    if (!storedKey) return undefined;
     // If stored value looks like an env var name (ALL_CAPS_WITH_UNDERSCORES), resolve it
     if (/^[A-Z][A-Z0-9_]+$/.test(storedKey)) {
       return process.env[storedKey]?.trim() || undefined;
@@ -76,14 +70,10 @@ export async function resolveMinimaxApiKeyAsync(
   const configuredKey =
     (await resolveServiceKeyAsync("MINIMAX_CODE_PLAN_KEY", cfg, context))?.trim() ||
     (await resolveServiceKeyAsync("MINIMAX_API_KEY", cfg, context))?.trim();
-  if (configuredKey) {
-    return configuredKey;
-  }
+  if (configuredKey) return configuredKey;
 
   const profileKey = await resolveMinimaxAuthProfileKey(cfg, options);
-  if (profileKey) {
-    return profileKey;
-  }
+  if (profileKey) return profileKey;
 
   return resolveMinimaxApiKey();
 }

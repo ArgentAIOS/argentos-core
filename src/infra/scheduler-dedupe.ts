@@ -184,9 +184,7 @@ export function createSchedulerDedupe(config: SchedulerDedupeConfig = {}): Sched
     },
 
     checkEpisodeId: (episodeId) => {
-      if (!episodeId) {
-        return true;
-      } // Allow empty
+      if (!episodeId) return true; // Allow empty
 
       if (episodeIdCache.check(episodeId)) {
         metrics.payloadDedupeExclusions++;

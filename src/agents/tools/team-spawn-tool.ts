@@ -317,9 +317,7 @@ EXAMPLE:
         // Second pass: resolve dependsOn titles → IDs and update
         for (let i = 0; i < taskDefs.length; i++) {
           const td = taskDefs[i];
-          if (!td.dependsOn || td.dependsOn.length === 0) {
-            continue;
-          }
+          if (!td.dependsOn || td.dependsOn.length === 0) continue;
 
           const depIds: string[] = [];
           for (const depTitle of td.dependsOn) {

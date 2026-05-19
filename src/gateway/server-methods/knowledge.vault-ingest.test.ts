@@ -122,9 +122,7 @@ describe("knowledge.vault.ingest", () => {
     });
     const respond = vi.fn();
     const handler = knowledgeHandlers["knowledge.vault.ingest"];
-    if (!handler) {
-      throw new Error("knowledge.vault.ingest handler missing");
-    }
+    if (!handler) throw new Error("knowledge.vault.ingest handler missing");
 
     await handler({ params: {}, respond } as never);
 
@@ -161,9 +159,7 @@ describe("knowledge.vault.ingest", () => {
 
     const respond = vi.fn();
     const handler = knowledgeHandlers["knowledge.vault.ingest"];
-    if (!handler) {
-      throw new Error("knowledge.vault.ingest handler missing");
-    }
+    if (!handler) throw new Error("knowledge.vault.ingest handler missing");
 
     await handler({
       params: {
@@ -207,9 +203,7 @@ describe("knowledge.vault.ingest", () => {
 
     const respond = vi.fn();
     const handler = knowledgeHandlers["knowledge.vault.ingest"];
-    if (!handler) {
-      throw new Error("knowledge.vault.ingest handler missing");
-    }
+    if (!handler) throw new Error("knowledge.vault.ingest handler missing");
 
     await handler({
       params: {

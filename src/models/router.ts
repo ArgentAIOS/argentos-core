@@ -75,30 +75,14 @@ function inferProviderFromModel(model: string): string | null {
   if (!lower) {
     return null;
   }
-  if (lower.startsWith("minimax")) {
-    return "minimax";
-  }
-  if (lower.startsWith("claude")) {
-    return "anthropic";
-  }
-  if (lower.startsWith("gpt-") || lower.startsWith("o3") || lower.startsWith("o4")) {
-    return "openai";
-  }
-  if (lower.startsWith("gemini")) {
-    return "google";
-  }
-  if (lower.startsWith("glm")) {
-    return "zai";
-  }
-  if (lower.startsWith("grok")) {
-    return "xai";
-  }
-  if (lower.startsWith("nvidia/")) {
-    return "nvidia";
-  }
-  if (lower.includes("llama") && lower.includes("qwen")) {
-    return "ollama";
-  }
+  if (lower.startsWith("minimax")) return "minimax";
+  if (lower.startsWith("claude")) return "anthropic";
+  if (lower.startsWith("gpt-") || lower.startsWith("o3") || lower.startsWith("o4")) return "openai";
+  if (lower.startsWith("gemini")) return "google";
+  if (lower.startsWith("glm")) return "zai";
+  if (lower.startsWith("grok")) return "xai";
+  if (lower.startsWith("nvidia/")) return "nvidia";
+  if (lower.includes("llama") && lower.includes("qwen")) return "ollama";
   return null;
 }
 
@@ -170,12 +154,8 @@ function normalizeTierMapping(
   provider = normalizeProvider(provider || fallback.provider);
   model = model || fallback.model;
 
-  if (!provider) {
-    provider = fallback.provider;
-  }
-  if (!model) {
-    model = fallback.model;
-  }
+  if (!provider) provider = fallback.provider;
+  if (!model) model = fallback.model;
 
   // Preserve a per-slot reasoningEffort override when present. We deliberately
   // do NOT inherit from `fallback` here — the tier-level override is opt-in
@@ -211,9 +191,7 @@ function normalizeFallbackRefs(
   const normalized: string[] = [];
   for (const entry of refs) {
     const raw = String(entry ?? "").trim();
-    if (!raw) {
-      continue;
-    }
+    if (!raw) continue;
     let provider = fallbackProvider;
     let model = raw;
     const slash = raw.indexOf("/");
@@ -222,13 +200,9 @@ function normalizeFallbackRefs(
       model = raw.slice(slash + 1).trim();
     }
     provider = normalizeProvider(provider);
-    if (!provider || !model) {
-      continue;
-    }
+    if (!provider || !model) continue;
     const key = `${provider}/${model}`;
-    if (seen.has(key)) {
-      continue;
-    }
+    if (seen.has(key)) continue;
     seen.add(key);
     normalized.push(key);
   }
@@ -293,15 +267,11 @@ function maybeDeprioritizeFlakingPrimary(params: {
   if (Array.isArray(sessionFallbacks) && sessionFallbacks.length > 0) {
     for (let i = 0; i < sessionFallbacks.length; i++) {
       const raw = String(sessionFallbacks[i] ?? "").trim();
-      if (!raw) {
-        continue;
-      }
+      if (!raw) continue;
       const slash = raw.indexOf("/");
       const provider = slash > 0 ? raw.slice(0, slash) : defaultProvider;
       const model = slash > 0 ? raw.slice(slash + 1) : raw;
-      if (!provider || !model) {
-        continue;
-      }
+      if (!provider || !model) continue;
       if (!tracker.isFlaking(provider, model)) {
         const next = sessionFallbacks.slice();
         next.splice(i, 1);
@@ -325,9 +295,7 @@ function maybeDeprioritizeFlakingPrimary(params: {
   if (Array.isArray(profileFallbacks) && profileFallbacks.length > 0) {
     for (let i = 0; i < profileFallbacks.length; i++) {
       const entry = profileFallbacks[i];
-      if (!entry?.provider || !entry?.model) {
-        continue;
-      }
+      if (!entry?.provider || !entry?.model) continue;
       if (!tracker.isFlaking(entry.provider, entry.model)) {
         const next = profileFallbacks.slice();
         next.splice(i, 1);
@@ -383,9 +351,7 @@ function buildProfileFallbacks(params: {
     visited.add(nextName);
     const nextProfile: ModelProfile | undefined =
       config.profiles?.[nextName] ?? BUILTIN_PROFILES[nextName];
-    if (!nextProfile) {
-      break;
-    }
+    if (!nextProfile) break;
 
     const nextTierModels = resolveTierModels({ profileTiers: nextProfile.tiers });
     const mapping = nextTierModels[tier];
@@ -502,9 +468,7 @@ export function scoreComplexity(signals: ComplexitySignals): {
   ];
   let codeMatches = 0;
   for (const pattern of codePatterns) {
-    if (pattern.test(prompt)) {
-      codeMatches++;
-    }
+    if (pattern.test(prompt)) codeMatches++;
   }
   if (codeMatches >= 3) {
     score += 0.2;
@@ -523,9 +487,7 @@ export function scoreComplexity(signals: ComplexitySignals): {
   ];
   let reasoningMatches = 0;
   for (const pattern of reasoningPatterns) {
-    if (pattern.test(prompt)) {
-      reasoningMatches++;
-    }
+    if (pattern.test(prompt)) reasoningMatches++;
   }
   if (reasoningMatches >= 2) {
     score += 0.15;
@@ -576,9 +538,7 @@ export function scoreComplexity(signals: ComplexitySignals): {
   ];
   let multiStepMatches = 0;
   for (const pattern of multiStepPatterns) {
-    if (pattern.test(prompt)) {
-      multiStepMatches++;
-    }
+    if (pattern.test(prompt)) multiStepMatches++;
   }
   if (multiStepMatches >= 2) {
     score += 0.1;
@@ -605,15 +565,9 @@ function resolveTier(
   score: number,
   thresholds: { local: number; fast: number; balanced: number },
 ): ModelTier {
-  if (score < thresholds.local) {
-    return "local";
-  }
-  if (score < thresholds.fast) {
-    return "fast";
-  }
-  if (score < thresholds.balanced) {
-    return "balanced";
-  }
+  if (score < thresholds.local) return "local";
+  if (score < thresholds.fast) return "fast";
+  if (score < thresholds.balanced) return "balanced";
   return "powerful";
 }
 

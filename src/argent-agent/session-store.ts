@@ -52,17 +52,13 @@ export class SessionStore {
     try {
       raw = await readFile(path, "utf-8");
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return [];
-      }
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw err;
     }
     const entries: SessionEntry[] = [];
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
+      if (!trimmed) continue;
       try {
         entries.push(JSON.parse(trimmed) as SessionEntry);
       } catch {
@@ -78,9 +74,7 @@ export class SessionStore {
       const files = await readdir(this.baseDir);
       return files.filter((f) => f.endsWith(".jsonl")).map((f) => f.slice(0, -6)); // strip .jsonl
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return [];
-      }
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw err;
     }
   }
@@ -90,9 +84,7 @@ export class SessionStore {
     try {
       await unlink(this.getPath(sessionId));
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return;
-      }
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
       throw err;
     }
   }
@@ -109,9 +101,7 @@ export class SessionStore {
 
   /** Ensure the base directory exists (lazy creation) */
   private async ensureDir(): Promise<void> {
-    if (this.dirEnsured) {
-      return;
-    }
+    if (this.dirEnsured) return;
     await mkdir(this.baseDir, { recursive: true });
     this.dirEnsured = true;
   }

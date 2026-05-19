@@ -104,17 +104,11 @@ function textResult(text: string) {
 }
 
 function parseBoolean(raw: unknown, fallback: boolean): boolean {
-  if (typeof raw === "boolean") {
-    return raw;
-  }
+  if (typeof raw === "boolean") return raw;
   if (typeof raw === "string") {
     const normalized = raw.trim().toLowerCase();
-    if (["true", "1", "yes", "on"].includes(normalized)) {
-      return true;
-    }
-    if (["false", "0", "no", "off"].includes(normalized)) {
-      return false;
-    }
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
   }
   return fallback;
 }
@@ -134,15 +128,9 @@ function trimTrailingSlash(value: string): string {
 
 function normalizeApiBaseUrl(raw?: string): string {
   const base = trimTrailingSlash(raw?.trim() || DEFAULT_COOLIFY_API_URL);
-  if (base.endsWith("/api/v1")) {
-    return base;
-  }
-  if (/\/api\/v\d+$/i.test(base)) {
-    return base;
-  }
-  if (/\/api$/i.test(base)) {
-    return `${base}/v1`;
-  }
+  if (base.endsWith("/api/v1")) return base;
+  if (/\/api\/v\d+$/i.test(base)) return base;
+  if (/\/api$/i.test(base)) return `${base}/v1`;
   return `${base}/api/v1`;
 }
 
@@ -158,9 +146,7 @@ function isObject(value: unknown): value is JsonObject {
 }
 
 function parseJsonBody(raw: string): unknown {
-  if (!raw.trim()) {
-    return null;
-  }
+  if (!raw.trim()) return null;
   try {
     return JSON.parse(raw) as unknown;
   } catch {
@@ -170,33 +156,21 @@ function parseJsonBody(raw: string): unknown {
 
 function jsonPreview(value: unknown, max = 320): string {
   const text = typeof value === "string" ? value : JSON.stringify(value);
-  if (!text) {
-    return "";
-  }
+  if (!text) return "";
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
 function asArrayPayload(payload: unknown): JsonObject[] {
-  if (Array.isArray(payload)) {
-    return payload.filter(isObject);
-  }
+  if (Array.isArray(payload)) return payload.filter(isObject);
   if (isObject(payload)) {
     const data = payload.data;
-    if (Array.isArray(data)) {
-      return data.filter(isObject);
-    }
+    if (Array.isArray(data)) return data.filter(isObject);
     const deployments = payload.deployments;
-    if (Array.isArray(deployments)) {
-      return deployments.filter(isObject);
-    }
+    if (Array.isArray(deployments)) return deployments.filter(isObject);
     const items = payload.items;
-    if (Array.isArray(items)) {
-      return items.filter(isObject);
-    }
+    if (Array.isArray(items)) return items.filter(isObject);
     const result = payload.result;
-    if (Array.isArray(result)) {
-      return result.filter(isObject);
-    }
+    if (Array.isArray(result)) return result.filter(isObject);
   }
   return [];
 }
@@ -204,12 +178,8 @@ function asArrayPayload(payload: unknown): JsonObject[] {
 function pickString(obj: JsonObject, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = obj[key];
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return String(value);
-    }
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
   return undefined;
 }
@@ -314,12 +284,8 @@ async function deleteResource(ctx: CoolifyContext, endpoint: string, uuid: strin
 
 function ensureHttpsDomain(domainOrHost: string): string {
   const trimmed = domainOrHost.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
+  if (!trimmed) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
 }
 
@@ -359,9 +325,7 @@ async function pathExists(target: string): Promise<boolean> {
 }
 
 async function writeFileIfMissing(filePath: string, content: string): Promise<void> {
-  if (await pathExists(filePath)) {
-    return;
-  }
+  if (await pathExists(filePath)) return;
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, "utf8");
 }
@@ -640,9 +604,7 @@ async function coolifyRequest(params: {
   const url = new URL(endpoint, base);
 
   for (const [key, rawValue] of Object.entries(params.query || {})) {
-    if (rawValue === undefined || rawValue === null) {
-      continue;
-    }
+    if (rawValue === undefined || rawValue === null) continue;
     url.searchParams.set(key, String(rawValue));
   }
 
@@ -683,13 +645,9 @@ async function listResources(ctx: CoolifyContext, endpoint: string): Promise<Jso
 }
 
 function normalizeStack(raw: unknown): CoolifyStack {
-  if (typeof raw !== "string") {
-    return "node";
-  }
+  if (typeof raw !== "string") return "node";
   const normalized = raw.trim().toLowerCase();
-  if (normalized === "python" || normalized === "static") {
-    return normalized;
-  }
+  if (normalized === "python" || normalized === "static") return normalized;
   return "node";
 }
 
@@ -774,15 +732,11 @@ function buildCreateApplicationRequest(params: {
 }
 
 function normalizeEnvVarEntries(raw: unknown): Array<{ key: string; value: string }> {
-  if (!isObject(raw)) {
-    return [];
-  }
+  if (!isObject(raw)) return [];
   const entries: Array<{ key: string; value: string }> = [];
   for (const [key, value] of Object.entries(raw)) {
     const normalizedKey = key.trim();
-    if (!normalizedKey) {
-      continue;
-    }
+    if (!normalizedKey) continue;
     if (typeof value === "string") {
       entries.push({ key: normalizedKey, value });
       continue;
@@ -799,9 +753,7 @@ function pickConnectionUrl(resource: JsonObject): string | undefined {
 }
 
 function setEnvValue(target: Map<string, string>, key: string, value: string | undefined): void {
-  if (!key.trim() || value === undefined || value === null || value === "") {
-    return;
-  }
+  if (!key.trim() || value === undefined || value === null || value === "") return;
   target.set(key, value);
 }
 
@@ -810,9 +762,7 @@ function addConnectionEnvVars(
   prefix: "POSTGRES" | "REDIS",
   urlValue: string | undefined,
 ): void {
-  if (!urlValue) {
-    return;
-  }
+  if (!urlValue) return;
   setEnvValue(target, `${prefix}_URL`, urlValue);
 
   try {
@@ -866,9 +816,7 @@ async function upsertApplicationEnvs(
   applicationUuid: string,
   entries: Array<{ key: string; value: string; is_runtime: boolean; is_buildtime: boolean }>,
 ): Promise<unknown> {
-  if (entries.length === 0) {
-    return [];
-  }
+  if (entries.length === 0) return [];
   return await coolifyRequest({
     ctx,
     method: "PATCH",
@@ -922,9 +870,7 @@ export function createCoolifyDeployTool(options?: {
       resolveKey("COOLIFY_DEFAULT_SERVER_UUID") ||
       process.env.COOLIFY_DEFAULT_SERVER_ID ||
       process.env.COOLIFY_DEFAULT_SERVER_UUID;
-    if (explicit?.trim()) {
-      return explicit.trim();
-    }
+    if (explicit?.trim()) return explicit.trim();
 
     const servers = await listResources(ctx, "/servers");
     if (servers.length === 0) {
@@ -1277,9 +1223,7 @@ Key resolution:
             const apps = await listResources(ctx, "/applications").catch(() => []);
             for (const app of apps.filter((item) => matchesProject(item, projectUuid))) {
               const appUuid = resourceUuid(app);
-              if (!appUuid) {
-                continue;
-              }
+              if (!appUuid) continue;
               try {
                 await deleteResource(ctx, "/applications", appUuid);
                 deleted.push({
@@ -1299,9 +1243,7 @@ Key resolution:
             const databases = await listResources(ctx, "/databases").catch(() => []);
             for (const database of databases.filter((item) => matchesProject(item, projectUuid))) {
               const dbUuid = resourceUuid(database);
-              if (!dbUuid) {
-                continue;
-              }
+              if (!dbUuid) continue;
               try {
                 await deleteResource(ctx, "/databases", dbUuid);
                 deleted.push({

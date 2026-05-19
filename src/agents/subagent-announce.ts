@@ -468,12 +468,8 @@ export async function runSubagentAnnounceFlow(params: {
       if (completedTaskIds.length > 0) {
         const blockedTasks = await storage.tasks.list({ status: ["blocked"] });
         for (const blocked of blockedTasks) {
-          if (!blocked.dependsOn || blocked.dependsOn.length === 0) {
-            continue;
-          }
-          if (!blocked.dependsOn.some((depId) => completedTaskIds.includes(depId))) {
-            continue;
-          }
+          if (!blocked.dependsOn || blocked.dependsOn.length === 0) continue;
+          if (!blocked.dependsOn.some((depId) => completedTaskIds.includes(depId))) continue;
 
           let allDepsCompleted = true;
           for (const depId of blocked.dependsOn) {
@@ -493,9 +489,7 @@ export async function runSubagentAnnounceFlow(params: {
       // Update team member status. Prefer team IDs from assigned tasks, fallback to membership scan.
       const teamIds = new Set<string>();
       for (const task of assignedTasks) {
-        if (task.teamId) {
-          teamIds.add(task.teamId);
-        }
+        if (task.teamId) teamIds.add(task.teamId);
       }
       if (teamIds.size === 0) {
         const teams = await storage.teams.list();
@@ -663,9 +657,7 @@ async function maybeFireFamilyReflection(params: {
 }): Promise<void> {
   // Extract agent ID from session key (e.g. "agent:scout:subagent:uuid" → "scout")
   const agentId = resolveAgentIdFromSessionKey(params.childSessionKey);
-  if (!agentId || agentId === "main") {
-    return;
-  }
+  if (!agentId || agentId === "main") return;
 
   // Check if this is a family label (spawned via family tool)
   // Family spawns use label "family:{agentId}" — but we also check PG
@@ -680,9 +672,7 @@ async function maybeFireFamilyReflection(params: {
     return; // PG not available — skip reflection
   }
 
-  if (!isFamilyAgent) {
-    return;
-  }
+  if (!isFamilyAgent) return;
 
   const status = params.outcome?.status ?? "unknown";
   const replySnippet = params.reply?.slice(0, 500) ?? "(no output)";

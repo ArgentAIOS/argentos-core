@@ -127,9 +127,7 @@ export class GoogleProvider implements Provider {
         }
 
         const candidate = chunk.candidates?.[0];
-        if (!candidate) {
-          continue;
-        }
+        if (!candidate) continue;
 
         // Map finish reason
         if (candidate.finishReason) {

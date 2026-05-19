@@ -72,9 +72,7 @@ export class TeamsModule {
   }
 
   async init(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
+    if (this.initialized) return;
     const db = this.conn.getDatabase("dashboard");
     db.exec(TEAMS_SCHEMA);
     this.initialized = true;
@@ -193,9 +191,7 @@ export class TeamsModule {
    */
   getTeamWithMembers(teamId: string): TeamWithMembers | null {
     const team = this.getTeam(teamId);
-    if (!team) {
-      return null;
-    }
+    if (!team) return null;
 
     const db = this.conn.getDatabase("dashboard");
     const memberRows = db
@@ -223,9 +219,7 @@ export class TeamsModule {
       )
       .get(sessionKey) as TeamRow | undefined;
 
-    if (!row) {
-      return null;
-    }
+    if (!row) return null;
     return this.getTeamWithMembers(row.id);
   }
 
@@ -245,9 +239,7 @@ export class TeamsModule {
    */
   disbandTeam(teamId: string): Team | null {
     const team = this.getTeam(teamId);
-    if (!team) {
-      return null;
-    }
+    if (!team) return null;
 
     const now = Date.now();
     this.conn.execute(

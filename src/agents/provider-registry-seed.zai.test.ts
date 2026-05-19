@@ -11,9 +11,7 @@ describe("provider-registry seed — zai entry (issue #269)", () => {
     const seed = buildSeedRegistry();
     const zai = seed.providers.zai;
     expect(zai).toBeDefined();
-    if (!zai) {
-      return;
-    }
+    if (!zai) return;
     expect(zai.baseUrl).toBe("https://api.z.ai/api/paas/v4");
     expect(zai.api).toBe("openai-completions");
     expect(zai.authType).toBe("api_key");
@@ -24,9 +22,7 @@ describe("provider-registry seed — zai entry (issue #269)", () => {
     const seed = buildSeedRegistry();
     const zai = seed.providers.zai;
     expect(zai).toBeDefined();
-    if (!zai) {
-      return;
-    }
+    if (!zai) return;
     const ids = zai.models.map((m) => m.id).sort();
     expect(ids).toEqual(
       [

@@ -93,20 +93,14 @@ async function evalWithOllama(
     });
     clearTimeout(timeout);
 
-    if (!res.ok) {
-      return null;
-    }
+    if (!res.ok) return null;
 
     const data = (await res.json()) as { message?: { content?: string } };
     const text = data.message?.content?.trim();
-    if (!text) {
-      return null;
-    }
+    if (!text) return null;
 
     const parsed = parseEvalResponse(text);
-    if (!parsed) {
-      return null;
-    }
+    if (!parsed) return null;
 
     return {
       score: parsed.score,
@@ -124,9 +118,7 @@ async function evalWithHaiku(
   agentResponse: string,
 ): Promise<SelfEvalResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
+  if (!apiKey) return null;
 
   const start = Date.now();
   try {
@@ -150,22 +142,16 @@ async function evalWithHaiku(
     });
     clearTimeout(timeout);
 
-    if (!res.ok) {
-      return null;
-    }
+    if (!res.ok) return null;
 
     const data = (await res.json()) as {
       content?: Array<{ type: string; text?: string }>;
     };
     const text = data.content?.find((c) => c.type === "text")?.text?.trim();
-    if (!text) {
-      return null;
-    }
+    if (!text) return null;
 
     const parsed = parseEvalResponse(text);
-    if (!parsed) {
-      return null;
-    }
+    if (!parsed) return null;
 
     return {
       score: parsed.score,

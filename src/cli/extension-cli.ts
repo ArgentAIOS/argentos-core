@@ -70,9 +70,7 @@ function collectFiles(dir: string, base = ""): string[] {
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       // Skip common non-distributable directories
-      if (entry.name === "node_modules" || entry.name === ".git") {
-        continue;
-      }
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
       files.push(...collectFiles(path.join(dir, entry.name), rel));
     } else {
       files.push(rel);
@@ -227,9 +225,7 @@ async function publishExtension(
 
   // Build metadata
   const metadata: Record<string, string> = {};
-  if (opts.changelog) {
-    metadata.changelog = opts.changelog;
-  }
+  if (opts.changelog) metadata.changelog = opts.changelog;
 
   // Load signature if available
   const sigPath = pkgPath.replace(PKG_EXT, ".sig");

@@ -43,9 +43,7 @@ export function createAgentStateBroadcaster(
   let currentState: AgentState = "idle";
 
   function transitionTo(newState: AgentState, reason?: string): void {
-    if (currentState === newState) {
-      return;
-    }
+    if (currentState === newState) return;
     const from = currentState;
     currentState = newState;
     const payload = {

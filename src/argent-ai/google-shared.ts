@@ -218,18 +218,12 @@ function transformMessages<TApi extends Api>(
             // Same model: keep thinking blocks with signatures (needed for
             // replay) even if the thinking text is empty (OpenAI encrypted
             // reasoning).
-            if (isSameModel && block.thinkingSignature) {
-              return [block];
-            }
+            if (isSameModel && block.thinkingSignature) return [block];
             // Skip empty thinking blocks; otherwise either keep (same model)
             // or convert to plain text (cross-model — strip tags to avoid the
             // target model mimicking them).
-            if (!block.thinking || block.thinking.trim() === "") {
-              return [];
-            }
-            if (isSameModel) {
-              return [block];
-            }
+            if (!block.thinking || block.thinking.trim() === "") return [];
+            if (isSameModel) return [block];
             return [
               {
                 type: "text" as const,
@@ -238,9 +232,7 @@ function transformMessages<TApi extends Api>(
             ];
           }
           if (block.type === "text") {
-            if (isSameModel) {
-              return [block];
-            }
+            if (isSameModel) return [block];
             return [
               {
                 type: "text" as const,
@@ -305,12 +297,8 @@ export function requiresToolCallId(modelId: string): boolean {
 const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
 
 function isValidThoughtSignature(signature: string | undefined): signature is string {
-  if (!signature) {
-    return false;
-  }
-  if (signature.length % 4 !== 0) {
-    return false;
-  }
+  if (!signature) return false;
+  if (signature.length % 4 !== 0) return false;
   return base64SignaturePattern.test(signature);
 }
 
@@ -327,9 +315,7 @@ function resolveThoughtSignature(
 
 function getGeminiMajorVersion(modelId: string): number | undefined {
   const match = modelId.toLowerCase().match(/^gemini(?:-live)?-(\d+)/);
-  if (!match) {
-    return undefined;
-  }
+  if (!match) return undefined;
   return Number.parseInt(match[1], 10);
 }
 
@@ -364,9 +350,7 @@ export function convertMessages<TApi extends GoogleApiType>(
 ): Content[] {
   const contents: Content[] = [];
   const normalizeToolCallId = (id: string): string => {
-    if (!requiresToolCallId(model.id)) {
-      return id;
-    }
+    if (!requiresToolCallId(model.id)) return id;
     return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
   };
   const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
@@ -390,9 +374,7 @@ export function convertMessages<TApi extends GoogleApiType>(
             },
           };
         });
-        if (parts.length === 0) {
-          continue;
-        }
+        if (parts.length === 0) continue;
         contents.push({ role: "user", parts });
       }
       continue;
@@ -404,9 +386,7 @@ export function convertMessages<TApi extends GoogleApiType>(
 
       for (const block of msg.content) {
         if (block.type === "text") {
-          if (!block.text || block.text.trim() === "") {
-            continue;
-          }
+          if (!block.text || block.text.trim() === "") continue;
           const thoughtSignature = resolveThoughtSignature(
             isSameProviderAndModel,
             block.textSignature,
@@ -416,9 +396,7 @@ export function convertMessages<TApi extends GoogleApiType>(
             ...(thoughtSignature ? { thoughtSignature } : {}),
           });
         } else if (block.type === "thinking") {
-          if (!block.thinking || block.thinking.trim() === "") {
-            continue;
-          }
+          if (!block.thinking || block.thinking.trim() === "") continue;
           // Only keep as thinking block if same provider AND same model.
           // Otherwise convert to plain text (no tags — avoids the next model
           // learning to mimic them).
@@ -451,9 +429,7 @@ export function convertMessages<TApi extends GoogleApiType>(
           parts.push(part);
         }
       }
-      if (parts.length === 0) {
-        continue;
-      }
+      if (parts.length === 0) continue;
       contents.push({ role: "model", parts });
       continue;
     }
@@ -547,9 +523,7 @@ function sanitizeForOpenApi(schema: unknown): unknown {
   }
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
-    if (JSON_SCHEMA_META_DECLARATIONS.has(key)) {
-      continue;
-    }
+    if (JSON_SCHEMA_META_DECLARATIONS.has(key)) continue;
     result[key] = sanitizeForOpenApi(value);
   }
   return result;
@@ -572,9 +546,7 @@ export function convertTools(
       functionDeclarations: Record<string, unknown>[];
     }[]
   | undefined {
-  if (tools.length === 0) {
-    return undefined;
-  }
+  if (tools.length === 0) return undefined;
   return [
     {
       functionDeclarations: tools.map((tool) => ({

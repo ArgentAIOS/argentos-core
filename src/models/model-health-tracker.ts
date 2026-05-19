@@ -33,13 +33,9 @@ const DEFAULT_WINDOW = 10;
 const DEFAULT_THRESHOLD = 3;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
-  if (!value) {
-    return fallback;
-  }
+  if (!value) return fallback;
   const n = Number.parseInt(value, 10);
-  if (!Number.isFinite(n) || n <= 0) {
-    return fallback;
-  }
+  if (!Number.isFinite(n) || n <= 0) return fallback;
   return n;
 }
 
@@ -82,9 +78,7 @@ export class ModelHealthTracker {
 
   /** Record an observed call outcome for a given provider/model. */
   recordOutcome(provider: string, modelId: string, outcome: ModelHealthOutcome): void {
-    if (!provider || !modelId) {
-      return;
-    }
+    if (!provider || !modelId) return;
     const key = normalizeKey(provider, modelId);
     // Recovery: a single successful (non-empty) call resets the counter.
     if (outcome === "ok") {
@@ -103,18 +97,12 @@ export class ModelHealthTracker {
 
   /** Number of "empty" outcomes recorded in the current window. */
   getEmptyCount(provider: string, modelId: string): number {
-    if (!provider || !modelId) {
-      return 0;
-    }
+    if (!provider || !modelId) return 0;
     const buf = this.buffers.get(normalizeKey(provider, modelId));
-    if (!buf) {
-      return 0;
-    }
+    if (!buf) return 0;
     let count = 0;
     for (const entry of buf) {
-      if (entry === "empty") {
-        count++;
-      }
+      if (entry === "empty") count++;
     }
     return count;
   }

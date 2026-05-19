@@ -90,9 +90,7 @@ function createFamilyFixture(agents: AgentFixture[]) {
     ),
     getAgent: vi.fn(async (id: string) => {
       const agent = byId.get(id);
-      if (!agent) {
-        return null;
-      }
+      if (!agent) return null;
       return {
         id: agent.id,
         name: agent.name,

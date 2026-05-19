@@ -100,16 +100,13 @@ Actions:
 
           if (provider === "resend") {
             const key = resolveKey("RESEND_API_KEY") || process.env.RESEND_API_KEY;
-            if (!key) {
-              throw new Error("No RESEND_API_KEY configured.");
-            }
+            if (!key) throw new Error("No RESEND_API_KEY configured.");
             const res = await fetch("https://api.resend.com/domains", {
               headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
             });
             const body = await parseResponse(res);
-            if (!res.ok) {
+            if (!res.ok)
               throw new Error(`Resend test failed (${res.status}): ${JSON.stringify(body)}`);
-            }
             return jsonResult({ action, provider, ok: true, raw: includeRaw ? body : undefined });
           }
 
@@ -119,32 +116,26 @@ Actions:
               resolveKey("MAILGUN_TITANIUM_API_KEY") ||
               process.env.MAILGUN_API_KEY ||
               process.env.MAILGUN_TITANIUM_API_KEY;
-            if (!key) {
-              throw new Error("No MAILGUN_API_KEY configured.");
-            }
+            if (!key) throw new Error("No MAILGUN_API_KEY configured.");
             const auth = Buffer.from(`api:${key}`).toString("base64");
             const res = await fetch("https://api.mailgun.net/v3/domains", {
               headers: { Authorization: `Basic ${auth}`, Accept: "application/json" },
             });
             const body = await parseResponse(res);
-            if (!res.ok) {
+            if (!res.ok)
               throw new Error(`Mailgun test failed (${res.status}): ${JSON.stringify(body)}`);
-            }
             return jsonResult({ action, provider, ok: true, raw: includeRaw ? body : undefined });
           }
 
           if (provider === "sendgrid") {
             const key = resolveKey("SENDGRID_API_KEY") || process.env.SENDGRID_API_KEY;
-            if (!key) {
-              throw new Error("No SENDGRID_API_KEY configured.");
-            }
+            if (!key) throw new Error("No SENDGRID_API_KEY configured.");
             const res = await fetch("https://api.sendgrid.com/v3/user/profile", {
               headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
             });
             const body = await parseResponse(res);
-            if (!res.ok) {
+            if (!res.ok)
               throw new Error(`SendGrid test failed (${res.status}): ${JSON.stringify(body)}`);
-            }
             return jsonResult({ action, provider, ok: true, raw: includeRaw ? body : undefined });
           }
 
@@ -153,9 +144,7 @@ Actions:
 
         if (action === "send_resend") {
           const key = resolveKey("RESEND_API_KEY") || process.env.RESEND_API_KEY;
-          if (!key) {
-            throw new Error("No RESEND_API_KEY configured.");
-          }
+          if (!key) throw new Error("No RESEND_API_KEY configured.");
           const msg = requireMessageFields(params);
 
           const res = await fetch("https://api.resend.com/emails", {
@@ -175,9 +164,8 @@ Actions:
           });
 
           const body = await parseResponse(res);
-          if (!res.ok) {
+          if (!res.ok)
             throw new Error(`Resend send failed (${res.status}): ${JSON.stringify(body)}`);
-          }
           return jsonResult({
             action,
             provider: "resend",
@@ -193,29 +181,21 @@ Actions:
             resolveKey("MAILGUN_TITANIUM_API_KEY") ||
             process.env.MAILGUN_API_KEY ||
             process.env.MAILGUN_TITANIUM_API_KEY;
-          if (!key) {
-            throw new Error("No MAILGUN_API_KEY configured.");
-          }
+          if (!key) throw new Error("No MAILGUN_API_KEY configured.");
 
           const domain =
             readStringParam(params, "mailgun_domain") ||
             resolveKey("MAILGUN_DOMAIN") ||
             process.env.MAILGUN_DOMAIN;
-          if (!domain) {
-            throw new Error("mailgun_domain or MAILGUN_DOMAIN is required");
-          }
+          if (!domain) throw new Error("mailgun_domain or MAILGUN_DOMAIN is required");
 
           const msg = requireMessageFields(params);
           const form = new URLSearchParams();
           form.append("from", msg.from);
           msg.to.forEach((entry) => form.append("to", entry));
           form.append("subject", msg.subject);
-          if (msg.text) {
-            form.append("text", msg.text);
-          }
-          if (msg.html) {
-            form.append("html", msg.html);
-          }
+          if (msg.text) form.append("text", msg.text);
+          if (msg.html) form.append("html", msg.html);
 
           const auth = Buffer.from(`api:${key}`).toString("base64");
           const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
@@ -229,9 +209,8 @@ Actions:
           });
 
           const body = await parseResponse(res);
-          if (!res.ok) {
+          if (!res.ok)
             throw new Error(`Mailgun send failed (${res.status}): ${JSON.stringify(body)}`);
-          }
           return jsonResult({
             action,
             provider: "mailgun",
@@ -243,9 +222,7 @@ Actions:
 
         if (action === "send_sendgrid") {
           const key = resolveKey("SENDGRID_API_KEY") || process.env.SENDGRID_API_KEY;
-          if (!key) {
-            throw new Error("No SENDGRID_API_KEY configured.");
-          }
+          if (!key) throw new Error("No SENDGRID_API_KEY configured.");
           const msg = requireMessageFields(params);
 
           const payload: JsonObject = {
@@ -269,9 +246,8 @@ Actions:
           });
 
           const body = await parseResponse(res);
-          if (!res.ok) {
+          if (!res.ok)
             throw new Error(`SendGrid send failed (${res.status}): ${JSON.stringify(body)}`);
-          }
           return jsonResult({
             action,
             provider: "sendgrid",

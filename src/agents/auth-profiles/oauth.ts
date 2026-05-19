@@ -47,18 +47,12 @@ export function maybeKickEagerRefresh(params: {
   agentDir?: string;
 }): void {
   const provider = String(params.credentials.provider ?? "").trim();
-  if (provider !== "openai-codex") {
-    return;
-  }
+  if (provider !== "openai-codex") return;
 
   const access = typeof params.credentials.access === "string" ? params.credentials.access : "";
-  if (!isAccessTokenExpiring(access)) {
-    return;
-  }
+  if (!isAccessTokenExpiring(access)) return;
 
-  if (_inFlightRefresh.has(params.profileId)) {
-    return;
-  }
+  if (_inFlightRefresh.has(params.profileId)) return;
 
   const promise = (async () => {
     try {

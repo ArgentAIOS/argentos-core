@@ -201,9 +201,7 @@ function buildManagedDescription(userDescription?: string): string {
 }
 
 function isManagedScheduledTask(job: unknown): job is CronJob {
-  if (!job || typeof job !== "object") {
-    return false;
-  }
+  if (!job || typeof job !== "object") return false;
   const description = (job as { description?: unknown }).description;
   return typeof description === "string" && description.includes(MANAGED_DESCRIPTION_MARKER);
 }
@@ -276,9 +274,7 @@ function buildUpdatePatch(params: Record<string, unknown>): CronJobPatch {
   const patch: CronJobPatch = {};
 
   const name = readStringParam(params, "name");
-  if (name) {
-    patch.name = name;
-  }
+  if (name) patch.name = name;
 
   if ("description" in params) {
     patch.description = buildManagedDescription(

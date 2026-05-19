@@ -143,9 +143,7 @@ export class OpenAIProvider implements Provider {
           partial.usage.totalTokens = chunk.usage.total_tokens;
         }
 
-        if (!choice) {
-          continue;
-        }
+        if (!choice) continue;
 
         const delta = choice.delta;
 
@@ -200,9 +198,7 @@ export class OpenAIProvider implements Provider {
               // Tool call delta
               const pending = pendingToolCalls.get(idx);
               if (pending) {
-                if (tc.function?.name) {
-                  pending.name += tc.function.name;
-                }
+                if (tc.function?.name) pending.name += tc.function.name;
                 if (tc.function?.arguments) {
                   pending.argsJson += tc.function.arguments;
                   yield { type: "tool_call_delta", delta: tc.function.arguments, partial };

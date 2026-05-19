@@ -34,9 +34,7 @@ export interface ExtractedLesson {
  */
 export function detectRetryPatterns(outcomes: ToolOutcome[]): ExtractedLesson[] {
   const lessons: ExtractedLesson[] = [];
-  if (outcomes.length < 2) {
-    return lessons;
-  }
+  if (outcomes.length < 2) return lessons;
 
   for (let i = 0; i < outcomes.length - 1; i++) {
     const current = outcomes[i];
@@ -74,9 +72,7 @@ export function detectRepeatedFailures(outcomes: ToolOutcome[]): ExtractedLesson
   // Group failures by tool name
   const failuresByTool = new Map<string, ToolOutcome[]>();
   for (const o of outcomes) {
-    if (!o.isError) {
-      continue;
-    }
+    if (!o.isError) continue;
     const existing = failuresByTool.get(o.toolName);
     if (existing) {
       existing.push(o);
@@ -86,9 +82,7 @@ export function detectRepeatedFailures(outcomes: ToolOutcome[]): ExtractedLesson
   }
 
   for (const [toolName, failures] of failuresByTool) {
-    if (failures.length < 3) {
-      continue;
-    }
+    if (failures.length < 3) continue;
 
     // Collect unique error messages for context
     const uniqueErrors = [...new Set(failures.map((f) => f.errorMessage ?? "unknown"))];
@@ -174,9 +168,7 @@ function hasKeywordOverlap(
   const extractedTokens = tokenize(`${extracted.context} ${extracted.action} ${extracted.outcome}`);
   const existingTokens = tokenize(`${existing.context} ${existing.action} ${existing.outcome}`);
 
-  if (extractedTokens.size === 0 || existingTokens.size === 0) {
-    return false;
-  }
+  if (extractedTokens.size === 0 || existingTokens.size === 0) return false;
 
   // Check tool overlap first — if different tools, not a duplicate
   const extractedTool = extracted.relatedTools[0];
@@ -187,9 +179,7 @@ function hasKeywordOverlap(
 
   let overlapCount = 0;
   for (const token of extractedTokens) {
-    if (existingTokens.has(token)) {
-      overlapCount++;
-    }
+    if (existingTokens.has(token)) overlapCount++;
   }
 
   const overlapRatio = overlapCount / extractedTokens.size;
@@ -215,9 +205,7 @@ function tokenize(text: string): Set<string> {
  */
 export function buildToolOutcomeSummary(outcomes: ToolOutcome[]): string | null {
   const failures = outcomes.filter((o) => o.isError);
-  if (failures.length === 0) {
-    return null;
-  }
+  if (failures.length === 0) return null;
 
   const lines: string[] = [];
   lines.push(`Total tool calls: ${outcomes.length}, Failures: ${failures.length}`);
@@ -258,16 +246,12 @@ export function buildToolOutcomeSummary(outcomes: ToolOutcome[]): string | null 
  */
 export function parseToolLessonsFromResponse(raw: Record<string, unknown>): ExtractedLesson[] {
   const toolLessons = raw.tool_lessons;
-  if (!Array.isArray(toolLessons)) {
-    return [];
-  }
+  if (!Array.isArray(toolLessons)) return [];
 
   return toolLessons
     .map((tl: Record<string, unknown>): ExtractedLesson | null => {
       const type = tl.type as string;
-      if (!isValidLessonType(type)) {
-        return null;
-      }
+      if (!isValidLessonType(type)) return null;
 
       const tool = (tl.tool as string) ?? "";
       return {

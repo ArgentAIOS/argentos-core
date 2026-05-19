@@ -32,9 +32,7 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) {
-      return;
-    }
+    if (!parsed.ok) return;
     expect(parsed.fallbackUsed).toBe(false);
     expect(parsed.result.patterns[0]?.name).toBe("verification-rigor");
 
@@ -50,9 +48,7 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) {
-      return;
-    }
+    if (!parsed.ok) return;
     expect(parsed.fallbackUsed).toBe(true);
 
     const metrics = getSisConsolidationMetricsSnapshot();
@@ -65,9 +61,7 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) {
-      return;
-    }
+    if (!parsed.ok) return;
     expect(parsed.fallbackUsed).toBe(true);
   });
 
@@ -96,9 +90,7 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(false);
-    if (parsed.ok) {
-      return;
-    }
+    if (parsed.ok) return;
     expect(parsed.reason).toBe("missing-recommendations");
 
     const metrics = getSisConsolidationMetricsSnapshot();
@@ -111,9 +103,7 @@ describe("sis runner consolidation parser", () => {
     const parsed = __testing.parseConsolidationResponse(text);
 
     expect(parsed.ok).toBe(false);
-    if (parsed.ok) {
-      return;
-    }
+    if (parsed.ok) return;
     expect(parsed.reason).toBe("json-parse-failed");
 
     const metrics = getSisConsolidationMetricsSnapshot();

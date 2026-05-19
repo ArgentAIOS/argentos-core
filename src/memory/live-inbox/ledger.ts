@@ -71,9 +71,7 @@ export function buildLiveInboxLedger(params: {
     // Non-fatal
   }
 
-  if (lines.length === 0) {
-    return null;
-  }
+  if (lines.length === 0) return null;
 
   return [
     "# Live Inbox Ledger",

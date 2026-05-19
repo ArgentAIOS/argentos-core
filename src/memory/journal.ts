@@ -36,17 +36,11 @@ function getJournalExtractionMemoryTypes(source: "heartbeat" | "cron"): MemoryTy
 }
 
 function shouldCaptureCronJournalEvent(evt: CronEvent): boolean {
-  if (evt.action !== "finished") {
-    return false;
-  }
-  if (evt.status === "error" || !!evt.error) {
-    return true;
-  }
+  if (evt.action !== "finished") return false;
+  if (evt.status === "error" || !!evt.error) return true;
 
   const summary = evt.summary?.trim() ?? "";
-  if (!summary) {
-    return false;
-  }
+  if (!summary) return false;
 
   if (LOW_VALUE_CRON_SUMMARY_RE.test(summary)) {
     return false;
@@ -99,9 +93,7 @@ export function stopJournal(): void {
 
 function handleHeartbeatEvent(evt: HeartbeatEventPayload): void {
   // Only journal heartbeats that actually did something
-  if (evt.status === "skipped") {
-    return;
-  }
+  if (evt.status === "skipped") return;
 
   void (async () => {
     try {
@@ -149,12 +141,8 @@ function handleHeartbeatEvent(evt: HeartbeatEventPayload): void {
 
 function handleCronEvent(evt: CronEvent): void {
   // Only journal completed cron runs (not add/update/remove)
-  if (evt.action !== "finished") {
-    return;
-  }
-  if (!shouldCaptureCronJournalEvent(evt)) {
-    return;
-  }
+  if (evt.action !== "finished") return;
+  if (!shouldCaptureCronJournalEvent(evt)) return;
 
   void (async () => {
     try {

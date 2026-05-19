@@ -139,9 +139,7 @@ export async function categorizeFacts(params: {
     // Assign to categories
     for (const catName of fact.categoryNames) {
       const normalizedName = normalizeExtractedCategoryName(catName);
-      if (!normalizedName) {
-        continue;
-      }
+      if (!normalizedName) continue;
 
       const category = await store.getOrCreateCategory(normalizedName);
       await store.linkItemToCategory(item.id, category.id);
@@ -188,9 +186,7 @@ export async function categorizeFacts(params: {
   for (const name of touchedCategoryNames) {
     if (!newCategoryNames.has(name)) {
       const cat = await store.getCategoryByName(name);
-      if (cat) {
-        updatedCategories.push(cat);
-      }
+      if (cat) updatedCategories.push(cat);
     }
   }
 

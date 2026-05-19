@@ -94,9 +94,7 @@ describe("routeModel — recently-failed-empty weight (#281)", () => {
 
   it("promotes the first healthy sessionFallback when the contemplation primary is flaking", () => {
     const tracker = new ModelHealthTracker({ window: 10, threshold: 3 });
-    for (let i = 0; i < 3; i++) {
-      tracker.recordOutcome("zai", "glm-5-turbo", "empty");
-    }
+    for (let i = 0; i < 3; i++) tracker.recordOutcome("zai", "glm-5-turbo", "empty");
 
     const decision = routeModel({
       signals: { prompt: "deep reflection", sessionType: "contemplation" },
@@ -119,9 +117,7 @@ describe("routeModel — recently-failed-empty weight (#281)", () => {
 
   it("promotes a profileFallback when sessionFallbacks are absent and primary is flaking", () => {
     const tracker = new ModelHealthTracker({ window: 10, threshold: 3 });
-    for (let i = 0; i < 3; i++) {
-      tracker.recordOutcome("zai", "glm-5-turbo", "empty");
-    }
+    for (let i = 0; i < 3; i++) tracker.recordOutcome("zai", "glm-5-turbo", "empty");
 
     const decision = routeModel({
       signals: { prompt: "hi", sessionType: "main" },
@@ -141,12 +137,8 @@ describe("routeModel — recently-failed-empty weight (#281)", () => {
 
   it("falls through to next candidate when first fallback is also flaking", () => {
     const tracker = new ModelHealthTracker({ window: 10, threshold: 3 });
-    for (let i = 0; i < 3; i++) {
-      tracker.recordOutcome("zai", "glm-5-turbo", "empty");
-    }
-    for (let i = 0; i < 3; i++) {
-      tracker.recordOutcome("zai", "glm-5", "empty");
-    }
+    for (let i = 0; i < 3; i++) tracker.recordOutcome("zai", "glm-5-turbo", "empty");
+    for (let i = 0; i < 3; i++) tracker.recordOutcome("zai", "glm-5", "empty");
 
     const decision = routeModel({
       signals: { prompt: "reflect", sessionType: "contemplation" },
@@ -168,9 +160,7 @@ describe("routeModel — recently-failed-empty weight (#281)", () => {
 
   it("recovers immediately once the primary serves a non-empty response", () => {
     const tracker = new ModelHealthTracker({ window: 10, threshold: 3 });
-    for (let i = 0; i < 3; i++) {
-      tracker.recordOutcome("zai", "glm-5-turbo", "empty");
-    }
+    for (let i = 0; i < 3; i++) tracker.recordOutcome("zai", "glm-5-turbo", "empty");
     expect(tracker.isFlaking("zai", "glm-5-turbo")).toBe(true);
 
     tracker.recordOutcome("zai", "glm-5-turbo", "ok");
@@ -193,9 +183,7 @@ describe("routeModel — recently-failed-empty weight (#281)", () => {
 
   it("respects user override even when the requested model is flaking (#281 constraint)", () => {
     const tracker = new ModelHealthTracker({ window: 10, threshold: 3 });
-    for (let i = 0; i < 3; i++) {
-      tracker.recordOutcome("zai", "glm-5-turbo", "empty");
-    }
+    for (let i = 0; i < 3; i++) tracker.recordOutcome("zai", "glm-5-turbo", "empty");
 
     const decision = routeModel({
       signals: { prompt: "go", sessionType: "main" },

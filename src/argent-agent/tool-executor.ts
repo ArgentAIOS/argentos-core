@@ -421,9 +421,7 @@ export class ToolExecutor {
       // ── 5. Run pre-execution hooks ──
       let currentArgs = { ...toolCall.arguments };
       for (const hook of this.preHooks) {
-        if (combinedSignal.aborted) {
-          break;
-        }
+        if (combinedSignal.aborted) break;
 
         const hookResult = await hook.execute(
           { ...toolCall, arguments: currentArgs },
@@ -481,9 +479,7 @@ export class ToolExecutor {
 
       // ── 7. Run post-execution hooks ──
       for (const hook of this.postHooks) {
-        if (combinedSignal.aborted) {
-          break;
-        }
+        if (combinedSignal.aborted) break;
 
         const hookResult = await hook.execute(modifiedToolCall, result, handler, context);
         this.emit({
@@ -766,12 +762,8 @@ export class ToolExecutor {
    */
   private combineSignals(...signals: (AbortSignal | undefined)[]): AbortSignal {
     const validSignals = signals.filter((s): s is AbortSignal => s !== undefined);
-    if (validSignals.length === 0) {
-      return new AbortController().signal;
-    }
-    if (validSignals.length === 1) {
-      return validSignals[0];
-    }
+    if (validSignals.length === 0) return new AbortController().signal;
+    if (validSignals.length === 1) return validSignals[0];
 
     const controller = new AbortController();
 
@@ -874,9 +866,7 @@ export function createPermissionPolicy(grantedPermissions: Set<ToolPermission>):
     name: "permission",
     evaluate(_toolCall, handler) {
       const required = handler.permission ?? "standard";
-      if (required === "unrestricted") {
-        return null;
-      }
+      if (required === "unrestricted") return null;
 
       if (!grantedPermissions.has(required)) {
         if (required === "destructive") {

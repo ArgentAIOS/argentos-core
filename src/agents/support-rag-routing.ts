@@ -2,9 +2,7 @@ export function isSupportDepartment(departmentId: string | undefined | null): bo
   const normalized = String(departmentId ?? "")
     .trim()
     .toLowerCase();
-  if (!normalized) {
-    return false;
-  }
+  if (!normalized) return false;
   return normalized === "support" || normalized.startsWith("support-");
 }
 
@@ -27,9 +25,7 @@ const EXCEPTION_QUERY_RE =
 
 export function inferSupportKnowledgeCollections(query: string): string[] {
   const text = String(query || "").trim();
-  if (!text) {
-    return [];
-  }
+  if (!text) return [];
   const collections = new Set<string>();
   if (TECHNICAL_QUERY_RE.test(text)) {
     collections.add("support-runbooks");
@@ -63,12 +59,8 @@ export function inferDepartmentKnowledgeCollections(params: {
 }
 
 export function collectionMatchesAny(collection: string | undefined, wanted: Set<string>): boolean {
-  if (!wanted.size) {
-    return true;
-  }
+  if (!wanted.size) return true;
   const normalized = normalizeCollection(collection ?? "");
-  if (!normalized) {
-    return false;
-  }
+  if (!normalized) return false;
   return wanted.has(normalized);
 }

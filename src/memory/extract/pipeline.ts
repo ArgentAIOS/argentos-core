@@ -48,15 +48,9 @@ function filterOperationalJournalFacts(params: {
   }
   return params.facts.filter((fact) => {
     const summary = fact.summary.trim();
-    if (!summary) {
-      return false;
-    }
-    if (LOW_VALUE_CRON_FACT_RE.test(summary)) {
-      return false;
-    }
-    if (MEANINGFUL_CRON_FACT_RE.test(summary)) {
-      return true;
-    }
+    if (!summary) return false;
+    if (LOW_VALUE_CRON_FACT_RE.test(summary)) return false;
+    if (MEANINGFUL_CRON_FACT_RE.test(summary)) return true;
     if (
       /\b(?:cron job|vip email(?: check| scan)?|scheduled run|next run|atera rmm\/psa)\b/i.test(
         summary,
@@ -235,9 +229,7 @@ export const __testing = {
 };
 
 async function drainExtractionQueue(): Promise<void> {
-  if (extractionRunning) {
-    return;
-  }
+  if (extractionRunning) return;
   extractionRunning = true;
 
   try {

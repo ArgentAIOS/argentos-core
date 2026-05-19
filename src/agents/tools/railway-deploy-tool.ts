@@ -36,9 +36,7 @@ function isObject(value: unknown): value is JsonObject {
 }
 
 function toObject(value: unknown, label: string): JsonObject {
-  if (!isObject(value)) {
-    throw new Error(`${label} must be an object`);
-  }
+  if (!isObject(value)) throw new Error(`${label} must be an object`);
   return value;
 }
 
@@ -55,21 +53,13 @@ function parseJson(text: string): unknown {
 }
 
 function extractProjects(payload: unknown): JsonObject[] {
-  if (!isObject(payload)) {
-    return [];
-  }
+  if (!isObject(payload)) return [];
   const data = payload.data;
-  if (!isObject(data)) {
-    return [];
-  }
+  if (!isObject(data)) return [];
   const projects = data.projects;
-  if (!isObject(projects)) {
-    return [];
-  }
+  if (!isObject(projects)) return [];
   const edges = projects.edges;
-  if (!Array.isArray(edges)) {
-    return [];
-  }
+  if (!Array.isArray(edges)) return [];
   return edges
     .map((edge) => (isObject(edge) && isObject(edge.node) ? edge.node : null))
     .filter((node): node is JsonObject => Boolean(node));

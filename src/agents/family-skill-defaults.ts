@@ -50,16 +50,12 @@ const ROLE_SKILL_RULES: Array<{
 ];
 
 function normalizeSkillList(list: string[] | undefined): string[] {
-  if (!Array.isArray(list)) {
-    return [];
-  }
+  if (!Array.isArray(list)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of list) {
     const value = String(item ?? "").trim();
-    if (!value || seen.has(value)) {
-      continue;
-    }
+    if (!value || seen.has(value)) continue;
     seen.add(value);
     out.push(value);
   }
