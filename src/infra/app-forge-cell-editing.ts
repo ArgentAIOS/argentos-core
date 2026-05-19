@@ -107,6 +107,29 @@ export function isValidEmailInput(value: string): boolean {
 }
 
 /**
+ * Canonical phone-shape validator. Matches Airtable's behavior of trusting
+ * user input rather than enforcing strict E.164: allow `+`, digits, spaces,
+ * dashes, dots, and parentheses with a minimum length of 7 chars from that
+ * set so empty / one-or-two-digit drafts get rejected. Empty input is
+ * accepted (clears the cell), mirroring `isValidEmailInput`.
+ *
+ * Single source of truth shared by `validateAppForgeRecordValues` (gateway)
+ * and `PhoneCellEditor` (dashboard) — do NOT inline a duplicate regex in
+ * either consumer (see scoper note on issue #376).
+ *
+ * Accepts: `+1 (555) 123-4567`, `555-1234`, `5551234567`, `+44 20 7946 0958`.
+ * Rejects: `abc`, `not a phone`, `123` (too short), empty-after-trim returns
+ * `true` (cleared cell).
+ */
+export function isValidPhoneInput(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  return /^[+]?[\d\s().-]{7,}$/.test(trimmed);
+}
+
+/**
  * Helpers for the AppForge linked-record relation picker. The picker UI
  * lives in the dashboard (`GridCellEditor.tsx`) but it shares parsing,
  * filtering, and label-resolution rules with the substrate so the gateway

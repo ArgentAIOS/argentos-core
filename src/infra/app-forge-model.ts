@@ -1,3 +1,4 @@
+import { isValidPhoneInput } from "./app-forge-cell-editing.js";
 import {
   APP_FORGE_VIEW_MODES as APP_FORGE_VIEW_MODES_CANONICAL,
   isAppForgeViewMode,
@@ -14,6 +15,7 @@ export const APP_FORGE_FIELD_TYPES = [
   "checkbox",
   "url",
   "email",
+  "phone",
   "attachment",
   "linked_record",
   "rating",
@@ -168,6 +170,7 @@ export type AppForgeValidationError = {
     | "invalid_date"
     | "invalid_option"
     | "invalid_email"
+    | "invalid_phone"
     | "invalid_url"
     | "invalid_array"
     | "invalid_rating";
@@ -506,6 +509,21 @@ export function validateAppForgeRecordValues(
       (typeof value !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
     ) {
       errors.push(validationError(field, "invalid_email", `${field.name} must be an email.`));
+    }
+
+    if (
+      field.type === "phone" &&
+      // Route through the substrate helper rather than inlining the regex
+      // (avoids the email-style triple-copy drift; see issue #376).
+      (typeof value !== "string" || !isValidPhoneInput(value))
+    ) {
+      errors.push(
+        validationError(
+          field,
+          "invalid_phone",
+          `${field.name} must be a phone number (≥7 digits; +, spaces, dashes, dots, parens allowed).`,
+        ),
+      );
     }
 
     if (field.type === "url" && typeof value === "string") {

@@ -129,6 +129,29 @@ describe("AppForge core model", () => {
     ]);
   });
 
+  it("validates phone-typed values against the loose Airtable-style shape", () => {
+    const phoneFields: AppForgeField[] = [{ id: "mobile", name: "Mobile", type: "phone" }];
+
+    const ok = validateAppForgeRecordValues(phoneFields, {
+      mobile: "+1 (555) 123-4567",
+    });
+    expect(ok.ok).toBe(true);
+    expect(ok.values).toEqual({ mobile: "+1 (555) 123-4567" });
+
+    // Empty cell clears the field; not an error (mirrors email/url policy).
+    const empty = validateAppForgeRecordValues(phoneFields, { mobile: "" });
+    expect(empty.ok).toBe(true);
+    expect(empty.values).toEqual({ mobile: "" });
+
+    const bad = validateAppForgeRecordValues(phoneFields, { mobile: "call me" });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.map((error) => error.code)).toEqual(["invalid_phone"]);
+
+    const tooShort = validateAppForgeRecordValues(phoneFields, { mobile: "(123)" });
+    expect(tooShort.ok).toBe(false);
+    expect(tooShort.errors.map((error) => error.code)).toEqual(["invalid_phone"]);
+  });
+
   it("uses rich select options when validating record values and defaults", () => {
     const fieldsWithRichOptions: AppForgeField[] = [
       {
