@@ -87,8 +87,18 @@ export {
   categorizeFacts,
   buildExtractionPrompt,
   EXTRACTION_PROMPTS,
+  AUDIO_PREPROCESS_PROMPT,
+  DOCUMENT_PREPROCESS_PROMPT,
+  IMAGE_PREPROCESS_PROMPT,
+  VIDEO_PREPROCESS_PROMPT,
+  PREPROCESS_PROMPTS,
+  buildAudioPreprocessPrompt,
+  buildDocumentPreprocessPrompt,
+  buildImagePreprocessPrompt,
+  buildVideoPreprocessPrompt,
   type DedupeResult,
   type CategorizeResult,
+  type PreprocessModality,
 } from "./extract/index.js";
 
 // Retrieval Pipeline
