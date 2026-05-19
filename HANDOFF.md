@@ -1,11 +1,15 @@
-# HANDOFF — argent-core workflows lane
+# HANDOFF — argent-core shift-two recovery + gantt verification
 
-**Session close:** 2026-05-14 ~01:30 PT
-**Authoring lane:** `workflows` (this window). Companion window: `master`.
+**Session close:** 2026-05-18 ~22:30 PT
+**Branch you're on at session close:** `working/2026-05-15` (local-only, one shift-two housekeeping commit ahead of where it was)
 
-This is a handoff document for the next session that picks up the workflows lane on argent-core. **Every claim is tagged [VERIFIED] (I read code, ran a command, or have a tool result this session) or [ASSUMED] (I'm relying on another agent's message, a heuristic, or load-bearing inference).**
+> Every claim is tagged **[VERIFIED]** (I read code, ran a command, or have a tool result this session) or **[ASSUMED]** (relying on inference, the prior session's HANDOFF, or an external system's reported state).
 
-For the multi-day context that led here, see `/Users/sem/Documents/Obsidian Vault/ArgentOS Core Docs/08 - Current Iteration/Session 2026-05-11 to 2026-05-13 — TinyFish + 1Password + Pi-Bridge/` — especially `Start Here.md` and `Day 3 evening — v2026.5.6.4 + workflows lane.md`.
+For the multi-day context that led into this session, see the prior workflows-lane HANDOFF in this file's git history (`git log -p HANDOFF.md` — the 2026-05-14 entry). For tonight's full narrative, see:
+
+`/Users/sem/Documents/Obsidian Vault/ArgentOS Core Docs/08 - Current Iteration/Session 2026-05-18 — shift-two recovery + gantt verification/`
+
+— especially `Start Here.md` and `Shift-two summary.md`.
 
 ---
 
@@ -13,132 +17,154 @@ For the multi-day context that led here, see `/Users/sem/Documents/Obsidian Vaul
 
 ### Branches
 
-| Branch                                   | Tip commit                                 | Meaning                                                                                                                                                                                                             |
-| ---------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main`                                   | `0ed1ccc7` (merge of PR #346)              | **v2026.5.6.4 released.** [VERIFIED via `gh pr view 346`: state=MERGED, mergedAt=2026-05-13T17:57:30Z]                                                                                                              |
-| `dev`                                    | `fca11a1c` (#355 promote-validation merge) | Post-release work, `2026.5.6-dev.N` with N≥55. [VERIFIED via `git log origin/dev`]                                                                                                                                  |
-| `release/v2026.5.6.4`                    | `0a8f940f`                                 | Closed, merged via #346. Worktree torn down at session close. [VERIFIED]                                                                                                                                            |
-| `orchestrator-master-2026-05-06` (local) | 549 commits behind origin/dev              | This window's working branch. **Not pushed; do not assume merged.** Working-tree has uncommitted ops state changes (`.gitignore`, `ops/THREADMASTER_COORDINATION.md`, vault docs, etc.) [VERIFIED via `git status`] |
+| Branch                     | Tip                                          | Meaning                                                                                                                                                                                           |
+| -------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                     | `6f108e42` (PR #370 merge)                   | **v2026.5.6.5 released.** [VERIFIED via `gh pr view 370`: MERGED, mergedAt=2026-05-19T00:07:08Z UTC]                                                                                              |
+| `dev`                      | 28+ commits past `working/2026-05-15`'s base | Post-release work; includes PR #371 + #372 merged tonight. [VERIFIED via `git log origin/dev`]                                                                                                    |
+| `working/2026-05-15`       | one shift-two housekeeping commit            | Local-only working branch. **Do NOT push.** Diverged from origin/dev (1 commit local + 28 commits ahead on origin/dev side per `git status` output at session close). [VERIFIED via `git status`] |
+| `feat/gantt-smoke-fixture` | a59092e6                                     | PR #374 open. Awaiting merge.                                                                                                                                                                     |
 
 ### Tags
 
-`v2026.5.6`, `.1`, `.2`, `.3`, `.4` — all on main. **v2026.5.6.4 is the latest published tag.** [ASSUMED — master reported the tag push at 17:58 PT; I did not personally `git tag -l`. To verify: `git ls-remote --tags origin`.]
+`v2026.5.6.5` (release, pushed) + `salvage/gantt-bucket-v1.1-substrate-from-pr366` (commit `7b7e6ae4`, anchors the v1.1 gantt substrate from the closed PR #366 so the deleted branch didn't lose the code). [VERIFIED via `git ls-remote --tags origin`]
 
-### Release content (what's in v2026.5.6.4)
+### Release content (v2026.5.6.5)
 
-10 release-content PRs + 3 post-release on dev: [VERIFIED via `gh pr list --state merged`]
+| Wave           | PRs                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| Installer fix  | #369 (dev), #370 (release → main)                                                           |
+| AppForge views | #368 (list view), #367 (calendar view) — landed before this session; came in via dev merges |
 
-- **Wave 10** (deps): #330 pi-ai 0.73.1 bump (closes #182)
-- **Wave 11** (AppForge Phase 4): #331 rich field UX, #332 CSV import, #333 saved named views
-- **Wave 12** (durability + ACL): #339 producer events (closes #335), #340 ACL gate (closes #336)
-- **Wave 13** (KEYSTONE): #341 migrate to `@earendil-works/pi-*` 0.74.0 (closes #338) — pi-bridge cluster paying off as designed
-- **Wave 14** (Phase 4 finish): #343 NL editing (closes #337), #344 editable interfaces (closes #334)
-- **Wave 15**: #345 inline google-shared (closes #342)
+### Open PRs at session close
 
-Post-release on dev (not yet in a tagged release):
+| #        | Title                                                                   | State           | Recommended next step                                                                             |
+| -------- | ----------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- |
+| **#374** | `chore(dashboard): add gantt-smoke dev-fixture for visual verification` | OPEN, mergeable | Review/merge or close with a "not landing" note. Diagnostic harness only — not a regression test. |
 
-- #348 — MemU HTTP proxy support (closes #313)
-- #354 — MemU `category_with_refs` summary variant (closes #312)
-- #355 — Workflows re-validate safety gates on promote-to-live (closes #350)
+### Workers / processes
 
-### Bus state
-
-`ops/threadmaster-bus/messages.jsonl` is the durable append-only message log between the two lane windows. ~12 cross-lane messages this evening. **State is intact for resume.** [VERIFIED]
-
-`ops/threadmaster-bus/acks.json` — note: my shell drifted into a worker's worktree mid-session for ~30 min, so some acks during that window were written to the worktree's copy not the canonical file. Worktree was torn down; acks lost. Stale April messages re-surfaced as a result. **Not load-bearing for next session — bus itself is fine — but flag for any similar drift.** [VERIFIED behavior, [ASSUMED] no other side effects]
-
-### Workers
-
-- **My workers:** 0 surviving processes at session close. [VERIFIED via `pgrep`]
-- **Master-lane workers:** PID 27054 was alive at last check (master's, not mine). [VERIFIED via process attribution]
+- **No surviving background processes from my side.** [VERIFIED via `pgrep -af vite|api-server.cjs`]
+- Two pre-existing services still listening on ports 8080 / 9242 (not mine, not touched). [VERIFIED via `lsof -i :8080 -i :9242`]
 
 ### Cron
 
-| ID         | Cadence                                   | Purpose            | Status                                                                                                           |
-| ---------- | ----------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `7d81e2dd` | every 6 min off-minute (`3-59/6 * * * *`) | Workflows bus loop | Active; **dies when this Claude session exits** (session-only, not persisted); auto-expires in 7 days regardless | [VERIFIED via CronList tool] |
-
-**Important:** the bus-loop cron is session-only. **Next session must re-arm it** if continuing the workflows lane via `/loop 6m <prompt>`.
+No session-only crons armed in this session. (Prior workflows-lane bus-loop cron has long since auto-expired.)
 
 ---
 
-## 5. What the next session should do first
+## 2. What landed this session — at a glance
 
-(Numbering matches the operator's original ask — sections 2/3/4 N/A this session per operator confirmation.)
+| Item                                                         | Outcome                                                   |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| Release v2026.5.6.5                                          | Shipped — merged + tagged + remote release branch deleted |
+| Worktree cleanup                                             | 186 → 1                                                   |
+| PR #371 — `failWorkflowRun` cost aggregation (closes #352)   | Merged to dev (`c865cfa1`)                                |
+| PR #372 — Telegram inline approve/deny buttons (closes #351) | Merged to dev (`0fbb7dd5`)                                |
+| PR #366 — gantt v1 (superseded by dev)                       | Closed; salvage tagged + tracked at #373                  |
+| PR #374 — gantt-smoke dev-fixture                            | Open, awaiting merge                                      |
+| HANDOFF.md updated for next session                          | This file                                                 |
+
+Full narrative + lessons in the vault session folder.
+
+---
+
+## 3. Open issues you'll see in the queue
+
+### Just-closed in this session
+
+- #351 (closed by #372)
+- #352 (closed by #371)
+
+### Newly filed
+
+- **#373 [appforge][gantt-v1.1] Lift hierarchy + dependency + critical-path substrate from PR #366.** Lift spec is in the issue body — exact files, exact exports, what to drop. Anchored to tag `salvage/gantt-bucket-v1.1-substrate-from-pr366` (commit `7b7e6ae4`). Only worth doing when v1.1 UI wiring starts; the substrate is preserved and tested but doesn't help until UI consumes it. [VERIFIED]
+
+### Still open from prior HANDOFF (4 days ago) — current state
+
+| #    | Title                                            | Status                                                                          |
+| ---- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| #311 | MemU multimodal preprocess port                  | 🟡 Open. "Cheap next item" per prior HANDOFF — SAFE-PORT, 1-2 days.             |
+| #314 | MemU retrieval-stage prompts                     | 🔵 `needs:product-call` — blocked                                               |
+| #315 | MemU non-propagate option                        | 🔵 `needs:product-call` — blocked                                               |
+| #360 | AppForge → Airtable parity tracker (31 findings) | 🟡 Open. Meta-issue from 2026-05-16 audit. Best bucket of structured next-work. |
+| #185 | Re-poke earendil-works PR #4277                  | 🟡 Open. Their moratorium ended 2026-05-17 — actionable now, 5-min task.        |
+| #283 | oxlint long-tail cleanup                         | 🟡 Open. Backlog.                                                               |
+
+---
+
+## 4. What the next session should do first
 
 ### Priority order
 
-1. **Read this file + `Start Here.md` + `Day 3 evening — v2026.5.6.4 + workflows lane.md`** in the vault. ~10 min, gives full multi-day context.
+1. **Read this file + the vault session folder.** ~10 min.
 
-2. **Bus sync** — `cd /Users/sem/code/argent-core && pnpm threadmaster:list --lane workflows --unacked`. Ack/reply any pending master messages. The 12-min ack rule still applies. If continuing as workflows lane, re-arm the bus-loop cron via `/loop 6m <bus-loop prompt>`. The prompt is in this session's earlier turns and in `ops/RUNBOOK_CROSS_TMUX_THREADMASTER_COORDINATION.md` if it exists. [ASSUMED runbook is current.]
+2. **Decide on PR #374** (gantt-smoke fixture). One-line decision: merge it (and the fixture becomes a permanent diagnostic surface) or close it as not-landing (and the fixture was a one-shot verification we no longer need). I'd lean merge — it's 167 lines, contained under `dev-fixtures/`, and there's a README pointing at it. Future you might want to re-run the visual check.
 
-3. **Close known false-positive audit issues** that I filed tonight before re-verification:
-   - `gh issue close 349 -c "Audit false-positive — canvas editor is shipped in dashboard/src/components/widgets/WorkflowsWidget.tsx (11,062 LOC, React Flow / @xyflow/react, all 5 node types, drag/drop, save flow). The audit looked at dashboard/src/components/workflows/ and missed widgets/. See Audit verification lesson in vault."`
-   - `gh issue close 353 -c "Audit false-positive — AppForge event runtime handler exists: resumeWorkflowRunsForEvent in src/infra/workflow-execution-service.ts, called from src/gateway/server-methods/workflows.ts:3680, tested in workflows.appforge-events.test.ts. See Audit verification lesson in vault."`
-     [VERIFIED both gaps tonight via grep + file reads.]
-
-4. **Comment on #351 + #352** noting the audit citations were imprecise:
-   - #351: keep open; needs trace of whether AOS connector path wires Telegram delivery before either smoke-testing or declaring "by design".
-   - #352: keep open but reframe — the cited `workflow-runner-cost-aggregation.ts` doesn't exist. Real cost code is `workflow-execution-service.ts:241`. Smaller real question: when a run halts mid-graph (timeout/circuit-breaker/cost-cap), is `final_cost_usd` persisted? Investigate before doing anything.
-
-5. **#347 lane-check fix** — trivial. `scripts/check-repo-lane.mjs` currently fails by-design every release PR (`expected dev, got main`). Master filed #347 to fix. Workflows lane has this in task #41 pending. **~30 min PR.** Skim my repo-lane post-mortem from earlier today (`/Users/sem/Documents/Obsidian Vault/.../Post-mortem - tsc-since CI vs local divergence.md`) for context on the script.
-
-6. **AppForge audit follow-up.** Master's heartbeat at 00:54 PT said "AppForge audit complete (parity gap inventory done); awaiting operator on meta-issue file + next dispatch pick." [VERIFIED via bus message] **I have not seen the actual audit results.** Next session should bus-ask master for the inventory, or check `gh issue list --state open --label appforge` for newly-filed parity issues. [ASSUMED they will be visible.]
-
-7. **MemU sync remaining:** #311 (multimodal preprocess, SAFE-PORT, 1-2d) and #314 (7-prompt retrieval pipeline, operator-approved, 2-3d) are still pending. Per [[MemU vs Memori decision]] the strategy is selective port from upstream; no wholesale switch. **#311 is the cheap next item.**
+3. **Pick next forward-progress work** — most likely:
+   - **#311 (MemU multimodal port)** — 1-2 day cheap port from upstream. Concrete forward progress.
+   - **#360 AppForge parity** — pick the smallest finding from the meta-issue and land it. Highest backlog leverage but each item needs scoping.
+   - **#185 (earendil-works re-poke)** — 5 minutes, just to clear it.
 
 ### Don't-do list
 
-- **Don't dispatch a worker on #349 or #353** — both feature already shipped. Closing the issues is the action, not implementing them.
-- **Don't trust the Explore-agent audit output further** — see [[Audit verification lesson 2026-05-13]] in vault.
-- **Don't push `orchestrator-master-2026-05-06`** without rebasing — it's 549 commits behind origin/dev.
+- **Don't push `working/2026-05-15`** without rebasing. It's diverged from origin/dev (28 commits behind). Per the prior HANDOFF this is a local-only working pointer.
+- **Don't dispatch a codex worker without planning the worktree teardown.** Worktree accumulation is what crashed the box this morning — see the post-mortem in the vault session folder.
+- **Don't trust the audit-agent's file citations.** Two of tonight's worked-on issues (#351, #352) had wrong file paths in the audit. Always grep before acting.
+- **Don't claim a UI verification done without a styled rendering.** See the lesson note in the vault session folder — I over-claimed once tonight and got rightly called out.
+
+### Smoke-tests recommended before relying on tonight's changes
+
+- **PR #372 Telegram buttons:** unit tests pass, no live Telegram round-trip done. Trigger an approval gate in a real workflow run with a configured Telegram target, tap a button, verify the run resumes + message edits.
+- **PR #371 cost aggregation:** unit tests assert SQL shape, no live verification that `workflow_runs.total_cost_usd` is populated correctly after a real timeout/exception. Force a workflow to throw mid-execution, inspect the row.
+
+Neither blocks other work, but both should be exercised before being relied on.
 
 ---
 
-## Repo-state quick-check commands (for resume sanity)
+## 5. Repo-state quick-check commands
 
 ```sh
 cd /Users/sem/code/argent-core
 
-# Bus
-pnpm threadmaster:list --lane workflows --unacked
-
-# Current state
+# Snapshot
 git fetch origin --quiet
-git log origin/dev --oneline -5
 git log origin/main --oneline -3
-gh pr list --state open --search "head:codex/feat-workflows OR head:codex/feat-memu OR head:codex/fix-memu"
+git log origin/dev --oneline -5
+gh pr list --state open --limit 10
+gh issue list --state open --limit 20 --search "label:workflows OR label:appforge OR label:memu-sync"
 
-# Worker zombies (should be 0 from my lane)
-pgrep -af "workflows-fix-"
+# Worktrees (should be 1 — the main repo only)
+git worktree list | wc -l
+
+# Tags
+git ls-remote --tags origin | grep -E "v2026|salvage"
 
 # Vault entry point
-ls "/Users/sem/Documents/Obsidian Vault/ArgentOS Core Docs/08 - Current Iteration/Session 2026-05-11 to 2026-05-13 — TinyFish + 1Password + Pi-Bridge/"
+ls "/Users/sem/Documents/Obsidian Vault/ArgentOS Core Docs/08 - Current Iteration/Session 2026-05-18 — shift-two recovery + gantt verification/"
 ```
 
 ---
 
-## Lessons recorded tonight (auto-memory)
+## 6. Lessons recorded tonight
 
-- **`feedback_audit_verification.md`** — research/audit agents inferred missing features and were wrong twice tonight; verify citations before auto-filing follow-ups. Workers ≠ audits. Saved to `/Users/sem/.claude-semfreak/projects/-Users-sem-code-argent-core/memory/`.
+In the vault under this session's folder:
 
-Older lessons from this session still hold:
-
-- `feedback_worker_lifecycle_cleanup.md` — shutdown_request + pgrep verify after every dispatch
-- `feedback_followup_auto_issue.md` — auto-file follow-ups from _workers_ (still true)
-- `feedback_bus_loop_format.md` — ⏺ + 📥 🟢 💗 format
+- **Post-mortem — ENFILE crash from stale worktrees.** Box crashed mid-session because the OS file table saturated. Root cause: 186 stale codex-worker worktrees + Claude Code background bash fanout. Mitigation: pruned to 1, recommendations for future automation.
+- **Lesson — never declare visual verification done without styled rendering.** I over-claimed criterion 1 of the gantt close-out goal based on an unstyled component dump; operator called it out. Recovery rebuilt the harness with proper CSS chain; landed real evidence. Rule: visual criteria need visual evidence with full styling, not just "math passes and component mounts".
+- **Lesson — squash-merge supersession pattern.** How to recognize and close a PR whose feature has shipped on dev via different commits, while preserving any unique salvage on a tag + tracking issue.
 
 ---
 
-## Numbers at session close
+## 7. Numbers at session close
 
-|                                                      |                                                                                                       |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Stable releases shipped in 3-day session             | **4** (v2026.5.6.1, .2, .3, .4)                                                                       |
-| PRs landed today (release-content + post-release)    | **13** [VERIFIED via gh]                                                                              |
-| Workers I dispatched today                           | 3 (all delivered, all merged) [VERIFIED]                                                              |
-| Audit agents I dispatched today                      | 1 (workflows feature audit — half-wrong) [VERIFIED]                                                   |
-| Issues filed by me from audit                        | 5 (#349 closed-to-be, #350 already shipped, #351 partial, #352 reframe, #353 closed-to-be) [VERIFIED] |
-| Operator pause cycles handled                        | 1 (mobile pause + resume; bus state preserved across) [VERIFIED]                                      |
-| Bus messages exchanged this session (workflows lane) | ~30 [VERIFIED rough count via grep]                                                                   |
-| Zombie workers at close                              | 0 [VERIFIED via `pgrep`]                                                                              |
+|                                    |                                                           |
+| ---------------------------------- | --------------------------------------------------------- |
+| PRs merged tonight                 | 2 (#371, #372)                                            |
+| PRs closed tonight (without merge) | 1 (#366, superseded)                                      |
+| PRs opened tonight                 | 3 (#371, #372, #374)                                      |
+| Issues filed tonight               | 1 (#373 — gantt v1.1 substrate lift spec)                 |
+| Releases shipped                   | 1 (v2026.5.6.5)                                           |
+| Worktrees pruned                   | 185                                                       |
+| Zombie workers at close            | 0 [VERIFIED via `pgrep`]                                  |
+| Vault notes written                | 4 (Start Here, Shift-two summary, Post-mortem, 2 Lessons) |
+| Operator interrupts handled        | 1 (visual-verification over-claim called out + recovered) |
