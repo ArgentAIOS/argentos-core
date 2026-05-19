@@ -9,12 +9,92 @@ import {
 } from "../../agent-core/ai.js";
 import { refreshQwenPortalCredentials } from "../../providers/qwen-portal-oauth.js";
 import { refreshChutesTokens } from "../chutes-oauth.js";
-import { refreshOpenAICodexCredentials } from "../openai-codex-auth.js";
+import { isAccessTokenExpiring, refreshOpenAICodexCredentials } from "../openai-codex-auth.js";
 import { AUTH_STORE_LOCK_OPTIONS, log } from "./constants.js";
 import { formatAuthDoctorHint } from "./doctor.js";
 import { ensureAuthStoreFile, resolveAuthStorePath } from "./paths.js";
 import { suggestOAuthProfileIdForLegacyDefault } from "./repair.js";
 import { ensureAuthProfileStore, saveAuthProfileStore } from "./store.js";
+
+/**
+ * Module-scope tracker of in-flight refreshes, keyed by `profileId`. Prevents
+ * thundering-herd refreshes when multiple chat turns inside the 5-min skew
+ * window all decide the token is "expiring soon" at the same time. Mirrors
+ * subctl's `_inFlightRefresh` map (components/master/openai-codex-auth.ts L59).
+ *
+ * Process-level coordination across CLI/dashboard processes is handled by the
+ * `proper-lockfile` lock on `auth-profiles.json` (see `refreshOAuthTokenWithLock`).
+ * This Map handles the in-process case.
+ */
+const _inFlightRefresh = new Map<string, Promise<unknown>>();
+
+/**
+ * Fire-and-forget hint: if an OAuth credential's access token is within the
+ * 5-min skew window of `exp`, kick off a background refresh. Returns immediately
+ * with the still-valid token — the operator's *next* chat turn picks up the
+ * rotated token off disk.
+ *
+ * Subctl L341-L393 (components/master/openai-codex-auth.ts) is the reference
+ * implementation. This is a *hint*, not a replacement for the lazy refresh-on-401
+ * path in `refreshOAuthTokenWithLock` — that's still the safety net.
+ *
+ * Currently scoped to `openai-codex` since that is the provider whose JWT we
+ * know how to inspect; other providers continue to use lazy refresh only.
+ */
+export function maybeKickEagerRefresh(params: {
+  profileId: string;
+  credentials: OAuthCredentials & { provider?: string };
+  agentDir?: string;
+}): void {
+  const provider = String(params.credentials.provider ?? "").trim();
+  if (provider !== "openai-codex") return;
+
+  const access = typeof params.credentials.access === "string" ? params.credentials.access : "";
+  if (!isAccessTokenExpiring(access)) return;
+
+  if (_inFlightRefresh.has(params.profileId)) return;
+
+  const promise = (async () => {
+    try {
+      const refreshed = await refreshOAuthTokenWithLock({
+        profileId: params.profileId,
+        agentDir: params.agentDir,
+      });
+      if (refreshed) {
+        // Structured log mirrors subctl's account=<id>, exp_in_s=<seconds>
+        // format. We deliberately do NOT log access/refresh tokens.
+        const expIn = Math.max(
+          0,
+          Math.round((refreshed.newCredentials.expires - Date.now()) / 1000),
+        );
+        const account =
+          typeof refreshed.newCredentials.chatgptAccountId === "string"
+            ? refreshed.newCredentials.chatgptAccountId
+            : "unknown";
+        log.info("openai-codex eager refresh succeeded", {
+          profileId: params.profileId,
+          account,
+          exp_in_s: expIn,
+        });
+      }
+    } catch (err) {
+      // Swallow network failures — the still-valid token returned by the
+      // synchronous caller covers this turn, and the next call will retry.
+      log.warn("openai-codex eager refresh failed (current token still valid)", {
+        profileId: params.profileId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      _inFlightRefresh.delete(params.profileId);
+    }
+  })();
+  _inFlightRefresh.set(params.profileId, promise);
+}
+
+/** Test-only helper to inspect the in-flight refresh tracker. */
+export function _peekInFlightRefresh(profileId: string): Promise<unknown> | undefined {
+  return _inFlightRefresh.get(profileId);
+}
 
 const OAUTH_PROVIDER_IDS = new Set<string>(
   argentGetOAuthProviders().map((provider) => provider.id),
@@ -166,6 +246,14 @@ async function tryResolveOAuthProfile(params: {
   }
 
   if (Date.now() < cred.expires) {
+    // Eager refresh hint: if we're inside the 5-min skew window of the JWT's
+    // exp claim, kick a background refresh. Operator's next chat turn picks
+    // up the rotated token off disk. Not awaited.
+    maybeKickEagerRefresh({
+      profileId,
+      credentials: cred,
+      agentDir: params.agentDir,
+    });
     return {
       apiKey: buildOAuthApiKey(cred.provider, cred),
       provider: cred.provider,
@@ -232,6 +320,11 @@ export async function resolveApiKeyForProfile(params: {
     return { apiKey: token, provider: cred.provider, email: cred.email };
   }
   if (Date.now() < cred.expires) {
+    maybeKickEagerRefresh({
+      profileId,
+      credentials: cred,
+      agentDir: params.agentDir,
+    });
     return {
       apiKey: buildOAuthApiKey(cred.provider, cred),
       provider: cred.provider,

@@ -2,6 +2,80 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.5.6.5
+
+Fifth micro release on top of `v2026.5.6`. **12 PRs** since `v2026.5.6.4`,
+focused on hosted-installer reliability and a wide expansion of AppForge
+view modes (calendar, gallery, timeline, gantt, list — all driven from a
+new canonical view-mode registry). Adds the goal/Ralph-loop pipeline,
+LM Studio prompt-cache injection, and eager OpenAI Codex auth refresh.
+No schema changes, no breaking API changes. Safe drop-in upgrade from
+`v2026.5.6.4`.
+
+### Highlights
+
+- **Hosted installer honors `packageManager` pin
+  ([#369](https://github.com/ArgentAIOS/argentos-core/pull/369)).** Fixes
+  `curl -fsSL https://argentos.ai/install.sh | bash` aborting on systems
+  that already have a globally-installed `pnpm 11.x`. The installer now
+  reads the `packageManager` field from the checked-out `package.json`
+  and shims the exact pinned pnpm version via `corepack prepare …
+--activate` (preferred), with `npm install -g pnpm@<pinned>` as a
+  fallback when corepack isn't available. Critical for any new
+  contributor or onboarding flow on a machine with a fresh pnpm install.
+- **AppForge view-mode canonical registry + five new views
+  ([#365](https://github.com/ArgentAIOS/argentos-core/pull/365),
+  [#358](https://github.com/ArgentAIOS/argentos-core/pull/358),
+  [#362](https://github.com/ArgentAIOS/argentos-core/pull/362),
+  [#364](https://github.com/ArgentAIOS/argentos-core/pull/364),
+  [#367](https://github.com/ArgentAIOS/argentos-core/pull/367),
+  [#368](https://github.com/ArgentAIOS/argentos-core/pull/368)).**
+  Introduces a single canonical view-mode registry as the source of truth
+  for every view-mode union (#365), then lands calendar (#358), gallery
+  (#362), timeline (#364), gantt (#367), and list (#368) view renderers
+  on top of it. Each ships its own render-dispatch wiring + pure helpers
+  for layout math, keeping render logic test-friendly.
+- **Goal command + Ralph-loop runner
+  ([#361](https://github.com/ArgentAIOS/argentos-core/pull/361),
+  [#363](https://github.com/ArgentAIOS/argentos-core/pull/363)).** Wires
+  `/goal` into the command/run pipeline with a judge call + Ralph-loop
+  runner and a post-turn hook. SessionEntry gains `GoalState` so the
+  runtime can carry goal context across turns. Backed by an integration
+  test suite (#363) that exercises the loop end-to-end.
+- **LM Studio prompt caching
+  ([#357](https://github.com/ArgentAIOS/argentos-core/pull/357)).**
+  Injects `cache_prompt: true` for LM Studio via the pi runtime's
+  `onPayload` chokepoint, so prompt-cache reuse happens automatically on
+  the local-model path without per-call plumbing.
+- **OpenAI Codex auth: eager refresh + in-flight de-duplication
+  ([#359](https://github.com/ArgentAIOS/argentos-core/pull/359)).**
+  Refresh tokens before they expire instead of reactively on 401, and
+  de-duplicate concurrent refresh attempts so multiple in-flight
+  requests share one refresh round-trip. Adds identification headers
+  - JWT helpers, atomic `O_EXCL` 0600 write for the auth-profiles JSON,
+    and a dashboard SSE consumer that surfaces `chatgpt_account_id`.
+
+### Tooling
+
+- **Repo-lane release-branch exception
+  ([#356](https://github.com/ArgentAIOS/argentos-core/pull/356)).**
+  `scripts/check-repo-lane.mjs` now allows PRs from `release/*` branches
+  to target `main` while keeping every other branch on the `dev` lane.
+  Closes the gap that blocked the release-train flow.
+
+### Testing notes
+
+- Installer: on a machine with `pnpm 11.x` already in PATH, run
+  `curl -fsSL https://argentos.ai/install.sh | bash` and confirm install
+  completes without the "configured to use 10.23.0 of pnpm" abort.
+- AppForge: switch between every view mode (grid, calendar, gallery,
+  timeline, gantt, list) on the same dataset and confirm the canonical
+  registry routes each one correctly. Saved views from v2026.5.6.4
+  remain readable.
+- Goal: trigger `/goal` in a session, confirm the Ralph-loop runner
+  executes, post-turn hook fires, and `GoalState` persists across the
+  next turn.
+
 ## 2026.5.6.4
 
 Fourth micro release on top of `v2026.5.6`. **10 PRs / 7 issues closed**,

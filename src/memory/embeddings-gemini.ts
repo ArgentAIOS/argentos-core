@@ -2,12 +2,15 @@ import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.j
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { resolveMemoryProxyFetch } from "./proxy-fetch.js";
 
 export type GeminiEmbeddingClient = {
   baseUrl: string;
   headers: Record<string, string>;
   model: string;
   modelPath: string;
+  /** Proxy-aware fetch impl (undici ProxyAgent) when memory.proxy or HTTPS_PROXY/HTTP_PROXY is set. */
+  fetch?: typeof fetch;
 };
 
 const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -69,12 +72,13 @@ export async function createGeminiEmbeddingProvider(
   const baseUrl = client.baseUrl.replace(/\/$/, "");
   const embedUrl = `${baseUrl}/${client.modelPath}:embedContent`;
   const batchUrl = `${baseUrl}/${client.modelPath}:batchEmbedContents`;
+  const fetchImpl = client.fetch ?? fetch;
 
   const embedQuery = async (text: string): Promise<number[]> => {
     if (!text.trim()) {
       return [];
     }
-    const res = await fetch(embedUrl, {
+    const res = await fetchImpl(embedUrl, {
       method: "POST",
       headers: client.headers,
       body: JSON.stringify({
@@ -99,7 +103,7 @@ export async function createGeminiEmbeddingProvider(
       content: { parts: [{ text }] },
       taskType: "RETRIEVAL_DOCUMENT",
     }));
-    const res = await fetch(batchUrl, {
+    const res = await fetchImpl(batchUrl, {
       method: "POST",
       headers: client.headers,
       body: JSON.stringify({ requests }),
@@ -153,6 +157,7 @@ export async function resolveGeminiEmbeddingClient(
   };
   const model = normalizeGeminiModel(options.model);
   const modelPath = buildGeminiModelPath(model);
+  const proxyFetch = resolveMemoryProxyFetch(options.config);
   debugLog("memory embeddings: gemini client", {
     rawBaseUrl,
     baseUrl,
@@ -160,6 +165,7 @@ export async function resolveGeminiEmbeddingClient(
     modelPath,
     embedEndpoint: `${baseUrl}/${modelPath}:embedContent`,
     batchEndpoint: `${baseUrl}/${modelPath}:batchEmbedContents`,
+    proxy: proxyFetch ? "enabled" : "disabled",
   });
-  return { baseUrl, headers, model, modelPath };
+  return { baseUrl, headers, model, modelPath, fetch: proxyFetch };
 }

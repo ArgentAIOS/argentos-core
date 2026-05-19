@@ -526,7 +526,7 @@ export function streamOpenAIResponses(
       };
 
       // Fire onPayload callback if present
-      options?.onPayload?.(body);
+      options?.onPayload?.(body, model);
 
       // Emit start event
       eventStream.push({

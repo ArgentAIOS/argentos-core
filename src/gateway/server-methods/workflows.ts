@@ -67,6 +67,7 @@ import {
   workflowJsonFieldsFromRow,
 } from "../../infra/workflow-execution-service.js";
 import {
+  evaluatePromoteToLiveSafety,
   hasBlockingWorkflowIssues,
   normalizeWorkflow,
   type WorkflowIssue,
@@ -2739,6 +2740,51 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         log.info(`workflow update ignored as no-op: ${id}`);
         respond(true, publicWorkflowRow(existing as unknown as WorkflowRow));
         return;
+      }
+
+      // Re-validate at live safety standards when this save promotes the
+      // workflow from a non-live deployment stage to "live". Surfaced by the
+      // 2026-05-13 workflows audit (argent-core #350): saving an unsafe draft
+      // (e.g. send_message without an approval gate) and then promoting it to
+      // live previously bypassed validation entirely.
+      const previousStage =
+        workflowDeploymentStageFromDefinition({
+          deploymentStage: existing.deployment_stage,
+        }) ?? "live";
+      const nextStage = deploymentStage ?? previousStage;
+      if (nextStage === "live" && previousStage !== "live") {
+        const workflowToValidate =
+          normalized?.workflow ?? workflowFromRow(existing as unknown as WorkflowRow).workflow;
+        const safety = evaluatePromoteToLiveSafety(workflowToValidate, {
+          previousStage,
+          nextStage,
+        });
+        if (!safety.ok) {
+          log.warn(
+            `workflow update rejected: promote-to-live safety failed for ${id} ` +
+              `(${safety.blockingIssues.length} blocking issue${
+                safety.blockingIssues.length === 1 ? "" : "s"
+              })`,
+          );
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              "Workflow cannot be promoted to live: safety re-validation failed.",
+              {
+                details: {
+                  code: "promote_to_live_validation_failed",
+                  previousStage,
+                  nextStage,
+                  issues: safety.blockingIssues,
+                  allIssues: safety.liveIssues,
+                },
+              },
+            ),
+          );
+          return;
+        }
       }
 
       const newVersion = (existing.version as number) + 1;

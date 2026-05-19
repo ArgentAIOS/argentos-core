@@ -8,5 +8,18 @@ export {
   cleanupEmptyCategories,
 } from "./manager.js";
 
-export { CATEGORY_SUMMARY_PROMPT, buildCategorySummaryPrompt } from "./prompts.js";
-export { sanitizeCategorySummary, META_SUMMARY_PATTERNS } from "./sanitize.js";
+export {
+  CATEGORY_SUMMARY_PROMPT,
+  CATEGORY_SUMMARY_WITH_REFS_PROMPT,
+  buildCategorySummaryPrompt,
+  buildCategorySummaryWithRefsPrompt,
+  deriveItemRefId,
+} from "./prompts.js";
+export type { CategorySummaryWithRefsItem } from "./prompts.js";
+export {
+  sanitizeCategorySummary,
+  stripCategorySummaryRefs,
+  extractCategorySummaryRefs,
+  META_SUMMARY_PATTERNS,
+  REF_TOKEN_PATTERN,
+} from "./sanitize.js";

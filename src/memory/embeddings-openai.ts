@@ -1,11 +1,14 @@
 import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.js";
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
 import { resolveOpenAiEmbeddingDimensions } from "./embedding-contract.js";
+import { resolveMemoryProxyFetch } from "./proxy-fetch.js";
 
 export type OpenAiEmbeddingClient = {
   baseUrl: string;
   headers: Record<string, string>;
   model: string;
+  /** Proxy-aware fetch impl (undici ProxyAgent) when memory.proxy or HTTPS_PROXY/HTTP_PROXY is set. */
+  fetch?: typeof fetch;
 };
 
 export const DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
@@ -39,6 +42,7 @@ export async function createOpenAiEmbeddingProvider(
   const client = await resolveOpenAiEmbeddingClient(options, providerId);
   const url = `${client.baseUrl.replace(/\/$/, "")}/embeddings`;
   const dimensions = resolveOpenAiEmbeddingDimensions(client.model, options.config);
+  const fetchImpl = client.fetch ?? fetch;
 
   const embed = async (input: string[]): Promise<number[][]> => {
     if (input.length === 0) {
@@ -51,7 +55,7 @@ export async function createOpenAiEmbeddingProvider(
     if (typeof dimensions === "number") {
       requestPayload.dimensions = dimensions;
     }
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       method: "POST",
       headers: client.headers,
       body: JSON.stringify(requestPayload),
@@ -114,5 +118,6 @@ export async function resolveOpenAiEmbeddingClient(
     ...headerOverrides,
   };
   const model = normalizeOpenAiCompatibleModel(options.model, providerId);
-  return { baseUrl, headers, model };
+  const proxyFetch = resolveMemoryProxyFetch(options.config);
+  return { baseUrl, headers, model, fetch: proxyFetch };
 }

@@ -97,7 +97,14 @@ describe("forge structured data metadata", () => {
                     createdAt: "2026-04-25T21:00:00.000Z",
                     updatedAt: "2026-04-25T21:00:00.000Z",
                   },
-                  { id: "bad-view", name: "Bad view", type: "timeline" },
+                  // `__never_a_real_view_mode__` is intentionally bogus —
+                  // it's a permanent sentinel that will never collide with
+                  // a future canonical view mode. Earlier revisions of this
+                  // test used "gantt" which kept colliding with each new
+                  // shipped view mode (Calendar / Gallery / Timeline) and
+                  // had to migrate every time. The single-source-of-truth
+                  // refactor (#360 audit #31) made that churn unnecessary.
+                  { id: "bad-view", name: "Bad view", type: "__never_a_real_view_mode__" },
                 ],
                 activeViewId: "view-review",
               },

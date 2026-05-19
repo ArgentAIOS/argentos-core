@@ -15,6 +15,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL, URLSearchParams } from "node:url";
 import type { OAuthCredentials } from "../argent-agent/oauth-types.js";
+import { buildOpenAIAuthHeaders } from "../agents/openai-codex-auth.js";
 
 // ============================================================================
 // Constants
@@ -216,9 +217,7 @@ async function exchangeCodeForTokens(
 
   const response = await fetch(OPENAI_TOKEN_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: buildOpenAIAuthHeaders("application/x-www-form-urlencoded"),
     body: body.toString(),
   });
 

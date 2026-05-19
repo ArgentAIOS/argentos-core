@@ -1,3 +1,9 @@
+import {
+  APP_FORGE_VIEW_MODES as APP_FORGE_VIEW_MODES_CANONICAL,
+  isAppForgeViewMode,
+  type AppForgeViewMode,
+} from "./app-forge-view-modes.js";
+
 export const APP_FORGE_FIELD_TYPES = [
   "text",
   "long_text",
@@ -26,14 +32,16 @@ export const APP_FORGE_MAX_RATING_MAX = 10;
 export type AppForgeFieldType = (typeof APP_FORGE_FIELD_TYPES)[number];
 
 /**
- * Saved-view kinds that AppForge tables can render. Mirrors the dashboard's
- * `ForgeStructuredViewType` plus `calendar` (Phase 4 parity gap #1) so that
- * saved views travel with the table as durable metadata rather than living
- * in the operator-local localStorage cache.
+ * Saved-view kinds that AppForge tables can render. Re-exported here under
+ * the legacy `APP_FORGE_SAVED_VIEW_TYPES` name; the canonical list lives in
+ * `app-forge-view-modes.ts` (single source of truth across substrate +
+ * dashboard). `AppForgeSavedViewType` is an alias of `AppForgeViewMode` —
+ * the underlying union is identical, the alias self-documents that this
+ * value lives in `AppForgeSavedView.type`.
  */
-export const APP_FORGE_SAVED_VIEW_TYPES = ["grid", "kanban", "form", "review", "calendar"] as const;
+export const APP_FORGE_SAVED_VIEW_TYPES = APP_FORGE_VIEW_MODES_CANONICAL;
 
-export type AppForgeSavedViewType = (typeof APP_FORGE_SAVED_VIEW_TYPES)[number];
+export type AppForgeSavedViewType = AppForgeViewMode;
 
 export type AppForgeSavedViewSortDirection = "asc" | "desc";
 
@@ -755,9 +763,7 @@ export function projectLegacyAppForgeBase(app: LegacyAppForgeApp): AppForgeBase 
 // ---------------------------------------------------------------------------
 
 function savedViewTypeValue(value: unknown): AppForgeSavedViewType {
-  return APP_FORGE_SAVED_VIEW_TYPES.includes(value as AppForgeSavedViewType)
-    ? (value as AppForgeSavedViewType)
-    : "grid";
+  return isAppForgeViewMode(value) ? value : "grid";
 }
 
 function sortDirectionValue(value: unknown): AppForgeSavedViewSortDirection | undefined {
@@ -892,7 +898,7 @@ export function validateAppForgeSavedViews(
       seenNameKeys.add(nameKey);
     }
 
-    if (!APP_FORGE_SAVED_VIEW_TYPES.includes(view.type)) {
+    if (!isAppForgeViewMode(view.type)) {
       errors.push(
         savedViewConfigError(view.id, "invalid_type", `View "${view.name}" has an invalid type.`),
       );

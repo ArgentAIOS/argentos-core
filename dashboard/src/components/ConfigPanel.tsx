@@ -6949,6 +6949,22 @@ export function ConfigPanel({
     if (openAICodexOauthBusy) return;
     setOpenAICodexOauthBusy(true);
     setAuthMessage(null);
+
+    let activeEventSource: EventSource | null = null;
+    let activeState: string | null = null;
+    const cancelSessionOnUnmount = async () => {
+      if (!activeState) return;
+      try {
+        await fetchLocalApi("/api/settings/auth-profiles/openai-codex/oauth/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state: activeState }),
+        });
+      } catch {
+        // ignore — server will time the session out anyway
+      }
+    };
+
     try {
       const startResp = await fetchLocalApi(
         "/api/settings/auth-profiles/openai-codex/oauth/start",
@@ -6965,13 +6981,113 @@ export function ConfigPanel({
       if (startData.userCode) {
         setAuthMessage({
           type: "success",
-          text: `OpenAI Codex code: ${String(startData.userCode)}`,
+          text: `OpenAI Codex code: ${String(startData.userCode)} — open the URL, enter the code, click Authorize`,
         });
       }
 
       const state = String(startData.state);
+      activeState = state;
       const deadline = Date.now() + Math.max(Number(startData.expiresInMs || 0), 60_000);
       let lastError = "OpenAI Codex OAuth timed out";
+
+      // Prefer Server-Sent Events when the browser supports them. The
+      // server's /oauth/events endpoint emits `verification`, `progress`,
+      // `success`, `failed`, and `closed` events; we still fall back to
+      // polling for older browsers or proxy environments that strip SSE.
+      const useSSE =
+        typeof window !== "undefined" &&
+        typeof window.EventSource === "function" &&
+        typeof startData.eventsUrl === "string" &&
+        startData.eventsUrl.length > 0;
+
+      if (useSSE) {
+        const settled = await new Promise<{ ok: boolean; message?: string; accountId?: string }>(
+          (resolve) => {
+            const es = new window.EventSource(String(startData.eventsUrl));
+            activeEventSource = es;
+            const timeoutId = window.setTimeout(
+              () => {
+                es.close();
+                resolve({ ok: false, message: lastError });
+              },
+              Math.max(deadline - Date.now(), 1000),
+            );
+
+            es.addEventListener("progress", (evt: MessageEvent) => {
+              try {
+                const payload = JSON.parse(evt.data || "{}");
+                if (payload?.message) {
+                  setAuthMessage({ type: "success", text: String(payload.message) });
+                }
+              } catch {
+                // ignore
+              }
+            });
+            es.addEventListener("success", (evt: MessageEvent) => {
+              window.clearTimeout(timeoutId);
+              try {
+                const payload = JSON.parse(evt.data || "{}");
+                const accountId =
+                  typeof payload.chatgpt_account_id === "string"
+                    ? payload.chatgpt_account_id
+                    : undefined;
+                es.close();
+                resolve({ ok: true, accountId });
+              } catch {
+                es.close();
+                resolve({ ok: true });
+              }
+            });
+            es.addEventListener("failed", (evt: MessageEvent) => {
+              window.clearTimeout(timeoutId);
+              try {
+                const payload = JSON.parse(evt.data || "{}");
+                es.close();
+                resolve({
+                  ok: false,
+                  message: String(payload.error || "OpenAI Codex OAuth failed"),
+                });
+              } catch {
+                es.close();
+                resolve({ ok: false, message: "OpenAI Codex OAuth failed" });
+              }
+            });
+            es.addEventListener("closed", () => {
+              // `closed` follows success/failed; the corresponding handler
+              // has already resolved. If we see `closed` first (server
+              // restart, network blip) fall through to polling.
+              window.clearTimeout(timeoutId);
+              try {
+                es.close();
+              } catch {
+                // ignore
+              }
+            });
+            es.onerror = () => {
+              // Let the polling fallback take over. Don't resolve immediately
+              // — the EventSource may reconnect on transient failures.
+            };
+          },
+        );
+        activeEventSource = null;
+        if (settled.ok) {
+          await refreshAuthProfiles();
+          fetchDiagnostics();
+          setAuthMessage({
+            type: "success",
+            text: settled.accountId
+              ? `OpenAI Codex connected (ChatGPT account ${settled.accountId})`
+              : "OpenAI Codex auth profile updated",
+          });
+          window.setTimeout(() => setAuthMessage(null), 4000);
+          activeState = null;
+          return;
+        }
+        if (settled.message) {
+          lastError = settled.message;
+        }
+        // Fall through to polling.
+      }
 
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 1500));
@@ -6990,13 +7106,27 @@ export function ConfigPanel({
         if (statusData.status === "success") {
           await refreshAuthProfiles();
           fetchDiagnostics();
-          setAuthMessage({ type: "success", text: "OpenAI Codex auth profile updated" });
+          const accountId =
+            typeof statusData.chatgptAccountId === "string"
+              ? statusData.chatgptAccountId
+              : undefined;
+          setAuthMessage({
+            type: "success",
+            text: accountId
+              ? `OpenAI Codex connected (ChatGPT account ${accountId})`
+              : "OpenAI Codex auth profile updated",
+          });
           window.setTimeout(() => setAuthMessage(null), 4000);
           setOpenAICodexOauthBusy(false);
+          activeState = null;
           return;
         }
         if (statusData.status === "error") {
           throw new Error(String(statusData.error || "OpenAI Codex OAuth failed"));
+        }
+        if (statusData.status === "cancelled") {
+          lastError = "OpenAI Codex OAuth cancelled";
+          break;
         }
       }
 
@@ -7007,7 +7137,17 @@ export function ConfigPanel({
         text: err?.message || "Failed to complete OpenAI Codex OAuth",
       });
       window.setTimeout(() => setAuthMessage(null), 5000);
+      if (activeState) {
+        void cancelSessionOnUnmount();
+      }
     } finally {
+      if (activeEventSource) {
+        try {
+          activeEventSource.close();
+        } catch {
+          // ignore
+        }
+      }
       setOpenAICodexOauthBusy(false);
     }
   }, [fetchDiagnostics, openAICodexOauthBusy, refreshAuthProfiles]);

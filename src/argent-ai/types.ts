@@ -347,8 +347,11 @@ export interface StreamOptions {
   maxRetryDelayMs?: number;
   /** Metadata for providers (e.g., user_id) */
   metadata?: Record<string, unknown>;
-  /** Callback to inspect request payload */
-  onPayload?: (payload: unknown) => void;
+  /** Callback to inspect or replace the request payload before send. Return `undefined` (or void) to keep the payload unchanged. */
+  onPayload?: (
+    payload: unknown,
+    model: Model<Api>,
+  ) => unknown | undefined | Promise<unknown | undefined> | void;
 }
 
 /**
