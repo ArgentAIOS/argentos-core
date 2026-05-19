@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  failWorkflowRun,
   publicWorkflowRow,
   resumeWorkflowRunAfterEvent,
   workflowFromRow,
@@ -109,5 +110,29 @@ describe("workflow event resume claims", () => {
     expect(calls).toHaveLength(4);
     expect(calls[3]).toContain("UPDATE workflow_runs");
     expect(calls.some((call) => call.includes("UPDATE workflow_step_runs"))).toBe(false);
+  });
+});
+
+describe("failWorkflowRun cost aggregation (issue #352)", () => {
+  it("rolls up cost and tokens from workflow_step_runs on the fail path", async () => {
+    const calls: string[] = [];
+    const sql = (async (strings: TemplateStringsArray) => {
+      calls.push(strings.join("?"));
+      return [];
+    }) as unknown as ReturnType<typeof import("postgres").default>;
+
+    await failWorkflowRun(sql, "run-failed", "boom");
+
+    expect(calls).toHaveLength(1);
+    const generated = calls[0];
+    expect(generated).toContain("UPDATE workflow_runs");
+    expect(generated).toContain("status = 'failed'");
+    // Aggregates from workflow_step_runs so cost/tokens from completed steps
+    // are not lost when the run halts via failWorkflowRun.
+    expect(generated).toContain("SUM(tokens_used)");
+    expect(generated).toContain("SUM(cost_usd)");
+    expect(generated).toContain("FROM workflow_step_runs");
+    // GREATEST preserves any earlier finishWorkflowRun aggregation.
+    expect(generated).toContain("GREATEST");
   });
 });
