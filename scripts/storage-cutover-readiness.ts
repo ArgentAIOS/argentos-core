@@ -23,19 +23,25 @@ type CheckResult = {
 };
 
 function resolveStateDir(): string {
-  if (process.env.ARGENT_STATE_DIR) return process.env.ARGENT_STATE_DIR;
+  if (process.env.ARGENT_STATE_DIR) {
+    return process.env.ARGENT_STATE_DIR;
+  }
   return path.join(process.env.HOME ?? "", ".argentos");
 }
 
 function firstExisting(paths: string[]): string | null {
   for (const p of paths) {
-    if (fs.existsSync(p)) return p;
+    if (fs.existsSync(p)) {
+      return p;
+    }
   }
   return null;
 }
 
 function dbContainsTable(dbPath: string, table: string): boolean {
-  if (!fs.existsSync(dbPath)) return false;
+  if (!fs.existsSync(dbPath)) {
+    return false;
+  }
   let db: Database.Database | null = null;
   try {
     db = new Database(dbPath, { readonly: true });
@@ -52,7 +58,9 @@ function dbContainsTable(dbPath: string, table: string): boolean {
 
 function pickDbPath(candidates: string[], requiredTable: string): string | null {
   for (const p of candidates) {
-    if (dbContainsTable(p, requiredTable)) return p;
+    if (dbContainsTable(p, requiredTable)) {
+      return p;
+    }
   }
   return firstExisting(candidates);
 }
@@ -60,7 +68,9 @@ function pickDbPath(candidates: string[], requiredTable: string): string | null 
 function setDiffCount(source: Set<string>, target: Set<string>): number {
   let missing = 0;
   for (const key of source) {
-    if (!target.has(key)) missing++;
+    if (!target.has(key)) {
+      missing++;
+    }
   }
   return missing;
 }
@@ -69,7 +79,9 @@ function rowsToSet(rows: Array<Record<string, unknown>>, key: string): Set<strin
   const out = new Set<string>();
   for (const row of rows) {
     const raw = row[key];
-    if (raw !== null && raw !== undefined) out.add(String(raw));
+    if (raw !== null && raw !== undefined) {
+      out.add(String(raw));
+    }
   }
   return out;
 }
@@ -85,8 +97,12 @@ async function main() {
     "tasks",
   );
 
-  if (!memoryDbPath) throw new Error("memory.db not found");
-  if (!dashboardDbPath) throw new Error("dashboard.db not found");
+  if (!memoryDbPath) {
+    throw new Error("memory.db not found");
+  }
+  if (!dashboardDbPath) {
+    throw new Error("dashboard.db not found");
+  }
 
   const pgUrl = resolvePostgresUrl();
 

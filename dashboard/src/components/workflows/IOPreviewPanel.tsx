@@ -30,8 +30,12 @@ export interface IOPreviewPanelProps {
 
 /** Infer a simple type label for a value */
 function typeLabel(val: unknown): string {
-  if (val === null) return "null";
-  if (Array.isArray(val)) return "array";
+  if (val === null) {
+    return "null";
+  }
+  if (Array.isArray(val)) {
+    return "array";
+  }
   return typeof val;
 }
 
@@ -46,7 +50,9 @@ function extractShape(data: Record<string, unknown>): Array<{ name: string; type
 /** Truncate a JSON string for inline preview */
 function truncateJson(val: unknown, maxLen = 120): string {
   const str = JSON.stringify(val);
-  if (str.length <= maxLen) return str;
+  if (str.length <= maxLen) {
+    return str;
+  }
   return str.slice(0, maxLen) + "...";
 }
 
@@ -259,12 +265,16 @@ export function IOPreviewPanel({
   // ── Input shape ─────────────────────────────────────────────────────
 
   const inputShape = useMemo(() => {
-    if (!inputData) return [];
+    if (!inputData) {
+      return [];
+    }
     return extractShape(inputData);
   }, [inputData]);
 
   const inputJsonStr = useMemo(() => {
-    if (!inputData) return null;
+    if (!inputData) {
+      return null;
+    }
     try {
       return JSON.stringify(inputData, null, 2);
     } catch {

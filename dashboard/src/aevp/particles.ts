@@ -611,7 +611,9 @@ export class ParticleSystem {
   /** Trigger temporary formation mode where particles spell/draw a short message. */
   startFormation(request: ParticleFormationRequest): void {
     const normalized = this.normalizeFormationText(request.text);
-    if (!normalized) return;
+    if (!normalized) {
+      return;
+    }
 
     const safeReq: ParticleFormationRequest = {
       text: normalized,
@@ -623,7 +625,9 @@ export class ParticleSystem {
     };
 
     const targets = this.buildTextTargets(safeReq.text, safeReq.font, safeReq.scale);
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      return;
+    }
 
     const now = this.time;
     const holdSeconds = safeReq.durationMs / 1000;
@@ -646,7 +650,9 @@ export class ParticleSystem {
     // Normalize drift so existing particles settle quickly into text formation.
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];
-      if (!p.alive) continue;
+      if (!p.alive) {
+        continue;
+      }
       p.vx *= 0.25;
       p.vy *= 0.25;
       p.phaseOffset = Math.random() * Math.PI * 2;
@@ -676,7 +682,9 @@ export class ParticleSystem {
     // appears immediately rather than waiting for natural particle turnover.
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];
-      if (!p.alive) continue;
+      if (!p.alive) {
+        continue;
+      }
       p.category = "generic";
       p.angle = 0;
       p.orbitRadius = 0;
@@ -737,7 +745,9 @@ export class ParticleSystem {
     let aliveCount = 0;
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];
-      if (!p.alive) continue;
+      if (!p.alive) {
+        continue;
+      }
 
       p.life -= dt;
       if (p.life <= 0) {
@@ -781,7 +791,9 @@ export class ParticleSystem {
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];
-      if (!p.alive) continue;
+      if (!p.alive) {
+        continue;
+      }
 
       const t = p.life / p.maxLife;
       const alpha = t < 0.1 ? t / 0.1 : t;
@@ -801,7 +813,9 @@ export class ParticleSystem {
 
   private updateFormation(dt: number, renderState: AEVPRenderState): void {
     const formation = this.formation;
-    if (!formation) return;
+    if (!formation) {
+      return;
+    }
 
     const targets = formation.targets;
     const targetCount = Math.min(targets.length, MAX_PARTICLES);
@@ -815,14 +829,18 @@ export class ParticleSystem {
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];
-      if (!p.alive) continue;
+      if (!p.alive) {
+        continue;
+      }
       assigned.push(p);
     }
 
     if (assigned.length < targetCount) {
       for (let i = 0; i < MAX_PARTICLES && assigned.length < targetCount; i++) {
         const p = this.particles[i];
-        if (p.alive) continue;
+        if (p.alive) {
+          continue;
+        }
         this.spawnParticle(p, genericBehavior, "create");
         p.size = SIZE_MIN + Math.random() * 1.8;
         p.phaseOffset = Math.random() * Math.PI * 2;
@@ -910,7 +928,9 @@ export class ParticleSystem {
     this.spawnAccumulator = 0;
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];
-      if (!p.alive) continue;
+      if (!p.alive) {
+        continue;
+      }
       p.life = Math.min(p.life, 0.7);
       p.category = "generic";
     }
@@ -959,13 +979,17 @@ export class ParticleSystem {
     font: ParticleFormationFont,
     scale: number,
   ): FormationTarget[] {
-    if (typeof document === "undefined") return [];
+    if (typeof document === "undefined") {
+      return [];
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = 512;
     canvas.height = 192;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return [];
+    if (!ctx) {
+      return [];
+    }
 
     // Keep background fully transparent so alpha sampling isolates glyph pixels.
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1034,7 +1058,9 @@ export class ParticleSystem {
       }
     }
 
-    if (rawPoints.length === 0) return [];
+    if (rawPoints.length === 0) {
+      return [];
+    }
 
     const boxW = Math.max(1, maxX - minX + 1);
     const boxH = Math.max(1, maxY - minY + 1);

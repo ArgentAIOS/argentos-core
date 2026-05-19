@@ -238,10 +238,15 @@ function languageFromPath(filePath: string): string {
 /** Pick a lucide icon component based on file extension. */
 function fileIcon(fileName: string) {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "json") return FileJson;
-  if (["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "c", "rb", "php"].includes(ext))
+  if (ext === "json") {
+    return FileJson;
+  }
+  if (["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "cpp", "c", "rb", "php"].includes(ext)) {
     return Code;
-  if (["md", "txt", "rst"].includes(ext)) return FileText;
+  }
+  if (["md", "txt", "rst"].includes(ext)) {
+    return FileText;
+  }
   return File;
 }
 
@@ -300,11 +305,15 @@ function buildTree(
     folder.children.sort((a, b) => {
       const aIsFile = isCodeFile(a);
       const bIsFile = isCodeFile(b);
-      if (aIsFile !== bIsFile) return aIsFile ? 1 : -1;
+      if (aIsFile !== bIsFile) {
+        return aIsFile ? 1 : -1;
+      }
       return a.name.localeCompare(b.name);
     });
     for (const child of folder.children) {
-      if (!isCodeFile(child)) sortChildren(child);
+      if (!isCodeFile(child)) {
+        sortChildren(child);
+      }
     }
   };
   sortChildren(root);
@@ -407,7 +416,9 @@ export function CodeEditorPanel({
 
   // Close theme picker on outside click
   useEffect(() => {
-    if (!showThemePicker) return;
+    if (!showThemePicker) {
+      return;
+    }
     const handleClick = (e: MouseEvent) => {
       if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
         setShowThemePicker(false);
@@ -472,7 +483,9 @@ export function CodeEditorPanel({
 
   const fileMap = useMemo(() => {
     const m = new Map<string, CodeFile>();
-    for (const f of files) m.set(f.id, f);
+    for (const f of files) {
+      m.set(f.id, f);
+    }
     return m;
   }, [files]);
 
@@ -497,7 +510,9 @@ export function CodeEditorPanel({
           const idx = prev.indexOf(fileId);
           const newActive = next[Math.min(idx, next.length - 1)] ?? null;
           setInternalActiveId(newActive);
-          if (newActive) onFileSelect?.(newActive);
+          if (newActive) {
+            onFileSelect?.(newActive);
+          }
         }
         return next;
       });
@@ -521,17 +536,24 @@ export function CodeEditorPanel({
   const toggleFolder = useCallback((path: string) => {
     setExpandedPaths((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
       return next;
     });
   }, []);
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
-      if (!activeId || value === undefined) return;
+      if (!activeId || value === undefined) {
+        return;
+      }
       const file = fileMap.get(activeId);
-      if (!file) return;
+      if (!file) {
+        return;
+      }
       if (value !== file.content) {
         setModifiedIds((prev) => new Set(prev).add(activeId));
       } else {
@@ -560,7 +582,9 @@ export function CodeEditorPanel({
       resizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
 
       const onMouseMove = (ev: MouseEvent) => {
-        if (!resizeRef.current) return;
+        if (!resizeRef.current) {
+          return;
+        }
         const delta = ev.clientX - resizeRef.current.startX;
         const newWidth = Math.max(140, Math.min(500, resizeRef.current.startWidth + delta));
         setSidebarWidth(newWidth);
@@ -581,7 +605,9 @@ export function CodeEditorPanel({
   // --- New file / folder dialogs ---
   const submitNewFile = useCallback(() => {
     const name = newItemName.trim();
-    if (!name) return;
+    if (!name) {
+      return;
+    }
     onNewFile?.(newItemParentPath, name);
     setIsNewFileDialogOpen(false);
     setNewItemName("");
@@ -589,7 +615,9 @@ export function CodeEditorPanel({
 
   const submitNewFolder = useCallback(() => {
     const name = newItemName.trim();
-    if (!name) return;
+    if (!name) {
+      return;
+    }
     onNewFolder?.(newItemParentPath, name);
     setIsNewFolderDialogOpen(false);
     setNewItemName("");
@@ -612,7 +640,9 @@ export function CodeEditorPanel({
         <div className="flex-1 flex items-center overflow-x-auto scrollbar-thin scrollbar-thumb-white/10">
           {openTabIds.map((id) => {
             const file = fileMap.get(id);
-            if (!file) return null;
+            if (!file) {
+              return null;
+            }
             const isActive = id === activeId;
             const isModified = modifiedIds.has(id);
             const Icon = fileIcon(file.name);

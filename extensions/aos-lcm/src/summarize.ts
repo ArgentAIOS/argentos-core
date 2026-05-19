@@ -114,7 +114,9 @@ function formatMessagesForSummary(messages: StoredMessage[], depth: number): str
 
 /** Truncate a single message's content for inclusion in a summarization prompt. */
 function truncateForPrompt(content: string, maxChars: number): string {
-  if (content.length <= maxChars) return content;
+  if (content.length <= maxChars) {
+    return content;
+  }
   const half = Math.floor(maxChars / 2) - 20;
   return content.slice(0, half) + "\n\n[...truncated...]\n\n" + content.slice(-half);
 }

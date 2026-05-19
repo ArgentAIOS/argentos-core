@@ -177,7 +177,9 @@ const styles = {
 
 let injected = false;
 function injectKeyframes() {
-  if (injected) return;
+  if (injected) {
+    return;
+  }
   injected = true;
   const sheet = document.createElement("style");
   sheet.textContent = `@keyframes credential-spin { to { transform: rotate(360deg); } }`;
@@ -214,7 +216,9 @@ export function CredentialSelector({
   // ── Fetch credentials ─────────────────────────────────────────────
 
   const fetchCredentials = useCallback(async () => {
-    if (!gatewayConnected) return;
+    if (!gatewayConnected) {
+      return;
+    }
     setLoading(true);
     try {
       const res = await gatewayRequest<{ credentials?: StoredCredential[] }>("credentials.list", {
@@ -230,7 +234,9 @@ export function CredentialSelector({
     } catch {
       // Gateway unavailable — show empty state
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [gatewayConnected, gatewayRequest, connectorId]);
 
@@ -248,7 +254,9 @@ export function CredentialSelector({
           "credentials.validate",
           { credentialId },
         );
-        if (!mountedRef.current) return;
+        if (!mountedRef.current) {
+          return;
+        }
         if (res?.valid) {
           setValidation({ status: "valid", message: res.message ?? "Validated" });
         } else {
@@ -258,7 +266,9 @@ export function CredentialSelector({
           });
         }
       } catch (err) {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current) {
+          return;
+        }
         setValidation({
           status: "error",
           message: err instanceof Error ? err.message : "Validation error",
@@ -281,9 +291,13 @@ export function CredentialSelector({
 
   const handleCreate = useCallback(async () => {
     const name = credName.trim();
-    if (!name) return;
+    if (!name) {
+      return;
+    }
     const missing = requiredSecrets.filter((k) => !secretValues[k]?.trim());
-    if (missing.length > 0) return;
+    if (missing.length > 0) {
+      return;
+    }
 
     setCreating(true);
     try {
@@ -307,7 +321,9 @@ export function CredentialSelector({
     } catch {
       // creation failed — user can retry
     } finally {
-      if (mountedRef.current) setCreating(false);
+      if (mountedRef.current) {
+        setCreating(false);
+      }
     }
   }, [
     credName,

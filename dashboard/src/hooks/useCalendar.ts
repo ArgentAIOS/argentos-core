@@ -20,7 +20,9 @@ export function setStoredCalendarAccount(account: string | null) {
 
 function calendarEndpoint(path: string): string {
   const preferredAccount = getStoredCalendarAccount();
-  if (!preferredAccount) return path;
+  if (!preferredAccount) {
+    return path;
+  }
   const separator = path.includes("?") ? "&" : "?";
   return `${path}${separator}account=${encodeURIComponent(preferredAccount)}`;
 }
@@ -79,7 +81,9 @@ export function useCalendar(refreshInterval = 60000, enabled = true) {
         const nextResponse = await fetchLocalApi(calendarEndpoint("/api/calendar/next"), {
           signal: controller.signal,
         });
-        if (!nextResponse.ok) throw new Error("Failed to fetch calendar");
+        if (!nextResponse.ok) {
+          throw new Error("Failed to fetch calendar");
+        }
 
         const data = await nextResponse.json();
         setActiveAccount(

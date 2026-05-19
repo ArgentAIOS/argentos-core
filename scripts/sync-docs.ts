@@ -92,7 +92,9 @@ const MAPPINGS: DocMapping[] = [
 function extractTitle(content: string): string {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed.startsWith("# ")) return trimmed.slice(2).trim();
+    if (trimmed.startsWith("# ")) {
+      return trimmed.slice(2).trim();
+    }
   }
   return "Untitled";
 }
@@ -101,7 +103,9 @@ function extractDescription(content: string): string {
   let pastTitle = false;
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed) {
+      continue;
+    }
     if (trimmed.startsWith("# ") && !pastTitle) {
       pastTitle = true;
       continue;
@@ -142,7 +146,9 @@ function stripFirstHeading(content: string): string {
 function stripLeadingBlockquote(content: string): string {
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === "") continue;
+    if (lines[i].trim() === "") {
+      continue;
+    }
     if (lines[i].trim().startsWith("> ")) {
       lines.splice(i, 1);
       if (i < lines.length && lines[i].trim() === "") {
@@ -201,7 +207,9 @@ function escapeLineJsx(line: string): string {
   return parts
     .map((part, i) => {
       // Odd indices are inside backticks
-      if (i % 2 === 1) return part;
+      if (i % 2 === 1) {
+        return part;
+      }
       // Even indices are outside — escape braces
       return part.replace(/\{/g, "\\{").replace(/\}/g, "\\}");
     })

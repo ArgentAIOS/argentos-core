@@ -50,7 +50,9 @@ export function TerminalView({ terminalId, gateway, isActive }: TerminalViewProp
 
   // Initialize terminal — only depends on terminalId (stable string)
   useEffect(() => {
-    if (!containerRef.current || mountedRef.current) return;
+    if (!containerRef.current || mountedRef.current) {
+      return;
+    }
     mountedRef.current = true;
     watermarkRef.current = -1;
     eventQueueRef.current = [];
@@ -103,7 +105,9 @@ export function TerminalView({ terminalId, gateway, isActive }: TerminalViewProp
           }
         }
       } catch {
-        if (fitAttempts < 5) setTimeout(tryFit, 100);
+        if (fitAttempts < 5) {
+          setTimeout(tryFit, 100);
+        }
       }
     };
     requestAnimationFrame(tryFit);
@@ -118,7 +122,9 @@ export function TerminalView({ terminalId, gateway, isActive }: TerminalViewProp
         { id: terminalId },
       )
       .then((res) => {
-        if (!terminalRef.current) return;
+        if (!terminalRef.current) {
+          return;
+        }
         const bufferOffset = res?.offset ?? 0;
         // Write the full buffer (everything that happened before mount)
         if (res?.buffer) {
@@ -170,11 +176,15 @@ export function TerminalView({ terminalId, gateway, isActive }: TerminalViewProp
 
   // Subscribe to terminal events from gateway
   useEffect(() => {
-    if (!gatewayRef.current.connected) return;
+    if (!gatewayRef.current.connected) {
+      return;
+    }
 
     const unsub = gatewayRef.current.on("terminal", (payload: unknown) => {
       const event = payload as TerminalEvent;
-      if (event.id !== terminalId) return;
+      if (event.id !== terminalId) {
+        return;
+      }
 
       // If buffer hasn't loaded yet, queue the event
       if (watermarkRef.current < 0) {
@@ -213,7 +223,9 @@ export function TerminalView({ terminalId, gateway, isActive }: TerminalViewProp
   // ResizeObserver for container changes
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const observer = new ResizeObserver(() => {
       handleFit();
@@ -254,7 +266,9 @@ function writeEvent(
     const chunkOffset = event.offset ?? 0;
     const chunkEnd = chunkOffset + event.chunk.length;
     // Skip chunks fully covered by the buffer we already loaded
-    if (chunkEnd <= watermarkRef.current) return;
+    if (chunkEnd <= watermarkRef.current) {
+      return;
+    }
     // Partial overlap: trim the already-written prefix
     if (chunkOffset < watermarkRef.current) {
       const skip = watermarkRef.current - chunkOffset;

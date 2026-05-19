@@ -97,10 +97,14 @@ function getDocIcon(type: string, className = "w-4 h-4") {
 function extractFolders(docs: DocEntry[]): string[] {
   const folders = new Set<string>();
   docs.forEach((doc) => {
-    if (doc.folder) folders.add(doc.folder);
+    if (doc.folder) {
+      folders.add(doc.folder);
+    }
     if (doc.title.includes("/")) {
       const parts = doc.title.split("/");
-      if (parts.length > 1) folders.add(parts[0]);
+      if (parts.length > 1) {
+        folders.add(parts[0]);
+      }
     }
   });
   return [...folders].sort();
@@ -140,9 +144,15 @@ function formatDate(dateStr: string): string {
 }
 
 function formatSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return "--";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (!bytes || bytes <= 0) {
+    return "--";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
@@ -235,7 +245,9 @@ export function CanvasDocumentBrowser({
       } else {
         loadDocs();
       }
-      if (selectedDocId === id) setSelectedDocId(null);
+      if (selectedDocId === id) {
+        setSelectedDocId(null);
+      }
     }
   };
 
@@ -272,7 +284,9 @@ export function CanvasDocumentBrowser({
     const tags = new Map<string, number>();
     documents.forEach((doc) => {
       doc.tags?.forEach((tag) => {
-        if (tag) tags.set(tag, (tags.get(tag) || 0) + 1);
+        if (tag) {
+          tags.set(tag, (tags.get(tag) || 0) + 1);
+        }
       });
     });
     return [...tags.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
@@ -332,7 +346,9 @@ export function CanvasDocumentBrowser({
     return sorted;
   }, [documents, sidebarFilter, sortKey, sortDir]);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   const SortIndicator = ({ column }: { column: SortKey }) => {
     if (sortKey !== column) {

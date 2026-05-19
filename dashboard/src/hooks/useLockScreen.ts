@@ -39,7 +39,9 @@ const DEFAULT_SETTINGS: LockSettings = {
 function bufferToBase64url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
+  for (const b of bytes) {
+    binary += String.fromCharCode(b);
+  }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
@@ -48,7 +50,9 @@ function base64urlToBuffer(base64url: string): ArrayBuffer {
   const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
   return bytes.buffer;
 }
 
@@ -62,7 +66,9 @@ async function hashPin(pin: string): Promise<string> {
 function loadCredentials(): StoredCredential[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      return [];
+    }
     const parsed = JSON.parse(raw) as StoredCredential[];
     // Migrate old credentials without type field
     return parsed.map((c) => ({ ...c, type: c.type || "cross-platform" }));
@@ -117,7 +123,9 @@ export function useLockScreen() {
   // Lock on startup if configured — skip if already unlocked this session
   useEffect(() => {
     // Already unlocked in this browser session (refresh)? Stay unlocked.
-    if (sessionStorage.getItem(SESSION_UNLOCK_KEY)) return;
+    if (sessionStorage.getItem(SESSION_UNLOCK_KEY)) {
+      return;
+    }
 
     // Check for admin emergency unlock file
     const port = new URLSearchParams(window.location.search).get("port") || window.location.port;
@@ -159,7 +167,9 @@ export function useLockScreen() {
 
   // Track activity for auto-lock
   useEffect(() => {
-    if (!settings.enabled || settings.autoLockMinutes <= 0 || !canLock) return;
+    if (!settings.enabled || settings.autoLockMinutes <= 0 || !canLock) {
+      return;
+    }
 
     const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
     const handler = () => resetAutoLock();
@@ -169,7 +179,9 @@ export function useLockScreen() {
 
     return () => {
       events.forEach((e) => window.removeEventListener(e, handler));
-      if (autoLockTimerRef.current) clearTimeout(autoLockTimerRef.current);
+      if (autoLockTimerRef.current) {
+        clearTimeout(autoLockTimerRef.current);
+      }
     };
   }, [resetAutoLock, settings.enabled, settings.autoLockMinutes, canLock]);
 

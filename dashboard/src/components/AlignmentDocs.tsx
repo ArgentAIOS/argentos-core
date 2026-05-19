@@ -38,7 +38,9 @@ function ConfirmModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
@@ -130,7 +132,9 @@ export function AlignmentDocs() {
 
   // Load doc content when agent or doc changes
   useEffect(() => {
-    if (!selectedAgent || !activeDoc) return;
+    if (!selectedAgent || !activeDoc) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -146,10 +150,14 @@ export function AlignmentDocs() {
           setSaveStatus("idle");
         }
       } catch (err) {
-        if (!cancelled) setError("Failed to load document");
+        if (!cancelled) {
+          setError("Failed to load document");
+        }
         console.error(err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     })();
     return () => {
@@ -159,7 +167,9 @@ export function AlignmentDocs() {
 
   // Actual save (called after confirmation)
   const doSave = useCallback(async () => {
-    if (!selectedAgent || !activeDoc || !isDirty) return;
+    if (!selectedAgent || !activeDoc || !isDirty) {
+      return;
+    }
     setShowConfirm(false);
     setSaving(true);
     setSaveStatus("idle");
@@ -188,7 +198,9 @@ export function AlignmentDocs() {
 
   // Show confirmation dialog
   const requestSave = useCallback(() => {
-    if (!isDirty) return;
+    if (!isDirty) {
+      return;
+    }
     setShowConfirm(true);
   }, [isDirty]);
 
@@ -206,12 +218,16 @@ export function AlignmentDocs() {
 
   // Warn on tab/agent switch with unsaved changes
   const handleAgentChange = (newAgent: string) => {
-    if (isDirty && !window.confirm("You have unsaved changes. Switch agent anyway?")) return;
+    if (isDirty && !window.confirm("You have unsaved changes. Switch agent anyway?")) {
+      return;
+    }
     setSelectedAgent(newAgent);
   };
 
   const handleDocChange = (newDoc: string) => {
-    if (isDirty && !window.confirm("You have unsaved changes. Switch document anyway?")) return;
+    if (isDirty && !window.confirm("You have unsaved changes. Switch document anyway?")) {
+      return;
+    }
     setActiveDoc(newDoc);
   };
 
@@ -242,7 +258,9 @@ export function AlignmentDocs() {
       const res = await fetchLocalApi("/api/settings/alignment/git/status");
       const data = await res.json();
       setGitStatus(data);
-      if (data.remote && !remoteInput) setRemoteInput(data.remote);
+      if (data.remote && !remoteInput) {
+        setRemoteInput(data.remote);
+      }
     } catch {
       /* ignore */
     }
@@ -305,7 +323,9 @@ export function AlignmentDocs() {
   };
 
   const gitSetRemote = async () => {
-    if (!remoteInput.trim()) return;
+    if (!remoteInput.trim()) {
+      return;
+    }
     setGitLoading(true);
     setGitMsg(null);
     try {

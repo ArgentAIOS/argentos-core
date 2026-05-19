@@ -51,7 +51,9 @@ function normalizeAgentId(raw: string | null | undefined, fallback = DEFAULT_AGE
 
 function isWebchatSessionAlias(value: string): boolean {
   const key = value.trim().toLowerCase();
-  if (!key) return false;
+  if (!key) {
+    return false;
+  }
   return key === "webchat" || key.startsWith("webchat-") || key.startsWith("webchat:");
 }
 
@@ -162,10 +164,14 @@ function toCanonicalSessionKey(sessionKey: string | undefined): string {
     globalDefaultAgentId || DEFAULT_AGENT_ID,
   );
   const raw = coerceVisibleOperatorSessionKey({ sessionKey, mainSessionKey }).trim();
-  if (!raw) return mainSessionKey;
+  if (!raw) {
+    return mainSessionKey;
+  }
   const lowered = raw.toLowerCase();
   const normalizedMain = mainSessionKey.toLowerCase();
-  if (lowered === "global") return "global";
+  if (lowered === "global") {
+    return "global";
+  }
   if (lowered === "main" || lowered === normalizedMain || lowered === "agent:main:main") {
     return mainSessionKey;
   }
@@ -249,7 +255,9 @@ export function shouldForceGatewayCredentialReconnect(params: {
 function readStoredDashboardGatewayToken(): string {
   try {
     const raw = localStorage.getItem("argent.control.settings.v1");
-    if (!raw) return "";
+    if (!raw) {
+      return "";
+    }
     const parsed = JSON.parse(raw) as { token?: unknown };
     return typeof parsed.token === "string" ? parsed.token.trim() : "";
   } catch {
@@ -309,7 +317,9 @@ function loadDeviceAuthToken(params: {
 }): StoredDeviceAuthToken | null {
   try {
     const raw = localStorage.getItem(DEVICE_AUTH_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const parsed = JSON.parse(raw) as Partial<StoredDeviceAuthToken>;
     if (
       parsed.deviceId !== params.deviceId ||
@@ -371,9 +381,13 @@ function parseFilesystemPathDenial(rawError: string): {
   const match = /^Path\s+"([^"]+)"\s+is outside allowed directories:\s*(.*)$/i.exec(
     rawError.trim(),
   );
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   const attemptedPath = match[1]?.trim();
-  if (!attemptedPath) return null;
+  if (!attemptedPath) {
+    return null;
+  }
   const allowedDirectories = (match[2] ?? "")
     .split(",")
     .map((entry) => entry.trim())
@@ -409,13 +423,17 @@ export function useGateway(config: GatewayConfig = {}) {
 
   useEffect(() => {
     const applyTokenFromStorage = (nextToken: string) => {
-      if (nextToken === runtimeGatewayTokenOverride) return;
+      if (nextToken === runtimeGatewayTokenOverride) {
+        return;
+      }
       runtimeGatewayTokenOverride = nextToken;
       setTokenSyncTick((tick) => tick + 1);
     };
     applyTokenFromStorage(readStoredDashboardGatewayToken());
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== "argent.control.settings.v1") return;
+      if (event.key !== "argent.control.settings.v1") {
+        return;
+      }
       applyTokenFromStorage(readStoredDashboardGatewayToken());
     };
     const onGatewayTokenUpdated = (event: Event) => {
@@ -513,7 +531,9 @@ export function useGateway(config: GatewayConfig = {}) {
       error: string;
     }) => {
       const parsed = parseFilesystemPathDenial(params.error);
-      if (!parsed) return;
+      if (!parsed) {
+        return;
+      }
       const payload: FilesystemPermissionDeniedEvent = {
         source: params.source,
         runId: params.runId,
@@ -1360,7 +1380,9 @@ export function useGateway(config: GatewayConfig = {}) {
             console.log(`[Gateway] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})...`);
             setReconnecting(true);
 
-            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (reconnectTimeout) {
+              clearTimeout(reconnectTimeout);
+            }
             reconnectTimeout = setTimeout(() => {
               console.log("[Gateway] Attempting reconnection...");
               connect({ fromRetry: true })

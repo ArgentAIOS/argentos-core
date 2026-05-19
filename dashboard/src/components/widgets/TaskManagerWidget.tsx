@@ -18,36 +18,56 @@ import { fetchLocalApi } from "../../utils/localApiFetch";
 function relativeTime(date: Date): string {
   const now = Date.now();
   const diff = now - date.getTime();
-  if (diff < 0) return "just now";
+  if (diff < 0) {
+    return "just now";
+  }
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) {
+    return "just now";
+  }
+  if (mins < 60) {
+    return `${mins}m ago`;
+  }
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
 
 function formatDueDate(task: Task): string | null {
   const raw = (task as Task & { dueAt?: number | string | Date }).dueAt;
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   const due = typeof raw === "number" ? new Date(raw) : new Date(raw);
-  if (Number.isNaN(due.getTime())) return null;
+  if (Number.isNaN(due.getTime())) {
+    return null;
+  }
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
   const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86_400_000);
 
-  if (diffDays < 0) return "Overdue";
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
+  if (diffDays < 0) {
+    return "Overdue";
+  }
+  if (diffDays === 0) {
+    return "Today";
+  }
+  if (diffDays === 1) {
+    return "Tomorrow";
+  }
   return `${diffDays}d`;
 }
 
 function isOverdue(task: Task): boolean {
   const raw = (task as Task & { dueAt?: number | string | Date }).dueAt;
-  if (!raw) return false;
+  if (!raw) {
+    return false;
+  }
   const due = typeof raw === "number" ? new Date(raw) : new Date(raw);
   return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
 }
@@ -68,7 +88,9 @@ const PRIORITY_CONFIG: Record<PriorityKey, { icon: typeof Zap; color: string; la
 
 function taskPriority(task: Task): PriorityKey {
   const p = (task as Task & { priority?: string }).priority;
-  if (p && p in PRIORITY_CONFIG) return p as PriorityKey;
+  if (p && p in PRIORITY_CONFIG) {
+    return p as PriorityKey;
+  }
   return "normal";
 }
 
@@ -84,11 +106,15 @@ const PRIORITY_ORDER: Record<PriorityKey, number> = {
 function sortTasks(a: Task, b: Task): number {
   const pa = PRIORITY_ORDER[taskPriority(a)] ?? 2;
   const pb = PRIORITY_ORDER[taskPriority(b)] ?? 2;
-  if (pa !== pb) return pa - pb;
+  if (pa !== pb) {
+    return pa - pb;
+  }
   // Overdue first within same priority
   const aOverdue = isOverdue(a) ? 0 : 1;
   const bOverdue = isOverdue(b) ? 0 : 1;
-  if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+  if (aOverdue !== bOverdue) {
+    return aOverdue - bOverdue;
+  }
   // Newer first
   return (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0);
 }
@@ -106,11 +132,21 @@ const EXCLUDED_AGENT_IDS = new Set(["main", "dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 function isOperationalAgent(a: { id: string; role?: string }): boolean {
-  if (EXCLUDED_AGENT_IDS.has(a.id.toLowerCase())) return false;
-  if (a.id.startsWith("test-") || a.id.startsWith("test_")) return false;
-  if (UUID_RE.test(a.id)) return false;
-  if (a.role === "think_tank_panelist") return false;
-  if (!a.role) return false;
+  if (EXCLUDED_AGENT_IDS.has(a.id.toLowerCase())) {
+    return false;
+  }
+  if (a.id.startsWith("test-") || a.id.startsWith("test_")) {
+    return false;
+  }
+  if (UUID_RE.test(a.id)) {
+    return false;
+  }
+  if (a.role === "think_tank_panelist") {
+    return false;
+  }
+  if (!a.role) {
+    return false;
+  }
   return true;
 }
 
@@ -137,14 +173,18 @@ function CreateTaskModal({ onClose, onCreated, agents, projects }: CreateTaskMod
   // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   const handleSubmit = async () => {
-    if (!title.trim() || submitting) return;
+    if (!title.trim() || submitting) {
+      return;
+    }
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
@@ -152,9 +192,15 @@ function CreateTaskModal({ onClose, onCreated, agents, projects }: CreateTaskMod
         priority,
         type: "one-time",
       };
-      if (description.trim()) body.details = description.trim();
-      if (assignee) body.assignee = assignee;
-      if (project) body.parentTaskId = project;
+      if (description.trim()) {
+        body.details = description.trim();
+      }
+      if (assignee) {
+        body.assignee = assignee;
+      }
+      if (project) {
+        body.parentTaskId = project;
+      }
       if (tags.trim()) {
         body.tags = tags
           .split(",")
@@ -167,7 +213,9 @@ function CreateTaskModal({ onClose, onCreated, agents, projects }: CreateTaskMod
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Failed to create task");
+      if (!res.ok) {
+        throw new Error("Failed to create task");
+      }
       onCreated();
       onClose();
     } catch (err) {
@@ -188,7 +236,9 @@ function CreateTaskModal({ onClose, onCreated, agents, projects }: CreateTaskMod
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
       }}
     >
       <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-2xl">
@@ -213,7 +263,9 @@ function CreateTaskModal({ onClose, onCreated, agents, projects }: CreateTaskMod
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && title.trim()) handleSubmit();
+              if (e.key === "Enter" && title.trim()) {
+                handleSubmit();
+              }
             }}
             placeholder="What needs to be done?"
             autoFocus
@@ -488,7 +540,9 @@ export function TaskManagerWidget() {
 
   // Fetch family members for the Assign To dropdown
   useEffect(() => {
-    if (!connected || agentsFetchedRef.current) return;
+    if (!connected || agentsFetchedRef.current) {
+      return;
+    }
     agentsFetchedRef.current = true;
     (async () => {
       try {
@@ -523,15 +577,21 @@ export function TaskManagerWidget() {
         doneList.push(t);
       } else if (status === "in_progress") {
         progressList.push(t);
-        if (isOverdue(t)) ov++;
+        if (isOverdue(t)) {
+          ov++;
+        }
       } else if (status === "blocked") {
         blockedList.push(t);
         bl++;
-        if (isOverdue(t)) ov++;
+        if (isOverdue(t)) {
+          ov++;
+        }
       } else {
         // pending, cancelled
         todoList.push(t);
-        if (isOverdue(t)) ov++;
+        if (isOverdue(t)) {
+          ov++;
+        }
       }
     }
 

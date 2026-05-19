@@ -19,8 +19,12 @@ function ensureSqliteDir() {
 }
 
 function parseJsonSafe(value, fallback) {
-  if (value == null || value === "") return fallback;
-  if (typeof value === "object") return value;
+  if (value == null || value === "") {
+    return fallback;
+  }
+  if (typeof value === "object") {
+    return value;
+  }
   try {
     return JSON.parse(String(value));
   } catch {
@@ -29,13 +33,23 @@ function parseJsonSafe(value, fallback) {
 }
 
 function parseVectorText(value) {
-  if (!value) return null;
-  if (Array.isArray(value)) return value;
-  if (Buffer.isBuffer(value)) return bufferToEmbedding(value);
+  if (!value) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return bufferToEmbedding(value);
+  }
   const raw = String(value).trim();
-  if (!raw.startsWith("[") || !raw.endsWith("]")) return null;
+  if (!raw.startsWith("[") || !raw.endsWith("]")) {
+    return null;
+  }
   const body = raw.slice(1, -1).trim();
-  if (!body) return [];
+  if (!body) {
+    return [];
+  }
   return body
     .split(",")
     .map((entry) => Number(entry.trim()))
@@ -43,9 +57,13 @@ function parseVectorText(value) {
 }
 
 function toVectorLiteral(embedding) {
-  if (!Array.isArray(embedding) || embedding.length === 0) return null;
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    return null;
+  }
   const values = embedding.map((value) => Number(value)).filter((value) => Number.isFinite(value));
-  if (values.length === 0) return null;
+  if (values.length === 0) {
+    return null;
+  }
   return `[${values.join(",")}]`;
 }
 
@@ -71,7 +89,9 @@ function normalizeDocRow(row, includeEmbedding = false) {
 
 function readStorageConfig() {
   try {
-    if (!fs.existsSync(ARGENT_CONFIG_PATH)) return {};
+    if (!fs.existsSync(ARGENT_CONFIG_PATH)) {
+      return {};
+    }
     const raw = JSON.parse(fs.readFileSync(ARGENT_CONFIG_PATH, "utf-8"));
     return raw && typeof raw === "object" ? raw.storage || {} : {};
   } catch {
@@ -81,7 +101,9 @@ function readStorageConfig() {
 
 function resolvePgConnectionString() {
   const fromEnv = process.env.ARGENT_PG_URL || process.env.PG_URL;
-  if (fromEnv && String(fromEnv).trim()) return String(fromEnv).trim();
+  if (fromEnv && String(fromEnv).trim()) {
+    return String(fromEnv).trim();
+  }
   const storage = readStorageConfig();
   if (storage?.postgres?.connectionString && String(storage.postgres.connectionString).trim()) {
     return String(storage.postgres.connectionString).trim();
@@ -137,9 +159,15 @@ async function backfillSqliteToPg(sql) {
 }
 
 async function initPg() {
-  if (!shouldUsePg()) return null;
-  if (pgClient) return pgClient;
-  if (pgInitPromise) return pgInitPromise;
+  if (!shouldUsePg()) {
+    return null;
+  }
+  if (pgClient) {
+    return pgClient;
+  }
+  if (pgInitPromise) {
+    return pgInitPromise;
+  }
 
   pgInitPromise = (async () => {
     const connectionString = resolvePgConnectionString();
@@ -341,7 +369,9 @@ const canvasDb = {
           WHERE id = ${id} AND deleted_at IS NULL
           LIMIT 1
         `;
-        if (!rows[0]) return null;
+        if (!rows[0]) {
+          return null;
+        }
         return normalizeDocRow(rows[0], true);
       },
       (db) => {
@@ -349,7 +379,9 @@ const canvasDb = {
           SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL
         `);
         const row = stmt.get(id);
-        if (!row) return null;
+        if (!row) {
+          return null;
+        }
         return normalizeDocRow(row, true);
       },
     );
@@ -359,7 +391,9 @@ const canvasDb = {
     return withBackend(
       async (sql) => {
         const q = String(query || "").trim();
-        if (!q) return [];
+        if (!q) {
+          return [];
+        }
         const rows = await sql`
           SELECT
             id, title, content, type, language, tags, metadata, created_at, deleted_at,
@@ -397,7 +431,9 @@ const canvasDb = {
     return withBackend(
       async (sql) => {
         const vector = toVectorLiteral(queryEmbedding);
-        if (!vector) return [];
+        if (!vector) {
+          return [];
+        }
         const rows = await sql`
           SELECT
             id, title, content, type, language, tags, metadata, created_at, deleted_at,

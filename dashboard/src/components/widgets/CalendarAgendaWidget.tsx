@@ -26,7 +26,9 @@ export function CalendarAgendaWidget() {
     async (event: CalendarEvent, e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
-      if (recordingBusy) return;
+      if (recordingBusy) {
+        return;
+      }
       setRecordingBusy(true);
       setRecordingError(null);
       try {
@@ -56,7 +58,9 @@ export function CalendarAgendaWidget() {
   );
 
   const stopMeetingRecording = useCallback(async () => {
-    if (recordingBusy) return;
+    if (recordingBusy) {
+      return;
+    }
     setRecordingBusy(true);
     try {
       await invokeRecorder("stop");
@@ -104,34 +108,46 @@ export function CalendarAgendaWidget() {
   // Extract meeting link from various sources
   const getMeetingLink = (event: CalendarEvent): string | null => {
     // Direct hangout link (Google Meet)
-    if (event.hangoutLink) return event.hangoutLink;
+    if (event.hangoutLink) {
+      return event.hangoutLink;
+    }
 
     // Conference data entry points
     if (event.conferenceData?.entryPoints) {
       const videoEntry = event.conferenceData.entryPoints.find(
         (ep) => ep.entryPointType === "video",
       );
-      if (videoEntry) return videoEntry.uri;
+      if (videoEntry) {
+        return videoEntry.uri;
+      }
     }
 
     // Parse from description
     if (event.description) {
       // Google Meet
       const meetMatch = event.description.match(/https:\/\/meet\.google\.com\/[a-z-]+/i);
-      if (meetMatch) return meetMatch[0];
+      if (meetMatch) {
+        return meetMatch[0];
+      }
 
       // Zoom
       const zoomMatch = event.description.match(/https:\/\/[a-z0-9-]+\.zoom\.us\/j\/\d+[^\s]*/i);
-      if (zoomMatch) return zoomMatch[0];
+      if (zoomMatch) {
+        return zoomMatch[0];
+      }
 
       // Microsoft Teams
       const teamsMatch = event.description.match(/https:\/\/teams\.microsoft\.com\/[^\s]+/i);
-      if (teamsMatch) return teamsMatch[0];
+      if (teamsMatch) {
+        return teamsMatch[0];
+      }
     }
 
     // Parse from location
     if (event.location) {
-      if (event.location.startsWith("http")) return event.location;
+      if (event.location.startsWith("http")) {
+        return event.location;
+      }
     }
 
     return null;
@@ -139,9 +155,15 @@ export function CalendarAgendaWidget() {
 
   // Detect meeting platform from link
   const getMeetingPlatform = (link: string): string | null => {
-    if (link.includes("meet.google.com")) return "Google Meet";
-    if (link.includes("zoom.us")) return "Zoom";
-    if (link.includes("teams.microsoft.com")) return "Teams";
+    if (link.includes("meet.google.com")) {
+      return "Google Meet";
+    }
+    if (link.includes("zoom.us")) {
+      return "Zoom";
+    }
+    if (link.includes("teams.microsoft.com")) {
+      return "Teams";
+    }
     return null;
   };
 

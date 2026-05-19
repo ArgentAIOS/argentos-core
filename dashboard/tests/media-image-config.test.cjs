@@ -49,8 +49,12 @@ before(async () => {
 });
 
 after(() => {
-  if (server) server.close();
-  if (tempHome) fs.rmSync(tempHome, { recursive: true, force: true });
+  if (server) {
+    server.close();
+  }
+  if (tempHome) {
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  }
 });
 
 describe("Media image config", () => {

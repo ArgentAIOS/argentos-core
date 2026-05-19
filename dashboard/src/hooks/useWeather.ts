@@ -65,10 +65,18 @@ function cacheWeather(data: DetailedWeatherData) {
 
 const getIcon = (desc: string) => {
   const d = desc.toLowerCase();
-  if (d.includes("rain") || d.includes("drizzle")) return "rain";
-  if (d.includes("snow")) return "snow";
-  if (d.includes("thunder") || d.includes("storm")) return "storm";
-  if (d.includes("cloud") || d.includes("overcast")) return "cloud";
+  if (d.includes("rain") || d.includes("drizzle")) {
+    return "rain";
+  }
+  if (d.includes("snow")) {
+    return "snow";
+  }
+  if (d.includes("thunder") || d.includes("storm")) {
+    return "storm";
+  }
+  if (d.includes("cloud") || d.includes("overcast")) {
+    return "cloud";
+  }
   return "sun";
 };
 
