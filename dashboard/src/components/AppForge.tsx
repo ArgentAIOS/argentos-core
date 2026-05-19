@@ -69,6 +69,8 @@ import {
   MultiSelectCellDisplay,
   MultiSelectCellEditor,
   NumberCellEditor,
+  PhoneCellDisplay,
+  PhoneCellEditor,
   RatingCellDisplay,
   RatingCellEditor,
   UrlCellDisplay,
@@ -177,6 +179,7 @@ const FIELD_TYPE_OPTIONS: Array<{ value: ForgeFieldType; label: string }> = [
   { value: "checkbox", label: "Checkbox" },
   { value: "url", label: "URL" },
   { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
   { value: "attachment", label: "Attachment" },
   { value: "linked_record", label: "Linked record" },
 ];
@@ -803,6 +806,9 @@ function fieldInputType(field: ForgeStructuredField): string {
   if (field.type === "email") {
     return "email";
   }
+  if (field.type === "phone") {
+    return "tel";
+  }
   return "text";
 }
 
@@ -841,6 +847,9 @@ function fieldDefaultInputType(type: ForgeFieldType): string {
   }
   if (type === "email") {
     return "email";
+  }
+  if (type === "phone") {
+    return "tel";
   }
   return "text";
 }
@@ -3234,7 +3243,9 @@ export function AppForge({
                                             ? "name@example.com"
                                             : field.type === "url"
                                               ? "https://example.com"
-                                              : ""
+                                              : field.type === "phone"
+                                                ? "+1 (555) 123-4567"
+                                                : ""
                                       }
                                       className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-sky-400"
                                     />
@@ -3880,6 +3891,14 @@ export function AppForge({
                                                   onCommit={() => void commitEditingCell()}
                                                   onCancel={() => setEditingCell(null)}
                                                 />
+                                              ) : activeEditingCell && field.type === "phone" ? (
+                                                <PhoneCellEditor
+                                                  field={field}
+                                                  draft={activeEditingCell}
+                                                  onChange={setEditingCell}
+                                                  onCommit={() => void commitEditingCell()}
+                                                  onCancel={() => setEditingCell(null)}
+                                                />
                                               ) : activeEditingCell &&
                                                 field.type === "attachment" ? (
                                                 <AttachmentCellEditor
@@ -3997,6 +4016,8 @@ export function AppForge({
                                                 <UrlCellDisplay value={value} />
                                               ) : field.type === "email" ? (
                                                 <EmailCellDisplay value={value} />
+                                              ) : field.type === "phone" ? (
+                                                <PhoneCellDisplay value={value} />
                                               ) : field.type === "attachment" ? (
                                                 <AttachmentCellDisplay
                                                   value={record.values[field.id]}

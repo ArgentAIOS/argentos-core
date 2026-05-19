@@ -18,6 +18,7 @@ export type ForgeFieldType =
   | "checkbox"
   | "url"
   | "email"
+  | "phone"
   | "attachment"
   | "linked_record"
   | "rating";

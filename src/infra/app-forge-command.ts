@@ -91,6 +91,8 @@ function fieldTypeFromText(value: string | undefined): AppForgeFieldType {
       return "url";
     case "email":
       return "email";
+    case "phone":
+      return "phone";
     case "attachment":
       return "attachment";
     case "linked_record":
@@ -264,7 +266,7 @@ function planRenameTable(base: AppForgeBase, command: string): AppForgeCommandPl
 
 function planAddField(base: AppForgeBase, command: string): AppForgeCommandPlan | null {
   const match =
-    /^add\s+(?:(text|long text|single select|multi select|number|date|checkbox|url|email|attachment|linked record)\s+)?field\s+(?:(?:called|named)\s+)?(.+?)(?:\s+to\s+|\s+in\s+)(.+)$/i.exec(
+    /^add\s+(?:(text|long text|single select|multi select|number|date|checkbox|url|email|phone|attachment|linked record)\s+)?field\s+(?:(?:called|named)\s+)?(.+?)(?:\s+to\s+|\s+in\s+)(.+)$/i.exec(
       command,
     );
   if (!match) {

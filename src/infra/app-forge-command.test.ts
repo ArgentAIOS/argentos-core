@@ -60,6 +60,18 @@ describe("AppForge natural-language command planning", () => {
         },
       ],
     });
+
+    const addPhone = planAppForgeCommand(base(), "add phone field called Mobile to Reviews");
+    expect(addPhone).toMatchObject({
+      ok: true,
+      operations: [
+        {
+          kind: "field.create",
+          tableId: "table-1",
+          field: { id: "mobile", name: "Mobile", type: "phone" },
+        },
+      ],
+    });
   });
 
   it("plans a record update against matched table, field, and record context", () => {

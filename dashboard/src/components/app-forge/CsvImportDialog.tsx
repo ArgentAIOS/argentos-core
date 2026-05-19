@@ -58,6 +58,7 @@ const SUPPORTED_OVERRIDE_TYPES: ReadonlyArray<{ value: string; label: string }> 
   { value: "checkbox", label: "Checkbox" },
   { value: "date", label: "Date" },
   { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
   { value: "url", label: "URL" },
   { value: "single_select", label: "Single select" },
   { value: "multi_select", label: "Multi-select" },
