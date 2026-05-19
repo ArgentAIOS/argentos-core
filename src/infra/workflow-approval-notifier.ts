@@ -155,6 +155,27 @@ export async function notifyWorkflowApprovalRequest(params: {
       continue;
     }
 
+    // Telegram supports inline keyboards; surface Approve/Deny as tap buttons
+    // so the operator can resolve approvals from chat without switching to
+    // the dashboard. Other channels fall back to the text-only payload (the
+    // delivery layer ignores channelData it doesn't understand).
+    // Callback-data uses short prefixes (wf_app: / wf_dny:) + approvalId so
+    // we stay under Telegram's 64-byte callback_data limit even with a UUID
+    // approvalId. Inbound dispatch lives in src/telegram/bot-handlers.ts.
+    const channelData =
+      channel === "telegram"
+        ? {
+            telegram: {
+              buttons: [
+                [
+                  { text: "✅ Approve", callback_data: `wf_app:${params.request.approvalId}` },
+                  { text: "❌ Deny", callback_data: `wf_dny:${params.request.approvalId}` },
+                ],
+              ],
+            },
+          }
+        : undefined;
+
     try {
       delivered.push(
         ...(await deliver({
@@ -163,7 +184,7 @@ export async function notifyWorkflowApprovalRequest(params: {
           to: target.to,
           accountId: target.accountId,
           threadId: target.threadId,
-          payloads: [{ text }],
+          payloads: [{ text, ...(channelData ? { channelData } : {}) }],
           deps: params.deps?.outboundDeps,
           bestEffort: true,
         })),
