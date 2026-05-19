@@ -382,6 +382,82 @@ EOF
   chmod +x "$pnpm_target"
 }
 
+# Read the "packageManager" pin (e.g. "pnpm@10.23.0") from a package.json.
+# Empty output if absent.
+extract_package_manager_pin() {
+  local pkg_json="${1:-}"
+  [[ -n "$pkg_json" && -f "$pkg_json" ]] || return 0
+  sed -nE 's/.*"packageManager"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$pkg_json" | head -n1
+}
+
+# Make sure the pnpm version pinned in the repo's package.json is the one we
+# actually invoke. Without this, a user who previously ran `npm i -g pnpm`
+# ends up with pnpm 11.x on PATH; pnpm refuses to run against a 10.23.0 pin
+# and aborts with "This project is configured to use 10.23.0 of pnpm".
+#
+# Called AFTER the git checkout (package.json must exist).
+activate_pinned_pnpm() {
+  local git_dir="$1"
+  local pkg_json="$git_dir/package.json"
+  local pinned; pinned="$(extract_package_manager_pin "$pkg_json")"
+  [[ -n "$pinned" ]] || return 0
+
+  local node_dir; node_dir="$(dirname "$NODE_BIN")"
+  local pinned_version="${pinned#pnpm@}"
+
+  # Path 1: prefer corepack (ships with Node 22+). It can shim the exact
+  # pinned version regardless of any globally-installed pnpm.
+  if [[ -x "$node_dir/corepack" ]]; then
+    info "Activating pinned package manager: $pinned"
+    if is_truthy "$DRY_RUN"; then
+      info "Would run: corepack prepare $pinned --activate"
+    else
+      "$node_dir/corepack" enable 2>/dev/null || true
+      if "$node_dir/corepack" prepare "$pinned" --activate >/dev/null 2>&1; then
+        # Route through corepack so the shim — not any global pnpm — is used.
+        PNPM_EXEC="$node_dir/corepack"
+        PNPM_SUBCOMMAND="pnpm"
+        ensure_pnpm_shim
+        return 0
+      fi
+      warn "corepack prepare $pinned failed — attempting npm fallback"
+    fi
+  fi
+
+  # Path 2: no corepack (or it failed). If the resolved pnpm version doesn't
+  # match the pin, install the pinned version via npm into the runtime.
+  if [[ -n "$PNPM_EXEC" ]]; then
+    local current_version
+    if [[ -n "$PNPM_SUBCOMMAND" ]]; then
+      current_version="$("$PNPM_EXEC" "$PNPM_SUBCOMMAND" --version 2>/dev/null || true)"
+    else
+      current_version="$("$PNPM_EXEC" --version 2>/dev/null || true)"
+    fi
+    if [[ -n "$current_version" && "$current_version" == "$pinned_version" ]]; then
+      return 0
+    fi
+    warn "Resolved pnpm ${current_version:-unknown} does not match pinned $pinned_version — installing pinned version"
+  fi
+
+  local npm_bin="$node_dir/npm"
+  [[ -x "$npm_bin" ]] || npm_bin="$(command -v npm 2>/dev/null || true)"
+  if [[ -x "$npm_bin" ]]; then
+    if is_truthy "$DRY_RUN"; then
+      info "Would run: npm install -g pnpm@$pinned_version"
+    else
+      "$npm_bin" install -g "pnpm@$pinned_version" >/dev/null 2>&1 \
+        || warn "npm install -g pnpm@$pinned_version failed"
+      if [[ -x "$node_dir/pnpm" ]]; then
+        PNPM_EXEC="$node_dir/pnpm"
+        PNPM_SUBCOMMAND=""
+        ensure_pnpm_shim
+      fi
+    fi
+  else
+    warn "No npm available to install pnpm@$pinned_version — pnpm install may fail against the pinned version"
+  fi
+}
+
 activate_runtime() {
   local resolved_node system_node_version node_dir
 
@@ -1375,6 +1451,11 @@ install_git() {
       run_git_nohooks -C "$GIT_DIR" pull origin main
     fi
   fi
+
+  # Make sure pnpm matches the version pinned in the checked-out package.json.
+  # Must come AFTER the checkout (so package.json reflects the chosen ref) and
+  # BEFORE the first pnpm invocation.
+  activate_pinned_pnpm "$GIT_DIR"
 
   # Clean stale build artifacts and node_modules to prevent version mismatch
   rm -rf "$GIT_DIR/dist" 2>/dev/null || true
