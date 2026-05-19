@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gantt smoke harness</title>
+    <!-- React Refresh preamble (Vite injects this for index.html automatically;
+         must be declared manually for HTML served from public/) -->
+    <script type="module">
+      import { injectIntoGlobalHook } from "/@react-refresh";
+      injectIntoGlobalHook(window);
+      window.$RefreshReg$ = () => {};
+      window.$RefreshSig$ = () => (type) => type;
+    </script>
+  </head>
+  <body>
+    <div
+      id="status"
+      style="
+        position: fixed;
+        top: 8px;
+        right: 12px;
+        color: #888;
+        font: 11px monospace;
+        z-index: 9999;
+      "
+    >
+      loading…
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/dev-fixtures/gantt-smoke-entry.tsx"></script>
+  </body>
+</html>
