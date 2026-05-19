@@ -340,7 +340,9 @@ class DualMemoryAdapter implements MemoryAdapter {
   }
 
   async reinforceItem(id: string): Promise<void> {
-    if (shouldWriteTo(this.config, "sqlite")) await this.sqlite.reinforceItem(id);
+    if (shouldWriteTo(this.config, "sqlite")) {
+      await this.sqlite.reinforceItem(id);
+    }
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("reinforceItem", () => this.pg.reinforceItem(id));
     }
@@ -474,14 +476,18 @@ class DualMemoryAdapter implements MemoryAdapter {
   }
 
   async reinforceLesson(id: string): Promise<void> {
-    if (shouldWriteTo(this.config, "sqlite")) await this.sqlite.reinforceLesson(id);
+    if (shouldWriteTo(this.config, "sqlite")) {
+      await this.sqlite.reinforceLesson(id);
+    }
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("reinforceLesson", () => this.pg.reinforceLesson(id));
     }
   }
 
   async decayLesson(id: string, amount: number): Promise<void> {
-    if (shouldWriteTo(this.config, "sqlite")) await this.sqlite.decayLesson(id, amount);
+    if (shouldWriteTo(this.config, "sqlite")) {
+      await this.sqlite.decayLesson(id, amount);
+    }
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("decayLesson", () => this.pg.decayLesson(id, amount));
     }
@@ -521,7 +527,9 @@ class DualMemoryAdapter implements MemoryAdapter {
   }
 
   async deleteLesson(id: string): Promise<void> {
-    if (shouldWriteTo(this.config, "sqlite")) await this.sqlite.deleteLesson(id);
+    if (shouldWriteTo(this.config, "sqlite")) {
+      await this.sqlite.deleteLesson(id);
+    }
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("deleteLesson", () => this.pg.deleteLesson(id));
     }
@@ -563,7 +571,9 @@ class DualMemoryAdapter implements MemoryAdapter {
   }
 
   async recordModelFeedback(input: RecordModelFeedbackInput): Promise<void> {
-    if (shouldWriteTo(this.config, "sqlite")) await this.sqlite.recordModelFeedback(input);
+    if (shouldWriteTo(this.config, "sqlite")) {
+      await this.sqlite.recordModelFeedback(input);
+    }
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("recordModelFeedback", () => this.pg.recordModelFeedback(input));
     }
@@ -948,7 +958,9 @@ class DualTeamAdapter implements TeamAdapter {
   }
 
   async disband(id: string): Promise<void> {
-    if (shouldWriteTo(this.config, "sqlite")) await this.sqlite.disband(id);
+    if (shouldWriteTo(this.config, "sqlite")) {
+      await this.sqlite.disband(id);
+    }
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("team.disband", () => this.pg.disband(id));
     }

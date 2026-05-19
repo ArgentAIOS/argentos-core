@@ -90,7 +90,9 @@ function normalizeStateFilter(value: string | undefined): PersonalSkillCandidate
 }
 
 function cleanStringArray(values: string[] | undefined): string[] | undefined {
-  if (!values) return undefined;
+  if (!values) {
+    return undefined;
+  }
   const cleaned = values.map((value) => value.trim()).filter(Boolean);
   return cleaned.length > 0 ? cleaned : undefined;
 }
@@ -230,15 +232,33 @@ export function createPersonalSkillTool(options: { agentId: string }): AnyAgentT
           executionSteps,
           expectedOutcomes,
         });
-        if (title !== undefined) fields.title = title;
-        if (summary !== undefined) fields.summary = summary;
-        if (triggerPatterns !== undefined) fields.triggerPatterns = triggerPatterns;
-        if (preconditions !== undefined) fields.preconditions = preconditions;
-        if (executionSteps !== undefined) fields.executionSteps = executionSteps;
-        if (expectedOutcomes !== undefined) fields.expectedOutcomes = expectedOutcomes;
-        if (relatedTools !== undefined) fields.relatedTools = relatedTools;
-        if (procedureOutline !== undefined) fields.procedureOutline = procedureOutline;
-        if (operatorNotes !== undefined) fields.operatorNotes = operatorNotes;
+        if (title !== undefined) {
+          fields.title = title;
+        }
+        if (summary !== undefined) {
+          fields.summary = summary;
+        }
+        if (triggerPatterns !== undefined) {
+          fields.triggerPatterns = triggerPatterns;
+        }
+        if (preconditions !== undefined) {
+          fields.preconditions = preconditions;
+        }
+        if (executionSteps !== undefined) {
+          fields.executionSteps = executionSteps;
+        }
+        if (expectedOutcomes !== undefined) {
+          fields.expectedOutcomes = expectedOutcomes;
+        }
+        if (relatedTools !== undefined) {
+          fields.relatedTools = relatedTools;
+        }
+        if (procedureOutline !== undefined) {
+          fields.procedureOutline = procedureOutline;
+        }
+        if (operatorNotes !== undefined) {
+          fields.operatorNotes = operatorNotes;
+        }
         if (Object.keys(fields).length === 0) {
           throw new Error("patch requires at least one field to update");
         }

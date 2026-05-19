@@ -82,13 +82,17 @@ function vecToBlob(vec: number[]): Buffer {
 
 /** Convert BLOB back to number[] */
 function blobToVec(blob: Buffer | null): number[] | null {
-  if (!blob || blob.length === 0) return null;
+  if (!blob || blob.length === 0) {
+    return null;
+  }
   return Array.from(new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4));
 }
 
 /** Cosine similarity between two vectors */
 export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
+  if (a.length !== b.length || a.length === 0) {
+    return 0;
+  }
   let dot = 0;
   let magA = 0;
   let magB = 0;
@@ -606,7 +610,9 @@ export class MemuStore {
   /** Get or create a category by name */
   getOrCreateCategory(name: string, description?: string): MemoryCategory {
     const existing = this.getCategoryByName(name);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     return this.createCategory({ name, description });
   }
 
@@ -708,8 +714,12 @@ export class MemuStore {
       .replace(/[^\w\s]/g, " ") // strip punctuation
       .split(/\s+/)
       .filter((t) => t.length >= 2); // drop single-char tokens
-    if (tokens.length === 0) return query;
-    if (tokens.length === 1) return tokens[0];
+    if (tokens.length === 0) {
+      return query;
+    }
+    if (tokens.length === 1) {
+      return tokens[0];
+    }
     return tokens.join(" OR ");
   }
 
@@ -827,7 +837,9 @@ export class MemuStore {
     const queryBlob = vecToUint8Array(queryVec);
     const knnResults = vecKnnSearch(this.db, "vec_memory_items", queryBlob, knnLimit);
 
-    if (knnResults.length === 0) return [];
+    if (knnResults.length === 0) {
+      return [];
+    }
 
     // Build rowid → distance map
     const distanceMap = new Map<number, number>();
@@ -855,7 +867,9 @@ export class MemuStore {
     const itemRowids = new Map<string, number>();
     for (const item of items) {
       const rowid = getRowidForId(this.db, "memory_items", item.id);
-      if (rowid !== null) itemRowids.set(item.id, rowid);
+      if (rowid !== null) {
+        itemRowids.set(item.id, rowid);
+      }
     }
 
     // Pre-load entity bonds for identity scoring
@@ -1182,7 +1196,9 @@ export class MemuStore {
 
   getOrCreateEntity(name: string, input?: Partial<CreateEntityInput>): Entity {
     const existing = this.getEntityByName(name);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     return this.createEntity({ name, ...input });
   }
 
@@ -1220,7 +1236,9 @@ export class MemuStore {
       params.push(fields.entityType);
     }
 
-    if (sets.length === 0) return this.getEntity(id);
+    if (sets.length === 0) {
+      return this.getEntity(id);
+    }
 
     sets.push(`updated_at = ?`);
     params.push(now());
@@ -1407,7 +1425,9 @@ export class MemuStore {
 
   /** Get a map of itemId → bondStrengths[] for scoring. Pre-loads to avoid N+1. */
   getItemEntityBondMap(itemIds: string[]): Map<string, number[]> {
-    if (itemIds.length === 0) return new Map();
+    if (itemIds.length === 0) {
+      return new Map();
+    }
 
     const placeholders = itemIds.map(() => "?").join(",");
     const rows = this.db
@@ -2070,7 +2090,9 @@ export class MemuStore {
   }
 
   markLiveCandidateExpired(ids: string[]): void {
-    if (ids.length === 0) return;
+    if (ids.length === 0) {
+      return;
+    }
     const ts = now();
     const placeholders = ids.map(() => "?").join(",");
     this.db
@@ -2253,7 +2275,9 @@ export class MemuStore {
     }>,
   ): PersonalSkillCandidate | null {
     const existing = this.getPersonalSkillCandidate(id);
-    if (!existing) return null;
+    if (!existing) {
+      return null;
+    }
     const next = {
       ...existing,
       ...fields,

@@ -452,10 +452,14 @@ async function summarizeChunked(
  * Split messages into N parts of roughly equal token weight.
  */
 function splitByTokenShare(messages: SessionMessage[], parts: number): SessionMessage[][] {
-  if (messages.length === 0) return [];
+  if (messages.length === 0) {
+    return [];
+  }
 
   const normalizedParts = normalizeParts(parts, messages.length);
-  if (normalizedParts <= 1) return [messages];
+  if (normalizedParts <= 1) {
+    return [messages];
+  }
 
   const totalTokens = estimateMessageTokens(messages);
   const targetTokens = totalTokens / normalizedParts;
@@ -490,7 +494,9 @@ function splitByTokenShare(messages: SessionMessage[], parts: number): SessionMe
  * Handles oversized single messages by isolating them into their own chunk.
  */
 function chunkByMaxTokens(messages: SessionMessage[], maxTokens: number): SessionMessage[][] {
-  if (messages.length === 0) return [];
+  if (messages.length === 0) {
+    return [];
+  }
 
   const chunks: SessionMessage[][] = [];
   let current: SessionMessage[] = [];
@@ -524,7 +530,9 @@ function chunkByMaxTokens(messages: SessionMessage[], maxTokens: number): Sessio
 }
 
 function normalizeParts(parts: number, messageCount: number): number {
-  if (!Number.isFinite(parts) || parts <= 1) return 1;
+  if (!Number.isFinite(parts) || parts <= 1) {
+    return 1;
+  }
   return Math.min(Math.max(1, Math.floor(parts)), Math.max(1, messageCount));
 }
 

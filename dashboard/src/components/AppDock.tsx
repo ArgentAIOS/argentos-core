@@ -20,14 +20,18 @@ function sanitizeSvg(svg: string): string {
 }
 
 export function AppDock({ windows, apps, onRestore, onFocus }: AppDockProps) {
-  if (windows.length === 0) return null;
+  if (windows.length === 0) {
+    return null;
+  }
 
   return (
     <div className="absolute bottom-0 left-0 right-0 h-12 glass-panel rounded-t-2xl flex items-center justify-center gap-3 px-4 z-[250]">
       <AnimatePresence>
         {windows.map((win) => {
           const app = apps.find((a) => a.id === win.appId);
-          if (!app) return null;
+          if (!app) {
+            return null;
+          }
 
           const isMinimized = win.minimized;
           const isActive = !win.minimized;

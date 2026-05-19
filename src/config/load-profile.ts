@@ -78,7 +78,9 @@ export type ResolvedRuntimeLoadProfile = RuntimeLoadProfilePreset & {
 };
 
 function mergeDefined<T extends Record<string, unknown>>(base: T, patch?: Partial<T>): T {
-  if (!patch) return base;
+  if (!patch) {
+    return base;
+  }
   const next = { ...base };
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) {

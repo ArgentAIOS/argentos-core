@@ -714,7 +714,9 @@ describe("AppForge store contract", () => {
       { expectedBaseRevision: 1, expectedTableRevision: 1, idempotencyKey: "view-create-1" },
     );
     expect(created.ok).toBe(true);
-    if (!created.ok) throw new Error("unreachable");
+    if (!created.ok) {
+      throw new Error("unreachable");
+    }
     expect(created.view).toMatchObject({
       id: "view-leads",
       name: "Leads",
@@ -753,7 +755,9 @@ describe("AppForge store contract", () => {
       { expectedBaseRevision: 2, expectedTableRevision: 2 },
     );
     expect(updated.ok).toBe(true);
-    if (!updated.ok) throw new Error("unreachable");
+    if (!updated.ok) {
+      throw new Error("unreachable");
+    }
     expect(updated.view).toMatchObject({
       id: "view-leads",
       name: "Hot Leads",
@@ -779,7 +783,9 @@ describe("AppForge store contract", () => {
 
     const deleted = await store.deleteView("base-1", "table-1", "view-leads");
     expect(deleted.ok).toBe(true);
-    if (!deleted.ok) throw new Error("unreachable");
+    if (!deleted.ok) {
+      throw new Error("unreachable");
+    }
     expect(deleted.view.id).toBe("view-leads");
     expect(deleted.table.activeViewId).toBeUndefined();
     await expect(store.listViews("base-1", "table-1")).resolves.toEqual([]);

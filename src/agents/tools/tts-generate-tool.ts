@@ -89,16 +89,24 @@ const TtsGenerateSchema = Type.Object({
 
 /** Snap stability to the nearest v3-valid value (0.0, 0.5, or 1.0). */
 function snapStabilityForV3(stability: number): number {
-  if (stability <= 0.25) return 0.0;
-  if (stability >= 0.75) return 1.0;
+  if (stability <= 0.25) {
+    return 0.0;
+  }
+  if (stability >= 0.75) {
+    return 1.0;
+  }
   return 0.5;
 }
 
 /** Resolve a voice name or ID to an ElevenLabs voice ID. */
 function resolveVoiceId(voice?: string): string {
-  if (!voice) return VOICE_MAP[DEFAULT_VOICE];
+  if (!voice) {
+    return VOICE_MAP[DEFAULT_VOICE];
+  }
   const lower = voice.toLowerCase().trim();
-  if (VOICE_MAP[lower]) return VOICE_MAP[lower];
+  if (VOICE_MAP[lower]) {
+    return VOICE_MAP[lower];
+  }
   // Assume it's a raw ElevenLabs voice ID
   return voice;
 }
@@ -256,10 +264,14 @@ Returns a MEDIA: path. Copy the MEDIA line exactly into your response.`,
 
           lastError = `${modelId} failed (${result.status}): ${result.error}`;
           // If user explicitly picked a model, don't fallback
-          if (model) break;
+          if (model) {
+            break;
+          }
         } catch (err) {
           lastError = err instanceof Error ? err.message : String(err);
-          if (model) break;
+          if (model) {
+            break;
+          }
         }
       }
 

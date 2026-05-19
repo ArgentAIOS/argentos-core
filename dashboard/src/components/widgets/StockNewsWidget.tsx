@@ -57,14 +57,22 @@ export function StockNewsWidget({ size = "small" }: StockNewsWidgetProps) {
   }
 
   const getSentimentIcon = (sentiment: string) => {
-    if (sentiment === "bullish") return <TrendingUp className="w-3 h-3 text-green-400" />;
-    if (sentiment === "bearish") return <TrendingDown className="w-3 h-3 text-red-400" />;
+    if (sentiment === "bullish") {
+      return <TrendingUp className="w-3 h-3 text-green-400" />;
+    }
+    if (sentiment === "bearish") {
+      return <TrendingDown className="w-3 h-3 text-red-400" />;
+    }
     return <Minus className="w-3 h-3 text-white/40" />;
   };
 
   const getSentimentColor = (sentiment: string) => {
-    if (sentiment === "bullish") return "text-green-400";
-    if (sentiment === "bearish") return "text-red-400";
+    if (sentiment === "bullish") {
+      return "text-green-400";
+    }
+    if (sentiment === "bearish") {
+      return "text-red-400";
+    }
     return "text-white/60";
   };
 

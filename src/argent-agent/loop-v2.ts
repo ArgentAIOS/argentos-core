@@ -202,7 +202,9 @@ export async function* agentLoopV2(config: LoopV2Config): AsyncGenerator<LoopV2E
     }
 
     // If no response, bail
-    if (!finalResponse) break;
+    if (!finalResponse) {
+      break;
+    }
 
     // ── Append assistant message to history ──
     messages.push({

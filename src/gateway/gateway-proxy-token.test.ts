@@ -32,7 +32,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (tempHome) fs.rmSync(tempHome, { recursive: true, force: true });
+  if (tempHome) {
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  }
 });
 
 function writeArgentConfig(payload: unknown) {
@@ -40,7 +42,9 @@ function writeArgentConfig(payload: unknown) {
 }
 
 function clearArgentConfig() {
-  if (fs.existsSync(argentJsonPath)) fs.rmSync(argentJsonPath);
+  if (fs.existsSync(argentJsonPath)) {
+    fs.rmSync(argentJsonPath);
+  }
 }
 
 describe("readGatewayConfigFromDisk", () => {
@@ -243,7 +247,9 @@ function makeRequest(opts: {
     method,
     headers,
     [Symbol.asyncIterator]: async function* () {
-      for (const chunk of chunks) yield chunk;
+      for (const chunk of chunks) {
+        yield chunk;
+      }
     },
   } as unknown as IncomingMessage;
   return req;
@@ -271,7 +277,9 @@ function makeResponse(): MockResponse {
       headers[name.toLowerCase()] = value;
     },
     end: (chunk?: Buffer | string) => {
-      if (chunk) body = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (chunk) {
+        body = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      }
     },
   } as unknown as ServerResponse;
   return {

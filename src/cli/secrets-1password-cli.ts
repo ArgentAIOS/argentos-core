@@ -34,8 +34,12 @@ interface SetupOptions {
 const OP_TOKEN_VARIABLE = "OP_SERVICE_ACCOUNT_TOKEN";
 
 function maskValue(value: string): string {
-  if (!value) return "(empty)";
-  if (value.length <= 8) return "*".repeat(value.length);
+  if (!value) {
+    return "(empty)";
+  }
+  if (value.length <= 8) {
+    return "*".repeat(value.length);
+  }
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
@@ -148,7 +152,9 @@ export function registerSecretsBackend1PasswordCli(secrets: Command): void {
       const result = probeOnePasswordHealth({ sampleRef: options.sample });
       console.log("\n  1Password Backend Health\n");
       console.log(`  op CLI installed:  ${result.installed ? "yes" : "no"}`);
-      if (result.version) console.log(`  op CLI version:    ${result.version}`);
+      if (result.version) {
+        console.log(`  op CLI version:    ${result.version}`);
+      }
       console.log(`  token present:     ${result.tokenPresent ? "yes" : "no"}`);
       if (options.sample) {
         if (result.sample?.ok) {
@@ -192,7 +198,9 @@ export function registerSecretsBackend1PasswordCli(secrets: Command): void {
       }
       console.log(`\n  Variable:        ${variable}`);
       console.log(`  Stored as:       ${storedKind}`);
-      if (refSurface) console.log(`  Reference:       ${refSurface}`);
+      if (refSurface) {
+        console.log(`  Reference:       ${refSurface}`);
+      }
       const resolved = resolveServiceKey(variable);
       if (!resolved) {
         console.error("  Resolution:      FAILED (no value)\n");

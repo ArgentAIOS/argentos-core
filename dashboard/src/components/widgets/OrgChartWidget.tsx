@@ -33,11 +33,21 @@ const EXCLUDED_IDS = new Set(["main", "dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 function isOperational(a: { id: string; role?: string }): boolean {
-  if (EXCLUDED_IDS.has(a.id.toLowerCase())) return false;
-  if (a.id.startsWith("test-") || a.id.startsWith("test_")) return false;
-  if (UUID_RE.test(a.id)) return false;
-  if (a.role === "think_tank_panelist") return false;
-  if (!a.role) return false;
+  if (EXCLUDED_IDS.has(a.id.toLowerCase())) {
+    return false;
+  }
+  if (a.id.startsWith("test-") || a.id.startsWith("test_")) {
+    return false;
+  }
+  if (UUID_RE.test(a.id)) {
+    return false;
+  }
+  if (a.role === "think_tank_panelist") {
+    return false;
+  }
+  if (!a.role) {
+    return false;
+  }
   return true;
 }
 
@@ -45,11 +55,21 @@ function isOperational(a: { id: string; role?: string }): boolean {
 
 function normalizeTeam(team: string): string {
   const t = team.toLowerCase().trim();
-  if (t === "unassigned" || t === "think-tank" || t === "") return "__skip__";
-  if (t.includes("support") || t === "msp team" || t === "msp-team") return "support";
-  if (t.includes("office")) return "office";
-  if (t === "dev-team" || t === "development") return "development";
-  if (t === "marketing-team" || t === "marketing") return "marketing";
+  if (t === "unassigned" || t === "think-tank" || t === "") {
+    return "__skip__";
+  }
+  if (t.includes("support") || t === "msp team" || t === "msp-team") {
+    return "support";
+  }
+  if (t.includes("office")) {
+    return "office";
+  }
+  if (t === "dev-team" || t === "development") {
+    return "development";
+  }
+  if (t === "marketing-team" || t === "marketing") {
+    return "marketing";
+  }
   return team;
 }
 
@@ -83,10 +103,16 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
   const grouped: Record<string, FamilyMember[]> = {};
 
   for (const m of members) {
-    if (!isOperational(m)) continue;
+    if (!isOperational(m)) {
+      continue;
+    }
     const team = normalizeTeam(m.team || "");
-    if (team === "__skip__") continue;
-    if (!grouped[team]) grouped[team] = [];
+    if (team === "__skip__") {
+      continue;
+    }
+    if (!grouped[team]) {
+      grouped[team] = [];
+    }
     grouped[team].push(m);
   }
 
@@ -97,16 +123,26 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
     .sort(([a], [b]) => {
       const ai = order.indexOf(a);
       const bi = order.indexOf(b);
-      if (ai !== -1 && bi !== -1) return ai - bi;
-      if (ai !== -1) return -1;
-      if (bi !== -1) return 1;
+      if (ai !== -1 && bi !== -1) {
+        return ai - bi;
+      }
+      if (ai !== -1) {
+        return -1;
+      }
+      if (bi !== -1) {
+        return 1;
+      }
       return a.localeCompare(b);
     })
     .map(([key, mems]) => {
       // Sort members: alive first, then alphabetically
       const sorted = [...mems].sort((a, b) => {
-        if (a.alive && !b.alive) return -1;
-        if (!a.alive && b.alive) return 1;
+        if (a.alive && !b.alive) {
+          return -1;
+        }
+        if (!a.alive && b.alive) {
+          return 1;
+        }
         return (a.name || a.id).localeCompare(b.name || b.id);
       });
       const display = TEAM_DISPLAY[key];
@@ -419,7 +455,9 @@ export function OrgChartWidget() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMembers = useCallback(async () => {
-    if (!connected) return;
+    if (!connected) {
+      return;
+    }
     try {
       const res = await request<{ members: FamilyMember[] }>("family.members");
       const members = res?.members ?? [];
@@ -436,7 +474,9 @@ export function OrgChartWidget() {
     fetchMembers();
     intervalRef.current = setInterval(fetchMembers, 30_000);
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
     };
   }, [fetchMembers]);
 

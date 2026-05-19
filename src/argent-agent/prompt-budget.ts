@@ -73,14 +73,20 @@ export class PromptBudgetTracker {
    * console log line if ARGENT_PROMPT_BUDGET_LOG=1.
    */
   record(name: string, content: string | readonly string[] | undefined | null): void {
-    if (content == null) return;
+    if (content == null) {
+      return;
+    }
     let chars: number;
     if (Array.isArray(content)) {
       // Measure as newline-joined (matches how system-prompt.ts concats lines).
       const arr = content as readonly string[];
-      if (arr.length === 0) return;
+      if (arr.length === 0) {
+        return;
+      }
       let sum = 0;
-      for (const line of arr) sum += line?.length ?? 0;
+      for (const line of arr) {
+        sum += line?.length ?? 0;
+      }
       chars = sum + Math.max(arr.length - 1, 0);
     } else if (typeof content === "string") {
       chars = content.length;
@@ -92,7 +98,9 @@ export class PromptBudgetTracker {
 
   /** Record a pre-computed char count (used when the caller already has the number). */
   recordChars(name: string, chars: number): void {
-    if (!Number.isFinite(chars) || chars <= 0) return;
+    if (!Number.isFinite(chars) || chars <= 0) {
+      return;
+    }
     const tokens = Math.ceil(chars / 4);
     this.entries.push({ name, chars, tokens });
     if (isPromptBudgetLoggingEnabled()) {
@@ -107,13 +115,17 @@ export class PromptBudgetTracker {
 
   totalChars(): number {
     let sum = 0;
-    for (const e of this.entries) sum += e.chars;
+    for (const e of this.entries) {
+      sum += e.chars;
+    }
     return sum;
   }
 
   totalTokens(): number {
     let sum = 0;
-    for (const e of this.entries) sum += e.tokens;
+    for (const e of this.entries) {
+      sum += e.tokens;
+    }
     return sum;
   }
 
@@ -127,8 +139,12 @@ export class PromptBudgetTracker {
     /** Overall chars sent to the model (may exceed sum of tracked entries). */
     totalChars?: number;
   }): void {
-    if (!isPromptBudgetLoggingEnabled()) return;
-    if (this.entries.length === 0) return;
+    if (!isPromptBudgetLoggingEnabled()) {
+      return;
+    }
+    if (this.entries.length === 0) {
+      return;
+    }
     const injectorSummary = this.entries.map((e) => `${e.name}:${e.tokens}`).join(",");
     const totalChars = opts?.totalChars ?? this.totalChars();
     const totalTokens =
@@ -154,7 +170,9 @@ const storage = new AsyncLocalStorage<PromptBudgetTracker>();
  * chaining: `getCurrentPromptBudgetTracker()?.record("name", str)`.
  */
 export function getCurrentPromptBudgetTracker(): PromptBudgetTracker | undefined {
-  if (!isPromptBudgetLoggingEnabled()) return undefined;
+  if (!isPromptBudgetLoggingEnabled()) {
+    return undefined;
+  }
   return storage.getStore();
 }
 

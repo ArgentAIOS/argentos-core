@@ -33,8 +33,12 @@ const CROSS_VALENCE_COOLDOWN_TURNS = 2;
 const DECAY_TURNS = 4;
 
 function isSameValenceFamily(a: MoodName, b: MoodName): boolean {
-  if (POSITIVE.has(a) && POSITIVE.has(b)) return true;
-  if (NEGATIVE.has(a) && NEGATIVE.has(b)) return true;
+  if (POSITIVE.has(a) && POSITIVE.has(b)) {
+    return true;
+  }
+  if (NEGATIVE.has(a) && NEGATIVE.has(b)) {
+    return true;
+  }
   return false;
 }
 

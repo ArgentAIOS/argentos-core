@@ -73,13 +73,19 @@ export interface PublishKnowledgeInput {
 }
 
 function normalizeStringList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of value) {
-    if (typeof item !== "string") continue;
+    if (typeof item !== "string") {
+      continue;
+    }
     const trimmed = item.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
     seen.add(trimmed);
     out.push(trimmed);
   }
@@ -87,7 +93,9 @@ function normalizeStringList(value: unknown): string[] | undefined {
 }
 
 function normalizeConfig(value: unknown): Record<string, unknown> {
-  if (!value) return {};
+  if (!value) {
+    return {};
+  }
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
@@ -381,7 +389,9 @@ export class AgentFamily {
       const rows = await sql`
         SELECT id, name, role, status, config FROM agents WHERE id = ${id} LIMIT 1
       `;
-      if (rows.length === 0) return null;
+      if (rows.length === 0) {
+        return null;
+      }
       const r = rows[0];
       return {
         id: r.id,
@@ -456,7 +466,9 @@ function parseIdentityMarkdown(raw: string): {
 
 async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
   const home = process.env.HOME ?? "";
-  if (!home) return [];
+  if (!home) {
+    return [];
+  }
   const agentsDir = path.join(home, ".argentos", "agents");
   let entries: Dirent[];
   try {
@@ -467,9 +479,13 @@ async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
 
   const out: LocalFamilyAgent[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
     const id = entry.name.trim().toLowerCase();
-    if (!id || id.startsWith("agent-main-subagent-")) continue;
+    if (!id || id.startsWith("agent-main-subagent-")) {
+      continue;
+    }
 
     const root = path.join(agentsDir, entry.name);
     const identityJsonPath = path.join(root, "identity.json");
@@ -530,7 +546,9 @@ async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
       }
     }
 
-    if (!role) continue;
+    if (!role) {
+      continue;
+    }
     out.push({
       id,
       name: name || id,
@@ -545,7 +563,9 @@ async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
 
 async function syncFamilyRosterFromDisk(family: AgentFamily): Promise<void> {
   const localAgents = await readLocalFamilyAgentsFromDisk();
-  if (localAgents.length === 0) return;
+  if (localAgents.length === 0) {
+    return;
+  }
   for (const agent of localAgents) {
     await family.registerAgent(agent.id, agent.name, agent.role, agent.config);
   }
@@ -557,7 +577,9 @@ async function syncFamilyRosterFromDisk(family: AgentFamily): Promise<void> {
  * Reads PG and Redis config from argent.json.
  */
 export async function getAgentFamily(): Promise<AgentFamily> {
-  if (_family) return _family;
+  if (_family) {
+    return _family;
+  }
 
   const storage = readStorageConfigFromDisk(process.env);
   const pgUrl = resolvePostgresUrl({ storage });

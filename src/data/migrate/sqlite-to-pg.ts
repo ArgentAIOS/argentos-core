@@ -75,7 +75,9 @@ function log(msg: string): void {
  * SQLite stores embeddings as Float32Array BLOBs.
  */
 function blobToVectorString(blob: Buffer | null): string | null {
-  if (!blob || blob.length === 0) return null;
+  if (!blob || blob.length === 0) {
+    return null;
+  }
   try {
     const floats = new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
     return `[${Array.from(floats).join(",")}]`;
@@ -89,15 +91,21 @@ function blobToVectorString(blob: Buffer | null): string | null {
  * Handles ISO 8601 strings and epoch-ms integers.
  */
 function toDate(val: string | number | null): Date | null {
-  if (val === null || val === undefined || val === "") return null;
-  if (typeof val === "number") return new Date(val);
+  if (val === null || val === undefined || val === "") {
+    return null;
+  }
+  if (typeof val === "number") {
+    return new Date(val);
+  }
   const d = new Date(val);
   return isNaN(d.getTime()) ? null : d;
 }
 
 /** Parse JSON text safely */
 function parseJson(val: string | null, fallback: any = []): any {
-  if (!val) return fallback;
+  if (!val) {
+    return fallback;
+  }
   try {
     return JSON.parse(val);
   } catch {
@@ -106,7 +114,9 @@ function parseJson(val: string | null, fallback: any = []): any {
 }
 
 function normalizeAgentId(value: unknown): string | null {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string") {
+    return null;
+  }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
@@ -146,7 +156,9 @@ async function main() {
   const backupPath = MEMORY_DB_PATH + BACKUP_SUFFIX;
   if (!fs.existsSync(backupPath)) {
     log(`Backing up: ${MEMORY_DB_PATH} → ${backupPath}`);
-    if (!DRY_RUN) fs.copyFileSync(MEMORY_DB_PATH, backupPath);
+    if (!DRY_RUN) {
+      fs.copyFileSync(MEMORY_DB_PATH, backupPath);
+    }
   } else {
     log(`Backup already exists: ${backupPath}`);
   }
@@ -623,7 +635,9 @@ async function migrateTable(opts: MigrateOptions): Promise<void> {
     return;
   }
 
-  if (rows.length === 0) return;
+  if (rows.length === 0) {
+    return;
+  }
 
   const start = Date.now();
   await insert(rows);

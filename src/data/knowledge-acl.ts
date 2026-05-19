@@ -18,8 +18,12 @@ let cachedTableCheck: { checkedAt: number; available: boolean } | null = null;
 let warnedMissingTables = false;
 
 function shouldFailClosed(): boolean {
-  if (process.env.ARGENT_KNOWLEDGE_ACL_FAIL_OPEN === "1") return false;
-  if (process.env.ARGENT_KNOWLEDGE_ACL_FAIL_CLOSED === "1") return true;
+  if (process.env.ARGENT_KNOWLEDGE_ACL_FAIL_OPEN === "1") {
+    return false;
+  }
+  if (process.env.ARGENT_KNOWLEDGE_ACL_FAIL_CLOSED === "1") {
+    return true;
+  }
   const storage = resolveRuntimeStorageConfig();
   return storage.backend === "postgres" || storage.backend === "dual";
 }
@@ -60,9 +64,15 @@ function normalizeAgentPrincipal(agentId: string): string {
 
 function resolveEquivalentAgentIds(agentId: string): [string, string | null] {
   const normalized = normalizeAgentPrincipal(agentId);
-  if (!normalized) return ["", null];
-  if (normalized === "main") return ["main", "argent"];
-  if (normalized === "argent") return ["argent", "main"];
+  if (!normalized) {
+    return ["", null];
+  }
+  if (normalized === "main") {
+    return ["main", "argent"];
+  }
+  if (normalized === "argent") {
+    return ["argent", "main"];
+  }
   return [normalized, null];
 }
 
@@ -72,7 +82,9 @@ function agentPrincipalsMatch(
 ): boolean {
   const [l1, l2] = resolveEquivalentAgentIds(String(left || ""));
   const [r1, r2] = resolveEquivalentAgentIds(String(right || ""));
-  if (!l1 || !r1) return false;
+  if (!l1 || !r1) {
+    return false;
+  }
   return l1 === r1 || l1 === r2 || l2 === r1 || (l2 !== null && l2 === r2);
 }
 
@@ -120,7 +132,9 @@ function unavailableAclAccess(
 function isMissingTableError(err: unknown): boolean {
   const code =
     err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "";
-  if (code === "42P01") return true;
+  if (code === "42P01") {
+    return true;
+  }
   const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
   return (
     message.includes("relation") &&
@@ -131,7 +145,9 @@ function isMissingTableError(err: unknown): boolean {
 
 async function getAclRuntime(): Promise<AclRuntime | null> {
   const storage = resolveRuntimeStorageConfig();
-  if (!isPostgresEnabled(storage) || !storage.postgres) return null;
+  if (!isPostgresEnabled(storage) || !storage.postgres) {
+    return null;
+  }
 
   const sqlClient = getPgClient(storage.postgres);
   const now = Date.now();
@@ -169,7 +185,9 @@ async function getAclRuntime(): Promise<AclRuntime | null> {
 }
 
 export function normalizeKnowledgeCollection(value: unknown, fallback = "default"): string {
-  if (typeof value !== "string") return fallback;
+  if (typeof value !== "string") {
+    return fallback;
+  }
   const trimmed = value.trim();
   return trimmed || fallback;
 }
@@ -183,8 +201,12 @@ export function knowledgeCollectionTag(value: string, fallback = "default"): str
 }
 
 function boolValue(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     return normalized === "true" || normalized === "t" || normalized === "1";
@@ -193,10 +215,14 @@ function boolValue(value: unknown): boolean {
 }
 
 function rowString(row: Record<string, unknown> | null | undefined, ...keys: string[]): string {
-  if (!row) return "";
+  if (!row) {
+    return "";
+  }
   for (const key of keys) {
     const value = row[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
   }
   return "";
 }
@@ -233,7 +259,9 @@ async function findCollectionByTag(
   const collectionName = rowString(row, "collectionName", "collection_name");
   const collectionTagValue = rowString(row, "collectionTag", "collection_tag");
   const ownerAgentId = rowNullableString(row, "ownerAgentId", "owner_agent_id");
-  if (!id || !collectionTagValue || !collectionName) return null;
+  if (!id || !collectionTagValue || !collectionName) {
+    return null;
+  }
   return {
     id,
     collectionName,
@@ -367,7 +395,9 @@ export async function ensureKnowledgeCollectionAccess(params: {
   const fallback = unavailableAclAccess(collection, collectionTag);
 
   const runtime = await getAclRuntime();
-  if (!runtime || !runtime.tablesAvailable) return fallback;
+  if (!runtime || !runtime.tablesAvailable) {
+    return fallback;
+  }
 
   try {
     let collectionRow = await findCollectionByTag(runtime.sqlClient, collectionTag);
@@ -499,7 +529,9 @@ export async function getKnowledgeAclSnapshot(params: {
     const dedup = new Set<string>();
     for (const raw of autoCreateRaw) {
       const normalized = normalizeKnowledgeCollection(raw, "");
-      if (!normalized) continue;
+      if (!normalized) {
+        continue;
+      }
       dedup.add(normalized);
     }
     for (const collection of dedup) {
@@ -528,8 +560,12 @@ export async function getKnowledgeAclSnapshot(params: {
   const readableTags = new Set<string>();
   const writableTags = new Set<string>();
   for (const collection of listing.collections) {
-    if (collection.canRead) readableTags.add(collection.collectionTag);
-    if (collection.canWrite) writableTags.add(collection.collectionTag);
+    if (collection.canRead) {
+      readableTags.add(collection.collectionTag);
+    }
+    if (collection.canWrite) {
+      writableTags.add(collection.collectionTag);
+    }
   }
 
   return {
@@ -543,11 +579,17 @@ export function hasKnowledgeCollectionReadAccess(
   snapshot: KnowledgeAclSnapshot,
   collection: unknown,
 ): boolean {
-  if (!snapshot.aclEnforced) return true;
+  if (!snapshot.aclEnforced) {
+    return true;
+  }
   const normalized = normalizeKnowledgeCollection(collection, "");
-  if (!normalized) return false;
+  if (!normalized) {
+    return false;
+  }
   const tag = knowledgeCollectionTag(normalized, "");
-  if (!tag) return false;
+  if (!tag) {
+    return false;
+  }
   return snapshot.readableTags.has(tag);
 }
 

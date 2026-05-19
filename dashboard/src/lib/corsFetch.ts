@@ -68,7 +68,9 @@ export async function corsFetch(url: string, init?: RequestInit): Promise<Respon
   // Skip direct fetch for domains known to lack CORS headers
   if (domain && PROXY_ONLY_DOMAINS.has(domain)) {
     const proxyRes = await proxyFetch(url, init);
-    if (proxyRes.status !== 403) return proxyRes;
+    if (proxyRes.status !== 403) {
+      return proxyRes;
+    }
     // Fall through to approval flow if not allowlisted
     const directError = new Error(`CORS proxy returned 403 for ${domain}`);
     const errorData = await proxyRes.json().catch(() => ({}));
@@ -93,7 +95,9 @@ export async function corsFetch(url: string, init?: RequestInit): Promise<Respon
     return res;
   } catch (directError) {
     // Network/CORS error — fall through to proxy
-    if (!domain) throw directError;
+    if (!domain) {
+      throw directError;
+    }
 
     console.log(`[corsFetch] Direct fetch failed for ${domain}, trying proxy...`);
 

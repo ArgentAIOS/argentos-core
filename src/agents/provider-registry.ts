@@ -29,7 +29,9 @@ function readJsonSync(filepath: string): unknown {
 }
 
 function isRegistry(value: unknown): value is ProviderRegistry {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
   const obj = value as Record<string, unknown>;
   return (
     typeof obj.version === "number" && typeof obj.providers === "object" && obj.providers !== null
@@ -130,7 +132,9 @@ export function getRegistryProviders(stateDir?: string): Record<string, Provider
 export function resetProviderToSeed(providerName: string, stateDir?: string): boolean {
   const seed = buildSeedRegistry();
   const seedEntry = seed.providers[providerName];
-  if (!seedEntry) return false;
+  if (!seedEntry) {
+    return false;
+  }
 
   const registry = loadProviderRegistry(stateDir);
   registry.providers[providerName] = seedEntry;

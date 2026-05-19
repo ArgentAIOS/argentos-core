@@ -39,7 +39,9 @@ export async function extractSelfInsights(
   memories: MemoryItem[],
   config: ArgentConfig,
 ): Promise<string[]> {
-  if (memories.length === 0) return [];
+  if (memories.length === 0) {
+    return [];
+  }
 
   const summaries = memories.map((m, i) => `${i + 1}. [${m.memoryType}] ${m.summary}`).join("\n");
   const prompt = SELF_INSIGHT_PROMPT + summaries;
@@ -93,7 +95,9 @@ export function buildDynamicIdentity(store: MemuStore): string {
     .sort((a, b) => {
       const sigDiff =
         (SIGNIFICANCE_PRIORITY[b.significance] ?? 1) - (SIGNIFICANCE_PRIORITY[a.significance] ?? 1);
-      if (sigDiff !== 0) return sigDiff;
+      if (sigDiff !== 0) {
+        return sigDiff;
+      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     })
     .slice(0, 10);
@@ -133,14 +137,18 @@ export function buildDynamicIdentity(store: MemuStore): string {
     .slice(0, 10);
 
   for (const m of itemsWithLessons) {
-    if (m.lesson) lessons.push(m.lesson);
+    if (m.lesson) {
+      lessons.push(m.lesson);
+    }
   }
 
   // From reflections
   const recentReflections = store.getRecentReflections(5);
   for (const r of recentReflections) {
     for (const l of r.lessonsExtracted) {
-      if (!lessons.includes(l)) lessons.push(l);
+      if (!lessons.includes(l)) {
+        lessons.push(l);
+      }
     }
   }
 
@@ -181,7 +189,9 @@ export function buildDynamicIdentity(store: MemuStore): string {
 export function buildIdentityContextFile(store: MemuStore): WorkspaceBootstrapFile | null {
   try {
     const identity = buildDynamicIdentity(store);
-    if (!identity || identity.length < 50) return null;
+    if (!identity || identity.length < 50) {
+      return null;
+    }
 
     const content = [
       "# Identity Context",

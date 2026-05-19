@@ -54,14 +54,18 @@ function makeStore(initialItems: MemoryItem[]): MemuStore {
     }),
     reinforceItem: vi.fn((id: string) => {
       const item = byId().get(id);
-      if (!item) return null;
+      if (!item) {
+        return null;
+      }
       item.reinforcementCount += 1;
       item.lastReinforcedAt = "2026-02-25T12:00:00.000Z";
       return item;
     }),
     deleteItem: vi.fn((id: string) => {
       const idx = items.findIndex((item) => item.id === id);
-      if (idx < 0) return false;
+      if (idx < 0) {
+        return false;
+      }
       items.splice(idx, 1);
       return true;
     }),

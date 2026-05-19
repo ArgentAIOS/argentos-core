@@ -272,7 +272,9 @@ function handleListKeys(): string {
     const grouped = enabledKeys.reduce(
       (acc, key) => {
         const cat = key.category || "Other";
-        if (!acc[cat]) acc[cat] = [];
+        if (!acc[cat]) {
+          acc[cat] = [];
+        }
         acc[cat].push(key);
         return acc;
       },
@@ -634,13 +636,24 @@ function handleList(config?: ArgentConfig): string {
     const statusIcon =
       plugin.status === "loaded" ? "[ON]" : plugin.status === "disabled" ? "[OFF]" : "[ERR]";
     const counts: string[] = [];
-    if (plugin.toolNames.length > 0) counts.push(`${plugin.toolNames.length} tools`);
-    if (plugin.hookCount > 0) counts.push(`${plugin.hookCount} hooks`);
-    if (plugin.gatewayMethods.length > 0)
+    if (plugin.toolNames.length > 0) {
+      counts.push(`${plugin.toolNames.length} tools`);
+    }
+    if (plugin.hookCount > 0) {
+      counts.push(`${plugin.hookCount} hooks`);
+    }
+    if (plugin.gatewayMethods.length > 0) {
       counts.push(`${plugin.gatewayMethods.length} gateway methods`);
-    if (plugin.channelIds.length > 0) counts.push(`${plugin.channelIds.length} channels`);
-    if (plugin.services.length > 0) counts.push(`${plugin.services.length} services`);
-    if (plugin.commands.length > 0) counts.push(`${plugin.commands.length} commands`);
+    }
+    if (plugin.channelIds.length > 0) {
+      counts.push(`${plugin.channelIds.length} channels`);
+    }
+    if (plugin.services.length > 0) {
+      counts.push(`${plugin.services.length} services`);
+    }
+    if (plugin.commands.length > 0) {
+      counts.push(`${plugin.commands.length} commands`);
+    }
 
     const countsStr = counts.length > 0 ? ` (${counts.join(", ")})` : "";
     const origin = plugin.origin ? ` [${plugin.origin}]` : "";
@@ -675,18 +688,31 @@ async function handleGet(params: Record<string, unknown>, config?: ArgentConfig)
 
   if (plugin) {
     parts.push(`Plugin: ${plugin.name} (${plugin.id})`);
-    if (plugin.version) parts.push(`Version: ${plugin.version}`);
-    if (plugin.description) parts.push(`Description: ${plugin.description}`);
+    if (plugin.version) {
+      parts.push(`Version: ${plugin.version}`);
+    }
+    if (plugin.description) {
+      parts.push(`Description: ${plugin.description}`);
+    }
     parts.push(`Status: ${plugin.status}`);
     parts.push(`Origin: ${plugin.origin}`);
     parts.push(`Source: ${plugin.source}`);
     parts.push(`Enabled: ${plugin.enabled}`);
-    if (plugin.toolNames.length > 0) parts.push(`Tools: ${plugin.toolNames.join(", ")}`);
-    if (plugin.hookCount > 0) parts.push(`Hooks: ${plugin.hookCount}`);
-    if (plugin.gatewayMethods.length > 0)
+    if (plugin.toolNames.length > 0) {
+      parts.push(`Tools: ${plugin.toolNames.join(", ")}`);
+    }
+    if (plugin.hookCount > 0) {
+      parts.push(`Hooks: ${plugin.hookCount}`);
+    }
+    if (plugin.gatewayMethods.length > 0) {
       parts.push(`Gateway Methods: ${plugin.gatewayMethods.join(", ")}`);
-    if (plugin.channelIds.length > 0) parts.push(`Channels: ${plugin.channelIds.join(", ")}`);
-    if (plugin.error) parts.push(`Error: ${plugin.error}`);
+    }
+    if (plugin.channelIds.length > 0) {
+      parts.push(`Channels: ${plugin.channelIds.join(", ")}`);
+    }
+    if (plugin.error) {
+      parts.push(`Error: ${plugin.error}`);
+    }
   }
 
   // Try to read source files from extensions dir
@@ -797,8 +823,12 @@ async function handleDelete(
   }
 
   const parts: string[] = [`Plugin "${pluginId}" deleted.`];
-  if (filesDeleted) parts.push(`  - Removed directory: ${pluginDir}`);
-  if (configUpdated) parts.push(`  - Removed config entry`);
+  if (filesDeleted) {
+    parts.push(`  - Removed directory: ${pluginDir}`);
+  }
+  if (configUpdated) {
+    parts.push(`  - Removed config entry`);
+  }
   parts.push(``);
   parts.push(`Restart the gateway for changes to take effect.`);
 

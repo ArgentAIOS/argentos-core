@@ -106,19 +106,31 @@ const MEDIA_EXTENSIONS = new Set([
 
 function getExtension(filePath: string): string {
   const dot = filePath.lastIndexOf(".");
-  if (dot === -1) return "";
+  if (dot === -1) {
+    return "";
+  }
   return filePath.slice(dot).toLowerCase();
 }
 
 function classifyByPath(filePath: string): AEVPToolCategory | null {
   const ext = getExtension(filePath);
-  if (CODE_EXTENSIONS.has(ext)) return "code";
-  if (DOC_EXTENSIONS.has(ext)) return "create";
-  if (MEDIA_EXTENSIONS.has(ext)) return "create";
+  if (CODE_EXTENSIONS.has(ext)) {
+    return "code";
+  }
+  if (DOC_EXTENSIONS.has(ext)) {
+    return "create";
+  }
+  if (MEDIA_EXTENSIONS.has(ext)) {
+    return "create";
+  }
   // Path-based heuristics
   const lower = filePath.toLowerCase();
-  if (lower.includes("/src/") || lower.includes("/lib/") || lower.includes("/test")) return "code";
-  if (lower.includes("/docs/") || lower.includes("/doc/")) return "create";
+  if (lower.includes("/src/") || lower.includes("/lib/") || lower.includes("/test")) {
+    return "code";
+  }
+  if (lower.includes("/docs/") || lower.includes("/doc/")) {
+    return "create";
+  }
   return null;
 }
 
@@ -147,13 +159,19 @@ const ANALYZE_COMMANDS = [
 function classifyByCommand(command: string): AEVPToolCategory | null {
   const trimmed = command.trim();
   for (const re of SEARCH_COMMANDS) {
-    if (re.test(trimmed)) return "search";
+    if (re.test(trimmed)) {
+      return "search";
+    }
   }
   for (const CODE_COMMAND of CODE_COMMANDS) {
-    if (CODE_COMMAND.test(trimmed)) return "code";
+    if (CODE_COMMAND.test(trimmed)) {
+      return "code";
+    }
   }
   for (const re of ANALYZE_COMMANDS) {
-    if (re.test(trimmed)) return "analyze";
+    if (re.test(trimmed)) {
+      return "analyze";
+    }
   }
   return null;
 }
@@ -253,15 +271,29 @@ export function classifyToolActivity(
 
   // 1. Unambiguous tools — always the same category
   const fixed = FIXED_CATEGORIES[lower];
-  if (fixed) return fixed;
+  if (fixed) {
+    return fixed;
+  }
 
   // Prefix matching for tool families
-  if (lower.startsWith("memory_")) return "memory";
-  if (lower.startsWith("doc_panel")) return "analyze";
-  if (lower.startsWith("tts")) return "communicate";
-  if (lower.startsWith("audio_")) return "communicate";
-  if (lower.startsWith("image")) return "create";
-  if (lower.startsWith("edit_")) return "code";
+  if (lower.startsWith("memory_")) {
+    return "memory";
+  }
+  if (lower.startsWith("doc_panel")) {
+    return "analyze";
+  }
+  if (lower.startsWith("tts")) {
+    return "communicate";
+  }
+  if (lower.startsWith("audio_")) {
+    return "communicate";
+  }
+  if (lower.startsWith("image")) {
+    return "create";
+  }
+  if (lower.startsWith("edit_")) {
+    return "code";
+  }
 
   // 2. Context-aware tools — classify by arguments
   if (args) {
@@ -277,7 +309,9 @@ export function classifyToolActivity(
               : null;
       if (filePath) {
         const pathCategory = classifyByPath(filePath);
-        if (pathCategory) return pathCategory;
+        if (pathCategory) {
+          return pathCategory;
+        }
       }
       // No recognizable path — default read to analyze, write to create
       return lower === "read" ? "analyze" : "create";
@@ -295,13 +329,17 @@ export function classifyToolActivity(
               : null;
       if (command) {
         const cmdCategory = classifyByCommand(command);
-        if (cmdCategory) return cmdCategory;
+        if (cmdCategory) {
+          return cmdCategory;
+        }
       }
       return "code"; // exec without recognizable command is probably code
     }
 
     // sessions_spawn / team_spawn — could be communicate or create
-    if (lower === "sessions_spawn" || lower === "team_spawn") return "create";
+    if (lower === "sessions_spawn" || lower === "team_spawn") {
+      return "create";
+    }
   }
 
   return "generic";

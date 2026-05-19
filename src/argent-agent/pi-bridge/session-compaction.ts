@@ -116,8 +116,12 @@ function synthesizeFirstKeptEntryId(session: SessionForCompactionMapping): strin
   const messages = session.messages;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i] as { responseId?: unknown; id?: unknown };
-    if (typeof m.responseId === "string" && m.responseId.length > 0) return m.responseId;
-    if (typeof m.id === "string" && m.id.length > 0) return m.id;
+    if (typeof m.responseId === "string" && m.responseId.length > 0) {
+      return m.responseId;
+    }
+    if (typeof m.id === "string" && m.id.length > 0) {
+      return m.id;
+    }
   }
   return "";
 }

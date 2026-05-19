@@ -79,8 +79,12 @@ async function runAosGooglePreflight(params: {
   }
 
   const args = [AOS_GOOGLE_PREFLIGHT_PATH];
-  if (params.installMissing === true) args.push("--install-missing");
-  if (params.requireAuth !== false) args.push("--require-auth");
+  if (params.installMissing === true) {
+    args.push("--install-missing");
+  }
+  if (params.requireAuth !== false) {
+    args.push("--require-auth");
+  }
   args.push("--json");
 
   try {
@@ -523,7 +527,7 @@ export async function finalizeOnboardingWizard(
     }
 
     console.log(`  Dashboard: ${authedUrl}`);
-    if (false)
+    if (false) {
       await prompter.note(
         // disabled — blocks installer
         [
@@ -537,6 +541,7 @@ export async function finalizeOnboardingWizard(
           .join("\n"),
         "Dashboard ready",
       );
+    }
   }
 
   const webSearchKey = (nextConfig.tools?.web?.search?.apiKey ?? "").trim();

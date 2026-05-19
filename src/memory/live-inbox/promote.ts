@@ -16,7 +16,9 @@ import { contentHash, type MemuStore } from "../memu-store.js";
  * Returns empty string if no candidates are pending.
  */
 export function buildCandidateReviewPrompt(candidates: LiveCandidate[]): string {
-  if (candidates.length === 0) return "";
+  if (candidates.length === 0) {
+    return "";
+  }
 
   const lines = [
     "",
@@ -225,7 +227,9 @@ export function sweepExpiredCandidates(store: MemuStore): number {
     limit: 200,
   });
 
-  if (expired.length === 0) return 0;
+  if (expired.length === 0) {
+    return 0;
+  }
 
   store.markLiveCandidateExpired(expired.map((c) => c.id));
   return expired.length;

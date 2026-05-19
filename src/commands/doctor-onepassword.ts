@@ -38,12 +38,16 @@ export function inspectOnePasswordBackend(): OnePasswordDoctorReport {
   let firstRef: string | undefined;
   let refsDetected = 0;
   for (const entry of store.keys) {
-    if (!entry.value || entry.enabled === false) continue;
+    if (!entry.value || entry.enabled === false) {
+      continue;
+    }
     try {
       const decrypted = decryptSecret(entry.value);
       if (isOnePasswordRef(decrypted)) {
         refsDetected += 1;
-        if (!firstRef) firstRef = decrypted;
+        if (!firstRef) {
+          firstRef = decrypted;
+        }
       }
     } catch {
       // Skip undecryptable entries — they're flagged elsewhere by doctor.
@@ -58,12 +62,16 @@ export function inspectOnePasswordBackend(): OnePasswordDoctorReport {
     errors: [],
   };
 
-  if (!report.active) return report;
+  if (!report.active) {
+    return report;
+  }
 
   const probe = probeOnePasswordHealth({ sampleRef: firstRef });
   report.installed = probe.installed;
   report.tokenPresent = probe.tokenPresent;
-  if (probe.sample) report.sampleOk = probe.sample.ok;
+  if (probe.sample) {
+    report.sampleOk = probe.sample.ok;
+  }
 
   if (!probe.installed) {
     report.errors.push(
@@ -90,7 +98,9 @@ export function inspectOnePasswordBackend(): OnePasswordDoctorReport {
 
 export function noteOnePasswordBackend(): void {
   const report = inspectOnePasswordBackend();
-  if (!report.active) return;
+  if (!report.active) {
+    return;
+  }
 
   const headline = `1Password backend in use (${report.refsDetected} key${
     report.refsDetected === 1 ? "" : "s"

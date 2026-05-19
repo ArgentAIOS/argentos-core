@@ -433,7 +433,9 @@ export async function* coreLoop(config: CoreLoopConfig): AsyncGenerator<CoreEven
   // We intercept loop events for state persistence and Redis publishing
   for await (const event of agentLoopV2(loopConfig)) {
     // Check abort
-    if (signal?.aborted) break;
+    if (signal?.aborted) {
+      break;
+    }
 
     // ── Persist & publish based on event type ──
     switch (event.type) {
@@ -708,7 +710,9 @@ export class InMemoryStateManager implements StateManager {
   ): Promise<void> {
     const turn = this.turns.get(turnId);
     if (turn) {
-      if (!turn.toolResults) turn.toolResults = [];
+      if (!turn.toolResults) {
+        turn.toolResults = [];
+      }
       turn.toolResults.push({ toolCallId, result, isError, durationMs });
     }
   }
@@ -784,6 +788,8 @@ async function safePublish(bus: EventBus, event: AgentLifecycleEvent): Promise<v
  * Format an error to string.
  */
 function formatError(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    return error.message;
+  }
   return String(error);
 }

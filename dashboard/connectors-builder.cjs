@@ -26,7 +26,9 @@ function splitList(value) {
       value.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean),
     );
   }
-  if (typeof value !== "string") return [];
+  if (typeof value !== "string") {
+    return [];
+  }
   return unique(
     value
       .split(/[,\n]/)
@@ -114,17 +116,23 @@ function chooseDefaultConnectorRoot(roots) {
 }
 
 function normalizeActionRows(actions) {
-  if (!Array.isArray(actions)) return [];
+  if (!Array.isArray(actions)) {
+    return [];
+  }
   return actions
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
       const resource = String(entry.resource || "")
         .trim()
         .toLowerCase();
       const action = String(entry.action || "")
         .trim()
         .toLowerCase();
-      if (!resource || !action) return null;
+      if (!resource || !action) {
+        return null;
+      }
       const requiredMode = String(entry.requiredMode || "readonly")
         .trim()
         .toLowerCase();
@@ -297,7 +305,9 @@ function renderConnectorMeta(params) {
 function renderCliModule(params) {
   const groupMap = new Map();
   for (const action of params.actions) {
-    if (!groupMap.has(action.resource)) groupMap.set(action.resource, []);
+    if (!groupMap.has(action.resource)) {
+      groupMap.set(action.resource, []);
+    }
     groupMap.get(action.resource).push(action);
   }
   const lines = [];

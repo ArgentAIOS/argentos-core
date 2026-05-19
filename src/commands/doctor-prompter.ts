@@ -61,8 +61,12 @@ export function createDoctorPrompter(params: {
   return {
     confirm: confirmDefault,
     confirmRepair: async (p) => {
-      if (shouldRepair) return true;
-      if (nonInteractive) return false;
+      if (shouldRepair) {
+        return true;
+      }
+      if (nonInteractive) {
+        return false;
+      }
       return confirmDefault(p);
     },
     confirmAggressive: async (p) => {

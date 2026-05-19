@@ -137,10 +137,18 @@ function asAppForgeInterfaceSource(value: unknown):
     ? value.fieldIds.filter((entry): entry is string => typeof entry === "string")
     : undefined;
   const source: ReturnType<typeof asAppForgeInterfaceSource> = {};
-  if (tableId) source.tableId = tableId;
-  if (viewId) source.viewId = viewId;
-  if (recordId) source.recordId = recordId;
-  if (fieldIds?.length) source.fieldIds = fieldIds;
+  if (tableId) {
+    source.tableId = tableId;
+  }
+  if (viewId) {
+    source.viewId = viewId;
+  }
+  if (recordId) {
+    source.recordId = recordId;
+  }
+  if (fieldIds?.length) {
+    source.fieldIds = fieldIds;
+  }
   return Object.keys(source).length > 0 ? source : undefined;
 }
 

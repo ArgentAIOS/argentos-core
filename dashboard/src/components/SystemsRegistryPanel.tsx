@@ -191,7 +191,9 @@ function summarizeGoogleCheck(check: AosGooglePreflightCheck): string {
       if (status && typeof status === "object") {
         const typed = status as Record<string, unknown>;
         const email = typeof typed.email === "string" ? typed.email : "";
-        if (email) return `Authenticated as ${email}`;
+        if (email) {
+          return `Authenticated as ${email}`;
+        }
       }
       if (typeof details.stderr === "string" && details.stderr) {
         return details.stderr;
@@ -338,7 +340,9 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
   );
 
   useEffect(() => {
-    if (!aosGoogleAutoRefreshUntil) return;
+    if (!aosGoogleAutoRefreshUntil) {
+      return;
+    }
     const interval = globalThis.setInterval(() => {
       if (Date.now() >= aosGoogleAutoRefreshUntil) {
         setAosGoogleAutoRefreshUntil(null);
@@ -353,7 +357,9 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
 
   const filteredConnectors = useMemo(() => {
     const query = connectorQuery.trim().toLowerCase();
-    if (!query) return connectors;
+    if (!query) {
+      return connectors;
+    }
     return connectors.filter((entry) => {
       const haystack = [
         entry.tool,
@@ -373,7 +379,9 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
 
   const filteredTools = useMemo(() => {
     const query = toolQuery.trim().toLowerCase();
-    if (!query) return tools;
+    if (!query) {
+      return tools;
+    }
     return tools.filter((tool) => {
       const haystack = [
         tool.name,
@@ -399,10 +407,15 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
       error: 0,
     };
     for (const connector of connectors) {
-      if (connector.installState === "ready") summary.ready += 1;
-      else if (connector.installState === "needs-setup") summary.needsSetup += 1;
-      else if (connector.installState === "repo-only") summary.repoOnly += 1;
-      else summary.error += 1;
+      if (connector.installState === "ready") {
+        summary.ready += 1;
+      } else if (connector.installState === "needs-setup") {
+        summary.needsSetup += 1;
+      } else if (connector.installState === "repo-only") {
+        summary.repoOnly += 1;
+      } else {
+        summary.error += 1;
+      }
     }
     return summary;
   }, [connectors]);
@@ -410,9 +423,13 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
   const toolCounts = useMemo(() => {
     const summary = { total: tools.length, core: 0, plugin: 0, connector: 0 };
     for (const tool of tools) {
-      if (tool.source === "plugin") summary.plugin += 1;
-      else if (tool.source === "connector") summary.connector += 1;
-      else summary.core += 1;
+      if (tool.source === "plugin") {
+        summary.plugin += 1;
+      } else if (tool.source === "connector") {
+        summary.connector += 1;
+      } else {
+        summary.core += 1;
+      }
     }
     return summary;
   }, [tools]);

@@ -31,7 +31,9 @@ const dashboardNodeModules = path.join(workspaceRoot, "dashboard", "node_modules
 function isPathInside(target: string, root: string): boolean {
   const t = path.resolve(target);
   const r = path.resolve(root);
-  if (t === r) return true;
+  if (t === r) {
+    return true;
+  }
   const rel = path.relative(r, t);
   return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
@@ -64,7 +66,9 @@ async function dashboardHasCrossWorktreeSymlink(): Promise<boolean> {
           return true;
         }
       } else if (recurse && entry.isDirectory() && entry.name.startsWith("@")) {
-        if (await probe(full, false)) return true;
+        if (await probe(full, false)) {
+          return true;
+        }
       }
     }
     return false;

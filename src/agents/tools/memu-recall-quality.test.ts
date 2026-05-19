@@ -782,7 +782,9 @@ const ENTITY_ITEMS: Record<string, string[]> = {
 const ITEM_ENTITIES: Record<string, string[]> = {};
 for (const [entityId, itemIds] of Object.entries(ENTITY_ITEMS)) {
   for (const itemId of itemIds) {
-    if (!ITEM_ENTITIES[itemId]) ITEM_ENTITIES[itemId] = [];
+    if (!ITEM_ENTITIES[itemId]) {
+      ITEM_ENTITIES[itemId] = [];
+    }
     ITEM_ENTITIES[itemId].push(entityId);
   }
 }
@@ -1050,7 +1052,9 @@ describe("MRQL Gold-Set Regression", () => {
     it("deep=true broadens sparse search with token fallback", async () => {
       const originalSearch = mockMemoryAdapter.searchByKeyword;
       const searchMock = vi.fn(async (query: string, limit: number) => {
-        if (query === "very specific nohit phrase") return [];
+        if (query === "very specific nohit phrase") {
+          return [];
+        }
         return mockRecall({ query, limit });
       });
       mockMemoryAdapter.searchByKeyword = searchMock;

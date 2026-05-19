@@ -110,11 +110,17 @@ type UploadConfig = {
 };
 
 function parseBooleanLike(raw: unknown, fallback: boolean): boolean {
-  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "boolean") {
+    return raw;
+  }
   if (typeof raw === "string") {
     const v = raw.trim().toLowerCase();
-    if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
-    if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+    if (v === "true" || v === "1" || v === "yes" || v === "on") {
+      return true;
+    }
+    if (v === "false" || v === "0" || v === "no" || v === "off") {
+      return false;
+    }
   }
   return fallback;
 }
@@ -144,7 +150,9 @@ function extractMediaPath(result: AgentToolResult<unknown>): string | undefined 
 }
 
 function normalizeHashtags(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   return raw
     .filter((tag) => typeof tag === "string")
     .map((tag) => (tag as string).trim().replace(/^#/, ""))
@@ -198,11 +206,15 @@ function safeReadToolDetails(result: AgentToolResult<unknown>): JsonObject {
 
 function getHeygenStatus(payload: JsonObject): string {
   const direct = payload.status;
-  if (typeof direct === "string" && direct.trim()) return direct.trim().toLowerCase();
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim().toLowerCase();
+  }
   const data = payload.data;
   if (data && typeof data === "object") {
     const nested = (data as JsonObject).status;
-    if (typeof nested === "string" && nested.trim()) return nested.trim().toLowerCase();
+    if (typeof nested === "string" && nested.trim()) {
+      return nested.trim().toLowerCase();
+    }
   }
   return "";
 }
@@ -213,16 +225,26 @@ async function delay(ms: number): Promise<void> {
 
 function resolveVideoMime(videoPath: string): string {
   const lower = videoPath.toLowerCase();
-  if (lower.endsWith(".webm")) return "video/webm";
-  if (lower.endsWith(".mov")) return "video/quicktime";
-  if (lower.endsWith(".mkv")) return "video/x-matroska";
+  if (lower.endsWith(".webm")) {
+    return "video/webm";
+  }
+  if (lower.endsWith(".mov")) {
+    return "video/quicktime";
+  }
+  if (lower.endsWith(".mkv")) {
+    return "video/x-matroska";
+  }
   return "video/mp4";
 }
 
 function resolveImageMime(imagePath: string): string {
   const lower = imagePath.toLowerCase();
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
   return "image/jpeg";
 }
 

@@ -37,16 +37,24 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function coerceAgentEntry(value: unknown): AgentEntry | null {
-  if (!isPlainObject(value)) return null;
+  if (!isPlainObject(value)) {
+    return null;
+  }
   const { id, label } = value;
-  if (typeof id !== "string" || id.length === 0) return null;
+  if (typeof id !== "string" || id.length === 0) {
+    return null;
+  }
   return { id, label: typeof label === "string" && label.length > 0 ? label : id };
 }
 
 function coerceAlignmentDoc(value: unknown): AlignmentDoc | null {
-  if (!isPlainObject(value)) return null;
+  if (!isPlainObject(value)) {
+    return null;
+  }
   const { file, label, description } = value;
-  if (typeof file !== "string" || file.length === 0) return null;
+  if (typeof file !== "string" || file.length === 0) {
+    return null;
+  }
   return {
     file,
     label: typeof label === "string" ? label : file,
@@ -67,7 +75,9 @@ function coerceAlignmentDoc(value: unknown): AlignmentDoc | null {
  * calls are safe.
  */
 export function normalizeAlignmentState(data: unknown): AlignmentState | null {
-  if (!isPlainObject(data)) return null;
+  if (!isPlainObject(data)) {
+    return null;
+  }
 
   // If the body is purely an error envelope with no agents/docs hints,
   // surface it as `null` so the loading branch shows instead of an empty

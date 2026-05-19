@@ -55,9 +55,13 @@ export function buildOpenAIAuthHeaders(contentType: string): Record<string, stri
  */
 export function decodeJwtExpSeconds(token: string): number | undefined {
   const trimmed = token?.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   const parts = trimmed.split(".");
-  if (parts.length < 2) return undefined;
+  if (parts.length < 2) {
+    return undefined;
+  }
   try {
     const payloadB64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const padLen = (4 - (payloadB64.length % 4)) % 4;
@@ -78,9 +82,13 @@ export function decodeJwtExpSeconds(token: string): number | undefined {
  */
 export function decodeChatgptAccountId(token: string): string | undefined {
   const trimmed = token?.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   const parts = trimmed.split(".");
-  if (parts.length < 2) return undefined;
+  if (parts.length < 2) {
+    return undefined;
+  }
   try {
     const payloadB64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const padLen = (4 - (payloadB64.length % 4)) % 4;
@@ -115,9 +123,13 @@ export function isAccessTokenExpiring(
   skewSeconds: number = REFRESH_SKEW_SECONDS,
   nowMs: number = Date.now(),
 ): boolean {
-  if (!accessToken) return true;
+  if (!accessToken) {
+    return true;
+  }
   const expSeconds = decodeJwtExpSeconds(accessToken);
-  if (expSeconds == null) return true;
+  if (expSeconds == null) {
+    return true;
+  }
   const expMs = expSeconds * 1000;
   return expMs - nowMs <= skewSeconds * 1000;
 }

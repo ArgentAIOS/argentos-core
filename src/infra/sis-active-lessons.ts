@@ -146,7 +146,9 @@ function scoreLessonRelevance(lesson: Lesson, promptKeywords: Set<string>): numb
   const lessonKeywords = extractKeywords(lessonText);
   let overlapCount = 0;
   for (const kw of promptKeywords) {
-    if (lessonKeywords.has(kw)) overlapCount++;
+    if (lessonKeywords.has(kw)) {
+      overlapCount++;
+    }
   }
   const keywordScore = promptKeywords.size > 0 ? overlapCount / promptKeywords.size : 0;
 
@@ -293,7 +295,9 @@ export async function retrieveActiveLessons(params: {
  * system prompt. Returns empty string if no lessons.
  */
 export function formatLessonsForPrompt(lessons: ActiveLesson[]): string {
-  if (lessons.length === 0) return "";
+  if (lessons.length === 0) {
+    return "";
+  }
   return encodeForPrompt(
     {
       lessons: lessons.map((l) => ({

@@ -97,10 +97,14 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter; bod
   if (yamlBlock) {
     for (const line of yamlBlock.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
 
       const colonIdx = trimmed.indexOf(":");
-      if (colonIdx === -1) continue;
+      if (colonIdx === -1) {
+        continue;
+      }
 
       const key = trimmed.slice(0, colonIdx).trim();
       let value: string | boolean = trimmed.slice(colonIdx + 1).trim();
@@ -191,16 +195,24 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
       if (stat.isFile() && entry.endsWith(".md")) {
         // Direct .md child
         const result = loadSkillFile(fullPath, resolvedDir, source);
-        if (result.skill) skills.push(result.skill);
-        if (result.diagnostic) diagnostics.push(result.diagnostic);
+        if (result.skill) {
+          skills.push(result.skill);
+        }
+        if (result.diagnostic) {
+          diagnostics.push(result.diagnostic);
+        }
       } else if (stat.isDirectory()) {
         // Check for SKILL.md inside subdirectory
         const skillMdPath = join(fullPath, "SKILL.md");
         try {
           statSync(skillMdPath);
           const result = loadSkillFile(skillMdPath, fullPath, source);
-          if (result.skill) skills.push(result.skill);
-          if (result.diagnostic) diagnostics.push(result.diagnostic);
+          if (result.skill) {
+            skills.push(result.skill);
+          }
+          if (result.diagnostic) {
+            diagnostics.push(result.diagnostic);
+          }
         } catch {
           // No SKILL.md in this subdirectory — skip
         }
@@ -250,8 +262,12 @@ export function loadSkills(options?: LoadSkillsOptions): LoadSkillsResult {
           diagnostics.push(...result.diagnostics);
         } else if (stat.isFile() && resolved.endsWith(".md")) {
           const result = loadSkillFile(resolved, resolve(skillPath, ".."), "explicit");
-          if (result.skill) skills.push(result.skill);
-          if (result.diagnostic) diagnostics.push(result.diagnostic);
+          if (result.skill) {
+            skills.push(result.skill);
+          }
+          if (result.diagnostic) {
+            diagnostics.push(result.diagnostic);
+          }
         }
       } catch {
         diagnostics.push({
@@ -280,7 +296,9 @@ export function loadSkills(options?: LoadSkillsOptions): LoadSkillsResult {
  */
 export function formatSkillsForPrompt(skills: Skill[]): string {
   const invocable = skills.filter((s) => !s.disableModelInvocation);
-  if (invocable.length === 0) return "";
+  if (invocable.length === 0) {
+    return "";
+  }
 
   const lines: string[] = ["<agent-skills>"];
 

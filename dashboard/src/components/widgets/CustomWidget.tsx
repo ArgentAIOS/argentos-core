@@ -18,7 +18,9 @@ export function CustomWidget({ widgetId }: CustomWidgetProps) {
   useEffect(() => {
     fetchLocalApi(`/api/widgets/${widgetId}`, { credentials: "include" })
       .then((res) => {
-        if (!res.ok) throw new Error("Widget not found");
+        if (!res.ok) {
+          throw new Error("Widget not found");
+        }
         return res.json();
       })
       .then((data) => setWidget(data.widget))

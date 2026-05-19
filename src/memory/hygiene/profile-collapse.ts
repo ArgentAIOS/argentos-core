@@ -128,9 +128,15 @@ export function operationalProfileSignature(summary: string): string {
 }
 
 function normalizeToken(token: string): string | null {
-  if (!token) return null;
-  if (PLACEHOLDER_TOKEN_SET.has(token)) return null;
-  if (META_STOPWORDS.has(token)) return null;
+  if (!token) {
+    return null;
+  }
+  if (PLACEHOLDER_TOKEN_SET.has(token)) {
+    return null;
+  }
+  if (META_STOPWORDS.has(token)) {
+    return null;
+  }
   let normalized = token;
   if (normalized.length > 5 && normalized.endsWith("ies")) {
     normalized = `${normalized.slice(0, -3)}y`;
@@ -142,14 +148,20 @@ function normalizeToken(token: string): string | null {
   ) {
     normalized = normalized.slice(0, -1);
   }
-  if (!normalized) return null;
-  if (META_STOPWORDS.has(normalized)) return null;
+  if (!normalized) {
+    return null;
+  }
+  if (META_STOPWORDS.has(normalized)) {
+    return null;
+  }
   return normalized;
 }
 
 function semanticTokenSet(summary: string): string[] {
   const normalized = operationalProfileSignature(summary);
-  if (!normalized) return [];
+  if (!normalized) {
+    return [];
+  }
   const tokens = normalized
     .split(" ")
     .map((token) => normalizeToken(token.trim()))
@@ -185,13 +197,17 @@ function pickCanonical(items: MemoryItem[]): MemoryItem {
   const sorted = [...items].sort((a, b) => {
     const sigA = SIGNIFICANCE_RANK[a.significance] ?? 0;
     const sigB = SIGNIFICANCE_RANK[b.significance] ?? 0;
-    if (sigB !== sigA) return sigB - sigA;
+    if (sigB !== sigA) {
+      return sigB - sigA;
+    }
     if (b.reinforcementCount !== a.reinforcementCount) {
       return b.reinforcementCount - a.reinforcementCount;
     }
     const createdA = Date.parse(a.createdAt) || 0;
     const createdB = Date.parse(b.createdAt) || 0;
-    if (createdA !== createdB) return createdA - createdB;
+    if (createdA !== createdB) {
+      return createdA - createdB;
+    }
     return a.id.localeCompare(b.id);
   });
   return sorted[0];
@@ -199,7 +215,9 @@ function pickCanonical(items: MemoryItem[]): MemoryItem {
 
 function listAllProfiles(store: MemuStore, batchSize: number): MemoryItem[] {
   const total = store.countItems("profile");
-  if (total <= 0) return [];
+  if (total <= 0) {
+    return [];
+  }
   const items: MemoryItem[] = [];
   for (let offset = 0; offset < total; offset += batchSize) {
     const page = store.listItems({
@@ -207,7 +225,9 @@ function listAllProfiles(store: MemuStore, batchSize: number): MemoryItem[] {
       limit: batchSize,
       offset,
     });
-    if (page.length === 0) break;
+    if (page.length === 0) {
+      break;
+    }
     items.push(...page);
   }
   return items;
@@ -257,7 +277,9 @@ function buildFuzzyGroups(candidates: GroupingCandidate[]): GroupingCandidate[][
   const sorted = [...candidates].sort((a, b) => {
     const tsA = Date.parse(a.item.createdAt) || 0;
     const tsB = Date.parse(b.item.createdAt) || 0;
-    if (tsA !== tsB) return tsA - tsB;
+    if (tsA !== tsB) {
+      return tsA - tsB;
+    }
     return a.item.id.localeCompare(b.item.id);
   });
 
@@ -336,7 +358,9 @@ export function collapseOperationalProfileSnapshots(
   const collapseGroups: CollapseGroup[] = [];
   const consumed = new Set<string>();
   for (const [signature, group] of exactGroups.entries()) {
-    if (group.length < 2) continue;
+    if (group.length < 2) {
+      continue;
+    }
     for (const candidate of group) {
       consumed.add(candidate.item.id);
     }
@@ -349,8 +373,12 @@ export function collapseOperationalProfileSnapshots(
 
   const tokenGroups = new Map<string, GroupingCandidate[]>();
   for (const candidate of candidates) {
-    if (consumed.has(candidate.item.id)) continue;
-    if (!candidate.tokenKey) continue;
+    if (consumed.has(candidate.item.id)) {
+      continue;
+    }
+    if (!candidate.tokenKey) {
+      continue;
+    }
     const group = tokenGroups.get(candidate.tokenKey);
     if (group) {
       group.push(candidate);
@@ -359,7 +387,9 @@ export function collapseOperationalProfileSnapshots(
     }
   }
   for (const [tokenKey, group] of tokenGroups.entries()) {
-    if (group.length < 2) continue;
+    if (group.length < 2) {
+      continue;
+    }
     for (const candidate of group) {
       consumed.add(candidate.item.id);
     }
@@ -399,9 +429,15 @@ export function collapseOperationalProfileSnapshots(
   for (const grouped of collapseGroups) {
     const group = grouped.items;
     duplicateGroups += 1;
-    if (grouped.phase === "exact") exactDuplicateGroups += 1;
-    if (grouped.phase === "token") tokenDuplicateGroups += 1;
-    if (grouped.phase === "fuzzy") fuzzyDuplicateGroups += 1;
+    if (grouped.phase === "exact") {
+      exactDuplicateGroups += 1;
+    }
+    if (grouped.phase === "token") {
+      tokenDuplicateGroups += 1;
+    }
+    if (grouped.phase === "fuzzy") {
+      fuzzyDuplicateGroups += 1;
+    }
     duplicatesFound += group.length - 1;
 
     const canonical = pickCanonical(group);

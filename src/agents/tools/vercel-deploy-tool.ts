@@ -57,8 +57,12 @@ function asBool(value: unknown): boolean {
 }
 
 function toPayload(raw: unknown): JsonObject | undefined {
-  if (raw === undefined) return undefined;
-  if (!isObject(raw)) throw new Error("payload must be an object");
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!isObject(raw)) {
+    throw new Error("payload must be an object");
+  }
   return raw;
 }
 
@@ -73,9 +77,13 @@ async function vercelRequest(params: {
 }): Promise<unknown> {
   const base = params.apiUrl.replace(/\/+$/, "");
   const url = new URL(`${base}${params.path}`);
-  if (params.teamId) url.searchParams.set("teamId", params.teamId);
+  if (params.teamId) {
+    url.searchParams.set("teamId", params.teamId);
+  }
   for (const [key, value] of Object.entries(params.query || {})) {
-    if (value === undefined) continue;
+    if (value === undefined) {
+      continue;
+    }
     url.searchParams.set(key, String(value));
   }
 
@@ -127,8 +135,9 @@ Actions:
 
       try {
         const token = resolveKey("VERCEL_API_TOKEN") || process.env.VERCEL_API_TOKEN;
-        if (!token)
+        if (!token) {
           throw new Error("No Vercel token found. Add VERCEL_API_TOKEN in Settings > API Keys.");
+        }
 
         const apiUrl =
           readStringParam(params, "api_url") ||
@@ -216,7 +225,9 @@ Actions:
           case "add_domain": {
             const projectId =
               readStringParam(params, "project_id") || readStringParam(params, "project_name");
-            if (!projectId) throw new Error("project_id or project_name is required");
+            if (!projectId) {
+              throw new Error("project_id or project_name is required");
+            }
             const domain = readStringParam(params, "domain", { required: true });
             const payload = await vercelRequest({
               apiUrl,

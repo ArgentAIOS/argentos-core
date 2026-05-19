@@ -368,9 +368,15 @@ function emitSisParseTelemetry(event: string, payload: Record<string, unknown>):
 
 function scoreSisPayloadText(text: string): number {
   const trimmed = text.trim();
-  if (!trimmed) return 0;
-  if (trimmed.includes("[SIS_PATTERNS]")) return 3;
-  if (trimmed.includes('"patterns"')) return 2;
+  if (!trimmed) {
+    return 0;
+  }
+  if (trimmed.includes("[SIS_PATTERNS]")) {
+    return 3;
+  }
+  if (trimmed.includes('"patterns"')) {
+    return 2;
+  }
   return 1;
 }
 
@@ -399,8 +405,12 @@ function selectBestSisReplyPayload(
     return undefined;
   }
   ranked.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (b.length !== a.length) return b.length - a.length;
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    if (b.length !== a.length) {
+      return b.length - a.length;
+    }
     return a.index - b.index;
   });
   return ranked[0]?.payload;
@@ -446,8 +456,12 @@ function extractJsonCandidates(text: string): Array<{ json: string; fallbackUsed
           inString = !inString;
           continue;
         }
-        if (inString) continue;
-        if (ch === "{") depth++;
+        if (inString) {
+          continue;
+        }
+        if (ch === "{") {
+          depth++;
+        }
         if (ch === "}") {
           depth--;
           if (depth === 0) {
@@ -872,11 +886,17 @@ async function runConsolidationOnce(
 function wordJaccard(a: string, b: string): number {
   const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
   const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
-  if (wordsA.size === 0 && wordsB.size === 0) return 1;
-  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+  if (wordsA.size === 0 && wordsB.size === 0) {
+    return 1;
+  }
+  if (wordsA.size === 0 || wordsB.size === 0) {
+    return 0;
+  }
   let intersection = 0;
   for (const w of wordsA) {
-    if (wordsB.has(w)) intersection++;
+    if (wordsB.has(w)) {
+      intersection++;
+    }
   }
   const union = wordsA.size + wordsB.size - intersection;
   return union > 0 ? intersection / union : 0;
@@ -941,7 +961,9 @@ async function createPersonalSkillCandidatesFromLessons(
   memory: MemoryAdapter,
   lessons: Lesson[],
 ): Promise<number> {
-  if (lessons.length === 0) return 0;
+  if (lessons.length === 0) {
+    return 0;
+  }
   const existing = await memory.listPersonalSkillCandidates({ limit: 500 });
   const existingTitles = new Set(
     existing
@@ -956,12 +978,18 @@ async function createPersonalSkillCandidatesFromLessons(
   for (const input of buildPersonalSkillCandidateInputsFromLessons(lessons)) {
     const normalizedTitle = normalizePersonalSkillCandidateTitle(input.title);
     const sourceLessonId = input.sourceLessonIds?.[0];
-    if (existingTitles.has(normalizedTitle)) continue;
-    if (sourceLessonId && existingLessonIds.has(sourceLessonId)) continue;
+    if (existingTitles.has(normalizedTitle)) {
+      continue;
+    }
+    if (sourceLessonId && existingLessonIds.has(sourceLessonId)) {
+      continue;
+    }
 
     await memory.createPersonalSkillCandidate(input);
     existingTitles.add(normalizedTitle);
-    if (sourceLessonId) existingLessonIds.add(sourceLessonId);
+    if (sourceLessonId) {
+      existingLessonIds.add(sourceLessonId);
+    }
     created += 1;
   }
 
@@ -990,17 +1018,25 @@ async function runMaintenanceCycle(cfg: ArgentConfig, memuStore: MemoryAdapter):
   let mergedCount = 0;
 
   for (const [, group] of groups) {
-    if (group.length < 2) continue;
+    if (group.length < 2) {
+      continue;
+    }
 
     // Compare pairs within each tool group
     const toDelete = new Set<string>();
     for (let i = 0; i < group.length; i++) {
-      if (toDelete.has(group[i].id)) continue;
+      if (toDelete.has(group[i].id)) {
+        continue;
+      }
       for (let j = i + 1; j < group.length; j++) {
-        if (toDelete.has(group[j].id)) continue;
+        if (toDelete.has(group[j].id)) {
+          continue;
+        }
 
         const similarity = wordJaccard(group[i].lesson, group[j].lesson);
-        if (similarity < 0.8) continue;
+        if (similarity < 0.8) {
+          continue;
+        }
 
         // Merge: keep the higher-confidence lesson
         const [keeper, duplicate] =
@@ -1074,7 +1110,9 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
   }
 
   function scheduleNext() {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     if (timer) {
       clearTimeout(timer);
       timer = null;
@@ -1112,7 +1150,9 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
   }
 
   async function runCycle() {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
 
     const result = await runConsolidationOnce(cfg);
     if (result.status === "ran") {
@@ -1128,7 +1168,9 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
   }
 
   const updateConfig = (nextCfg: ArgentConfig) => {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     cfg = nextCfg;
     scheduleNext();
   };

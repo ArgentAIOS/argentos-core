@@ -583,7 +583,9 @@ export function createBashTool(
           let size = 0;
           for (let i = lines.length - 1; i >= 0; i--) {
             const lineSize = Buffer.byteLength(lines[i]!, "utf-8") + 1;
-            if (size + lineSize > DEFAULT_MAX_BYTES) break;
+            if (size + lineSize > DEFAULT_MAX_BYTES) {
+              break;
+            }
             kept.unshift(lines[i]!);
             size += lineSize;
           }

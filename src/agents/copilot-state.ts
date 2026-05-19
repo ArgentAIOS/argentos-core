@@ -57,7 +57,9 @@ function stateFilePath(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 function normalizeState(raw: unknown): CopilotState {
-  if (!raw || typeof raw !== "object") return { ...DEFAULT_STATE };
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_STATE };
+  }
   const obj = raw as Partial<CopilotState>;
   const accessModes =
     obj.accessModes && typeof obj.accessModes === "object"

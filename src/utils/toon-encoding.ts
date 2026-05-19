@@ -155,7 +155,9 @@ export function encodeTaskBreakdown(tasks: AtomicTask[], projectName?: string): 
  * Only encodes as TOON if the data is a uniform array of objects.
  */
 export function encodeToolResults(results: Record<string, unknown>[]): string {
-  if (results.length === 0) return "";
+  if (results.length === 0) {
+    return "";
+  }
   return encodeForPrompt({ results });
 }
 

@@ -91,22 +91,40 @@ function isEmbeddingModelName(name: string): boolean {
 function scoreTextModel(name: string): number {
   const normalized = name.toLowerCase();
   let score = 0;
-  if (normalized.includes("qwen3")) score += 100;
-  else if (normalized.includes("qwen")) score += 80;
-  if (/[:/-](72b|32b|30b|14b|8b)\b/.test(normalized)) score += 20;
-  if (/instruct|chat|coder/.test(normalized)) score += 10;
-  if (/embed|embedding|nomic|bge|gte|e5/.test(normalized)) score -= 200;
+  if (normalized.includes("qwen3")) {
+    score += 100;
+  } else if (normalized.includes("qwen")) {
+    score += 80;
+  }
+  if (/[:/-](72b|32b|30b|14b|8b)\b/.test(normalized)) {
+    score += 20;
+  }
+  if (/instruct|chat|coder/.test(normalized)) {
+    score += 10;
+  }
+  if (/embed|embedding|nomic|bge|gte|e5/.test(normalized)) {
+    score -= 200;
+  }
   return score;
 }
 
 function scoreEmbeddingModel(name: string): number {
   const normalized = name.toLowerCase();
   let score = 0;
-  if (normalized.includes("nomic-embed-text")) score += 100;
-  else if (normalized.includes("nomic")) score += 80;
-  if (/embed|embedding/.test(normalized)) score += 30;
-  if (/bge|gte|e5/.test(normalized)) score += 20;
-  if (/qwen|chat|instruct|coder/.test(normalized)) score -= 100;
+  if (normalized.includes("nomic-embed-text")) {
+    score += 100;
+  } else if (normalized.includes("nomic")) {
+    score += 80;
+  }
+  if (/embed|embedding/.test(normalized)) {
+    score += 30;
+  }
+  if (/bge|gte|e5/.test(normalized)) {
+    score += 20;
+  }
+  if (/qwen|chat|instruct|coder/.test(normalized)) {
+    score -= 100;
+  }
   return score;
 }
 

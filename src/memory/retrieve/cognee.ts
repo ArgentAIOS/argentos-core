@@ -53,7 +53,9 @@ export type CogneeSupplementHit = {
 
 export function isCogneeStructuralQuery(query: string): boolean {
   const text = query.toLowerCase();
-  if (!text.trim()) return false;
+  if (!text.trim()) {
+    return false;
+  }
 
   const hasRelationToken =
     /\b(connect|connection|relate|relationship|linked|tie|dependency|between)\b/u.test(text);
@@ -73,7 +75,9 @@ export function resolveCogneeTrigger(params: {
   const retrieval = params.config?.memory?.cognee?.retrieval;
   const cogneeEnabled =
     params.config?.memory?.cognee?.enabled === true && retrieval?.enabled === true;
-  if (!cogneeEnabled) return null;
+  if (!cogneeEnabled) {
+    return null;
+  }
 
   const triggerOnSufficiencyFail = retrieval?.triggerOnSufficiencyFail ?? true;
   if (params.sufficiencyFailed && triggerOnSufficiencyFail) {
@@ -154,13 +158,17 @@ function normalizeCogneeSearchHits(raw: unknown, maxResults: number): CogneeSear
 
   const hits: CogneeSearchHit[] = [];
   for (const entry of payload) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
     const record = entry as Record<string, unknown>;
     const summary = [record.summary, record.text, record.content, record.entity]
       .find((value) => typeof value === "string" && value.trim().length > 0)
       ?.toString()
       .trim();
-    if (!summary) continue;
+    if (!summary) {
+      continue;
+    }
     const scoreRaw = record.score;
     const score = typeof scoreRaw === "number" && Number.isFinite(scoreRaw) ? scoreRaw : 0;
     const source = typeof record.source === "string" ? record.source : undefined;
@@ -171,7 +179,9 @@ function normalizeCogneeSearchHits(raw: unknown, maxResults: number): CogneeSear
           ? record.sourceVaultPath
           : undefined;
     hits.push({ summary, score, source, vaultPath });
-    if (hits.length >= maxResults) break;
+    if (hits.length >= maxResults) {
+      break;
+    }
   }
   return hits;
 }
@@ -185,9 +195,15 @@ function tokenizeForOverlap(text: string): string[] {
 }
 
 function clampScore(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value < 0) return 0;
-  if (value > 1) return 1;
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value < 0) {
+    return 0;
+  }
+  if (value > 1) {
+    return 1;
+  }
   return value;
 }
 
@@ -197,7 +213,9 @@ export function buildCogneeSupplement(params: {
   limit?: number;
 }): CogneeSupplementHit[] {
   const limit = Math.max(1, params.limit ?? 5);
-  if (params.cogneeHits.length === 0) return [];
+  if (params.cogneeHits.length === 0) {
+    return [];
+  }
 
   const maxRawScore = params.cogneeHits.reduce(
     (current, hit) => (hit.score > current ? hit.score : current),
@@ -212,7 +230,9 @@ export function buildCogneeSupplement(params: {
     if (hitTokens.length > 0 && memuTokenSet.size > 0) {
       let overlapCount = 0;
       for (const token of hitTokens) {
-        if (memuTokenSet.has(token)) overlapCount += 1;
+        if (memuTokenSet.has(token)) {
+          overlapCount += 1;
+        }
       }
       overlapScore = clampScore(overlapCount / hitTokens.length);
     }

@@ -138,7 +138,9 @@ export function AvatarCustomizer() {
 
   const handleSaveCustomPreset = useCallback((slotIndex: number) => {
     const name = prompt(`Name for Custom ${slotIndex + 1}:`, `Custom ${slotIndex + 1}`);
-    if (!name) return;
+    if (!name) {
+      return;
+    }
     setConfig((prev) => {
       const slot = saveCustomPreset(slotIndex, name, prev.parameters);
       setCustomPresets(loadCustomPresets());
@@ -244,10 +246,14 @@ export function AvatarCustomizer() {
 
   // Poll avatar position while in calibration mode
   useEffect(() => {
-    if (!calibrationMode) return;
+    if (!calibrationMode) {
+      return;
+    }
     const interval = setInterval(() => {
       const pos = getAvatarPosition();
-      if (pos) setLivePos(pos);
+      if (pos) {
+        setLivePos(pos);
+      }
     }, 100);
     return () => clearInterval(interval);
   }, [calibrationMode]);
@@ -255,7 +261,9 @@ export function AvatarCustomizer() {
   // Lock current position for the active tab
   const lockForTab = useCallback(() => {
     const pos = getAvatarPosition();
-    if (!pos) return;
+    if (!pos) {
+      return;
+    }
     setCustomizerZoomEntry(activeTab, pos);
     setLockedValues((prev) => ({ ...prev, [activeTab]: pos }));
   }, [activeTab]);
@@ -286,7 +294,9 @@ export function AvatarCustomizer() {
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
@@ -313,7 +323,9 @@ export function AvatarCustomizer() {
 
   const mirrorEyesLtoR = useCallback(() => {
     const eyeGroup = PARAMETER_REGISTRY.find((g) => g.key === "eyes");
-    if (!eyeGroup) return;
+    if (!eyeGroup) {
+      return;
+    }
 
     setConfig((prev) => {
       const next = { ...prev, presetId: null as string | null, parameters: { ...prev.parameters } };
@@ -354,11 +366,17 @@ export function AvatarCustomizer() {
 
   const currentPresetName = (() => {
     const pid = editingPreset || config.presetId;
-    if (!pid) return "Custom";
+    if (!pid) {
+      return "Custom";
+    }
     const builtin = PRESETS.find((p) => p.id === pid);
-    if (builtin) return builtin.name;
+    if (builtin) {
+      return builtin.name;
+    }
     const custom = customPresets.find((p) => p.id === pid);
-    if (custom) return custom.name;
+    if (custom) {
+      return custom.name;
+    }
     return pid;
   })();
 
@@ -481,7 +499,9 @@ export function AvatarCustomizer() {
                 onChange={(e) => {
                   const x = Number(e.target.value);
                   const cur = getAvatarPosition();
-                  if (cur) setAvatarPosition({ ...cur, x });
+                  if (cur) {
+                    setAvatarPosition({ ...cur, x });
+                  }
                 }}
                 className="flex-1 h-1.5 accent-green-500 cursor-pointer"
               />
@@ -500,7 +520,9 @@ export function AvatarCustomizer() {
                 onChange={(e) => {
                   const y = Number(e.target.value);
                   const cur = getAvatarPosition();
-                  if (cur) setAvatarPosition({ ...cur, y });
+                  if (cur) {
+                    setAvatarPosition({ ...cur, y });
+                  }
                 }}
                 className="flex-1 h-1.5 accent-green-500 cursor-pointer"
               />
@@ -519,7 +541,9 @@ export function AvatarCustomizer() {
                 onChange={(e) => {
                   const scale = Number(e.target.value);
                   const cur = getAvatarPosition();
-                  if (cur) setAvatarPosition({ ...cur, scale });
+                  if (cur) {
+                    setAvatarPosition({ ...cur, scale });
+                  }
                 }}
                 className="flex-1 h-1.5 accent-green-500 cursor-pointer"
               />
@@ -685,7 +709,9 @@ export function AvatarCustomizer() {
             }
 
             const group = PARAMETER_REGISTRY.find((g) => g.key === activeTab);
-            if (!group) return null;
+            if (!group) {
+              return null;
+            }
             return (
               <ParamGroupPanel
                 group={group}

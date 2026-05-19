@@ -116,26 +116,42 @@ export function buildInjectedAudioAlertMessage(params: {
 
 /** Snap stability to the nearest v3-valid value (0.0, 0.5, or 1.0). */
 function snapStabilityForV3(stability: number): number {
-  if (stability <= 0.25) return 0.0;
-  if (stability >= 0.75) return 1.0;
+  if (stability <= 0.25) {
+    return 0.0;
+  }
+  if (stability >= 0.75) {
+    return 1.0;
+  }
   return 0.5;
 }
 
 /** Resolve a voice name or ID to an ElevenLabs voice ID. */
 function resolveVoiceId(voice?: string): string {
-  if (!voice) return VOICE_MAP[DEFAULT_VOICE];
+  if (!voice) {
+    return VOICE_MAP[DEFAULT_VOICE];
+  }
   const lower = voice.toLowerCase().trim();
-  if (VOICE_MAP[lower]) return VOICE_MAP[lower];
+  if (VOICE_MAP[lower]) {
+    return VOICE_MAP[lower];
+  }
   return voice;
 }
 
 /** Map mood to stability value. */
 function moodToStability(mood?: string): number {
-  if (!mood) return 0.5;
+  if (!mood) {
+    return 0.5;
+  }
   const m = mood.toLowerCase().trim();
-  if (m === "urgent" || m === "excited" || m === "dramatic") return 0.0;
-  if (m === "calm" || m === "soothing" || m === "gentle") return 1.0;
-  if (m === "warning" || m === "serious") return 0.25;
+  if (m === "urgent" || m === "excited" || m === "dramatic") {
+    return 0.0;
+  }
+  if (m === "calm" || m === "soothing" || m === "gentle") {
+    return 1.0;
+  }
+  if (m === "warning" || m === "serious") {
+    return 0.25;
+  }
   return 0.5;
 }
 

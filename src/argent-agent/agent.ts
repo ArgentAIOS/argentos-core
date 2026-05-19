@@ -373,7 +373,9 @@ export class Agent {
     episodeId: string,
     preValence: number,
   ): Promise<void> {
-    if (!this.config.sis) return;
+    if (!this.config.sis) {
+      return;
+    }
 
     for (const candidate of injectedLessons) {
       await this.config.sis.storage.recordInjection({

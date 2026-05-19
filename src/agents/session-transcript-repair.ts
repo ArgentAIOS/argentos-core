@@ -185,7 +185,9 @@ export function stripToolBlocksForNonAnthropicProvider(messages: AgentMessage[])
       const textBlocks: Array<{ type: "text"; text: string }> = [];
 
       for (const block of msg.content) {
-        if (!block || typeof block !== "object") continue;
+        if (!block || typeof block !== "object") {
+          continue;
+        }
         const rec = block as { type?: string; text?: string; name?: string };
 
         if (TOOL_CALL_TYPES.has(rec.type ?? "")) {
@@ -233,8 +235,12 @@ export function stripSimulatedToolCallText(messages: AgentMessage[]): AgentMessa
   const SIMULATED_PATTERN = /^\[Used tool: \w+\]$|^\[Performed tool operations\]$/;
 
   return messages.map((msg) => {
-    if (!msg || typeof msg !== "object") return msg;
-    if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
+    if (!msg || typeof msg !== "object") {
+      return msg;
+    }
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) {
+      return msg;
+    }
 
     const filtered = (msg.content as Array<{ type?: string; text?: string }>).filter((block) => {
       if (block.type === "text" && typeof block.text === "string") {

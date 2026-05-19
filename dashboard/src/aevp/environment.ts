@@ -139,7 +139,9 @@ export function updateElementResonance(targets: string[], intensity: number): vo
   // Clear previous resonance first
   clearElementResonance();
 
-  if (targets.length === 0) return;
+  if (targets.length === 0) {
+    return;
+  }
 
   const selector = targets.join(", ");
   let elements: NodeListOf<Element>;

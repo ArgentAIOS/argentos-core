@@ -165,18 +165,30 @@ function sanitizeFilename(value: string): string {
 }
 
 function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  if (value < min) return min;
-  if (value > max) return max;
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
   return value;
 }
 
 function boolFromUnknown(raw: unknown, fallback: boolean): boolean {
-  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "boolean") {
+    return raw;
+  }
   if (typeof raw === "string") {
     const lower = raw.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(lower)) return true;
-    if (["0", "false", "no", "off"].includes(lower)) return false;
+    if (["1", "true", "yes", "on"].includes(lower)) {
+      return true;
+    }
+    if (["0", "false", "no", "off"].includes(lower)) {
+      return false;
+    }
   }
   return fallback;
 }
@@ -198,15 +210,23 @@ function resolveOutputDirectory(raw?: string): string {
 }
 
 function extensionForOutputFormat(outputFormat: string): string {
-  if (outputFormat.startsWith("mp3_")) return ".mp3";
-  if (outputFormat.startsWith("opus_")) return ".opus";
-  if (outputFormat.startsWith("pcm_")) return ".pcm";
+  if (outputFormat.startsWith("mp3_")) {
+    return ".mp3";
+  }
+  if (outputFormat.startsWith("opus_")) {
+    return ".opus";
+  }
+  if (outputFormat.startsWith("pcm_")) {
+    return ".pcm";
+  }
   return ".audio";
 }
 
 function parsePersonaMap(rawPersonas: unknown): Map<string, string> {
   const personaMap = new Map<string, string>();
-  if (rawPersonas === undefined) return personaMap;
+  if (rawPersonas === undefined) {
+    return personaMap;
+  }
   if (!Array.isArray(rawPersonas)) {
     throw new Error("personas must be an array when provided");
   }
@@ -220,9 +240,15 @@ function parsePersonaMap(rawPersonas: unknown): Map<string, string> {
     const persona = entry as Record<string, unknown>;
     const id = typeof persona.id === "string" ? persona.id.trim() : "";
     const voiceId = typeof persona.voice_id === "string" ? persona.voice_id.trim() : "";
-    if (!id) throw new Error("personas[].id required");
-    if (!voiceId) throw new Error(`personas[${id}].voice_id required`);
-    if (personaMap.has(id)) throw new Error(`Duplicate persona id: ${id}`);
+    if (!id) {
+      throw new Error("personas[].id required");
+    }
+    if (!voiceId) {
+      throw new Error(`personas[${id}].voice_id required`);
+    }
+    if (personaMap.has(id)) {
+      throw new Error(`Duplicate persona id: ${id}`);
+    }
     personaMap.set(id, voiceId);
   }
   return personaMap;
@@ -285,7 +311,9 @@ function parseDialogueInputs(params: Record<string, unknown>): {
 
 function parseMusicOptions(params: Record<string, unknown>): ParsedMusicOptions | undefined {
   const rawMusic = params.music;
-  if (!rawMusic) return undefined;
+  if (!rawMusic) {
+    return undefined;
+  }
   if (typeof rawMusic !== "object") {
     throw new Error("music must be an object when provided");
   }
@@ -298,7 +326,9 @@ function parseMusicOptions(params: Record<string, unknown>): ParsedMusicOptions 
   const bedPath =
     typeof m.bed_path === "string" && m.bed_path.trim() ? resolvePath(m.bed_path) : undefined;
 
-  if (!introPath && !outroPath && !bedPath) return undefined;
+  if (!introPath && !outroPath && !bedPath) {
+    return undefined;
+  }
 
   const introVolume = clamp(typeof m.intro_volume === "number" ? m.intro_volume : 1.0, 0, 4);
   const outroVolume = clamp(typeof m.outro_volume === "number" ? m.outro_volume : 1.0, 0, 4);

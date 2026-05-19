@@ -93,7 +93,9 @@ function parseErrors(text) {
   for (const raw of text.split("\n")) {
     const line = raw.replace(/\r$/, "");
     const m = line.match(ERROR_RE);
-    if (!m) continue;
+    if (!m) {
+      continue;
+    }
     errors.push({
       file: m[1],
       line: Number.parseInt(m[2], 10),

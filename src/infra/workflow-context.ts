@@ -84,7 +84,9 @@ export function buildRetryPrompt(
  * Truncates long responses to keep token usage bounded.
  */
 function summarizeOutput(output: ItemSet): string {
-  if (output.items.length === 0) return "(no output)";
+  if (output.items.length === 0) {
+    return "(no output)";
+  }
 
   const texts: string[] = [];
   for (const item of output.items) {
@@ -98,7 +100,9 @@ function summarizeOutput(output: ItemSet): string {
         const vs = typeof v === "string" ? truncate(v, 60) : String(v);
         return `${k}: ${vs}`;
       });
-      if (keys.length > 5) preview.push(`... +${keys.length - 5} fields`);
+      if (keys.length > 5) {
+        preview.push(`... +${keys.length - 5} fields`);
+      }
       texts.push(preview.join(", "));
     }
   }
@@ -125,12 +129,18 @@ function extractFirstArtifactId(step: StepRecord): string {
  * Format duration in human-readable form for step summaries.
  */
 function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
   const secs = Math.floor(ms / 1000);
-  if (secs < 60) return `${secs}s`;
+  if (secs < 60) {
+    return `${secs}s`;
+  }
   const mins = Math.floor(secs / 60);
   const remainSecs = secs % 60;
-  if (mins < 60) return remainSecs > 0 ? `${mins}m${remainSecs}s` : `${mins}m`;
+  if (mins < 60) {
+    return remainSecs > 0 ? `${mins}m${remainSecs}s` : `${mins}m`;
+  }
   const hours = Math.floor(mins / 60);
   const remainMins = mins % 60;
   return remainMins > 0 ? `${hours}h${remainMins}m` : `${hours}h`;
@@ -140,7 +150,9 @@ function formatDuration(ms: number): string {
  * Truncate a string with ellipsis if it exceeds maxLen.
  */
 function truncate(str: string, maxLen: number): string {
-  if (str.length <= maxLen) return str;
+  if (str.length <= maxLen) {
+    return str;
+  }
   return str.slice(0, maxLen - 3) + "...";
 }
 

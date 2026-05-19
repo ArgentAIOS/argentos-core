@@ -513,12 +513,15 @@ const URGENCY_SIGNALS: UrgencySignalDef[] = [
       const hourMatch = text.match(/(\d+)\+?\s*hours?/i);
       if (hourMatch && /(offline|down|outage|non-responsive|unresponsive)/i.test(text)) {
         const hours = parseInt(hourMatch[1]!, 10);
-        if (hours >= 24)
+        if (hours >= 24) {
           return { name: "extended_downtime", points: 20, reason: `${hours}+ hours downtime` };
-        if (hours >= 8)
+        }
+        if (hours >= 8) {
           return { name: "extended_downtime", points: 15, reason: `${hours}+ hours downtime` };
-        if (hours >= 2)
+        }
+        if (hours >= 2) {
           return { name: "extended_downtime", points: 10, reason: `${hours}+ hours downtime` };
+        }
       }
       if (input.ageHours && input.ageHours > 24) {
         return {
@@ -660,22 +663,32 @@ function computeTierOverride(
   const signalNames = new Set(signals.map((s) => s.name));
 
   // Security threats always T3
-  if (signalNames.has("security_threat")) return "tier3";
+  if (signalNames.has("security_threat")) {
+    return "tier3";
+  }
 
   // Data loss risk → T3
-  if (signalNames.has("data_loss_risk")) return "tier3";
+  if (signalNames.has("data_loss_risk")) {
+    return "tier3";
+  }
 
   // Server down with extended downtime → T3
-  if (signalNames.has("server_down") && signalNames.has("extended_downtime")) return "tier3";
+  if (signalNames.has("server_down") && signalNames.has("extended_downtime")) {
+    return "tier3";
+  }
 
   // Critical urgency (80+) → at least T2
   if (urgencyScore >= 80) {
     const defaultTier = CLASSIFICATION_RULES.find((r) => r.category === category)?.defaultTier;
-    if (defaultTier === "tier1") return "tier2";
+    if (defaultTier === "tier1") {
+      return "tier2";
+    }
   }
 
   // High urgency (60+) with multi-user impact → T2
-  if (urgencyScore >= 60 && signalNames.has("multi_user_impact")) return "tier2";
+  if (urgencyScore >= 60 && signalNames.has("multi_user_impact")) {
+    return "tier2";
+  }
 
   // Return null to use default
   return CLASSIFICATION_RULES.find((r) => r.category === category)?.defaultTier ?? "tier1";
@@ -701,10 +714,18 @@ function computeSlaMinutes(urgencyLevel: UrgencyLevel): number {
 }
 
 function scoreToUrgencyLevel(score: number): UrgencyLevel {
-  if (score >= 80) return "critical";
-  if (score >= 60) return "high";
-  if (score >= 40) return "medium";
-  if (score >= 20) return "low";
+  if (score >= 80) {
+    return "critical";
+  }
+  if (score >= 60) {
+    return "high";
+  }
+  if (score >= 40) {
+    return "medium";
+  }
+  if (score >= 20) {
+    return "low";
+  }
   return "informational";
 }
 
@@ -754,7 +775,9 @@ export function triageTicket(input: TicketInput): TriageResult {
     if (matched && rule.boostKeywords) {
       let keywordHits = 0;
       for (const kw of rule.boostKeywords) {
-        if (lowerText.includes(kw.toLowerCase())) keywordHits++;
+        if (lowerText.includes(kw.toLowerCase())) {
+          keywordHits++;
+        }
       }
       const boostFactor = Math.min(keywordHits * 0.02, 0.05); // max +5% from keywords
       confidence = Math.min(confidence + boostFactor, 1.0);
@@ -763,7 +786,9 @@ export function triageTicket(input: TicketInput): TriageResult {
     if (matched) {
       if (!bestMatch || confidence > bestMatch.confidence) {
         // Demote previous best to related
-        if (bestMatch) relatedCategories.push(bestMatch.rule.category);
+        if (bestMatch) {
+          relatedCategories.push(bestMatch.rule.category);
+        }
         bestMatch = { rule, confidence };
       } else {
         relatedCategories.push(rule.category);
@@ -780,7 +805,9 @@ export function triageTicket(input: TicketInput): TriageResult {
   const urgencySignals: UrgencySignal[] = [];
   for (const signalDef of URGENCY_SIGNALS) {
     const signal = signalDef.evaluate(input, combinedText);
-    if (signal) urgencySignals.push(signal);
+    if (signal) {
+      urgencySignals.push(signal);
+    }
   }
 
   const signalPoints = urgencySignals.reduce((sum, s) => sum + s.points, 0);
@@ -863,7 +890,9 @@ export function triageBatch(tickets: Map<string, TicketInput>): BatchTriageResul
     tierCounts[result.tier]++;
     urgencyCounts[result.urgencyLevel]++;
     categoryCounts[result.category] = (categoryCounts[result.category] ?? 0) + 1;
-    if (result.autoResolvable) autoResolvableCount++;
+    if (result.autoResolvable) {
+      autoResolvableCount++;
+    }
   }
 
   // Sort by urgency score descending

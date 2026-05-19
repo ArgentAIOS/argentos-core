@@ -135,7 +135,9 @@ export function registerApiProvider<TApi extends Api, TOptions extends StreamOpt
  */
 export function getApiProvider(api: Api): ApiProviderInternal | undefined {
   const legacy = getLegacyApiProvider(api);
-  if (!legacy) return undefined;
+  if (!legacy) {
+    return undefined;
+  }
   return {
     api: legacy.api,
     stream: legacy.stream,

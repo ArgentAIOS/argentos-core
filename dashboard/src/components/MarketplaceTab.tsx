@@ -157,7 +157,9 @@ export function MarketplaceTab() {
 
     fetchCatalog
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
         return res.json();
       })
       .then((data) => {
@@ -172,7 +174,9 @@ export function MarketplaceTab() {
 
   // Filter items
   const filteredItems = catalog.filter((item) => {
-    if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
+    if (categoryFilter !== "all" && item.category !== categoryFilter) {
+      return false;
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (

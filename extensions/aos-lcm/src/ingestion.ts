@@ -22,7 +22,9 @@ function extractContent(message: Record<string, unknown>): string {
   const content = message.content;
 
   // String content (simple user messages)
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    return content;
+  }
 
   // Array of content blocks (assistant responses, tool results)
   if (Array.isArray(content)) {
@@ -65,9 +67,15 @@ function extractContent(message: Record<string, unknown>): string {
  */
 function mapRole(message: Record<string, unknown>): "user" | "assistant" | "system" {
   const role = String(message.role ?? "");
-  if (role === "user") return "user";
-  if (role === "assistant") return "assistant";
-  if (role === "toolResult" || role === "tool_result") return "assistant";
+  if (role === "user") {
+    return "user";
+  }
+  if (role === "assistant") {
+    return "assistant";
+  }
+  if (role === "toolResult" || role === "tool_result") {
+    return "assistant";
+  }
   return "system";
 }
 
@@ -89,19 +97,25 @@ export async function ingestFromAgentEnd(
   messages: unknown[],
   config: LcmConfig,
 ): Promise<number> {
-  if (!engine.sessionId) return 0;
+  if (!engine.sessionId) {
+    return 0;
+  }
 
   // Get the count of messages we've already ingested
   const existingCount = engine.conversationStore.count(engine.sessionId);
 
   // Only process messages beyond what we've already captured
   const newMessages = messages.slice(existingCount);
-  if (newMessages.length === 0) return 0;
+  if (newMessages.length === 0) {
+    return 0;
+  }
 
   let ingested = 0;
 
   for (const raw of newMessages) {
-    if (!raw || typeof raw !== "object") continue;
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
     const msg = raw as Record<string, unknown>;
 
     const role = mapRole(msg);
@@ -146,9 +160,15 @@ function extractFilePath(msg: Record<string, unknown>): string | null {
   // Check tool params for file_path or path
   const params = msg.params as Record<string, unknown> | undefined;
   if (params) {
-    if (typeof params.file_path === "string") return params.file_path;
-    if (typeof params.path === "string") return params.path;
-    if (typeof params.filePath === "string") return params.filePath;
+    if (typeof params.file_path === "string") {
+      return params.file_path;
+    }
+    if (typeof params.path === "string") {
+      return params.path;
+    }
+    if (typeof params.filePath === "string") {
+      return params.filePath;
+    }
   }
 
   // Check the tool name for file-related tools
@@ -157,7 +177,9 @@ function extractFilePath(msg: Record<string, unknown>): string | null {
     // Try to extract path from the content itself
     const content = typeof msg.content === "string" ? msg.content : "";
     const pathMatch = content.match(/^(?:File|Reading|Contents of)\s+[`"]?([^\n`"]+)/i);
-    if (pathMatch) return pathMatch[1];
+    if (pathMatch) {
+      return pathMatch[1];
+    }
   }
 
   return null;

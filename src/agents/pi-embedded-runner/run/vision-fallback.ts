@@ -32,21 +32,27 @@ const DEFAULT_PER_IMAGE_TIMEOUT_MS = 15_000;
 const SKIP_NOTE = "[Image attached — description skipped to keep response fast]";
 
 function hasContentArray(msg: unknown): msg is MessageLike & { content: ContentBlock[] } {
-  if (!msg || typeof msg !== "object") return false;
+  if (!msg || typeof msg !== "object") {
+    return false;
+  }
   const m = msg as Record<string, unknown>;
   return Array.isArray(m.content);
 }
 
 function resolvePositiveInt(name: string, fallback: number, min: number, max: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
   return Math.min(Math.max(parsed, min), max);
 }
 
 function countInlineImages(messages: unknown[]): number {
   let count = 0;
   for (const msg of messages) {
-    if (!hasContentArray(msg)) continue;
+    if (!hasContentArray(msg)) {
+      continue;
+    }
     for (const block of msg.content) {
       if (block.type === "image" && block.data) {
         count += 1;
@@ -87,9 +93,13 @@ async function describeImageBlock(
  */
 export function messagesHaveInlineImages(messages: unknown[]): boolean {
   for (const msg of messages) {
-    if (!hasContentArray(msg)) continue;
+    if (!hasContentArray(msg)) {
+      continue;
+    }
     for (const block of msg.content) {
-      if (block.type === "image" && block.data) return true;
+      if (block.type === "image" && block.data) {
+        return true;
+      }
     }
   }
   return false;
@@ -115,8 +125,12 @@ export async function applyVisionFallbackToMessages<T>(
     agentDir?: string;
   },
 ): Promise<T[]> {
-  if (opts.modelHasVision) return messages;
-  if (!messagesHaveInlineImages(messages as unknown[])) return messages;
+  if (opts.modelHasVision) {
+    return messages;
+  }
+  if (!messagesHaveInlineImages(messages as unknown[])) {
+    return messages;
+  }
 
   const totalInlineImages = countInlineImages(messages as unknown[]);
   const maxDescribedImages = resolvePositiveInt(
@@ -212,10 +226,14 @@ export async function applyVisionFallbackToMessages<T>(
  */
 function stripInlineImages<T>(messages: T[]): T[] {
   return messages.map((msg) => {
-    if (!hasContentArray(msg)) return msg;
+    if (!hasContentArray(msg)) {
+      return msg;
+    }
     const blocks = msg.content;
     const hasImages = blocks.some((b) => b.type === "image");
-    if (!hasImages) return msg;
+    if (!hasImages) {
+      return msg;
+    }
 
     const newBlocks = blocks.map((b) =>
       b.type === "image" ? { type: "text", text: "[Image attached — vision not available]" } : b,

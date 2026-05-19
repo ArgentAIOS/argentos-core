@@ -181,8 +181,12 @@ export function shouldProbeNativeSqlite(
   rawStorageConfig?: Partial<StorageConfig> | null,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (env.ARGENT_FORCE_SQLITE_PROBE === "1") return true;
-  if (env.ARGENT_SKIP_SQLITE_PROBE === "1") return false;
+  if (env.ARGENT_FORCE_SQLITE_PROBE === "1") {
+    return true;
+  }
+  if (env.ARGENT_SKIP_SQLITE_PROBE === "1") {
+    return false;
+  }
 
   const storage = resolveStorageConfig(rawStorageConfig ?? undefined);
   const readsSqlite = shouldReadFrom(storage, "sqlite");

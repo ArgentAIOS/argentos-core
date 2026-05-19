@@ -122,8 +122,12 @@ const BINARY_FILE_MIMES = new Set([
 ]);
 
 function isRawTextMime(mimeType: string): boolean {
-  if (mimeType.startsWith("text/")) return true;
-  if (EXTRA_TEXT_MIMES.includes(mimeType)) return true;
+  if (mimeType.startsWith("text/")) {
+    return true;
+  }
+  if (EXTRA_TEXT_MIMES.includes(mimeType)) {
+    return true;
+  }
   return !BINARY_FILE_MIMES.has(mimeType);
 }
 
@@ -144,23 +148,33 @@ function parseCollectionFilter(value: unknown): string[] {
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed) return [];
+    if (!trimmed) {
+      return [];
+    }
     return [trimmed];
   }
   return [];
 }
 
 function getItemExtra(item: unknown): Record<string, unknown> {
-  if (!item || typeof item !== "object") return {};
+  if (!item || typeof item !== "object") {
+    return {};
+  }
   const maybeExtra = (item as { extra?: unknown }).extra;
-  if (!maybeExtra || typeof maybeExtra !== "object") return {};
+  if (!maybeExtra || typeof maybeExtra !== "object") {
+    return {};
+  }
   return maybeExtra as Record<string, unknown>;
 }
 
 function parseCitation(summary: string, fallback?: unknown): string | null {
-  if (typeof fallback === "string" && fallback.trim()) return fallback.trim();
+  if (typeof fallback === "string" && fallback.trim()) {
+    return fallback.trim();
+  }
   const match = /^\s*\[\[citation:([^\]]+)\]\]/i.exec(summary);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return match[1]?.trim() || null;
 }
 
@@ -194,8 +208,12 @@ function normalizeIngestItemExtra(value: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
     const key = normalizeOptionalString(rawKey);
-    if (!key) continue;
-    if (RESERVED_INGEST_EXTRA_KEYS.has(key.toLowerCase())) continue;
+    if (!key) {
+      continue;
+    }
+    if (RESERVED_INGEST_EXTRA_KEYS.has(key.toLowerCase())) {
+      continue;
+    }
 
     if (
       rawValue === null ||
@@ -288,7 +306,9 @@ function normalizeCollectionFromExtra(extra: Record<string, unknown>): string {
 }
 
 function isIngestedKnowledge(extra: Record<string, unknown>): boolean {
-  if (typeof extra.source !== "string") return false;
+  if (typeof extra.source !== "string") {
+    return false;
+  }
   return extra.source === "knowledge_ingest" || extra.source === "vault";
 }
 
@@ -301,7 +321,9 @@ type LibraryCandidate = {
 };
 
 function libraryCandidateFromItem(item: unknown): LibraryCandidate | null {
-  if (!item || typeof item !== "object") return null;
+  if (!item || typeof item !== "object") {
+    return null;
+  }
   const row = item as {
     id?: unknown;
     summary?: unknown;
@@ -309,7 +331,9 @@ function libraryCandidateFromItem(item: unknown): LibraryCandidate | null {
     createdAt?: unknown;
   };
   const id = normalizeOptionalString(row.id);
-  if (!id) return null;
+  if (!id) {
+    return null;
+  }
   return {
     id,
     summary: typeof row.summary === "string" ? row.summary : "",
@@ -330,10 +354,14 @@ function matchesLibraryFilter(
     ingestedOnly: boolean;
   },
 ): boolean {
-  if (candidate.memoryType !== "knowledge") return false;
+  if (candidate.memoryType !== "knowledge") {
+    return false;
+  }
   const extra = candidate.extra;
   const ingested = isIngestedKnowledge(extra);
-  if (params.ingestedOnly && !ingested) return false;
+  if (params.ingestedOnly && !ingested) {
+    return false;
+  }
 
   const rawCollection = normalizeCollectionFromExtra(extra);
   const tagCollection = sanitizeTagValue(rawCollection, "");
@@ -342,20 +370,26 @@ function matchesLibraryFilter(
     const wanted =
       (rawLower && params.collectionFilterRaw.has(rawLower)) ||
       (tagCollection && params.collectionFilterTag.has(tagCollection));
-    if (!wanted) return false;
+    if (!wanted) {
+      return false;
+    }
   }
 
   const sourceFile = normalizeOptionalString(extra.sourceFile);
   if (params.sourceFileFilter) {
     const sourceFileLower = sourceFile.toLowerCase();
     if (params.sourceFileExact) {
-      if (sourceFileLower !== params.sourceFileFilter) return false;
+      if (sourceFileLower !== params.sourceFileFilter) {
+        return false;
+      }
     } else if (!sourceFileLower.includes(params.sourceFileFilter)) {
       return false;
     }
   }
 
-  if (!params.query) return true;
+  if (!params.query) {
+    return true;
+  }
   const summaryText = stripCitation(candidate.summary).toLowerCase();
   const docTitle = normalizeOptionalString(extra.docTitle).toLowerCase();
   const citation = parseCitation(candidate.summary, extra.citation)?.toLowerCase() ?? "";
@@ -376,17 +410,25 @@ function distinctKnowledgeRowsByDocument<
   const deduped = new Map<string, T>();
   for (const row of rows) {
     const key = normalizeOptionalString(row.documentId || row.sourceFile) || "";
-    if (!key) continue;
-    if (!deduped.has(key)) deduped.set(key, row);
+    if (!key) {
+      continue;
+    }
+    if (!deduped.has(key)) {
+      deduped.set(key, row);
+    }
   }
   const values = [...deduped.values()];
-  if (values.length === 0) return rows;
+  if (values.length === 0) {
+    return rows;
+  }
   return values;
 }
 
 function isLikelyBase64(value: string): boolean {
   const trimmed = value.trim();
-  if (trimmed.length < 8 || trimmed.length % 4 !== 0) return false;
+  if (trimmed.length < 8 || trimmed.length % 4 !== 0) {
+    return false;
+  }
   return !/[^A-Za-z0-9+/=]/.test(trimmed);
 }
 
@@ -404,7 +446,9 @@ function chunkTextForIngest(
   const content = String(text || "")
     .replace(/\r\n/g, "\n")
     .trim();
-  if (!content) return [];
+  if (!content) {
+    return [];
+  }
 
   const chunks: Array<{ start: number; end: number; text: string }> = [];
   const size = Math.max(300, Math.min(12000, Number(chunkSize) || 1800));
@@ -414,7 +458,9 @@ function chunkTextForIngest(
   while (start < content.length) {
     const end = Math.min(content.length, start + size);
     chunks.push({ start, end, text: content.slice(start, end) });
-    if (end >= content.length) break;
+    if (end >= content.length) {
+      break;
+    }
     start = Math.max(0, end - ov);
   }
   return chunks;
@@ -426,7 +472,9 @@ function buildLimitsForMime(mimeType: string): InputFileLimits {
   );
   for (const m of EXTRA_TEXT_MIMES) {
     const normalized = normalizeMimeType(m);
-    if (normalized) allowed.add(normalized);
+    if (normalized) {
+      allowed.add(normalized);
+    }
   }
   if (mimeType.startsWith("text/")) {
     allowed.add(mimeType);
@@ -484,7 +532,9 @@ async function extractIngestText(file: KnowledgeIngestFile): Promise<string> {
 
 function resolveVaultRoot(input: string): string {
   const trimmed = normalizeOptionalString(input);
-  if (!trimmed) return "";
+  if (!trimmed) {
+    return "";
+  }
   if (trimmed === "~") {
     return process.env.HOME ?? "";
   }
@@ -501,7 +551,9 @@ function normalizeVaultRelativePath(input: string): string {
     .replace(/^\/+/, "")
     .replace(/\/+$/, "")
     .trim();
-  if (!normalized) return "";
+  if (!normalized) {
+    return "";
+  }
   if (normalized.endsWith("/**")) {
     return normalized.slice(0, -3);
   }
@@ -510,10 +562,14 @@ function normalizeVaultRelativePath(input: string): string {
 
 function shouldExcludeVaultPath(relativePath: string, excludedPaths: string[]): boolean {
   const normalizedRelative = normalizeVaultRelativePath(relativePath).toLowerCase();
-  if (!normalizedRelative) return false;
+  if (!normalizedRelative) {
+    return false;
+  }
   for (const excluded of excludedPaths) {
     const normalizedExcluded = normalizeVaultRelativePath(excluded).toLowerCase();
-    if (!normalizedExcluded) continue;
+    if (!normalizedExcluded) {
+      continue;
+    }
     if (
       normalizedRelative === normalizedExcluded ||
       normalizedRelative.startsWith(`${normalizedExcluded}/`)
@@ -537,12 +593,18 @@ async function collectVaultMarkdownFiles(params: {
     for (const entry of entries) {
       const absolutePath = path.join(currentDir, entry.name);
       const relativePath = path.relative(rootPath, absolutePath).replace(/\\/g, "/");
-      if (!relativePath || relativePath.startsWith("..")) continue;
-      if (shouldExcludeVaultPath(relativePath, params.excludedPaths)) continue;
+      if (!relativePath || relativePath.startsWith("..")) {
+        continue;
+      }
+      if (shouldExcludeVaultPath(relativePath, params.excludedPaths)) {
+        continue;
+      }
 
       if (entry.isDirectory()) {
         await walk(absolutePath);
-        if (files.length >= params.limitFiles) return;
+        if (files.length >= params.limitFiles) {
+          return;
+        }
         continue;
       }
 
@@ -556,7 +618,9 @@ async function collectVaultMarkdownFiles(params: {
         mimeType: "text/markdown",
         content,
       });
-      if (files.length >= params.limitFiles) return;
+      if (files.length >= params.limitFiles) {
+        return;
+      }
     }
   }
 
@@ -920,7 +984,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
 
       const deduped = new Map<string, (typeof merged)[number]>();
       for (const hit of merged) {
-        if (!hit?.item?.id) continue;
+        if (!hit?.item?.id) {
+          continue;
+        }
         const existing = deduped.get(hit.item.id);
         if (!existing || (hit.score ?? 0) > (existing.score ?? 0)) {
           deduped.set(hit.item.id, hit);
@@ -933,7 +999,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
         : dedupedHits
             .map((hit) => {
               const extra = getItemExtra(hit.item);
-              if (!isIngestedKnowledge(extra)) return null;
+              if (!isIngestedKnowledge(extra)) {
+                return null;
+              }
               if (typeof extra.collection === "string" && extra.collection.trim()) {
                 return extra.collection;
               }
@@ -950,10 +1018,14 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
       });
 
       const candidates = dedupedHits.filter((hit) => {
-        if (hit.item.memoryType !== "knowledge") return false;
+        if (hit.item.memoryType !== "knowledge") {
+          return false;
+        }
         const extra = getItemExtra(hit.item);
         const ingested = isIngestedKnowledge(extra);
-        if (ingestedOnly && !ingested) return false;
+        if (ingestedOnly && !ingested) {
+          return false;
+        }
         if (ingested) {
           const collectionValue =
             typeof extra.collection === "string" && extra.collection.trim()
@@ -961,18 +1033,26 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
               : typeof extra.collectionTag === "string"
                 ? extra.collectionTag
                 : "";
-          if (!hasKnowledgeCollectionReadAccess(aclSnapshot, collectionValue)) return false;
+          if (!hasKnowledgeCollectionReadAccess(aclSnapshot, collectionValue)) {
+            return false;
+          }
         }
 
-        if (collectionFilters.length === 0) return true;
+        if (collectionFilters.length === 0) {
+          return true;
+        }
         const rawCollection =
           typeof extra.collection === "string" ? extra.collection.toLowerCase() : "";
         const tagCollection =
           typeof extra.collectionTag === "string"
             ? sanitizeTagValue(extra.collectionTag, "")
             : sanitizeTagValue(rawCollection, "");
-        if (rawCollection && collectionRaw.has(rawCollection)) return true;
-        if (tagCollection && collectionTags.has(tagCollection)) return true;
+        if (rawCollection && collectionRaw.has(rawCollection)) {
+          return true;
+        }
+        if (tagCollection && collectionTags.has(tagCollection)) {
+          return true;
+        }
         return false;
       });
 
@@ -1094,7 +1174,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
 
       const autoCreateCollections = candidates
         .map((candidate) => {
-          if (!isIngestedKnowledge(candidate.extra)) return null;
+          if (!isIngestedKnowledge(candidate.extra)) {
+            return null;
+          }
           const collection = normalizeCollectionFromExtra(candidate.extra);
           return collection || null;
         })
@@ -1110,7 +1192,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
         const ingested = isIngestedKnowledge(extra);
         if (ingested) {
           const collection = normalizeCollectionFromExtra(extra);
-          if (!hasKnowledgeCollectionReadAccess(aclSnapshot, collection)) return false;
+          if (!hasKnowledgeCollectionReadAccess(aclSnapshot, collection)) {
+            return false;
+          }
         }
         return matchesLibraryFilter(candidate, {
           query,
@@ -1174,9 +1258,13 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
         })
         .sort((a, b) => {
           let cmp = 0;
-          if (sort === "title") cmp = a.title.localeCompare(b.title);
-          else if (sort === "type") cmp = a.type.localeCompare(b.type);
-          else cmp = new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime();
+          if (sort === "title") {
+            cmp = a.title.localeCompare(b.title);
+          } else if (sort === "type") {
+            cmp = a.type.localeCompare(b.type);
+          } else {
+            cmp = new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime();
+          }
           return order === "asc" ? cmp : -cmp;
         });
 
@@ -1241,7 +1329,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
 
       const autoCreateCollections = candidates
         .map((candidate) => {
-          if (!isIngestedKnowledge(candidate.extra)) return null;
+          if (!isIngestedKnowledge(candidate.extra)) {
+            return null;
+          }
           const collection = normalizeCollectionFromExtra(candidate.extra);
           return collection || null;
         })
@@ -1260,7 +1350,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
         ) {
           return false;
         }
-        if (explicitIds.length > 0) return explicitIds.includes(candidate.id);
+        if (explicitIds.length > 0) {
+          return explicitIds.includes(candidate.id);
+        }
         return matchesLibraryFilter(candidate, {
           query,
           sourceFileFilter,
@@ -1292,7 +1384,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
       for (const row of limited) {
         try {
           const ok = await memory.deleteItem(row.id);
-          if (ok) deleted += 1;
+          if (ok) {
+            deleted += 1;
+          }
         } catch (err) {
           failed.push({
             id: row.id,
@@ -1349,7 +1443,9 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
 
       const autoCreateCollections = candidates
         .map((candidate) => {
-          if (!isIngestedKnowledge(candidate.extra)) return null;
+          if (!isIngestedKnowledge(candidate.extra)) {
+            return null;
+          }
           const collection = normalizeCollectionFromExtra(candidate.extra);
           return collection || null;
         })

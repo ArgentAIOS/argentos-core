@@ -86,7 +86,9 @@ export function injectTimestamp(message: string, opts?: TimestampInjectionOption
  */
 function formatElapsedTime(nowMs: number, lastMs: number): string | undefined {
   const elapsedMs = nowMs - lastMs;
-  if (elapsedMs < 30_000) return undefined; // Same turn, no need
+  if (elapsedMs < 30_000) {
+    return undefined;
+  } // Same turn, no need
 
   const seconds = Math.floor(elapsedMs / 1000);
   const minutes = Math.floor(seconds / 60);

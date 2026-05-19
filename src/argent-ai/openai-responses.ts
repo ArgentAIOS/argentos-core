@@ -166,7 +166,9 @@ function convertMessagesToInput(messages: Message[]): InputItem[] {
  */
 function splitToolCallId(id: string): [string, string] {
   const pipeIdx = id.indexOf("|");
-  if (pipeIdx === -1) return [id, id];
+  if (pipeIdx === -1) {
+    return [id, id];
+  }
   return [id.slice(0, pipeIdx), id.slice(pipeIdx + 1)];
 }
 
@@ -558,7 +560,9 @@ export function streamOpenAIResponses(
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
 
@@ -567,7 +571,9 @@ export function streamOpenAIResponses(
         buffer = parts.pop() || "";
 
         for (const part of parts) {
-          if (!part.trim()) continue;
+          if (!part.trim()) {
+            continue;
+          }
           for (const sseEvent of parseSSE(part + "\n\n")) {
             processSSEEvent(sseEvent, state, model, eventStream);
           }

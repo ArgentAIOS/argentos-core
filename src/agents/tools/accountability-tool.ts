@@ -70,17 +70,27 @@ function formatTimestamp(ts: number): string {
 
 function scoreTrend(state: ScoreState): "up" | "down" | "flat" {
   const history = state.history;
-  if (history.length < 2) return "flat";
+  if (history.length < 2) {
+    return "flat";
+  }
   const recent = history[0]!.score;
   const prior = history[1]!.score;
-  if (recent > prior) return "up";
-  if (recent < prior) return "down";
+  if (recent > prior) {
+    return "up";
+  }
+  if (recent < prior) {
+    return "down";
+  }
   return "flat";
 }
 
 function trendArrow(trend: "up" | "down" | "flat"): string {
-  if (trend === "up") return "^";
-  if (trend === "down") return "v";
+  if (trend === "up") {
+    return "^";
+  }
+  if (trend === "down") {
+    return "v";
+  }
   return "-";
 }
 
@@ -205,7 +215,9 @@ async function buildJournalView(workspaceDir: string, days: number): Promise<str
     try {
       const raw = await fs.readFile(filePath, "utf-8");
       const entryLines = raw.trim().split("\n").filter(Boolean);
-      if (entryLines.length === 0) continue;
+      if (entryLines.length === 0) {
+        continue;
+      }
 
       lines.push(`## ${dateStr} (${entryLines.length} cycles)`);
       lines.push("");

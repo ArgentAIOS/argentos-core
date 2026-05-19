@@ -49,7 +49,9 @@ function resolveProvider(params: {
         sessionKey: params.agentSessionKey,
         source: "audio_generate",
       });
-      if (key) return { provider: match.provider, apiKey: key };
+      if (key) {
+        return { provider: match.provider, apiKey: key };
+      }
       return null;
     }
     return null;
@@ -60,7 +62,9 @@ function resolveProvider(params: {
       sessionKey: params.agentSessionKey,
       source: "audio_generate",
     });
-    if (key) return { provider: entry.provider, apiKey: key };
+    if (key) {
+      return { provider: entry.provider, apiKey: key };
+    }
   }
   return null;
 }
@@ -71,7 +75,9 @@ async function generateElevenLabs(
   opts: { duration?: number },
 ): Promise<string> {
   const body: Record<string, unknown> = { text: prompt };
-  if (opts.duration) body.duration_seconds = Math.min(opts.duration, 22);
+  if (opts.duration) {
+    body.duration_seconds = Math.min(opts.duration, 22);
+  }
 
   const res = await fetch("https://api.elevenlabs.io/v1/sound-generation", {
     method: "POST",
@@ -120,10 +126,14 @@ async function generateFal(
 
   const json = (await res.json()) as { audio_file?: { url?: string } };
   const audioUrl = json.audio_file?.url;
-  if (!audioUrl) throw new Error("FAL returned no audio URL");
+  if (!audioUrl) {
+    throw new Error("FAL returned no audio URL");
+  }
 
   const audioRes = await fetch(audioUrl);
-  if (!audioRes.ok) throw new Error(`Failed to download FAL audio: ${audioRes.status}`);
+  if (!audioRes.ok) {
+    throw new Error(`Failed to download FAL audio: ${audioRes.status}`);
+  }
 
   const buf = Buffer.from(await audioRes.arrayBuffer());
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "audiogen-"));

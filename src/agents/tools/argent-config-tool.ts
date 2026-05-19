@@ -36,7 +36,9 @@ const ArgentConfigToolSchema = Type.Object({
 
 function extractModels(config: ArgentConfig) {
   const providers = config.models?.providers;
-  if (!providers) return { mode: config.models?.mode ?? "merge", providers: {} };
+  if (!providers) {
+    return { mode: config.models?.mode ?? "merge", providers: {} };
+  }
   const safe: Record<string, { baseUrl: string; api?: string; models: string[] }> = {};
   for (const [id, provider] of Object.entries(providers)) {
     safe[id] = {
@@ -50,7 +52,9 @@ function extractModels(config: ArgentConfig) {
 
 function extractAuth(config: ArgentConfig) {
   const profiles = config.auth?.profiles;
-  if (!profiles) return { profiles: {}, order: config.auth?.order ?? {} };
+  if (!profiles) {
+    return { profiles: {}, order: config.auth?.order ?? {} };
+  }
   const safe: Record<string, { provider: string; mode: string; email?: string }> = {};
   for (const [id, profile] of Object.entries(profiles)) {
     safe[id] = {
@@ -68,7 +72,9 @@ function extractAuth(config: ArgentConfig) {
 
 function extractAgents(config: ArgentConfig) {
   const list = config.agents?.list;
-  if (!list) return { defaults: {}, agents: [] };
+  if (!list) {
+    return { defaults: {}, agents: [] };
+  }
   const safe = list.map((agent) => ({
     id: agent.id,
     name: agent.name,
@@ -91,10 +97,14 @@ function extractAgents(config: ArgentConfig) {
 
 function extractChannels(config: ArgentConfig) {
   const channels = config.channels;
-  if (!channels) return {};
+  if (!channels) {
+    return {};
+  }
   const configured: string[] = [];
   for (const key of Object.keys(channels)) {
-    if (key === "defaults") continue;
+    if (key === "defaults") {
+      continue;
+    }
     const val = channels[key];
     if (val && typeof val === "object") {
       configured.push(key);

@@ -7,7 +7,9 @@ import { resolveStateDir } from "../config/paths.js";
 // this file — causing __exportAll to be undefined at evaluation time.
 function loadJsonFileLocalLocal(pathname: string): unknown {
   try {
-    if (!fs.existsSync(pathname)) return undefined;
+    if (!fs.existsSync(pathname)) {
+      return undefined;
+    }
     return JSON.parse(fs.readFileSync(pathname, "utf8")) as unknown;
   } catch {
     return undefined;
@@ -15,7 +17,9 @@ function loadJsonFileLocalLocal(pathname: string): unknown {
 }
 function saveJsonFileLocalLocal(pathname: string, data: unknown) {
   const dir = path.dirname(pathname);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
   fs.writeFileSync(pathname, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   fs.chmodSync(pathname, 0o600);
 }

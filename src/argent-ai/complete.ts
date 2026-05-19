@@ -33,7 +33,9 @@ function withLmStudioCachePrompt<O extends { onPayload?: StreamOptions["onPayloa
   model: Model<Api>,
   options: O | undefined,
 ): O | undefined {
-  if (!isLmStudioModel(model)) return options;
+  if (!isLmStudioModel(model)) {
+    return options;
+  }
   const upstream = options?.onPayload;
   const onPayload: StreamOptions["onPayload"] = async (payload, m) => {
     const upstreamResult = upstream ? await upstream(payload, m) : undefined;

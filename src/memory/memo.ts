@@ -191,7 +191,9 @@ const pendingToolCalls = new Map<string, { toolName: string; args: unknown; star
 export function registerAgentEventObserver(): () => void {
   return onAgentEvent((evt: AgentEventPayload) => {
     // Only process tool events
-    if (evt.stream !== "tool") return;
+    if (evt.stream !== "tool") {
+      return;
+    }
 
     const data = evt.data as {
       phase?: string;
@@ -212,7 +214,9 @@ export function registerAgentEventObserver(): () => void {
     } else if ((data.phase === "result" || data.phase === "error") && data.toolCallId) {
       // Tool completed - capture observation
       const pending = pendingToolCalls.get(data.toolCallId);
-      if (!pending) return;
+      if (!pending) {
+        return;
+      }
 
       pendingToolCalls.delete(data.toolCallId);
 
@@ -255,7 +259,9 @@ export function registerObservationHooks(
   registerInternalHook("tool:result", async (event: InternalHookEvent) => {
     const context = event.context as ToolResultHookContext;
     const db = getObservationsDb(context.workspaceDir);
-    if (!db) return;
+    if (!db) {
+      return;
+    }
 
     try {
       const session = getOrCreateSession(db, event.sessionKey, context.workspaceDir);
@@ -316,7 +322,9 @@ export function registerObservationHooks(
   registerInternalHook("session:start", async (event: InternalHookEvent) => {
     const context = event.context as SessionLifecycleContext;
     const db = getObservationsDb(context.workspaceDir);
-    if (!db) return;
+    if (!db) {
+      return;
+    }
 
     try {
       getOrCreateSession(db, event.sessionKey, context.projectPath);
@@ -329,7 +337,9 @@ export function registerObservationHooks(
   registerInternalHook("session:end", async (event: InternalHookEvent) => {
     const context = event.context as SessionLifecycleContext & { summary?: string };
     const db = getObservationsDb(context.workspaceDir);
-    if (!db) return;
+    if (!db) {
+      return;
+    }
 
     try {
       endSession(db, event.sessionKey, context.summary);

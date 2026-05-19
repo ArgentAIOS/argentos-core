@@ -214,7 +214,9 @@ async function collectMemoryRecallReadinessHealth(
   const entries: Array<Record<string, unknown>> = [];
   for (const line of raw.split("\n").slice(-5000)) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed) {
+      continue;
+    }
     try {
       const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === "object" && parsed.tool === "memory_recall") {

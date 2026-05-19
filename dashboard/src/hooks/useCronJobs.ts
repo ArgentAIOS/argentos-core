@@ -190,15 +190,21 @@ export function tryPersistSnapshot(jobs: CronJob[], step: CronCacheStep): boolea
   // Proactive size check: refuse to write anything past our self-imposed cap
   // even when the browser hasn't yet complained. This bounds our footprint
   // when the underlying quota is still nominally available.
-  if (snapshot.length > MAX_CACHE_BYTES) return false;
-  if (snapshot === lastPersistedSnapshot) return true;
+  if (snapshot.length > MAX_CACHE_BYTES) {
+    return false;
+  }
+  if (snapshot === lastPersistedSnapshot) {
+    return true;
+  }
   localStorage.setItem(STORAGE_KEY, snapshot);
   lastPersistedSnapshot = snapshot;
   return true;
 }
 
 export function safePersistCronJobs(jobs: CronJob[]): void {
-  if (cronCacheStorageDisabled) return;
+  if (cronCacheStorageDisabled) {
+    return;
+  }
   let lastError: unknown = null;
   // Walk the cascade in order: full cache first, then progressively smaller +
   // lighter projections. We cascade on BOTH a thrown storage error AND a false
@@ -206,7 +212,9 @@ export function safePersistCronJobs(jobs: CronJob[]): void {
   // is full or we're staying under self-imposed limits.
   for (const step of CRON_CACHE_CASCADE) {
     try {
-      if (tryPersistSnapshot(jobs, step)) return;
+      if (tryPersistSnapshot(jobs, step)) {
+        return;
+      }
     } catch (err) {
       lastError = err;
     }
@@ -246,7 +254,9 @@ export function useCronJobs(options: UseCronJobsOptions = {}) {
   const [cronJobs, setCronJobs] = useState<CronJob[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (!stored) return [];
+      if (!stored) {
+        return [];
+      }
       const parsed = JSON.parse(stored);
       return Array.isArray(parsed) ? (parsed as CronJob[]) : [];
     } catch {
@@ -373,17 +383,29 @@ export function useCronJobs(options: UseCronJobsOptions = {}) {
     if (job.schedule?.kind === "every" && typeof job.schedule?.everyMs === "number") {
       const everyMs = Math.max(job.schedule.everyMs, 1);
       const minutes = Math.round(everyMs / 60_000);
-      if (minutes < 60) return `Every ${minutes} minute${minutes === 1 ? "" : "s"}`;
+      if (minutes < 60) {
+        return `Every ${minutes} minute${minutes === 1 ? "" : "s"}`;
+      }
       const hours = Math.round(minutes / 60);
-      if (minutes % 60 === 0) return `Every ${hours} hour${hours === 1 ? "" : "s"}`;
+      if (minutes % 60 === 0) {
+        return `Every ${hours} hour${hours === 1 ? "" : "s"}`;
+      }
       return `Every ${minutes} minutes`;
     }
     const expr = job.schedule?.expr;
-    if (!expr) return job.schedule?.kind || "Unknown";
+    if (!expr) {
+      return job.schedule?.kind || "Unknown";
+    }
     // Parse common cron expressions
-    if (expr === "*/15 * * * *") return "Every 15 minutes";
-    if (expr === "*/30 * * * *") return "Every 30 minutes";
-    if (expr === "0 * * * *") return "Every hour";
+    if (expr === "*/15 * * * *") {
+      return "Every 15 minutes";
+    }
+    if (expr === "*/30 * * * *") {
+      return "Every 30 minutes";
+    }
+    if (expr === "0 * * * *") {
+      return "Every hour";
+    }
     if (expr.match(/^0 \d+ \* \* \*$/)) {
       const hour = parseInt(expr.split(" ")[1]);
       const ampm = hour >= 12 ? "PM" : "AM";
@@ -403,15 +425,23 @@ export function useCronJobs(options: UseCronJobsOptions = {}) {
   }, []);
 
   const getNextRun = useCallback((job: CronJob) => {
-    if (!job.state?.nextRunAtMs) return null;
+    if (!job.state?.nextRunAtMs) {
+      return null;
+    }
     const next = new Date(job.state.nextRunAtMs);
     const now = new Date();
     const diffMs = next.getTime() - now.getTime();
     const diffMins = Math.round(diffMs / 60000);
 
-    if (diffMins < 1) return "Any moment";
-    if (diffMins < 60) return `In ${diffMins}m`;
-    if (diffMins < 1440) return `In ${Math.round(diffMins / 60)}h`;
+    if (diffMins < 1) {
+      return "Any moment";
+    }
+    if (diffMins < 60) {
+      return `In ${diffMins}m`;
+    }
+    if (diffMins < 1440) {
+      return `In ${Math.round(diffMins / 60)}h`;
+    }
     return next.toLocaleDateString();
   }, []);
 

@@ -166,7 +166,9 @@ async function discoverOpenAICompatModels(
     return models
       .map((model) => {
         const modelId = typeof model?.id === "string" ? model.id.trim() : "";
-        if (!modelId) return null;
+        if (!modelId) {
+          return null;
+        }
         return {
           id: modelId,
           name: modelId,

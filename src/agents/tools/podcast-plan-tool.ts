@@ -153,19 +153,31 @@ function normalizeKey(value: string): string {
 }
 
 function parseBooleanLike(value: unknown, defaultValue: boolean): boolean {
-  if (typeof value === "boolean") return value;
+  if (typeof value === "boolean") {
+    return value;
+  }
   if (typeof value === "string") {
     const v = value.trim().toLowerCase();
-    if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
-    if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+    if (v === "true" || v === "1" || v === "yes" || v === "on") {
+      return true;
+    }
+    if (v === "false" || v === "0" || v === "no" || v === "off") {
+      return false;
+    }
   }
   return defaultValue;
 }
 
 function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  if (value < min) return min;
-  if (value > max) return max;
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
   return value;
 }
 
@@ -188,9 +200,15 @@ function parsePersonas(params: Record<string, unknown>): Persona[] {
     const p = entry as Record<string, unknown>;
     const id = typeof p.id === "string" ? p.id.trim() : "";
     const voiceId = typeof p.voice_id === "string" ? p.voice_id.trim() : "";
-    if (!id) throw new Error(`personas[${i}].id required`);
-    if (!voiceId) throw new Error(`personas[${i}].voice_id required`);
-    if (ids.has(id)) throw new Error(`Duplicate persona id: ${id}`);
+    if (!id) {
+      throw new Error(`personas[${i}].id required`);
+    }
+    if (!voiceId) {
+      throw new Error(`personas[${i}].voice_id required`);
+    }
+    if (ids.has(id)) {
+      throw new Error(`Duplicate persona id: ${id}`);
+    }
     ids.add(id);
     const aliases = Array.isArray(p.aliases)
       ? p.aliases
@@ -209,7 +227,9 @@ function buildSpeakerIndex(personas: Persona[]): Map<string, SpeakerMatch> {
     const keys = [persona.id, ...persona.aliases];
     for (const key of keys) {
       const normalized = normalizeKey(key);
-      if (!normalized) continue;
+      if (!normalized) {
+        continue;
+      }
       if (!index.has(normalized)) {
         index.set(normalized, { personaId: persona.id, voiceId: persona.voiceId });
       }
@@ -219,7 +239,9 @@ function buildSpeakerIndex(personas: Persona[]): Map<string, SpeakerMatch> {
 }
 
 function coerceMusicObject(raw: unknown): Record<string, unknown> | undefined {
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
   if (typeof raw !== "object") {
     throw new Error("music must be an object");
   }
@@ -246,7 +268,9 @@ function parseStructuredDialogue(params: {
     }
     const rec = line as Record<string, unknown>;
     const text = typeof rec.text === "string" ? rec.text.trim() : "";
-    if (!text) throw new Error(`dialogue[${i}].text required`);
+    if (!text) {
+      throw new Error(`dialogue[${i}].text required`);
+    }
 
     const explicitVoice =
       typeof rec.voice_id === "string" && rec.voice_id.trim() ? rec.voice_id.trim() : undefined;
@@ -298,7 +322,9 @@ function parseScriptDialogue(params: {
 
   for (const rawLine of rawLines) {
     const line = rawLine.trim();
-    if (!line) continue;
+    if (!line) {
+      continue;
+    }
     if (line.startsWith("[") && line.endsWith("]")) {
       ignoredLines += 1;
       continue;

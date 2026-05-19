@@ -157,7 +157,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(applied.ok).toBe(true);
-    if (!applied.ok) return;
+    if (!applied.ok) {
+      return;
+    }
     const tableAfterAdd = applied.base.tables.find((t) => t.id === "table-1")!;
     expect(tableAfterAdd.fields.map((f) => f.name)).toContain("Priority");
 
@@ -170,7 +172,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(undone.ok).toBe(true);
-    if (!undone.ok) return;
+    if (!undone.ok) {
+      return;
+    }
     const tableAfterUndo = undone.base.tables.find((t) => t.id === "table-1")!;
     expect(tableAfterUndo.fields.map((f) => f.name)).not.toContain("Priority");
   });
@@ -195,7 +199,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(applied.ok).toBe(true);
-    if (!applied.ok) return;
+    if (!applied.ok) {
+      return;
+    }
     const recordAfter = applied.base.tables
       .find((t) => t.id === "table-1")!
       .records.find((r) => r.id === "record-1")!;
@@ -217,7 +223,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(undone.ok).toBe(true);
-    if (!undone.ok) return;
+    if (!undone.ok) {
+      return;
+    }
     const recordRestored = undone.base.tables
       .find((t) => t.id === "table-1")!
       .records.find((r) => r.id === "record-1")!;
@@ -249,7 +257,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(applied.ok).toBe(true);
-    if (!applied.ok) return;
+    if (!applied.ok) {
+      return;
+    }
 
     const afterDelete = applied.base.tables.find((t) => t.id === "table-1")!;
     expect(afterDelete.records.map((r) => r.id)).not.toContain("record-2");
@@ -269,7 +279,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(undone.ok).toBe(true);
-    if (!undone.ok) return;
+    if (!undone.ok) {
+      return;
+    }
     const restored = undone.base.tables.find((t) => t.id === "table-1")!;
     expect(restored.records.map((r) => r.id)).toContain("record-2");
     const restoredRecord = restored.records.find((r) => r.id === "record-2")!;
@@ -308,7 +320,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(applied.ok).toBe(true);
-    if (!applied.ok) return;
+    if (!applied.ok) {
+      return;
+    }
 
     const tableAfter = applied.base.tables.find((t) => t.id === "table-1")!;
     expect(tableAfter.views?.map((v) => v.id)).toContain("view-kanban");
@@ -322,7 +336,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(undone.ok).toBe(true);
-    if (!undone.ok) return;
+    if (!undone.ok) {
+      return;
+    }
     const tableAfterUndo = undone.base.tables.find((t) => t.id === "table-1")!;
     expect(tableAfterUndo.views?.map((v) => v.id)).not.toContain("view-kanban");
   });
@@ -351,7 +367,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(result.ok).toBe(false);
-    if (result.ok) return;
+    if (result.ok) {
+      return;
+    }
     expect(result.error.code).toBe("appforge_nl_plan_not_ok");
   });
 
@@ -379,7 +397,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(result.ok).toBe(false);
-    if (result.ok) return;
+    if (result.ok) {
+      return;
+    }
     expect(result.error.code).toBe("appforge_nl_acl_denied");
   });
 
@@ -418,7 +438,9 @@ describe("applyPlan / undoPlan round-trip", () => {
       history,
     });
     expect(undoneTwice.ok).toBe(false);
-    if (undoneTwice.ok) return;
+    if (undoneTwice.ok) {
+      return;
+    }
     expect(undoneTwice.error.code).toBe("appforge_nl_invalid_op");
   });
 });

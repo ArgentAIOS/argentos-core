@@ -116,7 +116,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
           { signal: controller.signal },
           8_000,
         );
-        if (!res.ok) throw new Error("Failed to fetch apps");
+        if (!res.ok) {
+          throw new Error("Failed to fetch apps");
+        }
         const data = await res.json();
         setApps(data.apps || []);
         setError(null);
@@ -169,7 +171,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
 
   // SSE listener for instant updates
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
     const eventSource = new EventSource(`${API_BASE}/apps/events`);
 
     eventSource.onmessage = (event) => {
@@ -208,7 +212,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(app),
         });
-        if (!res.ok) throw new Error("Failed to create app");
+        if (!res.ok) {
+          throw new Error("Failed to create app");
+        }
         const data = await res.json();
         setApps((prev) => [data.app, ...prev]);
         return data.app;
@@ -229,7 +235,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updates),
         });
-        if (!res.ok) throw new Error("Failed to update app");
+        if (!res.ok) {
+          throw new Error("Failed to update app");
+        }
         const data = await res.json();
         setApps((prev) => prev.map((a) => (a.id === appId ? data.app : a)));
         return data.app;
@@ -257,7 +265,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
         },
         4_000,
       );
-      if (!res.ok) throw new Error("Failed to delete app");
+      if (!res.ok) {
+        throw new Error("Failed to delete app");
+      }
       setError(null);
       return true;
     } catch (err) {
@@ -292,7 +302,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
   const getApp = useCallback(async (appId: string): Promise<ForgeApp | null> => {
     try {
       const res = await fetchLocalApi(`${API_BASE}/apps/${appId}`);
-      if (!res.ok) throw new Error("Failed to get app");
+      if (!res.ok) {
+        throw new Error("Failed to get app");
+      }
       const data = await res.json();
       return data.app;
     } catch (err) {
@@ -312,7 +324,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
   const pinApp = useCallback(async (appId: string): Promise<ForgeApp | null> => {
     try {
       const res = await fetchLocalApi(`${API_BASE}/apps/${appId}/pin`, { method: "POST" });
-      if (!res.ok) throw new Error("Failed to pin app");
+      if (!res.ok) {
+        throw new Error("Failed to pin app");
+      }
       const data = await res.json();
       setApps((prev) => prev.map((a) => (a.id === appId ? data.app : a)));
       return data.app;
@@ -325,7 +339,9 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
   const searchApps = useCallback(async (query: string): Promise<ForgeApp[]> => {
     try {
       const res = await fetchLocalApi(`${API_BASE}/apps/search?q=${encodeURIComponent(query)}`);
-      if (!res.ok) throw new Error("Failed to search apps");
+      if (!res.ok) {
+        throw new Error("Failed to search apps");
+      }
       const data = await res.json();
       return data.apps || [];
     } catch (err) {

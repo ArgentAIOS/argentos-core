@@ -3,7 +3,9 @@ import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 function readOptionalString(params: Record<string, unknown>, key: string): string | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
   }
@@ -24,7 +26,9 @@ function readOptionalObject(
   key: string,
 ): Record<string, unknown> | undefined {
   const value = params[key];
-  if (value === undefined || value === null) return undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${key} must be an object`);
   }

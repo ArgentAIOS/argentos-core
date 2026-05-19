@@ -60,8 +60,12 @@ describe("async service key tool resolution", () => {
 
   it("vercel_deploy uses the shared async resolver for token and team id", async () => {
     resolveServiceKeyAsyncMock.mockImplementation(async (name: string) => {
-      if (name === "VERCEL_API_TOKEN") return "vercel-secret";
-      if (name === "VERCEL_TEAM_ID") return "team_123";
+      if (name === "VERCEL_API_TOKEN") {
+        return "vercel-secret";
+      }
+      if (name === "VERCEL_TEAM_ID") {
+        return "team_123";
+      }
       return undefined;
     });
     vi.mocked(fetch).mockResolvedValue(
@@ -174,8 +178,12 @@ describe("async service key tool resolution", () => {
 
   it("coolify_deploy uses the shared async resolver for connection context", async () => {
     resolveServiceKeyAsyncMock.mockImplementation(async (name: string) => {
-      if (name === "COOLIFY_API_KEY") return "coolify-secret";
-      if (name === "COOLIFY_API_URL") return "https://coolify.example/api/v1";
+      if (name === "COOLIFY_API_KEY") {
+        return "coolify-secret";
+      }
+      if (name === "COOLIFY_API_URL") {
+        return "https://coolify.example/api/v1";
+      }
       return undefined;
     });
     vi.mocked(fetch).mockResolvedValue(
@@ -212,8 +220,12 @@ describe("async service key tool resolution", () => {
 
   it("heygen_video uses the shared async resolver for API key and default avatar", async () => {
     resolveServiceKeyAsyncMock.mockImplementation(async (name: string) => {
-      if (name === "HEYGEN_API_KEY") return "heygen-secret";
-      if (name === "HEYGEN_DEFAULT_AVATAR_ID") return "avatar-default";
+      if (name === "HEYGEN_API_KEY") {
+        return "heygen-secret";
+      }
+      if (name === "HEYGEN_DEFAULT_AVATAR_ID") {
+        return "avatar-default";
+      }
       return undefined;
     });
     vi.mocked(fetch).mockResolvedValue(

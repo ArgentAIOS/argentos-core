@@ -64,7 +64,9 @@ export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
  * Falls back to SQLite-only if no storage key is present.
  */
 export function resolveStorageConfig(raw?: Partial<StorageConfig>): StorageConfig {
-  if (!raw) return { ...DEFAULT_STORAGE_CONFIG };
+  if (!raw) {
+    return { ...DEFAULT_STORAGE_CONFIG };
+  }
 
   const backend = raw.backend ?? "sqlite";
   return {
