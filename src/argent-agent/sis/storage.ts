@@ -296,9 +296,7 @@ export class LessonStorage {
   private async updateLessonStats(lessonId: number): Promise<void> {
     const history = await this.getInjectionHistory(lessonId, 1000);
 
-    if (history.length === 0) {
-      return;
-    }
+    if (history.length === 0) return;
 
     const injectionCount = history.length;
     const successCount = history.filter((h) => h.successful).length;

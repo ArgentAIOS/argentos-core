@@ -136,12 +136,8 @@ type TasksToolOptions = {
 };
 
 function isWorkerLaneTask(task: Task): boolean {
-  if (task.source === "job") {
-    return true;
-  }
-  if (!task.metadata || typeof task.metadata !== "object") {
-    return false;
-  }
+  if (task.source === "job") return true;
+  if (!task.metadata || typeof task.metadata !== "object") return false;
   return Boolean((task.metadata as Record<string, unknown>).jobAssignmentId);
 }
 
@@ -284,33 +280,21 @@ function taskToRow(task: Task): Record<string, unknown> {
     status: task.status,
     priority: task.priority,
   };
-  if (task.assignee) {
-    row.assignee = task.assignee;
-  }
-  if (task.parentTaskId) {
-    row.parentTaskId = task.parentTaskId;
-  }
-  if (task.dueAt) {
-    row.due = new Date(task.dueAt).toLocaleDateString();
-  }
-  if (task.tags && task.tags.length > 0) {
-    row.tags = task.tags;
-  }
+  if (task.assignee) row.assignee = task.assignee;
+  if (task.parentTaskId) row.parentTaskId = task.parentTaskId;
+  if (task.dueAt) row.due = new Date(task.dueAt).toLocaleDateString();
+  if (task.tags && task.tags.length > 0) row.tags = task.tags;
   return row;
 }
 
 function isProjectTask(task: Task): boolean {
-  if (!task.metadata || typeof task.metadata !== "object") {
-    return false;
-  }
+  if (!task.metadata || typeof task.metadata !== "object") return false;
   return (task.metadata as Record<string, unknown>).type === "project";
 }
 
 function filterTasksByQuery(tasks: Task[], query: string): Task[] {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return [];
-  }
+  if (!normalized) return [];
 
   return tasks.filter((task) => {
     const haystack = [
@@ -336,13 +320,9 @@ async function listAllTasks(
 
   for (let offset = 0; offset < hardCap; offset += pageSize) {
     const page = await storage.tasks.list({ limit: pageSize, offset });
-    if (page.length === 0) {
-      break;
-    }
+    if (page.length === 0) break;
     all.push(...page);
-    if (page.length < pageSize) {
-      break;
-    }
+    if (page.length < pageSize) break;
   }
 
   return options?.includeWorkerTasks ? all : filterOperatorLaneTasks(all);
@@ -354,12 +334,8 @@ async function getProjectWithChildrenFromStorage(
   options?: { includeWorkerTasks?: boolean },
 ): Promise<ProjectWithChildren | null> {
   const project = await storage.tasks.get(projectId);
-  if (!project) {
-    return null;
-  }
-  if (!options?.includeWorkerTasks && isWorkerLaneTask(project)) {
-    return null;
-  }
+  if (!project) return null;
+  if (!options?.includeWorkerTasks && isWorkerLaneTask(project)) return null;
 
   const tasks = await storage.tasks.list({ parentTaskId: project.id, limit: 500 });
   const visibleTasks = options?.includeWorkerTasks ? tasks : filterOperatorLaneTasks(tasks);
@@ -718,9 +694,7 @@ ACTIONS:
           const allTasks = await listAllTasks(storage, { includeWorkerTasks });
           const childByParentId = new Map<string, Task[]>();
           for (const task of allTasks) {
-            if (!task.parentTaskId) {
-              continue;
-            }
+            if (!task.parentTaskId) continue;
             const bucket = childByParentId.get(task.parentTaskId) ?? [];
             bucket.push(task);
             childByParentId.set(task.parentTaskId, bucket);
@@ -783,9 +757,7 @@ ACTIONS:
           if (taskId) {
             // Claim a specific task
             const task = await storage.tasks.get(taskId);
-            if (!task) {
-              return textResult(`Task not found: ${taskId}`);
-            }
+            if (!task) return textResult(`Task not found: ${taskId}`);
             if (!effectiveTeamId && isWorkerLaneTask(task)) {
               return textResult(
                 "Worker/job-assignment tasks must be claimed from a team-scoped worker session.",
@@ -794,17 +766,12 @@ ACTIONS:
             if (effectiveTeamId && task.teamId !== effectiveTeamId) {
               return textResult(`Task does not belong to team: ${effectiveTeamId}`);
             }
-            if (task.assignee) {
-              return textResult(`Task already assigned to: ${task.assignee}`);
-            }
-            if (task.status !== "pending") {
+            if (task.assignee) return textResult(`Task already assigned to: ${task.assignee}`);
+            if (task.status !== "pending")
               return textResult(`Task status is ${task.status}, can only claim pending tasks.`);
-            }
 
             const updated = await storage.tasks.update(task.id, { assignee: claimerKey });
-            if (!updated) {
-              return textResult(`Failed to claim task: ${taskId}`);
-            }
+            if (!updated) return textResult(`Failed to claim task: ${taskId}`);
             return textResult(`Claimed task:\n\n${formatTask(updated)}`);
           }
 
@@ -813,9 +780,7 @@ ACTIONS:
             status: "pending",
             limit: 200,
           };
-          if (effectiveTeamId) {
-            filter.teamId = effectiveTeamId;
-          }
+          if (effectiveTeamId) filter.teamId = effectiveTeamId;
 
           const candidates = (await storage.tasks.list(filter))
             .filter((candidate) => effectiveTeamId || !isWorkerLaneTask(candidate))
@@ -830,9 +795,7 @@ ACTIONS:
             return textResult("Failed to claim task (race condition — try again).");
           }
           const claimed = await storage.tasks.update(candidate.id, { assignee: claimerKey });
-          if (!claimed) {
-            return textResult("Failed to claim task (race condition — try again).");
-          }
+          if (!claimed) return textResult("Failed to claim task (race condition — try again).");
           return textResult(`Claimed task:\n\n${formatTask(claimed)}`);
         }
 
@@ -847,9 +810,7 @@ ACTIONS:
               teamName = teamInfo.name;
             }
           }
-          if (!teamId) {
-            return textResult("No teamId provided and no team found for this session.");
-          }
+          if (!teamId) return textResult("No teamId provided and no team found for this session.");
 
           const limit = typeof params.limit === "number" ? params.limit : 50;
           const statusParam = params.status as TaskStatus | TaskStatus[] | undefined;
@@ -857,14 +818,10 @@ ACTIONS:
             teamId,
             limit,
           };
-          if (statusParam) {
-            filter.status = statusParam;
-          }
+          if (statusParam) filter.status = statusParam;
 
           const tasks = await storage.tasks.list(filter);
-          if (tasks.length === 0) {
-            return textResult("No tasks found for this team.");
-          }
+          if (tasks.length === 0) return textResult("No tasks found for this team.");
           if (teamName) {
             return textResult(
               `Team "${teamName}" — ${tasks.length} task(s):\n\n${formatTaskList(tasks)}`,

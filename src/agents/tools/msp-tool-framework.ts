@@ -235,9 +235,7 @@ export async function mspFetch(params: {
     }
 
     const text = await res.text();
-    if (!text.trim()) {
-      return {};
-    }
+    if (!text.trim()) return {};
     try {
       return JSON.parse(text);
     } catch {
@@ -354,9 +352,7 @@ export function getAuditStats(): Record<
       stats[key] = { calls: 0, errors: 0, totalMs: 0 };
     }
     stats[key].calls++;
-    if (!entry.success) {
-      stats[key].errors++;
-    }
+    if (!entry.success) stats[key].errors++;
     stats[key].totalMs += entry.durationMs;
   }
 

@@ -79,12 +79,8 @@ function parseStreamingJson(partial: string): Record<string, unknown> | null {
     const openBrackets = (attempt.match(/\[/g) || []).length;
     const closeBrackets = (attempt.match(/]/g) || []).length;
 
-    for (let i = 0; i < openBrackets - closeBrackets; i++) {
-      attempt += "]";
-    }
-    for (let i = 0; i < openBraces - closeBraces; i++) {
-      attempt += "}";
-    }
+    for (let i = 0; i < openBrackets - closeBrackets; i++) attempt += "]";
+    for (let i = 0; i < openBraces - closeBraces; i++) attempt += "}";
 
     try {
       return JSON.parse(attempt) as Record<string, unknown>;
@@ -342,9 +338,7 @@ export function streamProxy(
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
+        if (done) break;
 
         if (options.signal?.aborted) {
           throw new Error("Request aborted by user");

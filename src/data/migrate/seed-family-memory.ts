@@ -41,15 +41,9 @@ function hashContent(value: string): string {
 }
 
 function toSignificance(priority?: string | null): "routine" | "noteworthy" | "important" | "core" {
-  if (priority === "urgent") {
-    return "core";
-  }
-  if (priority === "high") {
-    return "important";
-  }
-  if (priority === "normal") {
-    return "noteworthy";
-  }
+  if (priority === "urgent") return "core";
+  if (priority === "high") return "important";
+  if (priority === "normal") return "noteworthy";
   return "routine";
 }
 
@@ -83,13 +77,9 @@ async function insertMemoryItem(
   },
 ): Promise<boolean> {
   const contentHash = hashContent(input.hashSeed);
-  if (await contentHashExists(sql, contentHash)) {
-    return false;
-  }
+  if (await contentHashExists(sql, contentHash)) return false;
 
-  if (DRY_RUN) {
-    return true;
-  }
+  if (DRY_RUN) return true;
 
   const id = crypto.randomUUID();
   await sql`
@@ -188,9 +178,7 @@ async function seedAgent(
       },
       hashSeed: `seed:task:${agentId}:${task.id}:${task.status}:${task.updated_at}`,
     });
-    if (inserted) {
-      taskInserted++;
-    }
+    if (inserted) taskInserted++;
   }
 
   const knowledgeRows = await sql`
@@ -224,9 +212,7 @@ async function seedAgent(
       },
       hashSeed: `seed:shared:${agentId}:${row.id}`,
     });
-    if (inserted) {
-      knowledgeInserted++;
-    }
+    if (inserted) knowledgeInserted++;
   }
 
   return {

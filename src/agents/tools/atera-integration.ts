@@ -117,9 +117,7 @@ class ResponseCache<T> {
 
   get(key: string, ttlMs: number): T | undefined {
     const entry = this.cache.get(key);
-    if (!entry) {
-      return undefined;
-    }
+    if (!entry) return undefined;
     if (Date.now() - entry.cachedAt > ttlMs) {
       this.cache.delete(key);
       return undefined;
@@ -132,9 +130,7 @@ class ResponseCache<T> {
     // Evict old entries
     if (this.cache.size > 200) {
       const oldest = this.cache.keys().next().value;
-      if (oldest) {
-        this.cache.delete(oldest);
-      }
+      if (oldest) this.cache.delete(oldest);
     }
   }
 
@@ -182,9 +178,7 @@ async function ateraGet(
 
   const cacheKey = url.toString();
   const cached = agentCache.get(cacheKey, CACHE_TTL_MS);
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
   const result = await mspFetch({
     url: url.toString(),
@@ -213,9 +207,7 @@ async function ateraGetAll(
     })) as { items?: unknown[] };
     const pageItems = data?.items ?? [];
     items.push(...pageItems);
-    if (pageItems.length < pageSize) {
-      break;
-    }
+    if (pageItems.length < pageSize) break;
   }
   return items;
 }
@@ -386,9 +378,7 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
         config,
       )) as { items?: Agent[] };
       const items = data?.items ?? ([data] as Agent[]);
-      if (items.length === 0) {
-        return textResult(`No agent found with machine name: ${machineName}`);
-      }
+      if (items.length === 0) return textResult(`No agent found with machine name: ${machineName}`);
       agent = items[0]!;
     }
 
@@ -407,9 +397,7 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
   // Customer-wide device health scan
   async customer_scan(params, config) {
     const customerId = params.customer_id as number | undefined;
-    if (!customerId) {
-      return textResult("Error: customer_id is required for customer_scan.");
-    }
+    if (!customerId) return textResult("Error: customer_id is required for customer_scan.");
 
     const agents = (await ateraGetAll(`/agents/customer/${customerId}`, config)) as Agent[];
     const allAlerts = (await ateraGetAll("/alerts", config, undefined, 2)) as Record<
@@ -417,9 +405,7 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
       unknown
     >[];
 
-    if (agents.length === 0) {
-      return textResult(`No devices found for customer ${customerId}.`);
-    }
+    if (agents.length === 0) return textResult(`No devices found for customer ${customerId}.`);
 
     const lines: string[] = [`## Customer Device Health Scan (${agents.length} devices)\n`];
     let onlineCount = 0;
@@ -428,11 +414,8 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
 
     for (const agent of agents) {
       const online = agent.Online === true;
-      if (online) {
-        onlineCount++;
-      } else {
-        offlineCount++;
-      }
+      if (online) onlineCount++;
+      else offlineCount++;
 
       const name = (agent.MachineName ?? agent.AgentName ?? "?") as string;
       const deviceAlerts = allAlerts.filter(
@@ -445,9 +428,7 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
       const memGB = agent.Memory ? Math.round((agent.Memory as number) / 1024) : "?";
       const lastSeen = agent.LastSeen ? new Date(agent.LastSeen as string).toLocaleString() : "?";
 
-      if (!online || deviceAlerts.length > 0) {
-        criticalCount++;
-      }
+      if (!online || deviceAlerts.length > 0) criticalCount++;
 
       lines.push(`${status} **${name}** — ${os} | ${memGB}GB RAM | Last: ${lastSeen}${alertStr}`);
     }
@@ -482,17 +463,13 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
       const cname = (a.CustomerName ?? "Unknown") as string;
       const entry = byCustomer.get(cname) ?? { total: 0, online: 0, alerts: 0 };
       entry.total++;
-      if (a.Online === true) {
-        entry.online++;
-      }
+      if (a.Online === true) entry.online++;
       byCustomer.set(cname, entry);
     }
     for (const alert of allAlerts as Record<string, unknown>[]) {
       const cname = (alert.CustomerName ?? "Unknown") as string;
       const entry = byCustomer.get(cname);
-      if (entry) {
-        entry.alerts++;
-      }
+      if (entry) entry.alerts++;
     }
 
     lines.push("### By Customer");
@@ -527,9 +504,7 @@ const diagnosticsActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
         const lastSeen = a.LastSeen ? new Date(a.LastSeen as string).toLocaleString() : "?";
         lines.push(`  🔴 ${name} (${cname}) — Last seen: ${lastSeen}`);
       }
-      if (offline.length > 15) {
-        lines.push(`  ... and ${offline.length - 15} more`);
-      }
+      if (offline.length > 15) lines.push(`  ... and ${offline.length - 15} more`);
     }
 
     return textResult(lines.join("\n"));
@@ -548,9 +523,7 @@ const remoteActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
     const deviceName = params.device_name as string;
     const customerId = params.customer_id as number;
 
-    if (!title) {
-      return textResult("Error: title is required.");
-    }
+    if (!title) return textResult("Error: title is required.");
 
     const body: Record<string, unknown> = {
       DeviceName: deviceName,
@@ -558,9 +531,7 @@ const remoteActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
       Severity: severity,
       AlertCategoryID: "General",
     };
-    if (customerId) {
-      body.CustomerID = customerId;
-    }
+    if (customerId) body.CustomerID = customerId;
 
     if (!rateLimiter.consume()) {
       return textResult("Rate limited. Wait a few seconds and try again.");
@@ -583,9 +554,7 @@ const remoteActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
   // Dismiss/delete an alert
   async dismiss_alert(params, config) {
     const alertId = params.alert_id as number;
-    if (!alertId) {
-      return textResult("Error: alert_id is required.");
-    }
+    if (!alertId) return textResult("Error: alert_id is required.");
 
     if (!rateLimiter.consume()) {
       return textResult("Rate limited. Wait a few seconds and try again.");
@@ -677,9 +646,7 @@ const remoteActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
       CustomerID: customerId,
       TicketPriority: priority,
     };
-    if (config.technicianId) {
-      body.TechnicianContactID = config.technicianId;
-    }
+    if (config.technicianId) body.TechnicianContactID = config.technicianId;
 
     const result = (await mspFetch({
       url: `${ATERA_BASE}/tickets`,
@@ -744,15 +711,11 @@ function computePatchPosture(agents: Agent[]): PatchPosture {
     if (a.LastSeen) {
       const lastSeen = new Date(a.LastSeen as string).getTime();
       const daysSince = (now - lastSeen) / (1000 * 60 * 60 * 24);
-      if (daysSince > staleDays) {
-        staleAgents.push(a);
-      }
+      if (daysSince > staleDays) staleAgents.push(a);
     }
 
     // Offline detection
-    if (a.Online !== true) {
-      offlineDevices.push(a);
-    }
+    if (a.Online !== true) offlineDevices.push(a);
   }
 
   // Compliance score: 100 - penalties
@@ -814,9 +777,7 @@ const patchActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
         }
       }
     }
-    if (outdatedCount === 0) {
-      lines.push("  No outdated OS versions detected ✓");
-    }
+    if (outdatedCount === 0) lines.push("  No outdated OS versions detected ✓");
 
     return textResult(lines.join("\n"));
   },
@@ -832,9 +793,7 @@ const patchActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
 
     const now = Date.now();
     const stale = agents.filter((a) => {
-      if (!a.LastSeen) {
-        return true;
-      }
+      if (!a.LastSeen) return true;
       const daysSince = (now - new Date(a.LastSeen as string).getTime()) / (1000 * 60 * 60 * 24);
       return daysSince > threshold;
     });
@@ -860,9 +819,7 @@ const patchActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
           : "∞";
         lines.push(`  🔴 ${name} (${customer}) — Last seen: ${lastSeen} (${daysSince} days ago)`);
       }
-      if (stale.length > 25) {
-        lines.push(`  ... and ${stale.length - 25} more`);
-      }
+      if (stale.length > 25) lines.push(`  ... and ${stale.length - 25} more`);
     }
 
     return textResult(lines.join("\n"));
@@ -871,14 +828,10 @@ const patchActions: Record<string, MSPActionHandler<AteraToolConfig>> = {
   // Customer patch posture report
   async customer_posture(params, config) {
     const customerId = params.customer_id as number;
-    if (!customerId) {
-      return textResult("Error: customer_id is required.");
-    }
+    if (!customerId) return textResult("Error: customer_id is required.");
 
     const agents = (await ateraGetAll(`/agents/customer/${customerId}`, config)) as Agent[];
-    if (agents.length === 0) {
-      return textResult(`No devices found for customer ${customerId}.`);
-    }
+    if (agents.length === 0) return textResult(`No devices found for customer ${customerId}.`);
 
     const posture = computePatchPosture(agents);
     const customerName = (agents[0]?.CustomerName ?? `Customer ${customerId}`) as string;
