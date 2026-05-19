@@ -24,6 +24,8 @@ export type AuthChoiceGroupId =
   | "cloudflare-ai-gateway"
   | "moonshot"
   | "zai"
+  | "xai"
+  | "groq"
   | "xiaomi"
   | "opencode-zen"
   | "minimax"
@@ -31,6 +33,14 @@ export type AuthChoiceGroupId =
   | "venice"
   | "qwen"
   | "chutes";
+
+// New onboarding-only choice ids surfaced by issues #296 and #297.
+// The full credential-save handlers in auth-choice.apply.api-providers.ts
+// don't yet recognize these — first-run users still configure the API key
+// via the dashboard ConfigPanel (which reads provider-registry-seed.ts).
+// We widen `AuthChoice` locally so the CLI wizard at least lists the
+// providers; follow-up issue to wire the apply-handlers separately.
+type ExtendedAuthChoice = AuthChoice | "xai-api-key" | "groq-api-key";
 
 export type AuthChoiceGroup = {
   value: AuthChoiceGroupId;
@@ -43,7 +53,7 @@ const AUTH_CHOICE_GROUP_DEFS: {
   value: AuthChoiceGroupId;
   label: string;
   hint?: string;
-  choices: AuthChoice[];
+  choices: ExtendedAuthChoice[];
 }[] = [
   {
     value: "tinyfish",
@@ -122,6 +132,18 @@ const AUTH_CHOICE_GROUP_DEFS: {
     label: "Z.AI",
     hint: "Direct API or Coding Plan",
     choices: ["zai-api-key", "zai-coding-api-key"],
+  },
+  {
+    value: "xai",
+    label: "xAI (Grok)",
+    hint: "API key for Grok-4 / Grok-4 Fast / Grok Code Fast 1",
+    choices: ["xai-api-key"],
+  },
+  {
+    value: "groq",
+    label: "Groq",
+    hint: "Fast hosted Llama / Qwen / GPT-OSS — free tier available",
+    choices: ["groq-api-key"],
   },
   {
     value: "copilot",
@@ -285,6 +307,22 @@ export function buildAuthChoiceOptions(params: {
     hint: "Claude, GPT, Gemini via opencode.ai/zen",
   });
   options.push({ value: "minimax-api", label: "MiniMax M2.1" });
+  // xAI / Groq — see #296 + #297. Cast widens the strict AuthChoice union
+  // for these new onboarding-only ids; the full apply-handler wiring will
+  // come in a follow-up so first-run users can save the key via the CLI.
+  // Until then, the CLI surface lists them so users know the providers
+  // are available, and the dashboard ConfigPanel (driven by the registry
+  // seed) handles credential save.
+  options.push({
+    value: "xai-api-key" as AuthChoice,
+    label: "xAI API key (Grok)",
+    hint: "Grok 4, Grok 4 Fast, Grok Code Fast 1 — get a key at console.x.ai",
+  });
+  options.push({
+    value: "groq-api-key" as AuthChoice,
+    label: "Groq API key",
+    hint: "Fast LPU-hosted Llama / Qwen / GPT-OSS — console.groq.com/keys",
+  });
   if (params.includeSkip) {
     options.push({ value: "skip", label: "Skip for now" });
   }
@@ -300,7 +338,7 @@ export function buildAuthChoiceGroups(params: { store: AuthProfileStore; include
     ...params,
     includeSkip: false,
   });
-  const optionByValue = new Map<AuthChoice, AuthChoiceOption>(
+  const optionByValue = new Map<ExtendedAuthChoice, AuthChoiceOption>(
     options.map((opt) => [opt.value, opt]),
   );
 

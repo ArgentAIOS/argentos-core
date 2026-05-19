@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuthProfileStore } from "../agents/auth-profiles.js";
-import { buildAuthChoiceOptions } from "./auth-choice-options.js";
+import { buildAuthChoiceGroups, buildAuthChoiceOptions } from "./auth-choice-options.js";
 
 describe("buildAuthChoiceOptions", () => {
   it("includes GitHub Copilot", () => {
@@ -138,5 +138,52 @@ describe("buildAuthChoiceOptions", () => {
     });
 
     expect(options.some((opt) => opt.value === "qwen-portal")).toBe(true);
+  });
+
+  it("includes xAI (Grok) auth choice (issue #296)", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const options = buildAuthChoiceOptions({
+      store,
+      includeSkip: false,
+    });
+
+    expect(options.some((opt) => opt.value === ("xai-api-key" as string))).toBe(true);
+  });
+
+  it("includes Groq auth choice (issue #297, Option A)", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const options = buildAuthChoiceOptions({
+      store,
+      includeSkip: false,
+    });
+
+    expect(options.some((opt) => opt.value === ("groq-api-key" as string))).toBe(true);
+  });
+});
+
+describe("buildAuthChoiceGroups", () => {
+  it("surfaces an xai group with the xai-api-key choice (issue #296)", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const { groups } = buildAuthChoiceGroups({ store, includeSkip: false });
+
+    const xaiGroup = groups.find((g) => g.value === "xai");
+    expect(xaiGroup).toBeDefined();
+    expect(xaiGroup?.options.some((opt) => opt.value === ("xai-api-key" as string))).toBe(true);
+  });
+
+  it("surfaces a groq group with the groq-api-key choice (issue #297)", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const { groups } = buildAuthChoiceGroups({ store, includeSkip: false });
+
+    const groqGroup = groups.find((g) => g.value === "groq");
+    expect(groqGroup).toBeDefined();
+    expect(groqGroup?.options.some((opt) => opt.value === ("groq-api-key" as string))).toBe(true);
+  });
+
+  it("does NOT surface an 'inception' group (issue #297, Option B — post-install-only)", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const { groups } = buildAuthChoiceGroups({ store, includeSkip: false });
+
+    expect(groups.find((g) => g.value === ("inception" as never))).toBeUndefined();
   });
 });
