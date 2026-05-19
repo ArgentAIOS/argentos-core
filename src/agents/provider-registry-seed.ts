@@ -11,7 +11,7 @@
 import type { ProviderRegistry, ProviderRegistryEntry } from "../config/types.models.js";
 
 // Current seed version. Bump this to force re-seed on next startup.
-export const SEED_VERSION = 10;
+export const SEED_VERSION = 11;
 
 // ---------------------------------------------------------------------------
 // Onboarding wizard cards
@@ -87,6 +87,26 @@ export const ONBOARDING_PROVIDER_CARD_SEEDS: ReadonlyArray<OnboardingProviderCar
     description:
       "GLM hosted models from Z.AI. Best if you specifically want the GLM family or already use bigmodel.cn.",
     keyUrl: "https://open.bigmodel.cn/",
+    onboardingVisible: true,
+  },
+  {
+    id: "xai",
+    label: "xAI (Grok)",
+    accent: "rose",
+    recommended: "Frontier Grok models",
+    description:
+      "Grok 4, Grok 4 Fast, and Grok Code Fast 1 direct from xAI. Best if you want the current Grok frontier or already have an x.ai API key.",
+    keyUrl: "https://console.x.ai/",
+    onboardingVisible: true,
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    accent: "orange",
+    recommended: "Fastest hosted inference",
+    description:
+      "Llama 3.x, Qwen 3, and GPT-OSS on Groq's LPU cloud — frontier-speed inference at low latency. Free tier available.",
+    keyUrl: "https://console.groq.com/keys",
     onboardingVisible: true,
   },
   {
@@ -302,6 +322,11 @@ const qwenPortal: ProviderRegistryEntry = {
   ],
 };
 
+// post-install-only — see #297 Option B; not surfaced in onboarding by design
+// (no entry in ONBOARDING_PROVIDER_CARD_SEEDS or AUTH_CHOICE_GROUP_DEFS).
+// Mercury 2 is niche enough that we keep the seed entry so post-install
+// configuration via the dashboard ConfigPanel still works, but we don't
+// promote it as a first-run choice.
 const inception: ProviderRegistryEntry = {
   name: "Inception",
   baseUrl: "https://api.inceptionlabs.ai/v1",
@@ -402,6 +427,48 @@ const groq: ProviderRegistryEntry = {
       cost: ZERO_COST,
       contextWindow: 128000,
       maxTokens: 8192,
+    },
+  ],
+};
+
+// xAI (api.x.ai) — Grok model family. Mirrors `xai` section of
+// src/argent-ai/models-db.ts so the runtime + key handling that already
+// exists (model-auth, live-model-filter, family/elon, keychain) now has
+// a registry surface that lets users select Grok during first-run
+// onboarding. Closes the gap documented in issue #296.
+const xai: ProviderRegistryEntry = {
+  name: "xAI",
+  baseUrl: "https://api.x.ai/v1",
+  api: "openai-completions",
+  authType: "api_key",
+  envKeyVar: "XAI_API_KEY",
+  models: [
+    {
+      id: "grok-4",
+      name: "Grok 4",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 3, output: 15, cacheRead: 0.75, cacheWrite: 3 },
+      contextWindow: 256000,
+      maxTokens: 64000,
+    },
+    {
+      id: "grok-4-fast",
+      name: "Grok 4 Fast",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0.2, output: 0.5, cacheRead: 0.05, cacheWrite: 0.2 },
+      contextWindow: 2000000,
+      maxTokens: 30000,
+    },
+    {
+      id: "grok-code-fast-1",
+      name: "Grok Code Fast 1",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0.2, output: 1.5, cacheRead: 0.05, cacheWrite: 0.2 },
+      contextWindow: 256000,
+      maxTokens: 10000,
     },
   ],
 };
@@ -938,6 +1005,7 @@ export function buildSeedRegistry(): ProviderRegistry {
       groq,
       synthetic,
       venice,
+      xai,
       zai,
     },
   };
