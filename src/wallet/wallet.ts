@@ -84,9 +84,7 @@ export class AgenticWallet extends EventEmitter {
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
+    if (this.initialized) return;
 
     try {
       // Dynamic import so AgentKit is optional — ArgentOS works without wallet
