@@ -29,6 +29,8 @@ export type AuthChoice =
   | "mistral-api-key"
   | "zai-api-key"
   | "zai-coding-api-key"
+  | "xai-api-key"
+  | "groq-api-key"
   | "xiaomi-api-key"
   | "minimax-cloud"
   | "minimax"

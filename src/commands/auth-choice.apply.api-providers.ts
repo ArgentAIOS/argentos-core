@@ -15,6 +15,8 @@ import {
   applyAuthProfileConfig,
   applyCloudflareAiGatewayConfig,
   applyCloudflareAiGatewayProviderConfig,
+  applyGroqConfig,
+  applyGroqProviderConfig,
   applyKimiCodeConfig,
   applyKimiCodeProviderConfig,
   applyMistralConfig,
@@ -33,12 +35,15 @@ import {
   applyVeniceProviderConfig,
   applyVercelAiGatewayConfig,
   applyVercelAiGatewayProviderConfig,
+  applyXaiConfig,
+  applyXaiProviderConfig,
   applyXiaomiConfig,
   applyXiaomiProviderConfig,
   applyZaiCodingConfig,
   applyZaiCodingProviderConfig,
   applyZaiConfig,
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
+  GROQ_DEFAULT_MODEL_REF,
   KIMI_CODING_MODEL_REF,
   MISTRAL_DEFAULT_MODEL_REF,
   MOONSHOT_DEFAULT_MODEL_REF,
@@ -46,9 +51,11 @@ import {
   SYNTHETIC_DEFAULT_MODEL_REF,
   VENICE_DEFAULT_MODEL_REF,
   VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF,
+  XAI_DEFAULT_MODEL_REF,
   XIAOMI_DEFAULT_MODEL_REF,
   setCloudflareAiGatewayConfig,
   setGeminiApiKey,
+  setGroqApiKey,
   setKimiCodingApiKey,
   setMistralApiKey,
   setMoonshotApiKey,
@@ -57,6 +64,7 @@ import {
   setSyntheticApiKey,
   setVeniceApiKey,
   setVercelAiGatewayApiKey,
+  setXaiApiKey,
   setXiaomiApiKey,
   setZaiCodingApiKey,
   setZaiApiKey,
@@ -607,6 +615,102 @@ export async function applyAuthChoiceApiProviders(
           },
         }),
         noteDefault: ZAI_DEFAULT_MODEL_REF,
+        noteAgentModel,
+        prompter: params.prompter,
+      });
+      nextConfig = applied.config;
+      agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
+    }
+    return { config: nextConfig, agentModelOverride };
+  }
+
+  if (authChoice === "xai-api-key") {
+    let hasCredential = false;
+
+    if (!hasCredential && params.opts?.token && params.opts?.tokenProvider === "xai") {
+      await setXaiApiKey(normalizeApiKeyInput(params.opts.token), params.agentDir);
+      hasCredential = true;
+    }
+
+    const envKey = resolveEnvApiKey("xai");
+    if (envKey) {
+      const useExisting = await params.prompter.confirm({
+        message: `Use existing XAI_API_KEY (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
+        initialValue: true,
+      });
+      if (useExisting) {
+        await setXaiApiKey(envKey.apiKey, params.agentDir);
+        hasCredential = true;
+      }
+    }
+    if (!hasCredential) {
+      const key = await params.prompter.text({
+        message: "Enter xAI API key (Grok)",
+        validate: validateApiKeyInput,
+      });
+      await setXaiApiKey(normalizeApiKeyInput(String(key)), params.agentDir);
+    }
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "xai:default",
+      provider: "xai",
+      mode: "api_key",
+    });
+    {
+      const applied = await applyDefaultModelChoice({
+        config: nextConfig,
+        setDefaultModel: params.setDefaultModel,
+        defaultModel: XAI_DEFAULT_MODEL_REF,
+        applyDefaultConfig: applyXaiConfig,
+        applyProviderConfig: applyXaiProviderConfig,
+        noteDefault: XAI_DEFAULT_MODEL_REF,
+        noteAgentModel,
+        prompter: params.prompter,
+      });
+      nextConfig = applied.config;
+      agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
+    }
+    return { config: nextConfig, agentModelOverride };
+  }
+
+  if (authChoice === "groq-api-key") {
+    let hasCredential = false;
+
+    if (!hasCredential && params.opts?.token && params.opts?.tokenProvider === "groq") {
+      await setGroqApiKey(normalizeApiKeyInput(params.opts.token), params.agentDir);
+      hasCredential = true;
+    }
+
+    const envKey = resolveEnvApiKey("groq");
+    if (envKey) {
+      const useExisting = await params.prompter.confirm({
+        message: `Use existing GROQ_API_KEY (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
+        initialValue: true,
+      });
+      if (useExisting) {
+        await setGroqApiKey(envKey.apiKey, params.agentDir);
+        hasCredential = true;
+      }
+    }
+    if (!hasCredential) {
+      const key = await params.prompter.text({
+        message: "Enter Groq API key",
+        validate: validateApiKeyInput,
+      });
+      await setGroqApiKey(normalizeApiKeyInput(String(key)), params.agentDir);
+    }
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "groq:default",
+      provider: "groq",
+      mode: "api_key",
+    });
+    {
+      const applied = await applyDefaultModelChoice({
+        config: nextConfig,
+        setDefaultModel: params.setDefaultModel,
+        defaultModel: GROQ_DEFAULT_MODEL_REF,
+        applyDefaultConfig: applyGroqConfig,
+        applyProviderConfig: applyGroqProviderConfig,
+        noteDefault: GROQ_DEFAULT_MODEL_REF,
         noteAgentModel,
         prompter: params.prompter,
       });
