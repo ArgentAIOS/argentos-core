@@ -147,7 +147,7 @@ describe("buildAuthChoiceOptions", () => {
       includeSkip: false,
     });
 
-    expect(options.some((opt) => opt.value === ("xai-api-key" as string))).toBe(true);
+    expect(options.some((opt) => opt.value === "xai-api-key")).toBe(true);
   });
 
   it("includes Groq auth choice (issue #297, Option A)", () => {
@@ -157,7 +157,7 @@ describe("buildAuthChoiceOptions", () => {
       includeSkip: false,
     });
 
-    expect(options.some((opt) => opt.value === ("groq-api-key" as string))).toBe(true);
+    expect(options.some((opt) => opt.value === "groq-api-key")).toBe(true);
   });
 });
 
@@ -168,7 +168,7 @@ describe("buildAuthChoiceGroups", () => {
 
     const xaiGroup = groups.find((g) => g.value === "xai");
     expect(xaiGroup).toBeDefined();
-    expect(xaiGroup?.options.some((opt) => opt.value === ("xai-api-key" as string))).toBe(true);
+    expect(xaiGroup?.options.some((opt) => opt.value === "xai-api-key")).toBe(true);
   });
 
   it("surfaces a groq group with the groq-api-key choice (issue #297)", () => {
@@ -177,7 +177,7 @@ describe("buildAuthChoiceGroups", () => {
 
     const groqGroup = groups.find((g) => g.value === "groq");
     expect(groqGroup).toBeDefined();
-    expect(groqGroup?.options.some((opt) => opt.value === ("groq-api-key" as string))).toBe(true);
+    expect(groqGroup?.options.some((opt) => opt.value === "groq-api-key")).toBe(true);
   });
 
   it("does NOT surface an 'inception' group (issue #297, Option B — post-install-only)", () => {
