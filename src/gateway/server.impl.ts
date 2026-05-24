@@ -33,6 +33,7 @@ import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { initRedisAgentState } from "../data/redis-agent-state.js";
 import { getRedisClient } from "../data/redis-client.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { resolveConsciousnessKernelPaths } from "../infra/consciousness-kernel-state.js";
 import { startConsciousnessKernel } from "../infra/consciousness-kernel.js";
 import { startContemplationRunner, setEpisodeBroadcast } from "../infra/contemplation-runner.js";
 import {
@@ -44,6 +45,10 @@ import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
+import {
+  startKernelFitnessWriter,
+  type FitnessWriterHandle,
+} from "../infra/kernel-fitness-writer.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
 import { ensureArgentCliOnPath } from "../infra/path-env.js";
 import { setGatewaySigusr1RestartPolicy } from "../infra/restart.js";
@@ -758,6 +763,36 @@ export async function startGatewayServer(
     },
   });
 
+  // Kernel-fitness writer (HANDOFF-kernel-fitness.md Phase 2). Pure data-plane:
+  // reads the existing kernel ledgers, emits one entry per `windowSeconds` to
+  // fitness-ledger.jsonl. Adjacent to the kernel (NOT inside the kernel loop)
+  // so the fitness number can never leak into the inner-loop prompt and the
+  // writer's bugs can't take the kernel down. Only runs when the kernel is
+  // enabled — there's nothing to measure otherwise.
+  const kernelFitnessWriter: FitnessWriterHandle | null = (() => {
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) {
+      return null;
+    }
+    const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
+    if (!kernelAgentId) {
+      return null;
+    }
+    try {
+      const kernelPaths = resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId);
+      return startKernelFitnessWriter({
+        paths: {
+          kernelRootDir: kernelPaths.rootDir,
+          decisionLogPath: kernelPaths.decisionLogPath,
+          fitnessLedgerPath: path.join(kernelPaths.rootDir, "fitness-ledger.jsonl"),
+          innerLoopPromptPath: kernelPaths.innerLoopPromptPath,
+        },
+      });
+    } catch (err) {
+      log.warn(`gateway: kernel-fitness writer failed to start: ${String(err)}`);
+      return null;
+    }
+  })();
+
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
@@ -977,6 +1012,7 @@ export async function startGatewayServer(
     jobOrchestratorRunner,
     sisRunner,
     consciousnessKernelRunner,
+    kernelFitnessWriter,
     healthCheckInterval,
     nodePresenceTimers,
     broadcast,
