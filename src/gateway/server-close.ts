@@ -28,6 +28,8 @@ export function createGatewayCloseHandler(params: {
   jobOrchestratorRunner?: JobOrchestratorRunner | null;
   sisRunner?: SisRunner | null;
   consciousnessKernelRunner?: ConsciousnessKernelRunner | null;
+  /** Phase 2 of HANDOFF-kernel-fitness.md — pure data-plane writer; stopping it is a no-op for kernel runtime. */
+  kernelFitnessWriter?: { stop?: () => void } | null;
   healthCheckInterval?: ReturnType<typeof setInterval>;
   nodePresenceTimers: Map<string, ReturnType<typeof setInterval>>;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
@@ -113,6 +115,7 @@ export function createGatewayCloseHandler(params: {
     stopSyncHandle(params.jobOrchestratorRunner);
     stopSyncHandle(params.sisRunner);
     stopSyncHandle(params.consciousnessKernelRunner);
+    stopSyncHandle(params.kernelFitnessWriter);
     // Close Redis connection (if initialized)
     try {
       const { closeRedisClient } = await import("../data/redis-client.js");
