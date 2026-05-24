@@ -42,6 +42,7 @@ import {
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
+import { markUnresolvedSurfacesUnavailable } from "../infra/engagement-tracker.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
@@ -769,6 +770,39 @@ export async function startGatewayServer(
   // so the fitness number can never leak into the inner-loop prompt and the
   // writer's bugs can't take the kernel down. Only runs when the kernel is
   // enabled — there's nothing to measure otherwise.
+  const kernelEngagementLedgerPath: string | null = (() => {
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) return null;
+    const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
+    if (!kernelAgentId) return null;
+    try {
+      return resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId).engagementLedgerPath;
+    } catch {
+      return null;
+    }
+  })();
+
+  // [Phase 3b.2] Startup recovery: if a prior session died ungracefully
+  // (crash, OOM kill, hard power-off) the close handler never ran, so any
+  // surfaces emitted in that session would never get marked. Sweep them here.
+  // Safe to run on every startup — the helper skips surfaces that already
+  // have an outcome (including system_unavailable from the last shutdown).
+  if (kernelEngagementLedgerPath) {
+    try {
+      const recovered = markUnresolvedSurfacesUnavailable({
+        ledgerPath: kernelEngagementLedgerPath,
+        shutdownTime: new Date(),
+        source: "gateway_shutdown",
+      });
+      if (recovered > 0) {
+        log.info(
+          `engagement: recovered ${recovered} unresolved surface(s) from prior session → system_unavailable`,
+        );
+      }
+    } catch (err) {
+      log.warn(`engagement: startup recovery failed: ${String(err)}`);
+    }
+  }
+
   const kernelFitnessWriter: FitnessWriterHandle | null = (() => {
     if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) {
       return null;
@@ -786,12 +820,8 @@ export async function startGatewayServer(
           fitnessLedgerPath: path.join(kernelPaths.rootDir, "fitness-ledger.jsonl"),
           innerLoopPromptPath: kernelPaths.innerLoopPromptPath,
           // [EMPIRICAL Phase 3a] Engagement ledger — surface emissions +
-          // outcomes. The writer reads it to compute engagementRate. Phase 3a
-          // only wires the read path; Phase 3b lights it up by integrating
-          // the engagement tracker with consciousness-kernel-notifier.ts and
-          // adding the dashboard ack/dismiss buttons. Until then this file
-          // doesn't exist and engagementRate is null with reason "missing_data".
-          engagementLedgerPath: path.join(kernelPaths.rootDir, "engagement-ledger.jsonl"),
+          // outcomes. The writer reads it to compute engagementRate.
+          engagementLedgerPath: kernelPaths.engagementLedgerPath,
         },
       });
     } catch (err) {
@@ -1020,6 +1050,7 @@ export async function startGatewayServer(
     sisRunner,
     consciousnessKernelRunner,
     kernelFitnessWriter,
+    engagementLedgerPath: kernelEngagementLedgerPath,
     healthCheckInterval,
     nodePresenceTimers,
     broadcast,
