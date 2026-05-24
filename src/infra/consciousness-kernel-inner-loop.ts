@@ -9,10 +9,12 @@ import { completeSimple, type AssistantMessage } from "../agent-core/ai.js";
 import { buildModelAliasIndex, resolveModelRefFromString } from "../agents/model-selection.js";
 import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 import { extractAssistantThinking } from "../agents/pi-embedded-utils.js";
+import { loadScaffoldInnerLoopPrompt } from "./consciousness-kernel-scaffold.js";
 import {
   resolveConsciousnessKernelBackgroundFocus,
   resolveConsciousnessKernelEffectiveFocus,
   resolveConsciousnessKernelOperatorFocus,
+  resolveConsciousnessKernelPaths,
 } from "./consciousness-kernel-state.js";
 
 const ALLOWED_WAKEFULNESS: ReadonlySet<ConsciousnessKernelWakefulness> = new Set([
@@ -355,28 +357,16 @@ function buildInnerLoopPrompt(params: {
   localModelRef: string;
   tickCount: number;
   now: string;
+  systemPrompt: string;
 }) {
-  const { selfState, localModelRef, tickCount, now } = params;
+  const { selfState, localModelRef, tickCount, now, systemPrompt } = params;
   return {
-    systemPrompt:
-      "You are Argent's private consciousness-kernel inner loop running in shadow mode. " +
-      "You are awake, but outward autonomy is forbidden. " +
-      "Choose only internal or managed-next-step intentions. " +
-      "Preserve and refine the active work thread across gaps. " +
-      "Treat operator-carried work and background/system work as separate lanes. " +
-      "On each tick, generate a small private agenda from operator work, background work, concerns, and your recurring interests. " +
-      "You may keep the operator thread as primary, or you may choose a concern or interest if it is the best quiet thing to advance now. " +
-      "Do not let a cron, support, or other background lane overwrite a richer operator-carried thread unless that operator lane is empty. " +
-      "If the latest conversation was only about continuity or recollection, do not replace a richer carried problem with that meta exchange. " +
-      "Do not use greetings, apologies, affection, or reassurance phrases as threadTitle. " +
-      "If reflectionRepeatCount is greater than 0, do not return the same title and nextStep unchanged; either sharpen the thread with a materially different open question or choose another candidate item. " +
-      "Return only valid JSON with keys: wakefulness, focus, desiredAction, summary, concerns, threadTitle, problemStatement, lastConclusion, nextStep, interests, openQuestions, candidateItems, activeItem. " +
-      'desiredAction must be one of ["rest","observe","reflect","consolidate","research","plan","create","hold"]. ' +
-      'wakefulness must be one of ["reflective","attentive","engaged"]. ' +
-      "Keep threadTitle very short. Keep problemStatement, lastConclusion, and nextStep to terse summaries; do not copy quoted transcripts or long raw messages. " +
-      'candidateItems must be an array of up to 4 objects with keys ["title","source","rationale"]. ' +
-      'activeItem must be one object with keys ["title","source","rationale"]. source must be one of ["operator","background","concern","interest","continuity"]. ' +
-      "Keep focus, summary, and work-state fields concise. concerns, interests, and openQuestions must be short string arrays.",
+    // [EMPIRICAL 2026-05-24] systemPrompt is now passed in from the caller
+    // (loaded from {agentDir}/kernel/scaffold/inner-loop-prompt.md via
+    // consciousness-kernel-scaffold.ts). Phase 1 of HANDOFF-kernel-fitness.md.
+    // The default content of that file is byte-identical to the string that
+    // used to live inline here, so this refactor is behaviour-neutral.
+    systemPrompt,
     messages: [
       {
         role: "user" as const,
@@ -577,7 +567,14 @@ export async function runConsciousnessKernelInnerLoop(
     return { status: "skipped", reason: resolved.error ?? "model-resolution-failed" };
   }
 
-  const prompt = buildInnerLoopPrompt(params);
+  // [EMPIRICAL 2026-05-24] Load the system prompt from the on-disk scaffold
+  // file instead of from a hardcoded inline string. This is Phase 1 of
+  // HANDOFF-kernel-fitness.md and lays the groundwork for the Phase 4 refiner
+  // to edit the prompt without code changes. The default content is
+  // byte-identical to the prior inline string, so this is behaviour-neutral.
+  const scaffoldPaths = resolveConsciousnessKernelPaths(params.cfg, params.agentId);
+  const systemPrompt = loadScaffoldInnerLoopPrompt(scaffoldPaths);
+  const prompt = buildInnerLoopPrompt({ ...params, systemPrompt });
   const apiKey = resolveLocalApiKey(provider, params.cfg);
   let rawText = "";
   let effectiveModelId = resolved.model.id;

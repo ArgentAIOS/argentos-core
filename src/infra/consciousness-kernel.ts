@@ -47,7 +47,14 @@ import {
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "./diagnostic-events.js";
 
 const log = createSubsystemLogger("gateway/consciousness-kernel");
-const DEFAULT_TICK_MS = 30_000;
+// [EMPIRICAL 2026-05-24] Changed from 30_000 to 120_000 per HANDOFF-kernel-fitness.md
+// Phase 1. The original 30s default produced ~100% inference duty cycle on a laptop
+// with a dense local model, drove the chassis into thermal throttle, and caused
+// the operator to stop the kernel — making any fitness measurement impossible.
+// A 2-minute cadence keeps the kernel productive while leaving 75–90% of each
+// window cool. Operators with desktop-class cooling can override via
+// `agents.defaults.kernel.tickMs` in argent.json.
+const DEFAULT_TICK_MS = 120_000;
 const DEFAULT_MAX_ESCALATIONS_PER_HOUR = 4;
 const DEFAULT_DAILY_BUDGET = 0;
 // Idle-activity-gate: kernel skips reflection if no user activity in last N min.
