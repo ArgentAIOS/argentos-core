@@ -42,6 +42,10 @@ import {
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
+import {
+  startEngagementArtifactWatcher,
+  type ArtifactWatcherHandle,
+} from "../infra/engagement-artifact-watcher.js";
 import { markUnresolvedSurfacesUnavailable } from "../infra/engagement-tracker.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
@@ -830,6 +834,31 @@ export async function startGatewayServer(
     }
   })();
 
+  // [EMPIRICAL Phase 3b.3] Artifact-open watcher — every 60s, scan the
+  // artifact-ledger and the artifact files themselves; emit surface_emitted
+  // for new artifacts and `acted` outcomes when atime > mtime + 1s (i.e.
+  // operator opened the file after the kernel wrote it). Quietly produces
+  // no signal on noatime-mounted volumes — operators get the fallback ack
+  // button in Phase 3b.4.
+  const engagementArtifactWatcher: ArtifactWatcherHandle | null = (() => {
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) return null;
+    const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
+    if (!kernelAgentId) return null;
+    try {
+      const kernelPaths = resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId);
+      return startEngagementArtifactWatcher({
+        paths: {
+          artifactLedgerPath: kernelPaths.artifactLedgerPath,
+          engagementLedgerPath: kernelPaths.engagementLedgerPath,
+        },
+        agentId: kernelAgentId,
+      });
+    } catch (err) {
+      log.warn(`gateway: engagement-artifact watcher failed to start: ${String(err)}`);
+      return null;
+    }
+  })();
+
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
@@ -1050,6 +1079,7 @@ export async function startGatewayServer(
     sisRunner,
     consciousnessKernelRunner,
     kernelFitnessWriter,
+    engagementArtifactWatcher,
     engagementLedgerPath: kernelEngagementLedgerPath,
     healthCheckInterval,
     nodePresenceTimers,
