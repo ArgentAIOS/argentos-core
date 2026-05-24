@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import type { ArgentConfig } from "../config/config.js";
 import type {
@@ -45,6 +46,7 @@ import {
   type ConsciousnessKernelWorkLane,
 } from "./consciousness-kernel-state.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "./diagnostic-events.js";
+import { recordSurfaceEmitted } from "./engagement-tracker.js";
 
 const log = createSubsystemLogger("gateway/consciousness-kernel");
 // [EMPIRICAL 2026-05-24] Changed from 30_000 to 120_000 per HANDOFF-kernel-fitness.md
@@ -1604,6 +1606,32 @@ export function startConsciousnessKernel(opts: {
         targets: result.delivered.length,
         errors: result.errors,
       });
+      // [EMPIRICAL Phase 3b.1] Record this surface emission in the engagement
+      // ledger so the fitness writer can compute engagement rate downstream
+      // (HANDOFF-kernel-fitness.md Section 4.1). surface_id is a stable hash
+      // of the result's signature so we can correlate later outcomes
+      // (acted/acked/ignored) back to the surface that triggered them.
+      try {
+        if (currentAgentId) {
+          const paths = resolveConsciousnessKernelPaths(cfg, currentAgentId);
+          const surfaceId = createHash("sha256")
+            .update(`${currentAgentId}|${result.signature}|${now}`)
+            .digest("hex")
+            .slice(0, 16);
+          recordSurfaceEmitted({
+            ledgerPath: paths.engagementLedgerPath,
+            surfaceId,
+            agentId: currentAgentId,
+            ts: now,
+            payload: {
+              signature: result.signature,
+              deliveredCount: result.delivered.length,
+            },
+          });
+        }
+      } catch (err) {
+        log.warn(`consciousness kernel: failed to record surface_emitted: ${String(err)}`);
+      }
     } else if (result.status === "failed") {
       log.warn("consciousness kernel: operator request notification failed", {
         errors: result.errors,

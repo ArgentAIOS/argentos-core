@@ -73,6 +73,13 @@ export type ConsciousnessKernelPaths = {
   scaffoldDir: string;
   scaffoldVersionsDir: string;
   innerLoopPromptPath: string;
+  /**
+   * [EMPIRICAL 2026-05-24] Engagement ledger — surface emissions + outcomes.
+   * Per HANDOFF-kernel-fitness.md Phase 3a. The fitness writer reads it; the
+   * notifier writes surface_emitted entries to it; dashboard hooks (Phase 3b
+   * follow-on slices) write outcome entries.
+   */
+  engagementLedgerPath: string;
 };
 
 export type ConsciousnessKernelDecisionSummary = {
@@ -295,6 +302,7 @@ export function resolveConsciousnessKernelPaths(
     scaffoldDir,
     scaffoldVersionsDir: path.join(scaffoldDir, ".versions"),
     innerLoopPromptPath: path.join(scaffoldDir, "inner-loop-prompt.md"),
+    engagementLedgerPath: path.join(rootDir, "engagement-ledger.jsonl"),
   };
 }
 
