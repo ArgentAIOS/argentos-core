@@ -141,13 +141,21 @@ export function reapZombieProcesses(): { killed: number; found: number } {
 
 /**
  * Ping Ollama API to check reachability (1500ms timeout).
+ *
+ * Uses the IPv4 literal `127.0.0.1` rather than `localhost` because Ollama's
+ * default config binds only to IPv4 (verified with `lsof -nP -iTCP:11434`).
+ * Node's `fetch` (undici) often resolves `localhost` to IPv6 `::1` first via
+ * RFC 6724 address selection on macOS, fails with ECONNREFUSED in ~3ms, and
+ * doesn't always fall back to IPv4 — depends on Node version and the
+ * connection pool state. The bare IPv4 literal sidesteps that entirely and
+ * matches what Ollama actually listens on.
  */
 export async function pingOllama(): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
 
-    const response = await fetch("http://localhost:11434/api/tags", {
+    const response = await fetch("http://127.0.0.1:11434/api/tags", {
       signal: controller.signal,
     });
     clearTimeout(timeout);
