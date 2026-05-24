@@ -30,6 +30,8 @@ export function createGatewayCloseHandler(params: {
   consciousnessKernelRunner?: ConsciousnessKernelRunner | null;
   /** Phase 2 of HANDOFF-kernel-fitness.md — pure data-plane writer; stopping it is a no-op for kernel runtime. */
   kernelFitnessWriter?: { stop?: () => void } | null;
+  /** Phase 3b.3 — atime-based artifact-open detector. Periodic timer; safe to leave running but stopped on shutdown for cleanliness. */
+  engagementArtifactWatcher?: { stop?: () => void } | null;
   /**
    * [Phase 3b.2] Engagement-ledger path. On shutdown the close handler scans
    * it for unresolved surface_emitted entries and writes system_unavailable
@@ -123,6 +125,7 @@ export function createGatewayCloseHandler(params: {
     stopSyncHandle(params.sisRunner);
     stopSyncHandle(params.consciousnessKernelRunner);
     stopSyncHandle(params.kernelFitnessWriter);
+    stopSyncHandle(params.engagementArtifactWatcher);
     // [Phase 3b.2] Mark any surfaces the operator never got a chance to
     // resolve as system_unavailable so the fitness engagement rate stays
     // honest. Must come AFTER the kernel runner stops (no new surfaces
