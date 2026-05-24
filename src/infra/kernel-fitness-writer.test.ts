@@ -156,8 +156,10 @@ describe("computeFitnessEntry", () => {
     expect(entry.reflectionCount).toBe(5);
   });
 
-  it("emits engagement fields as null with not_yet_instrumented reason in Phase 2", () => {
+  it("emits engagement fields as null with not_yet_instrumented reason when engagementLedgerPath is absent", () => {
     const paths = makePaths(tmpRoot);
+    // Intentionally omit engagementLedgerPath to simulate the pre-Phase-3a state.
+    paths.engagementLedgerPath = undefined;
     writeLedger(paths.decisionLogPath, [
       { seq: 1, ts: "2026-05-24T12:00:00.000Z", kind: "tick", summary: "tick 1" },
     ]);
@@ -177,6 +179,155 @@ describe("computeFitnessEntry", () => {
       ignored: 0,
       systemUnavailable: 0,
     });
+  });
+
+  it("emits engagement fields as null with missing_data reason when ledger path is set but file is missing", () => {
+    const paths = makePaths(tmpRoot);
+    paths.engagementLedgerPath = path.join(tmpRoot, "engagement-ledger.jsonl");
+    writeLedger(paths.decisionLogPath, [
+      { seq: 1, ts: "2026-05-24T12:00:00.000Z", kind: "tick", summary: "tick 1" },
+    ]);
+
+    const entry = computeFitnessEntry({
+      paths,
+      config: DEFAULT_KERNEL_FITNESS_CONFIG,
+      windowStart: new Date("2026-05-24T12:00:00.000Z"),
+      windowEnd: new Date("2026-05-24T13:00:00.000Z"),
+    });
+
+    expect(entry.engagementRate).toBeNull();
+    expect(entry.engagementRateReason).toBe("missing_data");
+  });
+
+  it("emits engagementRate when enough outcomes are present and excludes system_unavailable from the denominator", () => {
+    const paths = makePaths(tmpRoot);
+    paths.engagementLedgerPath = path.join(tmpRoot, "engagement-ledger.jsonl");
+    writeLedger(paths.decisionLogPath, [
+      { seq: 1, ts: "2026-05-24T12:00:00.000Z", kind: "tick", summary: "tick 1" },
+    ]);
+    // Seed engagement ledger: 2 acted, 1 acked, 1 ignored, 5 system_unavailable.
+    // engagementRate = 2 / (2+1+1) = 0.5; system_unavailable counted separately.
+    const engagementPath = paths.engagementLedgerPath;
+    const writeEntry = (entry: Record<string, unknown>) =>
+      fs.appendFileSync(engagementPath, JSON.stringify(entry) + "\n", "utf-8");
+    for (let i = 0; i < 9; i++) {
+      const sid = `s${i}`;
+      writeEntry({
+        type: "surface_emitted",
+        surfaceId: sid,
+        agentId: "a",
+        ts: `2026-05-24T12:0${i}:00.000Z`,
+      });
+    }
+    writeEntry({
+      type: "outcome",
+      surfaceId: "s0",
+      outcome: "acted",
+      source: "dashboard_click",
+      ts: "2026-05-24T12:30:00.000Z",
+    });
+    writeEntry({
+      type: "outcome",
+      surfaceId: "s1",
+      outcome: "acted",
+      source: "dashboard_click",
+      ts: "2026-05-24T12:30:00.000Z",
+    });
+    writeEntry({
+      type: "outcome",
+      surfaceId: "s2",
+      outcome: "acked",
+      source: "dashboard_click",
+      ts: "2026-05-24T12:30:00.000Z",
+    });
+    writeEntry({
+      type: "outcome",
+      surfaceId: "s3",
+      outcome: "ignored",
+      source: "timeout",
+      ts: "2026-05-24T12:30:00.000Z",
+    });
+    for (let i = 4; i < 9; i++) {
+      writeEntry({
+        type: "outcome",
+        surfaceId: `s${i}`,
+        outcome: "system_unavailable",
+        source: "gateway_shutdown",
+        ts: "2026-05-24T12:30:00.000Z",
+      });
+    }
+
+    const entry = computeFitnessEntry({
+      paths,
+      config: DEFAULT_KERNEL_FITNESS_CONFIG,
+      windowStart: new Date("2026-05-24T12:00:00.000Z"),
+      windowEnd: new Date("2026-05-24T13:00:00.000Z"),
+    });
+
+    expect(entry.engagementCounts).toEqual({
+      acted: 2,
+      acked: 1,
+      ignored: 1,
+      systemUnavailable: 5,
+    });
+    // 2 / (2+1+1) = 0.5
+    expect(entry.engagementRate).toBeCloseTo(0.5, 6);
+    expect(entry.engagementRateReason).toBeUndefined();
+  });
+
+  it("returns engagementRate null with low_sample when explicit outcomes are below mMin", () => {
+    const paths = makePaths(tmpRoot);
+    paths.engagementLedgerPath = path.join(tmpRoot, "engagement-ledger.jsonl");
+    writeLedger(paths.decisionLogPath, [
+      { seq: 1, ts: "2026-05-24T12:00:00.000Z", kind: "tick", summary: "tick 1" },
+    ]);
+    // Only 1 acted + 1 acked = 2 events, below mMin=3.
+    fs.appendFileSync(
+      paths.engagementLedgerPath,
+      JSON.stringify({
+        type: "surface_emitted",
+        surfaceId: "s1",
+        agentId: "a",
+        ts: "2026-05-24T12:01:00.000Z",
+      }) +
+        "\n" +
+        JSON.stringify({
+          type: "outcome",
+          surfaceId: "s1",
+          outcome: "acted",
+          source: "dashboard_click",
+          ts: "2026-05-24T12:02:00.000Z",
+        }) +
+        "\n" +
+        JSON.stringify({
+          type: "surface_emitted",
+          surfaceId: "s2",
+          agentId: "a",
+          ts: "2026-05-24T12:03:00.000Z",
+        }) +
+        "\n" +
+        JSON.stringify({
+          type: "outcome",
+          surfaceId: "s2",
+          outcome: "acked",
+          source: "dashboard_click",
+          ts: "2026-05-24T12:04:00.000Z",
+        }) +
+        "\n",
+      "utf-8",
+    );
+
+    const entry = computeFitnessEntry({
+      paths,
+      config: DEFAULT_KERNEL_FITNESS_CONFIG,
+      windowStart: new Date("2026-05-24T12:00:00.000Z"),
+      windowEnd: new Date("2026-05-24T13:00:00.000Z"),
+    });
+
+    expect(entry.engagementRate).toBeNull();
+    expect(entry.engagementRateReason).toBe("low_sample");
+    expect(entry.engagementCounts.acted).toBe(1);
+    expect(entry.engagementCounts.acked).toBe(1);
   });
 
   it("includes scaffold version from the inner-loop-prompt file mtime when present", () => {

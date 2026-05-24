@@ -1,5 +1,5 @@
 {
-  "snapshotAt": "2026-05-24T22:25:18.892Z",
+  "snapshotAt": "2026-05-24T22:34:06.592Z",
   "totalErrors": 216,
   "errors": [
     {
@@ -1006,13 +1006,13 @@
     },
     {
       "file": "src/gateway/server.impl.ts",
-      "line": 959,
+      "line": 966,
       "code": "TS2322",
       "message": "Type 'ExecutionWorkerRunnerLike' is not assignable to type 'ExecutionWorkerRunner'."
     },
     {
       "file": "src/gateway/server.impl.ts",
-      "line": 1011,
+      "line": 1018,
       "code": "TS2322",
       "message": "Type 'ExecutionWorkerRunnerLike' is not assignable to type 'ExecutionWorkerRunner'."
     },

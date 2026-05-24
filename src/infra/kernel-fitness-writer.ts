@@ -39,6 +39,7 @@ import type {
   KernelFitnessConfig,
 } from "./kernel-fitness-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { computeEngagementCountsInWindow, emptyEngagementCounts } from "./engagement-tracker.js";
 import { loadKernelFitnessConfig } from "./kernel-fitness-config.js";
 
 const log = createSubsystemLogger("gateway/consciousness-kernel/fitness-writer");
@@ -50,6 +51,13 @@ export type FitnessWriterPaths = {
   decisionLogPath: string;
   fitnessLedgerPath: string;
   innerLoopPromptPath: string;
+  /**
+   * [EMPIRICAL Phase 3a] Engagement ledger — surface emissions + outcomes.
+   * The fitness writer reads it (does not write to it). When absent or empty
+   * (Phase 3b not yet integrated), engagementRate is null with reason
+   * "not_yet_instrumented" or "missing_data".
+   */
+  engagementLedgerPath?: string;
 };
 
 export type FitnessWriterHandle = {
@@ -121,10 +129,15 @@ export function startKernelFitnessWriter(opts: StartFitnessWriterOptions): Fitne
 }
 
 export type ComputeFitnessEntryOptions = {
-  paths: Pick<FitnessWriterPaths, "decisionLogPath" | "innerLoopPromptPath">;
+  paths: Pick<
+    FitnessWriterPaths,
+    "decisionLogPath" | "innerLoopPromptPath" | "engagementLedgerPath"
+  >;
   config: KernelFitnessConfig;
   windowStart: Date;
   windowEnd: Date;
+  /** Clock for tests; production uses `() => new Date()`. */
+  now?: () => Date;
 };
 
 /**
@@ -161,6 +174,10 @@ export function computeFitnessEntry(opts: ComputeFitnessEntryOptions): FitnessLe
     stallComposite = Math.max(0, Math.min(1, stallComposite));
   }
 
+  // Engagement rate per HANDOFF Section 4.1. Returns null with a reason
+  // string when there isn't enough signal to compute meaningfully.
+  const engagement = computeEngagementForFitnessEntry(opts);
+
   return {
     windowStart: windowStart.toISOString(),
     windowEnd: windowEnd.toISOString(),
@@ -178,11 +195,41 @@ export function computeFitnessEntry(opts: ComputeFitnessEntryOptions): FitnessLe
     conversationSyncCount: counts.conversationSync,
     startedCount: counts.started,
     stoppedCount: counts.stopped,
-    engagementRate: null,
-    engagementRateReason: "not_yet_instrumented",
-    engagementCounts: { acted: 0, acked: 0, ignored: 0, systemUnavailable: 0 },
+    engagementRate: engagement.rate,
+    engagementRateReason: engagement.reason,
+    engagementCounts: engagement.counts,
     scaffoldVersion: resolveScaffoldVersion(opts.paths.innerLoopPromptPath),
   };
+}
+
+function computeEngagementForFitnessEntry(opts: ComputeFitnessEntryOptions): {
+  rate: number | null;
+  reason: FitnessLedgerEntry["engagementRateReason"];
+  counts: FitnessLedgerEntry["engagementCounts"];
+} {
+  const ledgerPath = opts.paths.engagementLedgerPath;
+  if (!ledgerPath) {
+    return {
+      rate: null,
+      reason: "not_yet_instrumented",
+      counts: emptyEngagementCounts(),
+    };
+  }
+  if (!fs.existsSync(ledgerPath)) {
+    return { rate: null, reason: "missing_data", counts: emptyEngagementCounts() };
+  }
+  const counts = computeEngagementCountsInWindow({
+    ledgerPath,
+    windowStart: opts.windowStart,
+    windowEnd: opts.windowEnd,
+    now: opts.now,
+  });
+  // Per HANDOFF Section 4.1: denominator excludes system_unavailable.
+  const denom = counts.acted + counts.acked + counts.ignored;
+  if (denom < opts.config.mMin) {
+    return { rate: null, reason: "low_sample", counts };
+  }
+  return { rate: counts.acted / denom, reason: undefined, counts };
 }
 
 type LedgerKindCounts = {

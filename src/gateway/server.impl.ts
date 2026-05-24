@@ -785,6 +785,13 @@ export async function startGatewayServer(
           decisionLogPath: kernelPaths.decisionLogPath,
           fitnessLedgerPath: path.join(kernelPaths.rootDir, "fitness-ledger.jsonl"),
           innerLoopPromptPath: kernelPaths.innerLoopPromptPath,
+          // [EMPIRICAL Phase 3a] Engagement ledger — surface emissions +
+          // outcomes. The writer reads it to compute engagementRate. Phase 3a
+          // only wires the read path; Phase 3b lights it up by integrating
+          // the engagement tracker with consciousness-kernel-notifier.ts and
+          // adding the dashboard ack/dismiss buttons. Until then this file
+          // doesn't exist and engagementRate is null with reason "missing_data".
+          engagementLedgerPath: path.join(kernelPaths.rootDir, "engagement-ledger.jsonl"),
         },
       });
     } catch (err) {
