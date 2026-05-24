@@ -95,6 +95,7 @@ const STEP_LABELS: Record<string, string> = {
   "preflight worktree": "Preparing preflight worktree",
   "preflight cleanup": "Cleaning preflight worktree",
   "deps install": "Installing dependencies",
+  "rebuild native modules": "Rebuilding native modules for current Node ABI",
   build: "Building",
   "ui:build": "Building UI",
   "workspace setup": "Seeding workspace bootstrap",
