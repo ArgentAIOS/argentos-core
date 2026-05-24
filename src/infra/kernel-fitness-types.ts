@@ -65,7 +65,19 @@ export type FitnessLedgerEntry = {
   startedCount: number;
   stoppedCount: number;
 
-  /** Engagement-rate fields — Phase 3 will populate these; Phase 2 emits null. */
+  /**
+   * Engagement rate per HANDOFF Section 4.1: `acted / (acted + acked + ignored)`.
+   * `system_unavailable` outcomes are tracked separately in `engagementCounts`
+   * and NOT folded into this denominator — conflating "operator ignored" with
+   * "system was down" makes the rate dishonest.
+   *
+   * `null` when:
+   *   - total engagement events (acted + acked + ignored) is below `mMin`
+   *     (default 3; Section 13 locked decision #1) — surfaces "low_sample"
+   *   - no engagement ledger exists yet — surfaces "missing_data"
+   *   - the engagement tracker has not been integrated with surface emission
+   *     yet — surfaces "not_yet_instrumented" (will go away in Phase 3b)
+   */
   engagementRate: number | null;
   engagementRateReason?: "low_sample" | "missing_data" | "not_yet_instrumented";
   engagementCounts: {
