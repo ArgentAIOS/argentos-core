@@ -22,6 +22,7 @@ import { connectorsHandlers } from "./server-methods/connectors.js";
 import { copilotHandlers } from "./server-methods/copilot.js";
 import { cronHandlers } from "./server-methods/cron.js";
 import { deviceHandlers } from "./server-methods/devices.js";
+import { engagementHandlers } from "./server-methods/engagement.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
 import { executionWorkerHandlers } from "./server-methods/execution-worker.js";
 import { familyTelemetryHandlers } from "./server-methods/family-telemetry.js";
@@ -538,6 +539,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...browserHandlers,
   ...terminalHandlers,
   ...aevpHandlers,
+  ...engagementHandlers,
   ...appForgeHandlers,
   ...specforgeHandlers,
   ...intentHandlers,
