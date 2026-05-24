@@ -292,17 +292,28 @@ async function runV3MemoryEmbeddingStartupPreflight(
   if (!shouldEnforceV3EmbeddingContract(cfg)) {
     return;
   }
-  const { getMemuEmbedder } = await import("../memory/memu-embed.js");
-  const embedder = await getMemuEmbedder(cfg);
-  await runV3EmbeddingContractPreflight({
-    config: cfg,
-    context: `gateway (${embedder.providerId}/${embedder.model})`,
-    probe: (text) => embedder.embed(text),
-  });
-  log.info("gateway: V3 embedding contract preflight passed", {
-    provider: embedder.providerId,
-    model: embedder.model,
-  });
+  try {
+    const { getMemuEmbedder } = await import("../memory/memu-embed.js");
+    const embedder = await getMemuEmbedder(cfg);
+    await runV3EmbeddingContractPreflight({
+      config: cfg,
+      context: `gateway (${embedder.providerId}/${embedder.model})`,
+      probe: (text) => embedder.embed(text),
+    });
+    log.info("gateway: V3 embedding contract preflight passed", {
+      provider: embedder.providerId,
+      model: embedder.model,
+    });
+  } catch (err) {
+    // Don't crash the gateway when the embedder is unreachable (e.g. LM Studio
+    // not running). Memory/embedding features will surface clearer errors when
+    // actually exercised. Dimension/contract violations still surface here so
+    // the operator can investigate before relying on memory.
+    log.warn(
+      `gateway: V3 embedding contract preflight failed (${String(err)}). ` +
+        `Gateway will continue starting; memory/embedding features may be degraded until the embedder is reachable.`,
+    );
+  }
 }
 
 export type GatewayServer = {
