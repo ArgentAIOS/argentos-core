@@ -369,6 +369,15 @@ export function applyLocalRuntimeConfig(params: {
                 "Qwen Local",
             },
           },
+          // [Phase C] Point the consciousness kernel at the same local model
+          // the operator just picked. Without this the kernel sits with
+          // localModel=null and skips every reflection. Other kernel knobs
+          // (enabled, tickMs, idleActivityGateMinutes, etc.) are preserved
+          // from whatever the operator had configured.
+          kernel: {
+            ...params.config.agents?.defaults?.kernel,
+            localModel: `ollama/${textModel}`,
+          },
           memorySearch: {
             ...params.config.agents?.defaults?.memorySearch,
             provider: "ollama",
@@ -432,6 +441,12 @@ export function applyLocalRuntimeConfig(params: {
               params.config.agents?.defaults?.models?.[`lmstudio/${textModel}`]?.alias ??
               "Qwen Local",
           },
+        },
+        // [Phase C] Same kernel.localModel wiring as the ollama branch above —
+        // see comment there for rationale. Preserves all other kernel knobs.
+        kernel: {
+          ...params.config.agents?.defaults?.kernel,
+          localModel: `lmstudio/${textModel}`,
         },
         memorySearch: {
           ...params.config.agents?.defaults?.memorySearch,
