@@ -42,7 +42,7 @@ is_truthy() {
   esac
 }
 
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
 FULL_STACK_INSTALL="${ARGENT_FULL_STACK_INSTALL:-0}"
 INSTALL_STEIPETE_TOOLS="${ARGENT_INSTALL_STEIPETE_TOOLS:-1}"
@@ -56,6 +56,15 @@ SKIP_CORE_DOCS_VAULT="${ARGENT_SKIP_CORE_DOCS_VAULT:-0}"
 SKIP_DASHBOARD_DEPS="${ARGENT_SKIP_DASHBOARD_DEPS:-0}"
 SKIP_LAUNCH_AGENTS="${ARGENT_SKIP_LAUNCH_AGENTS:-0}"
 SKIP_SERVICE_START="${ARGENT_SKIP_SERVICE_START:-0}"
+# [Phase B] Default-on Ollama install — the local-LLM runtime ArgentOS targets
+# by default on Mac (per Obsidian "Ollama+MLX as Mac Default Stack" decision).
+# Set ARGENT_SKIP_OLLAMA_INSTALL=1 to opt out (operators who already have a
+# different runtime, or who genuinely want a cloud-only setup).
+SKIP_OLLAMA_INSTALL="${ARGENT_SKIP_OLLAMA_INSTALL:-0}"
+# Optional pre-pull of a starter model — opt-in because it's a 9GB+ download
+# that some operators won't want as part of first install. Set to a model tag
+# (e.g. "qwen3.5:9b-mlx") to run `ollama pull <tag>` after the install step.
+OLLAMA_PREPULL_MODEL="${ARGENT_OLLAMA_PREPULL_MODEL:-}"
 
 # -- macOS only --
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -661,9 +670,56 @@ NODE
 fi
 
 # ============================================================================
-# Step 7: Port conflict check
+# Step 7: Set up local LLM runtime (Ollama)
 # ============================================================================
-step 7 "Checking for port conflicts"
+# Per the 2026-05-24 thermal investigation (PRs #382/#384/#387/#388 and the
+# Obsidian "Ollama+MLX as Mac Default Stack" decision doc), Ollama is the
+# recommended local-LLM runtime for ArgentOS on Mac. It's headless (no GUI
+# overhead like LM Studio), MLX-native on Apple Silicon, and the consciousness
+# kernel's localModel slot is wizard-defaulted to an ollama/ prefix.
+#
+# Default behaviour: if ollama isn't already on PATH, install it via the
+# official one-liner. The official installer is signed and idempotent.
+# Set ARGENT_SKIP_OLLAMA_INSTALL=1 to opt out entirely. Set
+# ARGENT_OLLAMA_PREPULL_MODEL=qwen3.5:9b-mlx (or another tag) to also
+# download a starter model so the first kernel reflection isn't blocked.
+step 7 "Setting up local LLM runtime (Ollama)"
+
+if is_truthy "$SKIP_OLLAMA_INSTALL"; then
+  info "Skipping Ollama install (ARGENT_SKIP_OLLAMA_INSTALL=1)"
+elif command -v ollama >/dev/null 2>&1; then
+  ok "Ollama already installed ($(ollama --version 2>/dev/null | head -1 || echo 'version unknown'))"
+else
+  info "Installing Ollama via official installer (curl -fsSL https://ollama.com/install.sh | sh)"
+  if curl -fsSL https://ollama.com/install.sh | sh; then
+    if command -v ollama >/dev/null 2>&1; then
+      ok "Ollama installed"
+    else
+      warn "Ollama installer reported success but 'ollama' is not on PATH yet"
+      warn "Open a new shell or run: export PATH=\"/usr/local/bin:\$PATH\""
+    fi
+  else
+    warn "Ollama install failed — you can install it manually later (https://ollama.com/download)"
+    warn "Or rerun with ARGENT_SKIP_OLLAMA_INSTALL=1 to skip this step"
+  fi
+fi
+
+if [[ -n "$OLLAMA_PREPULL_MODEL" ]] && command -v ollama >/dev/null 2>&1; then
+  info "Pre-pulling Ollama model: $OLLAMA_PREPULL_MODEL"
+  info "(this can take a while depending on model size and connection)"
+  if ollama pull "$OLLAMA_PREPULL_MODEL"; then
+    ok "Model ready: $OLLAMA_PREPULL_MODEL"
+  else
+    warn "Model pull failed — you can retry later: ollama pull $OLLAMA_PREPULL_MODEL"
+  fi
+elif [[ -n "$OLLAMA_PREPULL_MODEL" ]]; then
+  warn "ARGENT_OLLAMA_PREPULL_MODEL was set but 'ollama' isn't on PATH; skipping pre-pull"
+fi
+
+# ============================================================================
+# Step 8: Port conflict check
+# ============================================================================
+step 8 "Checking for port conflicts"
 
 check_port() {
   local port=$1 label=$2
@@ -676,7 +732,7 @@ check_port() {
 check_port 18789 "Gateway"
 check_port 9242  "Dashboard API"
 check_port 8080  "Dashboard UI"
-step 8 "Installing LaunchAgents"
+step 9 "Installing LaunchAgents"
 
 LAUNCH_AGENTS_DIR="${ARGENT_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST_PATH="$LAUNCH_AGENTS_DIR/ai.argent.gateway.plist"
@@ -710,9 +766,9 @@ else
 fi
 
 # ============================================================================
-# Step 9: Start gateway
+# Step 10: Start gateway
 # ============================================================================
-step 9 "Starting gateway"
+step 10 "Starting gateway"
 
 if is_truthy "$SKIP_LAUNCH_AGENTS" || is_truthy "$SKIP_SERVICE_START"; then
   info "Skipping gateway start (LaunchAgents/services disabled for this run)"
@@ -734,9 +790,9 @@ else
 fi
 
 # ============================================================================
-# Step 10: Start dashboard services
+# Step 11: Start dashboard services
 # ============================================================================
-step 10 "Starting dashboard services"
+step 11 "Starting dashboard services"
 
 if is_truthy "$SKIP_LAUNCH_AGENTS" || is_truthy "$SKIP_SERVICE_START"; then
   info "Skipping dashboard service start (LaunchAgents/services disabled for this run)"
