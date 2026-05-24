@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { rankDiscoveredLocalRuntimeModels } from "./onboarding.local-runtime.js";
+import type { ArgentConfig } from "../config/config.js";
+import {
+  applyLocalRuntimeConfig,
+  rankDiscoveredLocalRuntimeModels,
+} from "./onboarding.local-runtime.js";
 
 describe("rankDiscoveredLocalRuntimeModels", () => {
   it("prefers Qwen text models and Nomic embeddings for Ollama", () => {
@@ -40,5 +44,60 @@ describe("rankDiscoveredLocalRuntimeModels", () => {
 
     expect(ranked.textModels).toContain("qwen3.6-35b-a3b");
     expect(ranked.embeddingModels).toContain("nomic-embed-text");
+  });
+});
+
+describe("applyLocalRuntimeConfig — Phase C kernel.localModel wiring", () => {
+  const emptyConfig: ArgentConfig = {
+    agents: { defaults: {}, list: [{ id: "main" }] },
+  };
+
+  it("sets agents.defaults.kernel.localModel to ollama/<model> for the ollama branch", () => {
+    const cfg = applyLocalRuntimeConfig({
+      choice: "ollama",
+      config: emptyConfig,
+      textModel: "qwen3.5:9b-mlx",
+      embeddingModel: "nomic-embed-text",
+    });
+    expect(cfg.agents?.defaults?.kernel?.localModel).toBe("ollama/qwen3.5:9b-mlx");
+  });
+
+  it("sets agents.defaults.kernel.localModel to lmstudio/<model> for the lmstudio branch", () => {
+    const cfg = applyLocalRuntimeConfig({
+      choice: "lmstudio",
+      config: emptyConfig,
+      textModel: "qwen3.6-35b-a3b",
+      embeddingModel: "nomic-embed-text",
+    });
+    expect(cfg.agents?.defaults?.kernel?.localModel).toBe("lmstudio/qwen3.6-35b-a3b");
+  });
+
+  it("preserves other kernel knobs the operator already set (tickMs, idleActivityGateMinutes, etc.)", () => {
+    const existing: ArgentConfig = {
+      agents: {
+        defaults: {
+          kernel: {
+            enabled: true,
+            tickMs: 60_000,
+            idleActivityGateMinutes: 45,
+            // @ts-expect-error - localModel isn't required to be in the type for this test
+            localModel: "lmstudio/old-model",
+          },
+        },
+        list: [{ id: "main" }],
+      },
+    };
+    const cfg = applyLocalRuntimeConfig({
+      choice: "ollama",
+      config: existing,
+      textModel: "qwen3.5:9b-mlx",
+      embeddingModel: "nomic-embed-text",
+    });
+    expect(cfg.agents?.defaults?.kernel).toMatchObject({
+      enabled: true,
+      tickMs: 60_000,
+      idleActivityGateMinutes: 45,
+      localModel: "ollama/qwen3.5:9b-mlx", // overwritten to match new choice
+    });
   });
 });
