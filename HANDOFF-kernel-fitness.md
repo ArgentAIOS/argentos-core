@@ -481,3 +481,52 @@ Do not proceed past step 8 without an answer.
 ## 12. The thesis in one paragraph
 
 ArgentOS today carries continuity but does not improve. The kernel reflects, persists state, and detects when it's looping on the same thought, but no measurement tells it whether yesterday's kernel was better than today's. This handoff adds three things that together change that: an immutable fitness signal (operator engagement is the real one; stall composite is the interim), a structurally-scoped refiner that can edit its own scaffolding but cannot touch the metric or the state (Hermes pattern, runtime tool denial), and an adversarial keep-or-discard judge that rolls back regressions (autoresearch pattern). The dashboard surface is so the operator can watch the loop run and form their own judgment about whether it's working. The plainer statement: the number the kernel cannot edit is `acted / (acted + acked + ignored)`. That's the substrate of learning. Everything else in this handoff is the plumbing around it.
+
+---
+
+## 13. Locked decisions for v0 [EMPIRICAL] (locked 2026-05-24)
+
+These nine values are baselined for the v0 implementation. They were open questions throughout v1 + v2 design; locked-in here so Phase 1+ implementation doesn't have to re-litigate. Each can be overridden as noted in the "override path" column. **Reconsider after 30 days of real usage.**
+
+| #   | Decision                                                                      | Locked value                                                                                                                                                                              | Source section                            | Override path                            |
+| --- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
+| 1   | `M_min` sample-floor on engagement-rate denominator                           | `3`                                                                                                                                                                                       | §4.1                                      | `fitness-config.json`                    |
+| 2   | Idle-activity-gate (kernel skips reflection if no user activity in N minutes) | Ships as a SEPARATE small PR **before** M1 starts; not bundled into Phase 1                                                                                                               | (added v2 — see post-mortem action items) | Code change in `maybeRunInnerReflection` |
+| 3   | Fitness window size                                                           | Fixed `window_seconds = 3600` (1h); `min_reflections_for_valid_window = 5` configurable                                                                                                   | §4.3, §6 Phase 2                          | `fitness-config.json`                    |
+| 4   | Dashboard data flow                                                           | Poll-on-open + 60s auto-refresh while panel is visible                                                                                                                                    | §6 Phase 4                                | Code change                              |
+| 5   | Snapshot-on-manual-edit                                                       | Filesystem watcher (`fs.watch`) on `scaffold/` dir; on any `change` event, diff against in-memory cached content; if different, snapshot prior content to `.versions/` before reading new | §6 Phase 1 (v2 add)                       | Code change                              |
+| 6   | "M0" observability-only phase before M1                                       | Skipped; fold "current kernel state" subpanel into M1's Phase 3 dashboard work                                                                                                            | New question raised v2 design discussion  | N/A — design rejection                   |
+| 7   | Judge dev-mode flag                                                           | `dev_mode: false` default; when `true` → K=2, δ=0.0 (any change kept), dashboard shows red "DEV MODE" banner                                                                              | §5.4, §6 Phase 4                          | `fitness-config.json`                    |
+| 8   | Refiner LLM model                                                             | `ollama/qwen3.5:9b-mlx` for v0                                                                                                                                                            | §6 Phase 4, §9 risks                      | `fitness-config.json`                    |
+| 9   | Phase 4 prompt-length rollback threshold                                      | `N = 500 tokens` for v0 (re-measure against actual extracted scaffold length during Phase 4 implementation and pin)                                                                       | §6 Phase 4, §9 risks                      | `fitness-config.json`                    |
+
+### Rationale per locked decision
+
+**#1 (`M_min = 3`):** permissive on purpose. The empirical baseline engagement rate is approximately 0, so a stricter floor would suppress nearly every window early on and the operator would see only `null` in the dashboard. A low floor + an explicit `low_sample` reason on the entry lets us still surface _something_ while being honest about confidence. Re-tune after 30 days.
+
+**#2 (idle-gate ships as a separate PR before M1):** rationale is that landing the gate independently lets the operator feel the heat reduction _before_ the fitness measurement starts, so the fitness baseline reflects "kernel that respects user presence" rather than "kernel that always runs." Separate-PR scope also keeps Phase 1 from sprawling further. The gate itself is small (~20 lines + tests).
+
+**#3 (fixed 1h windows, configurable reflection floor):** simpler than the dynamic `max(3600, 60 * tickMs / 1000)` formula proposed in v2 §6 discussion. The configurable `min_reflections_for_valid_window` covers the "what if tick is very slow" case without making the windowing math itself conditional. At 120s tick + 1h windows that's 30 reflections/window — plenty of margin above the 5-reflection floor.
+
+**#4 (poll-on-open + 60s while open):** kernel-fitness is not a real-time monitor. Minute-level latency is fine for the operator's "is the kernel learning?" check-in. Avoids adding a new WebSocket subscription path on the gateway and avoids continuous renderer activity in the Electron app.
+
+**#5 (filesystem watcher for snapshots):** wrapper-only snapshotting would miss `vi`-style manual edits to the scaffold file, which defeats the whole point of the snapshot rule. The watcher fires on any `change`, regardless of who wrote. Trade-off: small extra dependency on `fs.watch` and a subtle race window between detection and snapshot — acceptable, document the race in the code comment, plan a more robust solution if it bites in practice.
+
+**#6 (no M0):** the "expose existing kernel state on dashboard before measuring fitness" idea was good motivation but redundant. M1's Phase 3 dashboard work already mounts a panel in `ConfigPanel.tsx`; adding a "current kernel state" subpanel there is the same UI surface with simpler delivery.
+
+**#7 (`dev_mode` defaults false):** essential for iterating on Phase 4 without enduring 10-hour judgment latency every test cycle. Banner ensures it's visually obvious in the dashboard so dev-mode never accidentally ships to production. The banner is non-dismissible.
+
+**#8 (`qwen3.5:9b-mlx` for refiner):** local, MLX-native, fast, headless. Avoids cloud-dependency for self-improvement (Karpathy's `prepare.py is off-limits` discipline applies to the refiner's _runtime_, not just its scope). 9B is enough reasoning depth for proposing scaffold edits. Re-evaluate if 5 consecutive proposals are rolled back.
+
+**#9 (`N = 500` prompt-length floor):** rough estimate. The hardcoded inner-loop prompt at `consciousness-kernel-inner-loop.ts:361-379` is roughly 800-1200 tokens depending on how you count whitespace and tokens. 500 ≈ half the lower bound. Phase 4 implementation should run a token-count against the actual extracted scaffold file and pin the threshold against that measurement, not against this guess.
+
+### When to revisit
+
+After 30 days of real M1 operation (Phases 1+2+3 running with engagement data flowing), do a re-tune pass:
+
+- Are most fitness windows hitting the `low_sample` floor? → consider lowering `M_min` further or raising surface volume
+- Is the engagement_rate trending? → confirms the metric has signal
+- Is `system_unavailable_count` non-trivial? → operator is still stopping the kernel; investigate why before starting M2
+- Are reflections still skewing too long with `qwen3.6:35b-mlx`? → consider a smaller kernel model for M2 readiness
+
+If any answer triggers a re-tune, update this Section 13 in place (next revision tag) and document the rationale.
