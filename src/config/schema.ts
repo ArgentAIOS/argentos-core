@@ -373,6 +373,8 @@ const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.kernel.hardwareHostRequired": "Consciousness Kernel Hardware Host Required",
   "agents.defaults.kernel.allowListening": "Consciousness Kernel Allow Listening",
   "agents.defaults.kernel.allowVision": "Consciousness Kernel Allow Vision",
+  "agents.defaults.kernel.idleActivityGateMinutes":
+    "Consciousness Kernel Idle Activity Gate (minutes)",
   "agents.defaults.kernel.operatorNotifications": "Kernel Operator Notifications",
   "agents.defaults.kernel.operatorNotifications.enabled": "Kernel Operator Notifications Enabled",
   "agents.defaults.kernel.operatorNotifications.cooldownMs":
@@ -957,6 +959,8 @@ const FIELD_HELP: Record<string, string> = {
     "Allow future listening-capable kernel modes to request microphone context.",
   "agents.defaults.kernel.allowVision":
     "Allow future vision-capable kernel modes to request camera context.",
+  "agents.defaults.kernel.idleActivityGateMinutes":
+    "Skip inner reflection if no operator activity (chat or agent message) has been seen in the last N minutes. Default: 30. Set to 0 to disable the gate.",
   "agents.defaults.kernel.operatorNotifications":
     "Optional outbound targets for kernel requests that need operator input. Uses the normal channel delivery pipeline, so Telegram/Slack/Discord/plugin targets stay configurable instead of hardcoded.",
   "agents.defaults.kernel.operatorNotifications.enabled":

@@ -197,6 +197,7 @@ export const ConsciousnessKernelSchema = z
     hardwareHostRequired: z.boolean().optional(),
     allowListening: z.boolean().optional(),
     allowVision: z.boolean().optional(),
+    idleActivityGateMinutes: z.number().int().nonnegative().optional(),
     operatorNotifications: z
       .object({
         enabled: z.boolean().optional(),
