@@ -487,6 +487,28 @@ function managerRelinkArgs(manager: "pnpm" | "bun" | "npm") {
   return null;
 }
 
+/**
+ * [EMPIRICAL 2026-05-24, issue #386] After `deps install`, recompile (or
+ * re-fetch the correct prebuilt for) all native modules so their ABI matches
+ * the active Node.js version. pnpm's content-addressable store hashes by
+ * package version, NOT by Node ABI — so a binary cached under a different
+ * Node version (e.g. someone ran an install with `nvm use 24` active)
+ * persists and breaks the next gateway boot.
+ *
+ * `pnpm rebuild` (no args) rebuilds every package with an install script,
+ * which is what we want — covers better-sqlite3, koffi, and any future
+ * native modules without us having to enumerate them.
+ */
+function managerRebuildArgs(manager: "pnpm" | "bun" | "npm") {
+  if (manager === "pnpm") {
+    return ["pnpm", "rebuild"];
+  }
+  if (manager === "bun") {
+    return null; // bun handles native rebuild during `bun install`; no equivalent.
+  }
+  return ["npm", "rebuild"];
+}
+
 function shouldRepairPnpmInstall(manager: "pnpm" | "bun" | "npm", failedStep: UpdateStepResult) {
   if (manager !== "pnpm" || failedStep.exitCode === 0) {
     return false;
@@ -1053,6 +1075,19 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       cwd: gitRoot,
       timeoutMs,
     }).catch(() => null);
+
+    // [EMPIRICAL 2026-05-24, issue #386] Rebuild native modules so their ABI
+    // matches the active Node version. Without this, a cached better-sqlite3
+    // binary compiled under a different Node version persists in the pnpm
+    // store and breaks plugin load on next gateway boot (aos-lcm
+    // NODE_MODULE_VERSION mismatch). Non-fatal: if rebuild fails for one
+    // module, the rest of the update can still proceed; the gateway will
+    // surface the specific load error if it actually matters.
+    const rebuildArgs = managerRebuildArgs(manager);
+    if (rebuildArgs) {
+      const rebuildStep = await runStep(step("rebuild native modules", rebuildArgs, gitRoot));
+      steps.push(rebuildStep);
+    }
 
     const buildStep = await runStep(step("build", managerScriptArgs(manager, "build"), gitRoot));
     steps.push(buildStep);
