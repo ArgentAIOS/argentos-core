@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   computeEngagementCountsInWindow,
+  markUnresolvedSurfacesUnavailable,
   recordEngagement,
   recordSurfaceEmitted,
 } from "./engagement-tracker.js";
@@ -155,6 +156,109 @@ describe("engagement-tracker", () => {
     });
     expect(counts.acked).toBe(1);
     expect(counts.acted).toBe(0);
+  });
+
+  describe("markUnresolvedSurfacesUnavailable", () => {
+    it("returns 0 when the ledger doesn't exist", () => {
+      const marked = markUnresolvedSurfacesUnavailable({
+        ledgerPath: path.join(tmpDir, "nonexistent.jsonl"),
+        shutdownTime: new Date("2026-05-24T13:00:00Z"),
+      });
+      expect(marked).toBe(0);
+    });
+
+    it("writes system_unavailable for every emitted surface without an outcome", () => {
+      recordSurfaceEmitted({
+        ledgerPath,
+        surfaceId: "s1",
+        agentId: "a",
+        ts: "2026-05-24T12:00:00Z",
+      });
+      recordSurfaceEmitted({
+        ledgerPath,
+        surfaceId: "s2",
+        agentId: "a",
+        ts: "2026-05-24T12:05:00Z",
+      });
+      recordSurfaceEmitted({
+        ledgerPath,
+        surfaceId: "s3",
+        agentId: "a",
+        ts: "2026-05-24T12:10:00Z",
+      });
+      // s2 already resolved — should NOT be re-marked.
+      recordEngagement({
+        ledgerPath,
+        surfaceId: "s2",
+        outcome: "acked",
+        source: "dashboard_click",
+        ts: "2026-05-24T12:06:00Z",
+      });
+
+      const marked = markUnresolvedSurfacesUnavailable({
+        ledgerPath,
+        shutdownTime: new Date("2026-05-24T13:00:00Z"),
+      });
+
+      // Only s1 and s3 are unresolved.
+      expect(marked).toBe(2);
+
+      // Verify the ledger now has two system_unavailable entries for s1 and s3.
+      const counts = computeEngagementCountsInWindow({
+        ledgerPath,
+        windowStart: new Date("2026-05-24T12:00:00.000Z"),
+        windowEnd: new Date("2026-05-24T14:00:00.000Z"),
+      });
+      expect(counts.systemUnavailable).toBe(2);
+      expect(counts.acked).toBe(1);
+    });
+
+    it("records aliveSeconds reflecting how long each surface was visible before shutdown", () => {
+      recordSurfaceEmitted({
+        ledgerPath,
+        surfaceId: "short-lived",
+        agentId: "a",
+        ts: "2026-05-24T12:59:00Z",
+      });
+      recordSurfaceEmitted({
+        ledgerPath,
+        surfaceId: "long-lived",
+        agentId: "a",
+        ts: "2026-05-24T12:00:00Z",
+      });
+
+      markUnresolvedSurfacesUnavailable({
+        ledgerPath,
+        shutdownTime: new Date("2026-05-24T13:00:00Z"),
+      });
+
+      const raw = fs.readFileSync(ledgerPath, "utf-8").trim().split("\n").filter(Boolean);
+      const outcomes = raw
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((e) => e.type === "outcome");
+      expect(outcomes).toHaveLength(2);
+      const byId = new Map(outcomes.map((o) => [o.surfaceId, o.aliveSeconds]));
+      expect(byId.get("short-lived")).toBe(60);
+      expect(byId.get("long-lived")).toBe(3600);
+    });
+
+    it("is idempotent — running twice doesn't double-mark", () => {
+      recordSurfaceEmitted({
+        ledgerPath,
+        surfaceId: "s1",
+        agentId: "a",
+        ts: "2026-05-24T12:00:00Z",
+      });
+      markUnresolvedSurfacesUnavailable({
+        ledgerPath,
+        shutdownTime: new Date("2026-05-24T13:00:00Z"),
+      });
+      const markedSecond = markUnresolvedSurfacesUnavailable({
+        ledgerPath,
+        shutdownTime: new Date("2026-05-24T13:01:00Z"),
+      });
+      expect(markedSecond).toBe(0);
+    });
   });
 
   it("disables implicit-ignore when timeoutHours = 0", () => {

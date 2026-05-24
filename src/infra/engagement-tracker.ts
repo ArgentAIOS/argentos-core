@@ -224,6 +224,67 @@ function readEngagementEntries(ledgerPath: string): EngagementLedgerEntry[] {
   }
 }
 
+/**
+ * [Phase 3b.2] Scan the engagement ledger and write a `system_unavailable`
+ * outcome for every `surface_emitted` event that has no recorded outcome yet.
+ *
+ * Intended for two callers:
+ *   1. Gateway graceful shutdown — captures surfaces the operator never got
+ *      a chance to act on because the operator (or operator's script) is
+ *      stopping the gateway.
+ *   2. Gateway startup — catches surfaces from a prior session that died
+ *      ungracefully (crash, OOM kill, hard power-off) without running the
+ *      graceful-shutdown handler.
+ *
+ * `aliveSeconds` is recorded per surface so consumers can distinguish "killed
+ * immediately" from "killed after the operator had a long chance to see it"
+ * — the former is a stronger negative signal about the system's usability.
+ *
+ * Returns the number of surfaces marked. Returns 0 if the ledger doesn't
+ * exist yet (nothing to mark).
+ */
+export function markUnresolvedSurfacesUnavailable(opts: {
+  ledgerPath: string;
+  shutdownTime: Date;
+  source?: EngagementSource;
+}): number {
+  if (!fs.existsSync(opts.ledgerPath)) return 0;
+  const entries = readEngagementEntries(opts.ledgerPath);
+  const emissions = new Map<string, number>();
+  const resolved = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type === "surface_emitted") {
+      const ts = Date.parse(entry.ts);
+      if (Number.isFinite(ts) && !emissions.has(entry.surfaceId)) {
+        emissions.set(entry.surfaceId, ts);
+      }
+    } else if (entry.type === "outcome") {
+      // Any outcome (including a prior system_unavailable) means the surface
+      // is already "resolved" from this scan's perspective — don't double-mark.
+      resolved.add(entry.surfaceId);
+    }
+  }
+
+  const shutdownMs = opts.shutdownTime.getTime();
+  const shutdownIso = opts.shutdownTime.toISOString();
+  const source = opts.source ?? "gateway_shutdown";
+  let marked = 0;
+  for (const [surfaceId, emissionMs] of emissions) {
+    if (resolved.has(surfaceId)) continue;
+    const aliveSeconds = Math.max(0, Math.floor((shutdownMs - emissionMs) / 1000));
+    recordEngagement({
+      ledgerPath: opts.ledgerPath,
+      surfaceId,
+      outcome: "system_unavailable",
+      source,
+      ts: shutdownIso,
+      aliveSeconds,
+    });
+    marked++;
+  }
+  return marked;
+}
+
 function appendEngagementEntry(ledgerPath: string, entry: EngagementLedgerEntry): void {
   fs.appendFileSync(ledgerPath, `${JSON.stringify(entry)}\n`, "utf-8");
 }
