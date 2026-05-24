@@ -1,5 +1,5 @@
 {
-  "snapshotAt": "2026-05-24T16:00:23.051Z",
+  "snapshotAt": "2026-05-24T21:47:39.364Z",
   "totalErrors": 216,
   "errors": [
     {
@@ -1294,7 +1294,7 @@
     },
     {
       "file": "src/wizard/onboarding.local-runtime.ts",
-      "line": 43,
+      "line": 55,
       "code": "TS2339",
       "message": "Property 'trim' does not exist on type 'never'."
     }
