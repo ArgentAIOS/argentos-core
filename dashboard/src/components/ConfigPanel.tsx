@@ -93,6 +93,7 @@ import { MemoryConsole } from "./MemoryConsole";
 import { MemoryDocsPanel } from "./MemoryDocsPanel";
 import { PersonalSkillsPanel } from "./PersonalSkillsPanel";
 import SafetyRulesPanel from "./SafetyRulesPanel";
+import SystemHealthPanel from "./SystemHealthPanel";
 import { SystemsRegistryPanel } from "./SystemsRegistryPanel";
 
 // Dictionary entry for pronunciation/replacement
@@ -15668,6 +15669,8 @@ export function ConfigPanel({
                               </>
                             )}
                           </div>
+
+                          <SystemHealthPanel />
 
                           <div className="bg-white/5 rounded-xl p-4 space-y-3">
                             <div className="flex items-center gap-2">

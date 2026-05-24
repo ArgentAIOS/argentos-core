@@ -16573,6 +16573,226 @@ app.get("/api/settings/available-models", async (req, res) => {
   }
 });
 
+// GET /api/system-health/snapshot — System Health Panel M1 (read-only)
+// See HANDOFF-system-health-panel.md. Snapshot is cached for 15s because
+// `top -l 1` costs ~1s on Apple Silicon and we don't want to block every
+// poll. Pass ?fresh=1 to bypass the cache (used by the manual refresh button).
+const SYSTEM_HEALTH_CACHE_TTL_MS = 15_000;
+let systemHealthSnapshotCache = { at: 0, snapshot: null };
+
+// Hardware never changes during the process lifetime — probe once and cache forever.
+let cachedHardware = null;
+function probeHardware() {
+  if (cachedHardware) return cachedHardware;
+  const safeExec = (cmd) => {
+    try {
+      return execSync(cmd, { timeout: 1500 }).toString().trim();
+    } catch {
+      return "";
+    }
+  };
+  const chip = safeExec("sysctl -n machdep.cpu.brand_string") || "unknown";
+  const memBytes = Number(safeExec("sysctl -n hw.memsize")) || 0;
+  const model = safeExec("sysctl -n hw.model") || "unknown";
+  const perfCores = Number(safeExec("sysctl -n hw.perflevel0.physicalcpu")) || 0;
+  const effCores = Number(safeExec("sysctl -n hw.perflevel1.physicalcpu")) || 0;
+  // Apple Silicon hw.model is opaque ("Mac17,6"). Use system_profiler for the
+  // marketing name ("MacBook Pro", "Mac Studio"). Cheaper than a cold cache miss
+  // suggests because we only run it once per process.
+  let chassis = "unknown";
+  let machineName = "";
+  try {
+    const out = execSync("system_profiler SPHardwareDataType -json", { timeout: 2500 }).toString();
+    const parsed = JSON.parse(out);
+    const item = parsed?.SPHardwareDataType?.[0] || {};
+    machineName = String(item.machine_name || "");
+    if (/MacBook/i.test(machineName)) chassis = "laptop";
+    else if (/Mac mini|iMac|Mac Pro|Mac Studio/i.test(machineName)) chassis = "desktop";
+  } catch {
+    // Fallback heuristic on legacy hw.model strings
+    if (/^MacBook/i.test(model)) chassis = "laptop";
+    else if (/^iMac|^Macmini|^MacPro|^MacStudio/i.test(model)) chassis = "desktop";
+  }
+  cachedHardware = {
+    chip,
+    model,
+    machineName: machineName || model,
+    memoryGb: memBytes ? Math.round(memBytes / 1024 ** 3) : 0,
+    cores: { performance: perfCores, efficiency: effCores },
+    chassis,
+    os: {
+      name: os.type(),
+      version: os.release(),
+    },
+  };
+  return cachedHardware;
+}
+
+function probeThermal(hardware) {
+  // Tahoe (Darwin 25) hides kernel_task from `top` and `ps`. Fall back to
+  // load-average normalized by core count — that signal still rises sharply
+  // under sustained inference load (e.g. the 2026-05-24 thermal event saw
+  // load avg climb from ~1 → ~12 when the dense local model was hot).
+  // We still try kernel_task first for older macOS where it works.
+  let kernelTaskPercent = null;
+  if (process.platform === "darwin") {
+    try {
+      const out = execSync("top -l 1 -n 30 -o cpu -stats pid,command,cpu", {
+        timeout: 3000,
+      }).toString();
+      const kernelLine = out.split("\n").find((line) => /kernel_task/i.test(line));
+      if (kernelLine) {
+        const tokens = kernelLine.trim().split(/\s+/);
+        const last = tokens[tokens.length - 1];
+        const parsed = Number(last);
+        if (Number.isFinite(parsed)) kernelTaskPercent = parsed;
+      }
+    } catch {
+      /* fall through to loadavg */
+    }
+  }
+  const [load1] = os.loadavg();
+  const cores = os.cpus().length || 1;
+  // Load per core: >1.0 = oversubscribed, >2.0 = sustained queue, >3.0 = thermal pressure
+  const loadPerCore = load1 / cores;
+  // Prefer kernel_task% when available (older macOS); otherwise use loadPerCore.
+  let interpretation = "cool";
+  if (kernelTaskPercent !== null) {
+    if (kernelTaskPercent >= 50) interpretation = "severe";
+    else if (kernelTaskPercent >= 20) interpretation = "throttling";
+    else if (kernelTaskPercent >= 10) interpretation = "moderate";
+    else if (kernelTaskPercent >= 5) interpretation = "mild";
+  } else {
+    if (loadPerCore >= 3.0) interpretation = "severe";
+    else if (loadPerCore >= 2.0) interpretation = "throttling";
+    else if (loadPerCore >= 1.0) interpretation = "moderate";
+    else if (loadPerCore >= 0.5) interpretation = "mild";
+  }
+  return {
+    kernelTaskPercent,
+    loadPerCore: Number(loadPerCore.toFixed(2)),
+    load1: Number(load1.toFixed(2)),
+    interpretation,
+    indicator: kernelTaskPercent !== null ? "kernel_task" : "load_avg",
+  };
+}
+
+function probePortReachable(port, host = "127.0.0.1", timeoutMs = 400) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const done = (reachable) => {
+      socket.destroy();
+      resolve(reachable);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+    socket.connect(port, host);
+  });
+}
+
+async function probeRuntimes() {
+  // Port-probe first (fast), then fetch model lists for reachable runtimes.
+  const [ollamaReachable, lmStudioReachable, omlxReachable] = await Promise.all([
+    probePortReachable(11434),
+    probePortReachable(1234),
+    probePortReachable(8000),
+  ]);
+  const fetchModels = async (url, timeoutMs = 1500) => {
+    try {
+      const out = execSync(`curl -s --max-time ${(timeoutMs / 1000).toFixed(1)} "${url}"`, {
+        timeout: timeoutMs + 500,
+      }).toString();
+      return JSON.parse(out);
+    } catch {
+      return null;
+    }
+  };
+  const result = {
+    ollama: { reachable: ollamaReachable, loadedModels: [], activeModels: [] },
+    lmStudio: { reachable: lmStudioReachable, loadedModels: [] },
+    omlx: { reachable: omlxReachable, loadedModels: [] },
+  };
+  if (ollamaReachable) {
+    const tags = await fetchModels("http://127.0.0.1:11434/api/tags");
+    if (tags && Array.isArray(tags.models)) {
+      result.ollama.loadedModels = tags.models
+        .map((m) =>
+          typeof m?.name === "string" ? m.name : typeof m?.model === "string" ? m.model : null,
+        )
+        .filter(Boolean);
+    }
+    // /api/ps tells us which models are currently warm in memory (vs just registered)
+    const ps = await fetchModels("http://127.0.0.1:11434/api/ps");
+    if (ps && Array.isArray(ps.models)) {
+      result.ollama.activeModels = ps.models
+        .map((m) =>
+          typeof m?.name === "string" ? m.name : typeof m?.model === "string" ? m.model : null,
+        )
+        .filter(Boolean);
+    }
+  }
+  if (lmStudioReachable) {
+    const models = await fetchModels("http://127.0.0.1:1234/v1/models");
+    if (models && Array.isArray(models.data)) {
+      result.lmStudio.loadedModels = models.data
+        .map((m) => (typeof m?.id === "string" ? m.id : null))
+        .filter(Boolean);
+    }
+  }
+  return result;
+}
+
+function probeKernelConfig(config) {
+  const kernel = config?.agents?.defaults?.kernel || {};
+  return {
+    enabled: kernel.enabled !== false,
+    mode: typeof kernel.mode === "string" ? kernel.mode : "shadow",
+    tickMs: typeof kernel.tickMs === "number" ? kernel.tickMs : 120_000,
+    localModel: typeof kernel.localModel === "string" ? kernel.localModel : null,
+    idleActivityGateMinutes:
+      typeof kernel.idleActivityGateMinutes === "number" ? kernel.idleActivityGateMinutes : 30,
+  };
+}
+
+async function buildSystemHealthSnapshot() {
+  const config = readArgentConfig();
+  const hardware = probeHardware();
+  const [thermal, runtimes] = await Promise.all([
+    Promise.resolve(probeThermal(hardware)),
+    probeRuntimes(),
+  ]);
+  return {
+    capturedAt: new Date().toISOString(),
+    hardware,
+    thermal,
+    runtimes,
+    kernel: probeKernelConfig(config),
+    suggestions: [], // M2 will populate
+  };
+}
+
+app.get("/api/system-health/snapshot", async (req, res) => {
+  try {
+    const fresh = String(req.query.fresh || "") === "1";
+    const now = Date.now();
+    if (
+      !fresh &&
+      systemHealthSnapshotCache.snapshot &&
+      now - systemHealthSnapshotCache.at < SYSTEM_HEALTH_CACHE_TTL_MS
+    ) {
+      return res.json({ ...systemHealthSnapshotCache.snapshot, cached: true });
+    }
+    const snapshot = await buildSystemHealthSnapshot();
+    systemHealthSnapshotCache = { at: now, snapshot };
+    res.json({ ...snapshot, cached: false });
+  } catch (err) {
+    console.error("[SystemHealth] Snapshot error:", err);
+    res.status(500).json({ error: "Failed to build system health snapshot" });
+  }
+});
+
 // GET /api/settings/background-model-recommendations — Returns suggested provider/model per background lane
 app.get("/api/settings/background-model-recommendations", async (req, res) => {
   try {
