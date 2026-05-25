@@ -85,7 +85,11 @@ export type UpdateWizardOptions = {
 };
 
 const STEP_LABELS: Record<string, string> = {
-  "clean check": "Working directory is clean",
+  // #413: was "Working directory is clean" — that label lied when the
+  // command returned non-empty stdout (git status --porcelain always exits 0).
+  // The step now prints the neutral "Checking for uncommitted changes" and
+  // the SKIPPED reason block surfaces the dirty paths if any were found.
+  "git status": "Checking for uncommitted changes",
   "upstream check": "Upstream branch exists",
   "git fetch": "Fetching latest changes",
   "git rebase": "Rebasing onto target commit",
@@ -1300,9 +1304,27 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     if (result.reason === "dirty") {
       defaultRuntime.log(
         theme.warn(
-          "Skipped: working directory has uncommitted changes. Commit or stash them first.",
+          "Skipped: working directory has uncommitted changes. Commit, stash, or revert them first.",
         ),
       );
+      // #413: surface the offending paths so the operator doesn't have to cd
+      // into the install root and run `git status` to figure out what's
+      // blocking them. Cap at 20 lines to keep the failure message scannable.
+      if (Array.isArray(result.dirtyPaths) && result.dirtyPaths.length > 0) {
+        const shown = result.dirtyPaths.slice(0, 20);
+        defaultRuntime.log(theme.muted("Dirty paths:"));
+        for (const line of shown) {
+          defaultRuntime.log(theme.muted(`  ${line}`));
+        }
+        if (result.dirtyPaths.length > shown.length) {
+          defaultRuntime.log(theme.muted(`  …and ${result.dirtyPaths.length - shown.length} more`));
+        }
+        if (result.root) {
+          defaultRuntime.log(
+            theme.muted(`Revert: cd ${result.root} && git checkout -- <paths above>`),
+          );
+        }
+      }
     }
     if (result.reason === "not-argent-root") {
       defaultRuntime.log(
