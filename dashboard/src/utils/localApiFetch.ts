@@ -202,8 +202,24 @@ type AuthRecoveredListener = () => void;
 const authLostListeners = new Set<AuthLostListener>();
 const authRecoveredListeners = new Set<AuthRecoveredListener>();
 
+/**
+ * Most recent un-recovered auth-lost event. Replayed to listeners that
+ * subscribe *after* the event fired so the banner survives the race where a
+ * settings panel 401s before `AuthLostBanner`'s effect has mounted — six
+ * settings GETs fire in parallel at app load and any one of them can race
+ * the banner's subscription. Cleared on auth-recovered.
+ */
+let lastAuthLostEvent: DashboardAuthLostEvent | null = null;
+
 export function addDashboardAuthLostListener(listener: AuthLostListener): () => void {
   authLostListeners.add(listener);
+  if (lastAuthLostEvent) {
+    try {
+      listener(lastAuthLostEvent);
+    } catch {
+      // Replay must not break the subscription contract.
+    }
+  }
   return () => authLostListeners.delete(listener);
 }
 
@@ -213,10 +229,8 @@ export function addDashboardAuthRecoveredListener(listener: AuthRecoveredListene
 }
 
 function notifyAuthLost(reason: DashboardAuthLostReason, path: string): void {
-  if (authLostListeners.size === 0) {
-    return;
-  }
   const event: DashboardAuthLostEvent = { reason, path, at: Date.now() };
+  lastAuthLostEvent = event;
   for (const listener of authLostListeners) {
     try {
       listener(event);
@@ -227,6 +241,7 @@ function notifyAuthLost(reason: DashboardAuthLostReason, path: string): void {
 }
 
 function notifyAuthRecovered(): void {
+  lastAuthLostEvent = null;
   if (authRecoveredListeners.size === 0) {
     return;
   }
@@ -241,11 +256,12 @@ function notifyAuthRecovered(): void {
 
 /**
  * Test-only reset. Production code never calls this; tests use it to ensure
- * listeners from one case don't leak into the next.
+ * listeners and the cached last-event from one case don't leak into the next.
  */
 export function __resetDashboardAuthListenersForTesting(): void {
   authLostListeners.clear();
   authRecoveredListeners.clear();
+  lastAuthLostEvent = null;
 }
 
 /**

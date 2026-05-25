@@ -308,4 +308,37 @@ describe("fetchLocalApi auth event surface", () => {
     await fetchLocalApi("/api/settings/models");
     expect(fired).toBe(1); // not incremented after unsubscribe
   });
+
+  it("replays the most recent un-recovered auth-lost event to late subscribers", async () => {
+    // Race we're guarding against: settings GET 401s before AuthLostBanner's
+    // useEffect mounts. Without replay, the banner stays hidden forever.
+    setupStubLocalStorage(null);
+    setupStubFetch({ status: 401 });
+    await fetchLocalApi("/api/settings/models");
+    const events: Array<{ reason: string; path: string }> = [];
+    addDashboardAuthLostListener((event) => {
+      events.push({ reason: event.reason, path: event.path });
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({ reason: "absent", path: "/api/settings/models" });
+  });
+
+  it("does not replay a stale auth-lost event after auth-recovered fires", async () => {
+    setupStubLocalStorage(null);
+    setupStubFetch({ status: 401 });
+    await fetchLocalApi("/api/settings/models");
+    // Now flip to authenticated 2xx so auth-recovered fires.
+    setupStubLocalStorage("valid-token");
+    setupStubFetch({ status: 200, ok: true });
+    // Existing listener (subscribed before recovery) needs to be in place so
+    // the recovered event has someone to fire to and resets the cached event.
+    addDashboardAuthRecoveredListener(() => {});
+    await fetchLocalApi("/api/settings/models");
+    // A late subscriber arriving now should NOT see a replayed lost event.
+    const events: Array<unknown> = [];
+    addDashboardAuthLostListener((event) => {
+      events.push(event);
+    });
+    expect(events).toHaveLength(0);
+  });
 });
