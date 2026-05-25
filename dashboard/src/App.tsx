@@ -10,6 +10,7 @@ import { AlertsModal, useAlerts } from "./components/AlertsModal";
 import { AppForge } from "./components/AppForge";
 import { AppWindow } from "./components/AppWindow";
 import { useAudioDevices, type Voice } from "./components/AudioDeviceSelector";
+import { AuthLostBanner } from "./components/AuthLostBanner";
 import { AvatarBackground } from "./components/AvatarBackground";
 import { CalendarModal } from "./components/CalendarModal";
 import { CanvasPanel, type CanvasDocument, pushToCanvas } from "./components/CanvasPanel";
@@ -6229,6 +6230,7 @@ function App() {
           localStorage.setItem("argent-setup-complete", "1");
         }}
       />
+      <AuthLostBanner />
       <CorsApprovalToast
         domain={corsApprovalDomain}
         onApprove={() => {
