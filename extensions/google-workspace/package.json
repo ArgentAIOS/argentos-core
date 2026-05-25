@@ -1,6 +1,6 @@
 {
   "name": "@argentos/google-workspace",
-  "version": "2026.4.30",
+  "version": "2026.5.6.6",
   "description": "ArgentOS Google Workspace Admin extension — email reports, user directory, domain management",
   "type": "module",
   "dependencies": {

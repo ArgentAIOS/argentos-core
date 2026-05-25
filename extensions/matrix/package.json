@@ -1,6 +1,6 @@
 {
   "name": "@argentos/matrix",
-  "version": "2026.4.30",
+  "version": "2026.5.6.6",
   "description": "ArgentOS Matrix channel plugin",
   "type": "module",
   "dependencies": {
