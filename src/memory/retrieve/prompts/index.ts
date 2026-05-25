@@ -23,6 +23,18 @@ Query: {query}
 Items (numbered):
 {items}
 
+Ranking guidelines:
+- If an item directly states the answer to the query, it MUST be ranked first.
+- Property questions ("what is my favorite X", "where do I live", "who is my Y")
+  are answered by items that explicitly contain that property and its value.
+  An item like "<entity>'s favorite color is <value>" answers "favorite color"
+  and ranks above broad identity facts like preferred name, pronouns, profession,
+  or unrelated likes/interests about the same entity.
+- Topical co-mention ("the entity likes X") is NOT an answer to a property
+  question unless the item explicitly states that X is the property's value.
+- Recency and reinforcement are inputs to the prior score, not signals to demote
+  a direct answer in favor of a more frequently mentioned but less relevant fact.
+
 Return ONLY the item numbers in order of relevance (most relevant first).
 Format: comma-separated numbers, e.g.: 3, 1, 5, 2, 4
 If none are relevant, return: NONE`;

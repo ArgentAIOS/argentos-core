@@ -297,6 +297,83 @@ async function checkSufficiency(
   return response.trim().toUpperCase().startsWith("YES");
 }
 
+/**
+ * Score ratio above which the pre-rerank top is considered "clearly dominant"
+ * over the second-best candidate. When dominance holds AND the LLM displaces
+ * the dominant candidate from position 0, the guardrail restores it.
+ *
+ * 1.5 is calibrated against the favorite-color repro (pre-rerank top 2.672,
+ * second 1.616 → ratio 1.65×). Tighten if the guardrail starts over-restoring
+ * on borderline ties; loosen if exact answers continue to be buried.
+ */
+export const RERANK_DOMINANCE_THRESHOLD = 1.5;
+
+export interface RerankGuardrailDecision {
+  /** Final ordering after the guardrail (may be identical to the LLM's order). */
+  results: MemorySearchResult[];
+  /** True iff the guardrail restored the pre-rerank top after an LLM displacement. */
+  restored: boolean;
+  /** Pre-rerank-top id, included in telemetry so callers can audit displacements. */
+  preRerankTopId: string;
+  /** Whatever the LLM picked as the top result before guardrail intervention. */
+  llmTopId: string;
+  /** Dominance ratio = preRerankTop.score / preRerankSecond.score (Infinity when only one result). */
+  dominanceRatio: number;
+}
+
+/**
+ * Apply the dominance guardrail to a reranked candidate set.
+ *
+ * Problem this guards against: the LLM reranker has no per-call knowledge of
+ * how dominant the pre-rerank top was. It sees N summaries and reorders them
+ * by its own judgment of "relevance," which can demote a clear winner in favor
+ * of broad identity facts that *sound* related to the query but don't actually
+ * answer it (issue #418 / 2026-05-25 favorite-color repro).
+ *
+ * Rule: if `preRerankResults[0]` is more than `RERANK_DOMINANCE_THRESHOLD` times
+ * higher-scored than `preRerankResults[1]`, and the LLM moved a different item
+ * into position 0, restore the dominant pre-rerank top to position 0. Everything
+ * else stays in the LLM's order.
+ *
+ * Pure function (no I/O); exported for direct test coverage.
+ */
+export function applyRerankGuardrail(
+  preRerankResults: MemorySearchResult[],
+  llmReordered: MemorySearchResult[],
+): RerankGuardrailDecision {
+  const preRerankTop = preRerankResults[0];
+  const preRerankSecond = preRerankResults[1];
+  const llmTop = llmReordered[0];
+
+  const dominanceRatio = preRerankSecond
+    ? preRerankTop.score / Math.max(preRerankSecond.score, Number.EPSILON)
+    : Number.POSITIVE_INFINITY;
+
+  const baseDecision = {
+    preRerankTopId: preRerankTop.item.id,
+    llmTopId: llmTop.item.id,
+    dominanceRatio,
+  };
+
+  // LLM didn't displace the dominant top — nothing to restore.
+  if (preRerankTop.item.id === llmTop.item.id) {
+    return { ...baseDecision, results: llmReordered, restored: false };
+  }
+
+  // LLM displaced the top but pre-rerank scores were flat — trust the LLM.
+  if (dominanceRatio < RERANK_DOMINANCE_THRESHOLD) {
+    return { ...baseDecision, results: llmReordered, restored: false };
+  }
+
+  // Clear dominance + LLM displacement → restore the dominant top, keep the
+  // rest of the LLM's order (with the dominant top removed from its old slot).
+  const restored = [
+    preRerankTop,
+    ...llmReordered.filter((r) => r.item.id !== preRerankTop.item.id),
+  ];
+  return { ...baseDecision, results: restored, restored: true };
+}
+
 /** Call LLM to re-rank results by semantic relevance */
 async function rerankResults(
   query: string,
@@ -339,7 +416,16 @@ async function rerankResults(
     }
   }
 
-  return reordered;
+  // Dominance guardrail: prevent the LLM from burying a clear winner under
+  // broad identity facts. See applyRerankGuardrail's docblock for the rule.
+  const decision = applyRerankGuardrail(results, reordered);
+  if (decision.restored) {
+    console.warn(
+      `[MemU] Rerank guardrail restored dominant top ${decision.preRerankTopId} ` +
+        `(LLM picked ${decision.llmTopId}, dominance ratio ${decision.dominanceRatio.toFixed(2)}×)`,
+    );
+  }
+  return decision.results;
 }
 
 /** Generic LLM call using runEmbeddedPiAgent (same pattern as extraction) */
