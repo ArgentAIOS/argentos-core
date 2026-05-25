@@ -41,18 +41,19 @@ describe("runGatewayUpdate", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("skips git update when worktree is dirty", async () => {
+  it("skips git update when worktree is dirty and surfaces the dirty paths", async () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
       path.join(tempDir, "package.json"),
       JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
+    const statusKey = `git -C ${tempDir} status --porcelain -- :!dist/control-ui/ :!dashboard/provider-catalog/index.cjs :!dashboard/src/lib/_generated/`;
     const { runner, calls } = createRunner({
       [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
       [`git -C ${tempDir} rev-parse HEAD`]: { stdout: "abc123" },
       [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
-      [`git -C ${tempDir} status --porcelain -- :!dist/control-ui/`]: { stdout: " M README.md" },
+      [statusKey]: { stdout: " M README.md\n M src/foo.ts" },
     });
 
     const result = await runGatewayUpdate({
@@ -63,7 +64,39 @@ describe("runGatewayUpdate", () => {
 
     expect(result.status).toBe("skipped");
     expect(result.reason).toBe("dirty");
+    // #413: dirty paths are surfaced on the result so the CLI can render them.
+    expect(result.dirtyPaths).toEqual(["M README.md", "M src/foo.ts"]);
     expect(calls.some((call) => call.includes("rebase"))).toBe(false);
+  });
+
+  it("ignores regenerated tracked artifacts when checking for dirt (#413)", async () => {
+    await fs.mkdir(path.join(tempDir, ".git"));
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
+      "utf-8",
+    );
+    // git status --porcelain returns EMPTY when the pathspec excludes the
+    // only dirty paths (those listed are the regenerated tracked artifacts
+    // that the build step rewrites on every install). The runner should not
+    // treat that as dirty.
+    const statusKey = `git -C ${tempDir} status --porcelain -- :!dist/control-ui/ :!dashboard/provider-catalog/index.cjs :!dashboard/src/lib/_generated/`;
+    const { runner } = createRunner({
+      [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
+      [`git -C ${tempDir} rev-parse HEAD`]: { stdout: "abc123" },
+      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
+      [statusKey]: { stdout: "" },
+    });
+
+    const result = await runGatewayUpdate({
+      cwd: tempDir,
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    // Should NOT be skipped-with-reason-dirty. Downstream steps will
+    // legitimately fail (no upstream mocked) but the dirty check passed.
+    expect(result.reason).not.toBe("dirty");
   });
 
   it("aborts rebase on failure", async () => {

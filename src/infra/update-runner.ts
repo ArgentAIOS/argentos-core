@@ -44,6 +44,13 @@ export type UpdateRunResult = {
   after?: UpdateVersionInfo;
   steps: UpdateStepResult[];
   durationMs: number;
+  /**
+   * Populated when `status: "skipped"` and `reason: "dirty"`. Lists the paths
+   * (one per line, as `git status --porcelain` emits them) that caused the
+   * skip — surfaced to the operator so they know what's blocking the update
+   * instead of having to manually `cd` and run `git status` themselves.
+   */
+  dirtyPaths?: string[];
 };
 
 type CommandRunner = (
@@ -684,17 +691,41 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       (channel === "dev" ? (needsCheckoutMain ? 12 : 11) : 10) +
       (shouldSyncRuntimeSnapshot ? 1 : 0);
 
+    // #413: dirty-check pathspec excludes regenerated-but-tracked artifacts.
+    // These files are committed to the repo (so fresh installs have them as
+    // fallbacks) BUT are rewritten by the build step during a normal install,
+    // so any install that ever successfully built is otherwise permanently
+    // "dirty" and refuses to update. The `:!dist/control-ui/` exclusion was
+    // the original precedent; this list extends it to the other known
+    // regenerated tracked paths.
     const statusCheck = await runStep(
       step(
-        "clean check",
-        ["git", "-C", gitRoot, "status", "--porcelain", "--", ":!dist/control-ui/"],
+        "git status",
+        [
+          "git",
+          "-C",
+          gitRoot,
+          "status",
+          "--porcelain",
+          "--",
+          ":!dist/control-ui/",
+          ":!dashboard/provider-catalog/index.cjs",
+          ":!dashboard/src/lib/_generated/",
+        ],
         gitRoot,
       ),
     );
     steps.push(statusCheck);
-    const hasUncommittedChanges =
-      statusCheck.stdoutTail && statusCheck.stdoutTail.trim().length > 0;
+    const statusOut = statusCheck.stdoutTail?.trim() ?? "";
+    const hasUncommittedChanges = statusOut.length > 0;
     if (hasUncommittedChanges) {
+      // Surface the offending paths so the CLI can render them under the
+      // skipped-reason message instead of the operator having to manually
+      // cd into the install root and run `git status`.
+      const dirtyPaths = statusOut
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
       return {
         status: "skipped",
         mode: "git",
@@ -702,6 +733,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
         reason: "dirty",
         before: { sha: beforeSha, version: beforeVersion },
         steps,
+        dirtyPaths,
         durationMs: Date.now() - startedAt,
       };
     }
