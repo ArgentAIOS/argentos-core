@@ -2250,7 +2250,14 @@ async function fetchJsonWithRetry<T = unknown>(
     }
     const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      // Route through fetchLocalApi so the dashboard auth token is attached.
+      // Closes #403: raw fetch() left every Settings panel load (service-keys,
+      // auth-profiles, models, model-profiles, agent settings, raw-config,
+      // auth-diagnostics) header-less. Loads worked only because the
+      // static-server proxy auto-injected a token — which broke as soon as
+      // the proxy fell back to a stale Referer token (#404), 401'ing every
+      // Settings tab silently.
+      const response = await fetchLocalApi(url, { signal: controller.signal });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} for ${url}`);
       }
