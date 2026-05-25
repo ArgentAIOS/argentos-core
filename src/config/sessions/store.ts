@@ -12,6 +12,11 @@ import {
 } from "../../utils/delivery-context.js";
 import { getFileMtimeMs, isCacheEnabled, resolveCacheTtlMs } from "../cache-utils.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
+import {
+  hashSkillsSnapshot,
+  readSkillsSnapshotByHash,
+  writeSkillsSnapshot,
+} from "./skills-snapshot-store.js";
 import { mergeSessionEntry, type SessionEntry } from "./types.js";
 
 // ============================================================================
@@ -161,6 +166,33 @@ export function loadSessionStore(
     }
   }
 
+  // #410: hydrate skillsSnapshot from the sidecar for entries that only have
+  // a hash reference. Keeps every reader above the store layer (commands/agent,
+  // auto-reply/reply, pi-embedded-runner) working unchanged regardless of
+  // whether the entry on disk was the new dedup format or the legacy inline
+  // format. Lookups are batched by hash so 100 sessions referencing the same
+  // snapshot only read the sidecar once.
+  const hashesToHydrate = new Set<string>();
+  for (const entry of Object.values(store)) {
+    if (entry && !entry.skillsSnapshot && typeof entry.skillsSnapshotHash === "string") {
+      hashesToHydrate.add(entry.skillsSnapshotHash);
+    }
+  }
+  if (hashesToHydrate.size > 0) {
+    const resolved = new Map<string, ReturnType<typeof readSkillsSnapshotByHash>>();
+    for (const hash of hashesToHydrate) {
+      resolved.set(hash, readSkillsSnapshotByHash(storePath, hash));
+    }
+    for (const entry of Object.values(store)) {
+      if (entry && !entry.skillsSnapshot && typeof entry.skillsSnapshotHash === "string") {
+        const snapshot = resolved.get(entry.skillsSnapshotHash);
+        if (snapshot) {
+          entry.skillsSnapshot = snapshot;
+        }
+      }
+    }
+  }
+
   // Cache the result if caching is enabled
   if (!opts.skipCache && isSessionStoreCacheEnabled()) {
     SESSION_STORE_CACHE.set(storePath, {
@@ -186,6 +218,68 @@ export function readSessionUpdatedAt(params: {
   }
 }
 
+const DEFAULT_WORKFLOW_PRUNE_DAYS = 30;
+const WORKFLOW_KEY_PATTERN = /^agent:[^:]+:workflow:/;
+
+function resolveWorkflowPruneDays(): number {
+  const raw = process.env.ARGENT_SESSION_WORKFLOW_PRUNE_DAYS;
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return DEFAULT_WORKFLOW_PRUNE_DAYS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_WORKFLOW_PRUNE_DAYS;
+  }
+  return Math.floor(parsed);
+}
+
+function pruneStaleWorkflowSessions(store: Record<string, SessionEntry>): void {
+  const days = resolveWorkflowPruneDays();
+  if (days <= 0) {
+    return;
+  }
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  let pruned = 0;
+  for (const [key, entry] of Object.entries(store)) {
+    if (!WORKFLOW_KEY_PATTERN.test(key)) continue;
+    const updatedAt = typeof entry?.updatedAt === "number" ? entry.updatedAt : 0;
+    if (updatedAt > 0 && updatedAt < cutoffMs) {
+      delete store[key];
+      pruned++;
+    }
+  }
+  if (pruned > 0) {
+    console.log(`[session-store] pruned ${pruned} workflow session(s) older than ${days} days`);
+  }
+}
+
+// Side-effect: writes any new snapshot blobs to the sidecar and updates each
+// entry's `skillsSnapshotHash`. Returns a serialization-only deep copy of the
+// store with inline `skillsSnapshot` blobs stripped; the in-memory store kept
+// by callers retains the hydrated blob so `updateSessionStoreEntry` consumers
+// don't observe a disappeared field after a save.
+function snapshotStoreForPersist(
+  store: Record<string, SessionEntry>,
+  storePath: string,
+): Record<string, SessionEntry> {
+  const serializable: Record<string, SessionEntry> = {};
+  for (const [key, entry] of Object.entries(store)) {
+    if (!entry) continue;
+    if (entry.skillsSnapshot) {
+      const hash = hashSkillsSnapshot(entry.skillsSnapshot);
+      if (entry.skillsSnapshotHash !== hash) {
+        writeSkillsSnapshot(storePath, entry.skillsSnapshot);
+        entry.skillsSnapshotHash = hash;
+      }
+      const { skillsSnapshot: _strip, ...rest } = entry;
+      serializable[key] = rest as SessionEntry;
+    } else {
+      serializable[key] = entry;
+    }
+  }
+  return serializable;
+}
+
 async function saveSessionStoreUnlocked(
   storePath: string,
   store: Record<string, SessionEntry>,
@@ -195,8 +289,23 @@ async function saveSessionStoreUnlocked(
 
   normalizeSessionStore(store);
 
+  // #410: auto-prune stale workflow sessions. Workflow entries from completed
+  // cron runs are write-once and rarely re-read; without pruning, sessions.json
+  // bloats indefinitely (357 entries / 98 MB observed in the wild). Threshold
+  // is operator-configurable via ARGENT_SESSION_WORKFLOW_PRUNE_DAYS. Runs
+  // before the dedup pass so we don't write sidecar entries for snapshots
+  // that are about to be pruned.
+  pruneStaleWorkflowSessions(store);
+
+  // #410: lazy migration + dedup. Write any new skillsSnapshot blobs to the
+  // sidecar (content-addressed, idempotent) and stringify a serialization-
+  // only copy with the inline blobs stripped. Sidecar write completes BEFORE
+  // the main store write so a concurrent reader never sees a hash with no
+  // resolvable blob.
+  const serializable = snapshotStoreForPersist(store, storePath);
+
   await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
-  const json = JSON.stringify(store, null, 2);
+  const json = JSON.stringify(serializable, null, 2);
 
   // Windows: avoid atomic rename swaps (can be flaky under concurrent access).
   // We serialize writers via the session-store lock instead.

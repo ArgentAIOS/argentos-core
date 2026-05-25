@@ -104,6 +104,13 @@ export type SessionEntry = {
   lastAccountId?: string;
   lastThreadId?: string | number;
   skillsSnapshot?: SessionSkillSnapshot;
+  /**
+   * Content-hash reference into the sidecar `skills-snapshots.json` store.
+   * Persistence-only field — readers above the store layer continue to
+   * use `skillsSnapshot`, which the store hydrates from the sidecar when
+   * only the hash is present. See #410 and `skills-snapshot-store.ts`.
+   */
+  skillsSnapshotHash?: string;
   systemPromptReport?: SessionSystemPromptReport;
   /** Timestamp (ms) of the last user-initiated message (not cron/system). Used for time-awareness. */
   lastUserMessageAt?: number;
