@@ -21,6 +21,10 @@ vi.mock("../tools/tinyfish-browser.js", () => ({
   createTinyFishBrowserCloseTool: () => stubTool("tinyfish_browser_close"),
 }));
 
+vi.mock("../tools/tinyfish-search.js", () => ({
+  createTinyFishSearchTool: () => stubTool("tinyfish_search"),
+}));
+
 vi.mock("../../plugins/tools.js", () => ({
   resolvePluginTools: () => [],
   getPluginToolMeta: () => undefined,
