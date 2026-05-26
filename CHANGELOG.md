@@ -2,6 +2,68 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.5.6.6
+
+### Highlights
+
+- **Argent's kernel learns to notice itself.** New kernel-fitness substrate
+  tracks engagement, surfaces "system unavailable" on shutdown, detects
+  artifact-open via atime, and writes a stall composite ledger — the
+  foundation for Argent to know when it's actually being used vs idle.
+  (#388, #390, #391, #392, #393, #394, #395)
+- **Installer Mac path matures.** `install.sh` now auto-installs Ollama on
+  macOS (#397), the wizard writes `kernel.localModel` after a local-runtime
+  pick (#398), and `argent update` rebuilds native modules after dependency
+  installs (#396) so the post-update ABI-mismatch class of error stops
+  showing up.
+- **Auth recovery hardened across both halves.** Dashboard surfaces a
+  recoverable banner instead of silently 401-ing when localStorage hits
+  quota or the api-server rejects a rotated token (#417). Gateway-side
+  tools (doc_panel, workflow-runner, workflow-execution-service)
+  fall back to `gateway.auth.token` from argent.json so they stop
+  failing with "Invalid token" after a token rotation (#422).
+- **Memory recall stops burying exact answers.** New dominance guardrail
+  in the MemU LLM reranker prevents the LLM from demoting a clearly
+  dominant pre-rerank top in favor of broad identity facts that only
+  _sound_ related (#420 closes #418).
+- **Performance + correctness wave.** AppForge `bases.list` cache stops
+  the per-web-turn cascade (#409); sessions skillsSnapshot deduplication
+  - workflow auto-prune cut sessions.json from ~98 MB to <16 MB on real
+    installs (#412); `argent update` clean-check is now honest about
+    regenerated artifacts and surfaces dirty paths (#414); `tinyfish_search`
+    becomes a first-class tool (#415); Ollama pings now use IPv4 to avoid
+    the localhost IPv6-first resolution failure (#385); the wizard's
+    Ollama + MLX model catalog refreshed to May 2026 (#387); a new
+    read-only System Health Panel M1 lands in the dashboard (#399).
+
+### Changes
+
+- `feat(kernel): kernel-fitness Phase 1 — extract inner-loop prompt to scaffold + bump tickMs default` (#388)
+- `feat(kernel): kernel-fitness Phase 2 — fitness writer + stall composite ledger` (#390)
+- `feat(kernel): kernel-fitness Phase 3a — engagement tracker backend + fitness-writer integration` (#391)
+- `feat(kernel): kernel-fitness Phase 3b.1 — notifier writes surface_emitted to engagement-ledger` (#392)
+- `feat(kernel): kernel-fitness Phase 3b.2 — system_unavailable on shutdown + startup recovery` (#393)
+- `feat(kernel): kernel-fitness Phase 3b.3 — artifact-open atime detection` (#394)
+- `feat(kernel): kernel-fitness Phase 3b.4 — engagement.record gateway handler` (#395)
+- `feat(installer): Phase B — install.sh auto-installs Ollama on Mac` (#397)
+- `feat(installer): wizard writes kernel.localModel after local runtime pick (Phase C)` (#398)
+- `feat(dashboard): System Health Panel M1 (read-only diagnostics)` (#399)
+- `feat(tools): first-class tinyfish_search tool` (#415)
+- `feat(wizard): default Ollama+MLX models to current May 2026 catalog` (#387)
+- `perf(gateway): cache appforge.bases.list 60s + invalidate on writes` (#409)
+- `perf(sessions): dedup skillsSnapshot to sidecar + auto-prune stale workflows` (#412)
+- `docs: restore release-core + release-swift-mac runbooks` (#419)
+
+### Fixes
+
+- `fix(memory): reranker guardrail — prevent LLM from burying dominant pre-rerank top` (closes #418, #420)
+- `fix(gateway): dashboardApiHeaders falls back to gateway.auth.token from argent.json` (#422)
+- `fix(dashboard): surface auth-lost banner instead of silent 401` (closes #400, #417)
+- `fix(dashboard): fetchJsonWithRetry attaches auth header via fetchLocalApi` (closes #403, #411)
+- `fix(update): honest clean-check + ignore regenerated artifacts + show dirty paths` (closes #413, #414)
+- `fix(update): rebuild native modules after deps install` (closes #386, #396)
+- `fix(gateway): pingOllama uses IPv4 literal to avoid IPv6-first localhost resolution` (#385)
+
 ## 2026.4.30
 
 ### Highlights

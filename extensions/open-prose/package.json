@@ -1,6 +1,6 @@
 {
   "name": "@argentos/open-prose",
-  "version": "2026.4.30",
+  "version": "2026.5.6.6",
   "description": "OpenProse VM skill pack plugin (slash command + telemetry).",
   "type": "module",
   "devDependencies": {
