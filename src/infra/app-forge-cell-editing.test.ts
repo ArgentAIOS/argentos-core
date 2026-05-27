@@ -6,6 +6,7 @@ import {
   isValidAttachmentUrl,
   isValidEmailInput,
   isValidNumberInput,
+  isValidPhoneInput,
   isValidUrlInput,
   parseAttachmentEntry,
   parseAttachmentValue,
@@ -108,6 +109,35 @@ describe("app-forge cell editing — email validation", () => {
     expect(isValidEmailInput("ada@")).toBe(false);
     expect(isValidEmailInput("ada@localhost")).toBe(false);
     expect(isValidEmailInput("ada @example.com")).toBe(false);
+  });
+});
+
+describe("app-forge cell editing — phone validation", () => {
+  it("treats empty input as valid (clears the cell)", () => {
+    expect(isValidPhoneInput("")).toBe(true);
+    expect(isValidPhoneInput("   ")).toBe(true);
+  });
+
+  it("accepts loose, Airtable-style phone shapes", () => {
+    expect(isValidPhoneInput("+1 (555) 123-4567")).toBe(true);
+    expect(isValidPhoneInput("555-123-4567")).toBe(true);
+    expect(isValidPhoneInput("5551234567")).toBe(true);
+    expect(isValidPhoneInput("+44 20 7946 0958")).toBe(true);
+    expect(isValidPhoneInput("555.123.4567")).toBe(true);
+    expect(isValidPhoneInput(" 5551234 ")).toBe(true); // trimmed
+  });
+
+  it("rejects content with letters or non-allowed characters", () => {
+    expect(isValidPhoneInput("not a phone")).toBe(false);
+    expect(isValidPhoneInput("abc")).toBe(false);
+    expect(isValidPhoneInput("call me 555-1234")).toBe(false);
+    expect(isValidPhoneInput("555@4567")).toBe(false);
+  });
+
+  it("rejects input that is shorter than the 7-char floor", () => {
+    expect(isValidPhoneInput("555")).toBe(false);
+    expect(isValidPhoneInput("(123)")).toBe(false);
+    expect(isValidPhoneInput("+1-2")).toBe(false);
   });
 });
 

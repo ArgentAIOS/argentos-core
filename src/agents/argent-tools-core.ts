@@ -90,6 +90,7 @@ import {
   createTinyFishBrowserCloseTool,
   createTinyFishBrowserOpenTool,
 } from "./tools/tinyfish-browser.js";
+import { createTinyFishSearchTool } from "./tools/tinyfish-search.js";
 import { createToolSearchTool } from "./tools/tool-search-tool.js";
 import { createTtsGenerateTool } from "./tools/tts-generate-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
@@ -169,6 +170,10 @@ export function createArgentTools(options?: {
   const webFetchTool = createWebFetchTool({
     config: options?.config,
     sandboxed: options?.sandboxed,
+  });
+  const tinyfishSearchTool = createTinyFishSearchTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
   });
   const tinyfishBrowserOpenTool = createTinyFishBrowserOpenTool({
     config: options?.config,
@@ -291,6 +296,7 @@ export function createArgentTools(options?: {
     }),
     ...(webSearchTool ? [webSearchTool] : []),
     ...(webFetchTool ? [webFetchTool] : []),
+    tinyfishSearchTool,
     tinyfishBrowserOpenTool,
     tinyfishBrowserCloseTool,
     ...(tinyfishAgentTool ? [tinyfishAgentTool] : []),

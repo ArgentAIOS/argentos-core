@@ -86,6 +86,13 @@ export type AgentConsciousnessKernelConfig = {
   allowListening?: boolean;
   /** Allow future vision-capable modes to use camera context. */
   allowVision?: boolean;
+  /**
+   * Minutes of operator inactivity after which inner reflection is skipped.
+   * Default: 30. Set to 0 to disable the gate (kernel reflects on every tick
+   * regardless of operator activity). Read from
+   * `selfState.conversation.lastUserMessageAt`.
+   */
+  idleActivityGateMinutes?: number;
   /** Configurable outbound surfaces for kernel requests that need operator input. */
   operatorNotifications?: AgentConsciousnessKernelOperatorNotificationsConfig;
 };

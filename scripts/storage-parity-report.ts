@@ -72,19 +72,25 @@ function parseArgs(argv: string[]): { agent?: string; json: boolean } {
 }
 
 function resolveStateDir(): string {
-  if (process.env.ARGENT_STATE_DIR) return process.env.ARGENT_STATE_DIR;
+  if (process.env.ARGENT_STATE_DIR) {
+    return process.env.ARGENT_STATE_DIR;
+  }
   return path.join(process.env.HOME ?? "", ".argentos");
 }
 
 function firstExisting(paths: string[]): string | null {
   for (const p of paths) {
-    if (fs.existsSync(p)) return p;
+    if (fs.existsSync(p)) {
+      return p;
+    }
   }
   return null;
 }
 
 function dbContainsTable(dbPath: string, table: string): boolean {
-  if (!fs.existsSync(dbPath)) return false;
+  if (!fs.existsSync(dbPath)) {
+    return false;
+  }
   let db: Database.Database | null = null;
   try {
     db = new Database(dbPath, { readonly: true });
@@ -101,7 +107,9 @@ function dbContainsTable(dbPath: string, table: string): boolean {
 
 function selectBestSqlitePath(candidates: string[], requiredTable: string): string | null {
   for (const p of candidates) {
-    if (dbContainsTable(p, requiredTable)) return p;
+    if (dbContainsTable(p, requiredTable)) {
+      return p;
+    }
   }
   return firstExisting(candidates);
 }
@@ -152,20 +160,30 @@ async function pgHasTable(sql: ReturnType<typeof postgres>, table: string): Prom
 
 function pickTimeColumn(columns: Set<string>): string | null {
   for (const col of TIME_COLUMNS) {
-    if (columns.has(col)) return col;
+    if (columns.has(col)) {
+      return col;
+    }
   }
   return null;
 }
 
 function toNum(input: unknown): number {
-  if (typeof input === "number") return input;
-  if (typeof input === "bigint") return Number(input);
-  if (typeof input === "string") return Number(input);
+  if (typeof input === "number") {
+    return input;
+  }
+  if (typeof input === "bigint") {
+    return Number(input);
+  }
+  if (typeof input === "string") {
+    return Number(input);
+  }
   return 0;
 }
 
 function fmtTs(v: unknown): string | null {
-  if (v === null || v === undefined) return null;
+  if (v === null || v === undefined) {
+    return null;
+  }
   const s = String(v);
   return s.length > 0 ? s : null;
 }
@@ -363,7 +381,9 @@ async function main() {
     console.log(`memoDb: ${sqlitePaths.memo ?? "MISSING"}`);
     console.log(`dashboardDb: ${sqlitePaths.dashboard ?? "MISSING"}`);
     console.log(`pgUrl: ${pgUrl}`);
-    if (args.agent) console.log(`agent filter: ${args.agent}`);
+    if (args.agent) {
+      console.log(`agent filter: ${args.agent}`);
+    }
     console.log("");
 
     for (const r of results) {

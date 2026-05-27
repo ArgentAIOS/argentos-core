@@ -33,6 +33,7 @@ import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { initRedisAgentState } from "../data/redis-agent-state.js";
 import { getRedisClient } from "../data/redis-client.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { resolveConsciousnessKernelPaths } from "../infra/consciousness-kernel-state.js";
 import { startConsciousnessKernel } from "../infra/consciousness-kernel.js";
 import { startContemplationRunner, setEpisodeBroadcast } from "../infra/contemplation-runner.js";
 import {
@@ -41,9 +42,18 @@ import {
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
+import {
+  startEngagementArtifactWatcher,
+  type ArtifactWatcherHandle,
+} from "../infra/engagement-artifact-watcher.js";
+import { markUnresolvedSurfacesUnavailable } from "../infra/engagement-tracker.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
+import {
+  startKernelFitnessWriter,
+  type FitnessWriterHandle,
+} from "../infra/kernel-fitness-writer.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
 import { ensureArgentCliOnPath } from "../infra/path-env.js";
 import { setGatewaySigusr1RestartPolicy } from "../infra/restart.js";
@@ -292,17 +302,28 @@ async function runV3MemoryEmbeddingStartupPreflight(
   if (!shouldEnforceV3EmbeddingContract(cfg)) {
     return;
   }
-  const { getMemuEmbedder } = await import("../memory/memu-embed.js");
-  const embedder = await getMemuEmbedder(cfg);
-  await runV3EmbeddingContractPreflight({
-    config: cfg,
-    context: `gateway (${embedder.providerId}/${embedder.model})`,
-    probe: (text) => embedder.embed(text),
-  });
-  log.info("gateway: V3 embedding contract preflight passed", {
-    provider: embedder.providerId,
-    model: embedder.model,
-  });
+  try {
+    const { getMemuEmbedder } = await import("../memory/memu-embed.js");
+    const embedder = await getMemuEmbedder(cfg);
+    await runV3EmbeddingContractPreflight({
+      config: cfg,
+      context: `gateway (${embedder.providerId}/${embedder.model})`,
+      probe: (text) => embedder.embed(text),
+    });
+    log.info("gateway: V3 embedding contract preflight passed", {
+      provider: embedder.providerId,
+      model: embedder.model,
+    });
+  } catch (err) {
+    // Don't crash the gateway when the embedder is unreachable (e.g. LM Studio
+    // not running). Memory/embedding features will surface clearer errors when
+    // actually exercised. Dimension/contract violations still surface here so
+    // the operator can investigate before relying on memory.
+    log.warn(
+      `gateway: V3 embedding contract preflight failed (${String(err)}). ` +
+        `Gateway will continue starting; memory/embedding features may be degraded until the embedder is reachable.`,
+    );
+  }
 }
 
 export type GatewayServer = {
@@ -747,6 +768,97 @@ export async function startGatewayServer(
     },
   });
 
+  // Kernel-fitness writer (HANDOFF-kernel-fitness.md Phase 2). Pure data-plane:
+  // reads the existing kernel ledgers, emits one entry per `windowSeconds` to
+  // fitness-ledger.jsonl. Adjacent to the kernel (NOT inside the kernel loop)
+  // so the fitness number can never leak into the inner-loop prompt and the
+  // writer's bugs can't take the kernel down. Only runs when the kernel is
+  // enabled — there's nothing to measure otherwise.
+  const kernelEngagementLedgerPath: string | null = (() => {
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) return null;
+    const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
+    if (!kernelAgentId) return null;
+    try {
+      return resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId).engagementLedgerPath;
+    } catch {
+      return null;
+    }
+  })();
+
+  // [Phase 3b.2] Startup recovery: if a prior session died ungracefully
+  // (crash, OOM kill, hard power-off) the close handler never ran, so any
+  // surfaces emitted in that session would never get marked. Sweep them here.
+  // Safe to run on every startup — the helper skips surfaces that already
+  // have an outcome (including system_unavailable from the last shutdown).
+  if (kernelEngagementLedgerPath) {
+    try {
+      const recovered = markUnresolvedSurfacesUnavailable({
+        ledgerPath: kernelEngagementLedgerPath,
+        shutdownTime: new Date(),
+        source: "gateway_shutdown",
+      });
+      if (recovered > 0) {
+        log.info(
+          `engagement: recovered ${recovered} unresolved surface(s) from prior session → system_unavailable`,
+        );
+      }
+    } catch (err) {
+      log.warn(`engagement: startup recovery failed: ${String(err)}`);
+    }
+  }
+
+  const kernelFitnessWriter: FitnessWriterHandle | null = (() => {
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) {
+      return null;
+    }
+    const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
+    if (!kernelAgentId) {
+      return null;
+    }
+    try {
+      const kernelPaths = resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId);
+      return startKernelFitnessWriter({
+        paths: {
+          kernelRootDir: kernelPaths.rootDir,
+          decisionLogPath: kernelPaths.decisionLogPath,
+          fitnessLedgerPath: path.join(kernelPaths.rootDir, "fitness-ledger.jsonl"),
+          innerLoopPromptPath: kernelPaths.innerLoopPromptPath,
+          // [EMPIRICAL Phase 3a] Engagement ledger — surface emissions +
+          // outcomes. The writer reads it to compute engagementRate.
+          engagementLedgerPath: kernelPaths.engagementLedgerPath,
+        },
+      });
+    } catch (err) {
+      log.warn(`gateway: kernel-fitness writer failed to start: ${String(err)}`);
+      return null;
+    }
+  })();
+
+  // [EMPIRICAL Phase 3b.3] Artifact-open watcher — every 60s, scan the
+  // artifact-ledger and the artifact files themselves; emit surface_emitted
+  // for new artifacts and `acted` outcomes when atime > mtime + 1s (i.e.
+  // operator opened the file after the kernel wrote it). Quietly produces
+  // no signal on noatime-mounted volumes — operators get the fallback ack
+  // button in Phase 3b.4.
+  const engagementArtifactWatcher: ArtifactWatcherHandle | null = (() => {
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) return null;
+    const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
+    if (!kernelAgentId) return null;
+    try {
+      const kernelPaths = resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId);
+      return startEngagementArtifactWatcher({
+        paths: {
+          artifactLedgerPath: kernelPaths.artifactLedgerPath,
+          engagementLedgerPath: kernelPaths.engagementLedgerPath,
+        },
+        agentId: kernelAgentId,
+      });
+    } catch (err) {
+      log.warn(`gateway: engagement-artifact watcher failed to start: ${String(err)}`);
+      return null;
+    }
+  })();
+
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
@@ -966,6 +1078,9 @@ export async function startGatewayServer(
     jobOrchestratorRunner,
     sisRunner,
     consciousnessKernelRunner,
+    kernelFitnessWriter,
+    engagementArtifactWatcher,
+    engagementLedgerPath: kernelEngagementLedgerPath,
     healthCheckInterval,
     nodePresenceTimers,
     broadcast,

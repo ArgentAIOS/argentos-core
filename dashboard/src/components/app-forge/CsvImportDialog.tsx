@@ -58,6 +58,7 @@ const SUPPORTED_OVERRIDE_TYPES: ReadonlyArray<{ value: string; label: string }> 
   { value: "checkbox", label: "Checkbox" },
   { value: "date", label: "Date" },
   { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
   { value: "url", label: "URL" },
   { value: "single_select", label: "Single select" },
   { value: "multi_select", label: "Multi-select" },
@@ -87,8 +88,12 @@ function resolveRatingMax(candidate: number | undefined): number {
     return RATING_DEFAULT_MAX;
   }
   const rounded = Math.trunc(candidate);
-  if (rounded < RATING_MIN_MAX) return RATING_MIN_MAX;
-  if (rounded > RATING_MAX_MAX) return RATING_MAX_MAX;
+  if (rounded < RATING_MIN_MAX) {
+    return RATING_MIN_MAX;
+  }
+  if (rounded > RATING_MAX_MAX) {
+    return RATING_MAX_MAX;
+  }
   return rounded;
 }
 

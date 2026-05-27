@@ -267,8 +267,32 @@ export async function finishWorkflowRun(
 }
 
 export async function failWorkflowRun(sql: Sql, runId: string, error: string) {
+  // Aggregate per-step token + cost from workflow_step_runs even on the fail
+  // path. Steps that ran before the failure (unhandled exception, event-wait
+  // timeout, etc.) have already persisted their cost/tokens to
+  // workflow_step_runs; without this roll-up, workflow_runs.total_cost_usd
+  // would stay at its last finishWorkflowRun value (typically 0) and the
+  // operator would see a $0 run that actually spent money. GREATEST preserves
+  // any value an earlier finishWorkflowRun call already wrote.
   await sql`
-    UPDATE workflow_runs SET status = 'failed', error = ${error}, ended_at = NOW()
+    UPDATE workflow_runs SET
+      status = 'failed',
+      error = ${error},
+      total_tokens_used = GREATEST(
+        total_tokens_used,
+        COALESCE(
+          (SELECT SUM(tokens_used)::int FROM workflow_step_runs WHERE run_id = ${runId}),
+          0
+        )
+      ),
+      total_cost_usd = GREATEST(
+        total_cost_usd,
+        COALESCE(
+          (SELECT SUM(cost_usd)::numeric FROM workflow_step_runs WHERE run_id = ${runId}),
+          0::numeric
+        )
+      ),
+      ended_at = NOW()
     WHERE id = ${runId}
   `;
 }

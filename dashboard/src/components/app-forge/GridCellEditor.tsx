@@ -5,6 +5,7 @@ import {
   Heart,
   Mail,
   Paperclip,
+  Phone,
   Search,
   Star,
   ThumbsUp,
@@ -28,6 +29,7 @@ import type {
   ForgeStructuredRecordValue,
   ForgeStructuredTable,
 } from "../../hooks/useForgeStructuredData";
+import { isValidPhoneInput } from "../../../../src/infra/app-forge-cell-editing.js";
 
 export type GridCellEditorRequest = {
   recordId: string;
@@ -55,6 +57,12 @@ function fieldInputType(field: ForgeStructuredField): string {
   }
   if (field.type === "email") {
     return "email";
+  }
+  if (field.type === "phone") {
+    // `type="tel"` triggers the numeric keypad on mobile clients and gives
+    // assistive tech a `tel:` semantic — the same posture Airtable's phone
+    // field exposes. Validation is still owned by isValidPhoneInput.
+    return "tel";
   }
   return "text";
 }
@@ -501,6 +509,66 @@ export function EmailCellEditor({
   );
 }
 
+// Phone cell editor — mirrors EmailCellEditor's invalid-state UX. The HTML5
+// `type="tel"` attribute triggers the numeric keypad on mobile and gives
+// assistive tech a `tel:` semantic. Validation is delegated to the substrate
+// helper `isValidPhoneInput` so the gateway validator and this editor stay
+// in lockstep (no inline regex; see issue #376 scoper note).
+export function PhoneCellEditor({
+  field,
+  draft,
+  onChange,
+  onCommit,
+  onCancel,
+}: GridCellEditorProps) {
+  const [touched, setTouched] = useState(false);
+  const valid = isValidPhoneInput(draft.value);
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <input
+        autoFocus
+        type="tel"
+        value={draft.value}
+        onChange={(event) => {
+          setTouched(true);
+          onChange({ ...draft, value: event.target.value });
+        }}
+        onBlur={() => {
+          if (valid) {
+            onCommit();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            if (valid) {
+              onCommit();
+            }
+          }
+          if (event.key === "Escape") {
+            onCancel();
+          }
+        }}
+        placeholder="+1 (555) 123-4567"
+        aria-label={field.name}
+        data-testid="appforge-phone-editor-input"
+        className={`w-full rounded-md border px-2 py-1 text-sm outline-none ${
+          valid
+            ? "border-sky-400/40 bg-black/45 text-white"
+            : "border-rose-400/55 bg-rose-500/8 text-white"
+        }`}
+      />
+      {touched && !valid && (
+        <span
+          data-testid="appforge-phone-editor-error"
+          className="text-[11px] font-medium text-rose-200"
+        >
+          Enter a valid phone number or press Escape to cancel.
+        </span>
+      )}
+    </div>
+  );
+}
+
 type LinkedRecordCellEditorProps = GridCellEditorProps & {
   /**
    * The linked target table (resolved from `field.linkedTableId`). When this
@@ -786,8 +854,12 @@ function ratingMaxFor(field: Pick<ForgeStructuredField, "ratingMax">): number {
     return 5;
   }
   const rounded = Math.trunc(candidate);
-  if (rounded < 3) return 3;
-  if (rounded > 10) return 10;
+  if (rounded < 3) {
+    return 3;
+  }
+  if (rounded > 10) {
+    return 10;
+  }
   return rounded;
 }
 
@@ -1087,6 +1159,41 @@ export function EmailCellDisplay({ value }: EmailCellDisplayProps) {
       title={`Email ${trimmed}`}
     >
       <Mail className="h-3 w-3 flex-shrink-0" />
+      <span className="truncate">{trimmed}</span>
+    </a>
+  );
+}
+
+// ============================================================================
+// Phone cell display — mirrors EmailCellDisplay. Renders a `tel:` link when
+// the cell's value passes substrate validation so mobile clients get
+// tap-to-call. Half-typed / invalid drafts render as inert text to avoid
+// generating a broken `tel:` link.
+// ============================================================================
+
+type PhoneCellDisplayProps = {
+  value: string;
+};
+
+export function PhoneCellDisplay({ value }: PhoneCellDisplayProps) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return <span className="text-white/24">No phone</span>;
+  }
+  if (!isValidPhoneInput(trimmed) || trimmed === "") {
+    return <span className="truncate text-white/66">{trimmed}</span>;
+  }
+  // `tel:` accepts spaces, dashes, parens, dots, and leading `+` — no need to
+  // strip the user's formatting; the dialer will normalize for the network.
+  return (
+    <a
+      href={`tel:${trimmed}`}
+      data-testid="appforge-phone-cell-link"
+      onClick={(event) => event.stopPropagation()}
+      className="inline-flex max-w-[14rem] items-center gap-1 truncate text-sky-200 hover:text-sky-100 hover:underline"
+      title={`Call ${trimmed}`}
+    >
+      <Phone className="h-3 w-3 flex-shrink-0" />
       <span className="truncate">{trimmed}</span>
     </a>
   );

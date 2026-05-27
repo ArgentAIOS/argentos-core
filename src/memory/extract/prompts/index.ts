@@ -165,3 +165,16 @@ ${categoriesHint}
 
 ${conversationText}`;
 }
+
+export {
+  AUDIO_PREPROCESS_PROMPT,
+  DOCUMENT_PREPROCESS_PROMPT,
+  IMAGE_PREPROCESS_PROMPT,
+  VIDEO_PREPROCESS_PROMPT,
+  PREPROCESS_PROMPTS,
+  buildAudioPreprocessPrompt,
+  buildDocumentPreprocessPrompt,
+  buildImagePreprocessPrompt,
+  buildVideoPreprocessPrompt,
+  type PreprocessModality,
+} from "./preprocess.js";

@@ -13,7 +13,9 @@ export function compileShader(
   source: string,
 ): WebGLShader {
   const shader = gl.createShader(type);
-  if (!shader) throw new Error("Failed to create shader");
+  if (!shader) {
+    throw new Error("Failed to create shader");
+  }
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
@@ -32,7 +34,9 @@ export function linkProgram(
   const vert = compileShader(gl, gl.VERTEX_SHADER, vertSource);
   const frag = compileShader(gl, gl.FRAGMENT_SHADER, fragSource);
   const program = gl.createProgram();
-  if (!program) throw new Error("Failed to create program");
+  if (!program) {
+    throw new Error("Failed to create program");
+  }
   gl.attachShader(program, vert);
   gl.attachShader(program, frag);
   gl.linkProgram(program);
@@ -64,7 +68,9 @@ export class UniformManager {
   }
 
   private loc(name: string): WebGLUniformLocation | null {
-    if (this.cache.has(name)) return this.cache.get(name)!;
+    if (this.cache.has(name)) {
+      return this.cache.get(name)!;
+    }
     const location = this.gl.getUniformLocation(this.program, name);
     this.cache.set(name, location);
     return location;
@@ -72,27 +78,37 @@ export class UniformManager {
 
   float(name: string, value: number): void {
     const l = this.loc(name);
-    if (l) this.gl.uniform1f(l, value);
+    if (l) {
+      this.gl.uniform1f(l, value);
+    }
   }
 
   vec2(name: string, x: number, y: number): void {
     const l = this.loc(name);
-    if (l) this.gl.uniform2f(l, x, y);
+    if (l) {
+      this.gl.uniform2f(l, x, y);
+    }
   }
 
   vec3(name: string, x: number, y: number, z: number): void {
     const l = this.loc(name);
-    if (l) this.gl.uniform3f(l, x, y, z);
+    if (l) {
+      this.gl.uniform3f(l, x, y, z);
+    }
   }
 
   vec4(name: string, x: number, y: number, z: number, w: number): void {
     const l = this.loc(name);
-    if (l) this.gl.uniform4f(l, x, y, z, w);
+    if (l) {
+      this.gl.uniform4f(l, x, y, z, w);
+    }
   }
 
   int(name: string, value: number): void {
     const l = this.loc(name);
-    if (l) this.gl.uniform1i(l, value);
+    if (l) {
+      this.gl.uniform1i(l, value);
+    }
   }
 }
 
@@ -101,7 +117,9 @@ export class UniformManager {
 /** Creates a VAO for a fullscreen triangle strip quad (2 triangles, 4 verts). */
 export function createFullscreenQuad(gl: WebGL2RenderingContext): WebGLVertexArrayObject {
   const vao = gl.createVertexArray();
-  if (!vao) throw new Error("Failed to create VAO");
+  if (!vao) {
+    throw new Error("Failed to create VAO");
+  }
   gl.bindVertexArray(vao);
 
   const buffer = gl.createBuffer();

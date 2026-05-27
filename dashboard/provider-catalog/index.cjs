@@ -12,9 +12,9 @@
  * expects a local provider catalog artifact.
  */
 module.exports = {
-  PROVIDER_REGISTRY_SEED_VERSION: 10,
+  PROVIDER_REGISTRY_SEED_VERSION: 11,
   DEFAULT_PROVIDER_REGISTRY: {
-    version: 10,
+    version: 11,
     providers: {
       minimax: {
         name: "MiniMax",
@@ -1025,6 +1025,57 @@ module.exports = {
             },
             contextWindow: 202752,
             maxTokens: 8192,
+          },
+        ],
+      },
+      xai: {
+        name: "xAI",
+        baseUrl: "https://api.x.ai/v1",
+        api: "openai-completions",
+        authType: "api_key",
+        envKeyVar: "XAI_API_KEY",
+        models: [
+          {
+            id: "grok-4",
+            name: "Grok 4",
+            reasoning: true,
+            input: ["text", "image"],
+            cost: {
+              input: 3,
+              output: 15,
+              cacheRead: 0.75,
+              cacheWrite: 3,
+            },
+            contextWindow: 256000,
+            maxTokens: 64000,
+          },
+          {
+            id: "grok-4-fast",
+            name: "Grok 4 Fast",
+            reasoning: true,
+            input: ["text", "image"],
+            cost: {
+              input: 0.2,
+              output: 0.5,
+              cacheRead: 0.05,
+              cacheWrite: 0.2,
+            },
+            contextWindow: 2000000,
+            maxTokens: 30000,
+          },
+          {
+            id: "grok-code-fast-1",
+            name: "Grok Code Fast 1",
+            reasoning: true,
+            input: ["text"],
+            cost: {
+              input: 0.2,
+              output: 1.5,
+              cacheRead: 0.05,
+              cacheWrite: 0.2,
+            },
+            contextWindow: 256000,
+            maxTokens: 10000,
           },
         ],
       },

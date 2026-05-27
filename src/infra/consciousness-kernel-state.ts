@@ -65,6 +65,21 @@ export type ConsciousnessKernelPaths = {
   decisionLogPath: string;
   artifactDir: string;
   artifactLedgerPath: string;
+  /**
+   * [EMPIRICAL 2026-05-24] Scaffold dir — refiner-editable kernel scaffolding.
+   * Phase 1 contains only `inner-loop-prompt.md` and `.versions/` (snapshots).
+   * Per HANDOFF-kernel-fitness.md Phase 1.
+   */
+  scaffoldDir: string;
+  scaffoldVersionsDir: string;
+  innerLoopPromptPath: string;
+  /**
+   * [EMPIRICAL 2026-05-24] Engagement ledger — surface emissions + outcomes.
+   * Per HANDOFF-kernel-fitness.md Phase 3a. The fitness writer reads it; the
+   * notifier writes surface_emitted entries to it; dashboard hooks (Phase 3b
+   * follow-on slices) write outcome entries.
+   */
+  engagementLedgerPath: string;
 };
 
 export type ConsciousnessKernelDecisionSummary = {
@@ -277,12 +292,17 @@ export function resolveConsciousnessKernelPaths(
   agentId: string,
 ): ConsciousnessKernelPaths {
   const rootDir = path.join(resolveAgentDir(cfg, agentId), "kernel");
+  const scaffoldDir = path.join(rootDir, "scaffold");
   return {
     rootDir,
     statePath: path.join(rootDir, "self-state.json"),
     decisionLogPath: path.join(rootDir, "decision-ledger.jsonl"),
     artifactDir: path.join(rootDir, "artifacts"),
     artifactLedgerPath: path.join(rootDir, "artifact-ledger.jsonl"),
+    scaffoldDir,
+    scaffoldVersionsDir: path.join(scaffoldDir, ".versions"),
+    innerLoopPromptPath: path.join(scaffoldDir, "inner-loop-prompt.md"),
+    engagementLedgerPath: path.join(rootDir, "engagement-ledger.jsonl"),
   };
 }
 

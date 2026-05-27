@@ -423,6 +423,68 @@ export const registerTelegramHandlers = ({
         }
       }
 
+      // Workflow approval inline-button handler (issue #351). callback_data
+      // shape: wf_app:<approvalId> | wf_dny:<approvalId>. Approval id is a
+      // UUID so total length stays well under Telegram's 64-byte limit.
+      const wfApprovalMatch = data.match(/^wf_(app|dny):(.+)$/);
+      if (wfApprovalMatch) {
+        const approved = wfApprovalMatch[1] === "app";
+        const approvalId = wfApprovalMatch[2].trim();
+        const operatorLabel = senderUsername ? `@${senderUsername}` : `tg:${senderId}`;
+        try {
+          const { getWorkflowSql } = await import("../infra/workflow-pg-client.js");
+          const { resolveDurableWorkflowApprovalById } =
+            await import("../infra/workflow-approvals.js");
+          const { hasPendingApproval, resolveApproval } =
+            await import("../infra/workflow-runner.js");
+          const { resumeWorkflowRunAfterApproval } =
+            await import("../infra/workflow-execution-service.js");
+          const sql = await getWorkflowSql();
+          const row = await resolveDurableWorkflowApprovalById(sql, {
+            approvalId,
+            approved,
+            approvedBy: operatorLabel,
+            reason: approved ? undefined : "Denied via Telegram inline button",
+          });
+          if (!row) {
+            await bot.api
+              .editMessageText(
+                chatId,
+                callbackMessage.message_id,
+                `⚠️ This approval is no longer pending (id ${approvalId.slice(0, 8)}…).`,
+              )
+              .catch(() => {});
+            return;
+          }
+          const runId = String(row.run_id);
+          const nodeId = String(row.node_id);
+          if (hasPendingApproval(runId, nodeId)) {
+            resolveApproval(runId, nodeId, approved, approved ? undefined : "Denied via Telegram");
+          } else {
+            void resumeWorkflowRunAfterApproval({
+              sql,
+              runId,
+              nodeId,
+              triggerSource: "telegram:approval_button",
+            }).catch((err: unknown) => {
+              runtime.error?.(danger(`workflow approval resume failed: ${String(err)}`));
+            });
+          }
+          const icon = approved ? "✅" : "❌";
+          const verb = approved ? "Approved" : "Denied";
+          await bot.api
+            .editMessageText(
+              chatId,
+              callbackMessage.message_id,
+              `${icon} ${verb} by ${operatorLabel}.\nRun: ${runId}\nStep: ${nodeId}`,
+            )
+            .catch(() => {});
+        } catch (err) {
+          runtime.error?.(danger(`workflow approval callback failed: ${String(err)}`));
+        }
+        return;
+      }
+
       const paginationMatch = data.match(/^commands_page_(\d+|noop)(?::(.+))?$/);
       if (paginationMatch) {
         const pageValue = paginationMatch[1];

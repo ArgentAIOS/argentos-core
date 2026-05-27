@@ -4,8 +4,20 @@ import { WizardCancelledError } from "./prompts.js";
 
 export type LocalRuntimeChoice = "ollama" | "lmstudio" | "cloud";
 
-export const DEFAULT_OLLAMA_TEXT_MODEL = "qwen3:14b";
-export const DEFAULT_LMSTUDIO_TEXT_MODEL = "qwen3-32b";
+// May 2026 defaults. Updated after the 2026-05-24 thermal investigation:
+// - Ollama: prefer MLX-native variants (Apple Silicon optimized; cooler + faster
+//   than GGUF on the same hardware). `qwen3.5:9b-mlx` (~9GB) is the safe pick
+//   for first-install across the full Mac range — small enough for MacBook Airs,
+//   MLX-native for Pro/Max/Studio. Operators can swap up to `qwen3.6:35b-mlx`
+//   on bigger Macs from the wizard.
+// - LM Studio: `qwen3.6-35b-a3b` is the MoE A3B variant — 35B total params,
+//   ~3B active per token = the heat profile of a 3B dense model with the
+//   quality bracket of 35B. Strong default for LM Studio users (typically
+//   desktop chassis).
+// See HANDOFF-system-health-panel.md and the "Ollama+MLX as Mac Default Stack"
+// vault decision doc for the broader rationale.
+export const DEFAULT_OLLAMA_TEXT_MODEL = "qwen3.5:9b-mlx";
+export const DEFAULT_LMSTUDIO_TEXT_MODEL = "qwen3.6-35b-a3b";
 export const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text";
 const LOCAL_MODEL_CONTEXT_WINDOW = 128_000;
 const LOCAL_MODEL_MAX_TOKENS = 8_192;
@@ -91,10 +103,21 @@ function isEmbeddingModelName(name: string): boolean {
 function scoreTextModel(name: string): number {
   const normalized = name.toLowerCase();
   let score = 0;
-  if (normalized.includes("qwen3")) score += 100;
+  // Qwen family — current generation is qwen3.5 / qwen3.6 (May 2026).
+  if (/qwen3\.6/.test(normalized)) score += 110;
+  else if (/qwen3\.5/.test(normalized)) score += 105;
+  else if (normalized.includes("qwen3")) score += 100;
   else if (normalized.includes("qwen")) score += 80;
-  if (/[:/-](72b|32b|30b|14b|8b)\b/.test(normalized)) score += 20;
+  // Any parameter-size tag in the modern range. Generalized from the old
+  // hard-coded enum (72b|32b|30b|14b|8b) so newer or odd sizes count too.
+  if (/[:/-]\d{1,3}b(?:[-_/]|$)/.test(normalized)) score += 20;
   if (/instruct|chat|coder/.test(normalized)) score += 10;
+  // Apple Silicon hardware preference: MLX-native variants run faster and
+  // cooler than GGUF/llama.cpp on M-series Macs.
+  if (/(^|[-_/:])mlx([-_/]|$)/.test(normalized)) score += 30;
+  // MoE-active variants (e.g. 35B-A3B = 3B active per token): the heat
+  // budget of a 3B model with the quality of the parent size.
+  if (/\ba\d+b\b/.test(normalized)) score += 25;
   if (/embed|embedding|nomic|bge|gte|e5/.test(normalized)) score -= 200;
   return score;
 }
@@ -259,12 +282,12 @@ export async function promptLocalRuntimeChoice(params: {
       {
         value: "ollama",
         label: "Ollama",
-        hint: `${ollamaProbe.ok ? "Detected" : "Not detected"} · Qwen + Nomic on the local box`,
+        hint: `${ollamaProbe.ok ? "Detected" : "Not detected"} · Headless runtime, recommended for laptops · MLX-native on Apple Silicon`,
       },
       {
         value: "lmstudio",
         label: "LM Studio",
-        hint: `${lmstudioProbe.ok ? "Detected" : "Not detected"} · Qwen + Nomic through the local OpenAI bridge`,
+        hint: `${lmstudioProbe.ok ? "Detected" : "Not detected"} · GUI app, great for browsing models · Desktop-class workload`,
       },
       {
         value: "cloud",
@@ -346,6 +369,15 @@ export function applyLocalRuntimeConfig(params: {
                 "Qwen Local",
             },
           },
+          // [Phase C] Point the consciousness kernel at the same local model
+          // the operator just picked. Without this the kernel sits with
+          // localModel=null and skips every reflection. Other kernel knobs
+          // (enabled, tickMs, idleActivityGateMinutes, etc.) are preserved
+          // from whatever the operator had configured.
+          kernel: {
+            ...params.config.agents?.defaults?.kernel,
+            localModel: `ollama/${textModel}`,
+          },
           memorySearch: {
             ...params.config.agents?.defaults?.memorySearch,
             provider: "ollama",
@@ -409,6 +441,12 @@ export function applyLocalRuntimeConfig(params: {
               params.config.agents?.defaults?.models?.[`lmstudio/${textModel}`]?.alias ??
               "Qwen Local",
           },
+        },
+        // [Phase C] Same kernel.localModel wiring as the ollama branch above —
+        // see comment there for rationale. Preserves all other kernel knobs.
+        kernel: {
+          ...params.config.agents?.defaults?.kernel,
+          localModel: `lmstudio/${textModel}`,
         },
         memorySearch: {
           ...params.config.agents?.defaults?.memorySearch,

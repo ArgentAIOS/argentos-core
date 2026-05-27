@@ -13,7 +13,9 @@ function writeConnector(root, name, manifest, { harness = true, tests = true } =
     const harnessDir = path.join(dir, "agent-harness");
     fs.mkdirSync(harnessDir, { recursive: true });
     fs.writeFileSync(path.join(harnessDir, "pyproject.toml"), '[project]\nname = "fixture"\n');
-    if (tests) fs.mkdirSync(path.join(harnessDir, "tests"));
+    if (tests) {
+      fs.mkdirSync(path.join(harnessDir, "tests"));
+    }
   }
 }
 

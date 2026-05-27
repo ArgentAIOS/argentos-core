@@ -20,7 +20,7 @@ export type OnboardingProviderCardSeed = {
   onboardingVisible: true;
 };
 
-export const ONBOARDING_PROVIDER_CARD_SEED_VERSION = 10;
+export const ONBOARDING_PROVIDER_CARD_SEED_VERSION = 11;
 export const ONBOARDING_PROVIDER_CARD_SEEDS: ReadonlyArray<OnboardingProviderCardSeed> = [
   {
     id: "anthropic",
@@ -60,6 +60,26 @@ export const ONBOARDING_PROVIDER_CARD_SEEDS: ReadonlyArray<OnboardingProviderCar
     description:
       "GLM hosted models from Z.AI. Best if you specifically want the GLM family or already use bigmodel.cn.",
     keyUrl: "https://open.bigmodel.cn/",
+    onboardingVisible: true,
+  },
+  {
+    id: "xai",
+    label: "xAI (Grok)",
+    accent: "rose",
+    recommended: "Frontier Grok models",
+    description:
+      "Grok 4, Grok 4 Fast, and Grok Code Fast 1 direct from xAI. Best if you want the current Grok frontier or already have an x.ai API key.",
+    keyUrl: "https://console.x.ai/",
+    onboardingVisible: true,
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    accent: "orange",
+    recommended: "Fastest hosted inference",
+    description:
+      "Llama 3.x, Qwen 3, and GPT-OSS on Groq's LPU cloud — frontier-speed inference at low latency. Free tier available.",
+    keyUrl: "https://console.groq.com/keys",
     onboardingVisible: true,
   },
   {

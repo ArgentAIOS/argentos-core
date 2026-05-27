@@ -225,8 +225,12 @@ export function LockScreen({
 
   // Determine default mode
   const getDefaultMode = useCallback((): UnlockMode => {
-    if (hasPlatformKey || hasCrossPlatformKey) return "webauthn";
-    if (hasPin) return "pin";
+    if (hasPlatformKey || hasCrossPlatformKey) {
+      return "webauthn";
+    }
+    if (hasPin) {
+      return "pin";
+    }
     return "webauthn";
   }, [hasPlatformKey, hasCrossPlatformKey, hasPin]);
 
@@ -256,7 +260,9 @@ export function LockScreen({
 
   // Auto-prompt WebAuthn on interaction (only in webauthn mode)
   useEffect(() => {
-    if (!isLocked || isAuthenticating || mode !== "webauthn") return;
+    if (!isLocked || isAuthenticating || mode !== "webauthn") {
+      return;
+    }
 
     const handleInteraction = () => {
       if (!isAuthenticating) {

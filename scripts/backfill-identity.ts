@@ -122,13 +122,19 @@ function assessSignificance(summary: string): "routine" | "noteworthy" | "import
   const lower = summary.toLowerCase();
 
   for (const keyword of SIGNIFICANCE_KEYWORDS.core) {
-    if (lower.includes(keyword)) return "core";
+    if (lower.includes(keyword)) {
+      return "core";
+    }
   }
   for (const keyword of SIGNIFICANCE_KEYWORDS.important) {
-    if (lower.includes(keyword)) return "important";
+    if (lower.includes(keyword)) {
+      return "important";
+    }
   }
   for (const keyword of SIGNIFICANCE_KEYWORDS.noteworthy) {
-    if (lower.includes(keyword)) return "noteworthy";
+    if (lower.includes(keyword)) {
+      return "noteworthy";
+    }
   }
 
   return "routine";
@@ -252,7 +258,9 @@ console.log("");
 // Fetch items to backfill
 let sql =
   "SELECT id, summary, memory_type, reinforcement_count, significance, emotional_valence, emotional_arousal, created_at FROM memory_items ORDER BY reinforcement_count DESC, created_at DESC";
-if (limit > 0) sql += ` LIMIT ${limit}`;
+if (limit > 0) {
+  sql += ` LIMIT ${limit}`;
+}
 
 const items = db.prepare(sql).all() as Array<{
   id: string;

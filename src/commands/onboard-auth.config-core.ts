@@ -18,9 +18,11 @@ import {
 } from "../agents/venice-models.js";
 import {
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
+  GROQ_DEFAULT_MODEL_REF,
   MISTRAL_DEFAULT_MODEL_REF,
   OPENROUTER_DEFAULT_MODEL_REF,
   VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF,
+  XAI_DEFAULT_MODEL_REF,
   XIAOMI_DEFAULT_MODEL_REF,
   ZAI_CODING_DEFAULT_MODEL_REF,
   ZAI_DEFAULT_MODEL_REF,
@@ -107,6 +109,95 @@ export function applyZaiCodingProviderConfig(cfg: ArgentConfig): ArgentConfig {
       defaults: {
         ...cfg.agents?.defaults,
         models,
+      },
+    },
+  };
+}
+
+// xAI (Grok) — mirrors the zai-shape: registers the default-model alias
+// without writing a `cfg.models.providers.xai` block, because the runtime
+// resolves xAI baseUrl/models from the registry seed (src/agents/
+// provider-registry-seed.ts) at gateway start. Credentials persist via
+// `setXaiApiKey` to the auth-profile store under `xai:default`.
+export function applyXaiProviderConfig(cfg: ArgentConfig): ArgentConfig {
+  const models = { ...cfg.agents?.defaults?.models };
+  models[XAI_DEFAULT_MODEL_REF] = {
+    ...models[XAI_DEFAULT_MODEL_REF],
+    alias: models[XAI_DEFAULT_MODEL_REF]?.alias ?? "Grok",
+  };
+
+  return {
+    ...cfg,
+    agents: {
+      ...cfg.agents,
+      defaults: {
+        ...cfg.agents?.defaults,
+        models,
+      },
+    },
+  };
+}
+
+export function applyXaiConfig(cfg: ArgentConfig): ArgentConfig {
+  const next = applyXaiProviderConfig(cfg);
+  const existingModel = next.agents?.defaults?.model;
+  return {
+    ...next,
+    agents: {
+      ...next.agents,
+      defaults: {
+        ...next.agents?.defaults,
+        model: {
+          ...(existingModel && "fallbacks" in (existingModel as Record<string, unknown>)
+            ? {
+                fallbacks: (existingModel as { fallbacks?: string[] }).fallbacks,
+              }
+            : undefined),
+          primary: XAI_DEFAULT_MODEL_REF,
+        },
+      },
+    },
+  };
+}
+
+// Groq — same shape as xai/zai (registry-seed-resolved baseUrl, alias-only
+// config write). Credentials persist via `setGroqApiKey` under `groq:default`.
+export function applyGroqProviderConfig(cfg: ArgentConfig): ArgentConfig {
+  const models = { ...cfg.agents?.defaults?.models };
+  models[GROQ_DEFAULT_MODEL_REF] = {
+    ...models[GROQ_DEFAULT_MODEL_REF],
+    alias: models[GROQ_DEFAULT_MODEL_REF]?.alias ?? "Llama 3.3 70B (Groq)",
+  };
+
+  return {
+    ...cfg,
+    agents: {
+      ...cfg.agents,
+      defaults: {
+        ...cfg.agents?.defaults,
+        models,
+      },
+    },
+  };
+}
+
+export function applyGroqConfig(cfg: ArgentConfig): ArgentConfig {
+  const next = applyGroqProviderConfig(cfg);
+  const existingModel = next.agents?.defaults?.model;
+  return {
+    ...next,
+    agents: {
+      ...next.agents,
+      defaults: {
+        ...next.agents?.defaults,
+        model: {
+          ...(existingModel && "fallbacks" in (existingModel as Record<string, unknown>)
+            ? {
+                fallbacks: (existingModel as { fallbacks?: string[] }).fallbacks,
+              }
+            : undefined),
+          primary: GROQ_DEFAULT_MODEL_REF,
+        },
       },
     },
   };

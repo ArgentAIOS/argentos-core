@@ -67,6 +67,21 @@ function getAppForgeAdapter(): AppForgeAdapter {
   return cachedAdapter;
 }
 
+// Stopgap throttle for `appforge.bases.list` per #408. The dashboard polls
+// this method aggressively (every few seconds) and each call fans out to
+// N+1 queries via hydrateBase → listTables → hydrateTable. Until the proper
+// fix (single SQL with jsonb_agg + SSE invalidation) lands, cache the
+// response for 60s keyed by appId. Mutation handlers invalidate explicitly
+// so the staleness window collapses to zero after a write.
+const BASES_LIST_TTL_MS = 60_000;
+const basesListCache = new Map<string, { at: number; bases: unknown[] }>();
+function basesListCacheKey(appId: string | undefined): string {
+  return appId ?? "";
+}
+function invalidateBasesListCache(): void {
+  basesListCache.clear();
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -665,8 +680,16 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   "appforge.bases.list": async ({ params, respond }) => {
     const adapter = getAppForgeAdapter();
     const appId = stringParam(params, "appId") ?? undefined;
+    const cacheKey = basesListCacheKey(appId);
+    const cached = basesListCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < BASES_LIST_TTL_MS) {
+      respond(true, { bases: cached.bases }, undefined);
+      return;
+    }
     const bases = await adapter.listBases({ appId });
-    respond(true, { bases: bases.map(workflowPickerBase) }, undefined);
+    const payload = bases.map(workflowPickerBase);
+    basesListCache.set(cacheKey, { at: Date.now(), bases: payload });
+    respond(true, { bases: payload }, undefined);
   },
 
   "appforge.bases.get": async ({ params, respond }) => {
@@ -717,6 +740,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    invalidateBasesListCache();
     respond(true, { base: result.base }, undefined);
   },
 
@@ -762,6 +786,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    invalidateBasesListCache();
     respond(true, { base: result.base }, undefined);
   },
 
@@ -853,6 +878,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         respond,
       });
     }
+    invalidateBasesListCache();
     respond(true, { base: result.base, table: result.table }, undefined);
   },
 
@@ -913,6 +939,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         respond,
       });
     }
+    invalidateBasesListCache();
     respond(true, { base: result.base, table: result.table }, undefined);
   },
 

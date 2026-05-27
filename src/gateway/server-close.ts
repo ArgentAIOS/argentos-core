@@ -28,6 +28,17 @@ export function createGatewayCloseHandler(params: {
   jobOrchestratorRunner?: JobOrchestratorRunner | null;
   sisRunner?: SisRunner | null;
   consciousnessKernelRunner?: ConsciousnessKernelRunner | null;
+  /** Phase 2 of HANDOFF-kernel-fitness.md — pure data-plane writer; stopping it is a no-op for kernel runtime. */
+  kernelFitnessWriter?: { stop?: () => void } | null;
+  /** Phase 3b.3 — atime-based artifact-open detector. Periodic timer; safe to leave running but stopped on shutdown for cleanliness. */
+  engagementArtifactWatcher?: { stop?: () => void } | null;
+  /**
+   * [Phase 3b.2] Engagement-ledger path. On shutdown the close handler scans
+   * it for unresolved surface_emitted entries and writes system_unavailable
+   * outcomes for each, so the fitness engagement-rate denominator stays
+   * honest about cycles the operator never got to see.
+   */
+  engagementLedgerPath?: string | null;
   healthCheckInterval?: ReturnType<typeof setInterval>;
   nodePresenceTimers: Map<string, ReturnType<typeof setInterval>>;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
@@ -113,6 +124,26 @@ export function createGatewayCloseHandler(params: {
     stopSyncHandle(params.jobOrchestratorRunner);
     stopSyncHandle(params.sisRunner);
     stopSyncHandle(params.consciousnessKernelRunner);
+    stopSyncHandle(params.kernelFitnessWriter);
+    stopSyncHandle(params.engagementArtifactWatcher);
+    // [Phase 3b.2] Mark any surfaces the operator never got a chance to
+    // resolve as system_unavailable so the fitness engagement rate stays
+    // honest. Must come AFTER the kernel runner stops (no new surfaces
+    // get emitted between this scan and the actual exit) but BEFORE the
+    // ledger files are flushed/closed by their owners.
+    if (params.engagementLedgerPath) {
+      try {
+        const { markUnresolvedSurfacesUnavailable } =
+          await import("../infra/engagement-tracker.js");
+        markUnresolvedSurfacesUnavailable({
+          ledgerPath: params.engagementLedgerPath,
+          shutdownTime: new Date(),
+          source: "gateway_shutdown",
+        });
+      } catch {
+        /* ledger absent or unreadable — fall through */
+      }
+    }
     // Close Redis connection (if initialized)
     try {
       const { closeRedisClient } = await import("../data/redis-client.js");

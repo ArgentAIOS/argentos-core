@@ -25,18 +25,28 @@ const CANVAS_INDEX_CACHE_KEY = "argent-canvas-index-cache-v1";
 const CANVAS_INDEX_CACHE_MAX = 220;
 
 function isAbortLikeError(err: unknown): boolean {
-  if (err instanceof DOMException) return err.name === "AbortError";
-  if (err instanceof Error) return err.name === "AbortError";
+  if (err instanceof DOMException) {
+    return err.name === "AbortError";
+  }
+  if (err instanceof Error) {
+    return err.name === "AbortError";
+  }
   const msg = String(err || "");
   return msg.includes("AbortError") || msg.toLowerCase().includes("signal is aborted");
 }
 
 function getAlternateLoopbackOrigin(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
   const { protocol, hostname, port } = window.location;
   const portPart = port ? `:${port}` : "";
-  if (hostname === "localhost") return `${protocol}//127.0.0.1${portPart}`;
-  if (hostname === "127.0.0.1") return `${protocol}//localhost${portPart}`;
+  if (hostname === "localhost") {
+    return `${protocol}//127.0.0.1${portPart}`;
+  }
+  if (hostname === "127.0.0.1") {
+    return `${protocol}//localhost${portPart}`;
+  }
   return null;
 }
 
@@ -67,7 +77,9 @@ async function fetchCanvasApi(
   } catch (primaryErr) {
     // Fallback for cases where one loopback host's connection pool is saturated by SSE.
     try {
-      if (!canUseAlt) throw primaryErr;
+      if (!canUseAlt) {
+        throw primaryErr;
+      }
       return await fetchWithTimeout(`${altOrigin!}${path}`, init, timeoutMs);
     } catch {
       throw primaryErr;
@@ -99,7 +111,9 @@ function writeCanvasIndexCache(rows: CanvasIndex["documents"]): void {
 export function readCanvasIndexCache(): CanvasIndex["documents"] {
   try {
     const raw = localStorage.getItem(CANVAS_INDEX_CACHE_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      return [];
+    }
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as CanvasIndex["documents"]) : [];
   } catch {

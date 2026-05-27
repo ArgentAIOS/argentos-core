@@ -132,7 +132,9 @@ export class SummaryStore {
     const row = this.db.prepare("SELECT * FROM summaries WHERE id = ?").get(id) as
       | RawSummaryRow
       | undefined;
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     return toSummaryNode(row, this.getSourceIds(row.id, row.depth));
   }
 
@@ -262,7 +264,9 @@ export class SummaryStore {
    */
   expandToMessages(summaryId: number): StoredMessage[] {
     const node = this.getNode(summaryId);
-    if (!node) return [];
+    if (!node) {
+      return [];
+    }
 
     if (node.depth === 0) {
       // Leaf summary — source IDs are message IDs

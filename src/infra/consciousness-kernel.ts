@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import type { ArgentConfig } from "../config/config.js";
 import type {
@@ -45,11 +46,24 @@ import {
   type ConsciousnessKernelWorkLane,
 } from "./consciousness-kernel-state.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "./diagnostic-events.js";
+import { recordSurfaceEmitted } from "./engagement-tracker.js";
 
 const log = createSubsystemLogger("gateway/consciousness-kernel");
-const DEFAULT_TICK_MS = 30_000;
+// [EMPIRICAL 2026-05-24] Changed from 30_000 to 120_000 per HANDOFF-kernel-fitness.md
+// Phase 1. The original 30s default produced ~100% inference duty cycle on a laptop
+// with a dense local model, drove the chassis into thermal throttle, and caused
+// the operator to stop the kernel — making any fitness measurement impossible.
+// A 2-minute cadence keeps the kernel productive while leaving 75–90% of each
+// window cool. Operators with desktop-class cooling can override via
+// `agents.defaults.kernel.tickMs` in argent.json.
+const DEFAULT_TICK_MS = 120_000;
 const DEFAULT_MAX_ESCALATIONS_PER_HOUR = 4;
 const DEFAULT_DAILY_BUDGET = 0;
+// Idle-activity-gate: kernel skips reflection if no user activity in last N min.
+// 30 min default = sustained focus pauses (lunch, meeting) still count as active;
+// longer absences correctly stop kernel inference. Set to 0 in config to disable.
+// See HANDOFF-kernel-fitness.md Section 13 locked decision #2 (2026-05-24).
+const DEFAULT_IDLE_ACTIVITY_GATE_MINUTES = 30;
 const STALLED_REFLECTION_QUIET_THRESHOLD = 3;
 const BLOCKED_REASON =
   "Slice 4 still blocks soft/full modes until outward autonomy and embodiment land.";
@@ -216,6 +230,8 @@ type ResolvedKernelConfig = {
   hardwareHostRequired: boolean;
   allowListening: boolean;
   allowVision: boolean;
+  /** Minutes of operator inactivity after which inner reflection is skipped. 0 disables. */
+  idleActivityGateMinutes: number;
 };
 
 export type ConsciousnessKernelConversationTurn = {
@@ -323,6 +339,11 @@ function resolveKernelConfig(cfg: ArgentConfig): ResolvedKernelConfig {
     hardwareHostRequired: raw?.hardwareHostRequired === true,
     allowListening: raw?.allowListening === true,
     allowVision: raw?.allowVision === true,
+    idleActivityGateMinutes:
+      typeof raw?.idleActivityGateMinutes === "number" &&
+      Number.isFinite(raw.idleActivityGateMinutes)
+        ? Math.max(0, Math.floor(raw.idleActivityGateMinutes))
+        : DEFAULT_IDLE_ACTIVITY_GATE_MINUTES,
   };
 }
 
@@ -1585,6 +1606,32 @@ export function startConsciousnessKernel(opts: {
         targets: result.delivered.length,
         errors: result.errors,
       });
+      // [EMPIRICAL Phase 3b.1] Record this surface emission in the engagement
+      // ledger so the fitness writer can compute engagement rate downstream
+      // (HANDOFF-kernel-fitness.md Section 4.1). surface_id is a stable hash
+      // of the result's signature so we can correlate later outcomes
+      // (acted/acked/ignored) back to the surface that triggered them.
+      try {
+        if (currentAgentId) {
+          const paths = resolveConsciousnessKernelPaths(cfg, currentAgentId);
+          const surfaceId = createHash("sha256")
+            .update(`${currentAgentId}|${result.signature}|${now}`)
+            .digest("hex")
+            .slice(0, 16);
+          recordSurfaceEmitted({
+            ledgerPath: paths.engagementLedgerPath,
+            surfaceId,
+            agentId: currentAgentId,
+            ts: now,
+            payload: {
+              signature: result.signature,
+              deliveredCount: result.delivered.length,
+            },
+          });
+        }
+      } catch (err) {
+        log.warn(`consciousness kernel: failed to record surface_emitted: ${String(err)}`);
+      }
     } else if (result.status === "failed") {
       log.warn("consciousness kernel: operator request notification failed", {
         errors: result.errors,
@@ -1595,6 +1642,34 @@ export function startConsciousnessKernel(opts: {
   const maybeRunInnerReflection = async (resolved: ResolvedKernelConfig, now: string) => {
     if (!selfState || !currentAgentId || !resolved.localModel) {
       return;
+    }
+    // Idle-activity-gate: skip reflection if no operator activity in last N minutes.
+    // Reads selfState.conversation.lastUserMessageAt, which is written by chat/agent
+    // handlers in gateway/server-methods/{chat,agent}.ts and by direct kernel sync.
+    // Set agents.defaults.kernel.idleActivityGateMinutes to 0 in argent.json to disable.
+    if (resolved.idleActivityGateMinutes > 0) {
+      const lastUserMessageAt = selfState.conversation.lastUserMessageAt;
+      if (!lastUserMessageAt) {
+        log.info("consciousness kernel: reflection skipped", {
+          reason: "idle-gate-no-activity-yet",
+          gateMinutes: resolved.idleActivityGateMinutes,
+        });
+        return;
+      }
+      const lastActivityMs = Date.parse(lastUserMessageAt);
+      const nowMs = Date.parse(now);
+      if (Number.isFinite(lastActivityMs) && Number.isFinite(nowMs)) {
+        const idleMs = nowMs - lastActivityMs;
+        const idleGateMs = resolved.idleActivityGateMinutes * 60_000;
+        if (idleMs > idleGateMs) {
+          log.info("consciousness kernel: reflection skipped", {
+            reason: "idle-gate-user-idle",
+            idleMinutes: Math.floor(idleMs / 60_000),
+            gateMinutes: resolved.idleActivityGateMinutes,
+          });
+          return;
+        }
+      }
     }
     try {
       const result = await runConsciousnessKernelInnerLoop({

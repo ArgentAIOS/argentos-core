@@ -123,7 +123,9 @@ const MANUAL_SOURCING: Record<string, { name: string; reason: string }> = {
 async function fetchIcon(slug: string): Promise<string | null> {
   try {
     const res = await fetch(`${CDN_BASE}/${slug}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return null;
+    }
     return await res.text();
   } catch {
     return null;
@@ -133,7 +135,9 @@ async function fetchIcon(slug: string): Promise<string | null> {
 async function fetchIconWithColor(slug: string, color: string): Promise<string | null> {
   try {
     const res = await fetch(`${CDN_BASE}/${slug}/${color}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return null;
+    }
     return await res.text();
   } catch {
     return null;
@@ -145,7 +149,9 @@ function normalizeToSquare(svg: string, brandColor?: string): { mono: string; co
   // Simple Icons SVGs are already 24x24 viewBox with a single path.
   // We wrap them in a 32x32 viewBox with 4px padding for breathing room.
   const pathMatch = svg.match(/<path\s+d="([^"]+)"/);
-  if (!pathMatch) return { mono: svg, color: svg };
+  if (!pathMatch) {
+    return { mono: svg, color: svg };
+  }
 
   const d = pathMatch[1];
   const fill = brandColor || "#FFFFFF";

@@ -28,7 +28,9 @@ const ARGENT_CONFIG_PATH = path.join(process.env.HOME || os.homedir(), ".argento
 function readGatewayConfigFromDisk(pathOverride) {
   const target = pathOverride || ARGENT_CONFIG_PATH;
   try {
-    if (!fs.existsSync(target)) return { token: null, bind: null };
+    if (!fs.existsSync(target)) {
+      return { token: null, bind: null };
+    }
     const cfg = JSON.parse(fs.readFileSync(target, "utf-8"));
     const token = cfg?.gateway?.auth?.token;
     const bind = cfg?.gateway?.bind;
@@ -86,7 +88,9 @@ function dashboardApiTokenFromRequest(req) {
     const fromPath = (
       selfUrl.searchParams.get("api_token") ?? selfUrl.searchParams.get("token")
     )?.trim();
-    if (fromPath) return fromPath;
+    if (fromPath) {
+      return fromPath;
+    }
   } catch {
     // ignore malformed URL
   }
@@ -98,7 +102,9 @@ function dashboardApiTokenFromRequest(req) {
       const fromReferer = (
         refererUrl.searchParams.get("api_token") ?? refererUrl.searchParams.get("token")
       )?.trim();
-      if (fromReferer) return fromReferer;
+      if (fromReferer) {
+        return fromReferer;
+      }
     } catch {
       // ignore malformed referer
     }
@@ -124,7 +130,9 @@ function dashboardApiTokenFromRequest(req) {
  */
 function resolveProxyAuthToken(req, configPathOverride) {
   const fromRequest = dashboardApiTokenFromRequest(req);
-  if (fromRequest) return fromRequest;
+  if (fromRequest) {
+    return fromRequest;
+  }
   const cfg = readGatewayConfigFromDisk(configPathOverride);
   return cfg.token;
 }
@@ -194,9 +202,15 @@ function resolveStaticPath(urlPathname) {
  */
 function injectGatewayTokenIntoIndexHtml(html, opts) {
   const { token, bind } = opts;
-  if (!token) return html;
-  if (!bindIsLoopback(bind)) return html;
-  if (html.includes("__ARGENT_GATEWAY_TOKEN__")) return html;
+  if (!token) {
+    return html;
+  }
+  if (!bindIsLoopback(bind)) {
+    return html;
+  }
+  if (html.includes("__ARGENT_GATEWAY_TOKEN__")) {
+    return html;
+  }
   const script = `<script>window.__ARGENT_GATEWAY_TOKEN__=${JSON.stringify(token)};</script>`;
   const headClose = html.indexOf("</head>");
   if (headClose !== -1) {

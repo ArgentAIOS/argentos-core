@@ -36,7 +36,9 @@ before(() => {
 });
 
 after(() => {
-  if (tempHome) fs.rmSync(tempHome, { recursive: true, force: true });
+  if (tempHome) {
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  }
 });
 
 function writeArgentConfig(payload) {
@@ -44,7 +46,9 @@ function writeArgentConfig(payload) {
 }
 
 function clearArgentConfig() {
-  if (fs.existsSync(argentJsonPath)) fs.rmSync(argentJsonPath);
+  if (fs.existsSync(argentJsonPath)) {
+    fs.rmSync(argentJsonPath);
+  }
 }
 
 describe("readGatewayConfigFromDisk", () => {

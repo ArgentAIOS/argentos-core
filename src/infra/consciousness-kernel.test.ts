@@ -29,6 +29,11 @@ function makeShadowConfig(tickMs = 5000, localModel?: string): ArgentConfig {
           enabled: true,
           mode: "shadow",
           tickMs,
+          // Tests that exercise reflection/executive cycles don't want the
+          // idle-activity-gate getting in the way. Disable it here so reflections
+          // fire on every tick regardless of `lastUserMessageAt` state. Tests
+          // that DO want to exercise the gate use `makeShadowConfigWithGate`.
+          idleActivityGateMinutes: 0,
           ...(localModel ? { localModel } : {}),
         },
       },
@@ -358,6 +363,184 @@ describe("consciousness kernel", () => {
       .map((entry) => entry.kind);
     expect(ledgerKinds).toEqual(["started", "tick", "reflection"]);
 
+    runner.stop();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Idle-activity-gate tests
+  //
+  // The kernel skips inner reflection when no operator activity has been seen
+  // in the last `idleActivityGateMinutes` minutes. This avoids burning local-LLM
+  // inference cycles (and the resulting heat) when the operator isn't there to
+  // benefit from the resulting reflection.
+  //
+  // See HANDOFF-kernel-fitness.md Section 13 locked decision #2 (2026-05-24).
+  // ---------------------------------------------------------------------------
+
+  function makeShadowConfigWithGate(opts: {
+    tickMs?: number;
+    localModel?: string;
+    idleActivityGateMinutes?: number | null;
+  }): ArgentConfig {
+    const kernelConfig: Record<string, unknown> = {
+      enabled: true,
+      mode: "shadow",
+      tickMs: opts.tickMs ?? 1000,
+    };
+    if (opts.localModel) kernelConfig.localModel = opts.localModel;
+    if (opts.idleActivityGateMinutes !== undefined && opts.idleActivityGateMinutes !== null) {
+      kernelConfig.idleActivityGateMinutes = opts.idleActivityGateMinutes;
+    }
+    return {
+      agents: {
+        defaults: {
+          kernel: kernelConfig,
+        },
+        list: [{ id: "main" }],
+      },
+    } satisfies ArgentConfig;
+  }
+
+  it("idle-activity-gate: skips reflection when no user activity has ever been recorded", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "argent-kernel-idle-gate-empty-"));
+    vi.stubEnv("ARGENT_STATE_DIR", stateDir);
+
+    // Default idleActivityGateMinutes = 30 minutes; no activity ever recorded.
+    const runner = startConsciousnessKernel({
+      cfg: makeShadowConfigWithGate({ tickMs: 1000, localModel: "ollama/qwen3.5:latest" }),
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runConsciousnessKernelInnerLoopMock).not.toHaveBeenCalled();
+    expect(getConsciousnessKernelSnapshot()).toMatchObject({
+      status: "running",
+      tickCount: 1,
+    });
+
+    runner.stop();
+  });
+
+  it("idle-activity-gate: skips reflection when user has been idle longer than the gate", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "argent-kernel-idle-gate-stale-"));
+    vi.stubEnv("ARGENT_STATE_DIR", stateDir);
+
+    const cfg = makeShadowConfigWithGate({
+      tickMs: 5_000,
+      localModel: "ollama/qwen3.5:latest",
+      idleActivityGateMinutes: 10,
+    });
+    const runner = startConsciousnessKernel({ cfg });
+
+    // Seed an operator message at T=0 (the fixed system time).
+    expect(
+      recordConsciousnessKernelConversationTurn({
+        cfg,
+        agentId: "main",
+        sessionKey: "agent:main:webchat",
+        channel: "webchat",
+        userMessageText: "Hello kernel.",
+        assistantReplyText: "Acknowledged.",
+      }),
+    ).toBe(true);
+
+    // Jump the wall clock 11 minutes forward WITHOUT firing intermediate ticks.
+    // setSystemTime only changes Date.now(); only advanceTimersByTime actually
+    // dispatches scheduled callbacks. Then we fire one tick — by that point
+    // idle = 11 min 5 sec, which exceeds the 10-minute gate, so the kernel
+    // should skip the inner loop entirely.
+    vi.setSystemTime(new Date("2026-03-19T12:11:00.000Z"));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(runConsciousnessKernelInnerLoopMock).not.toHaveBeenCalled();
+    runner.stop();
+  });
+
+  it("idle-activity-gate: runs reflection when user activity is recent", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "argent-kernel-idle-gate-fresh-"));
+    vi.stubEnv("ARGENT_STATE_DIR", stateDir);
+
+    runConsciousnessKernelInnerLoopMock.mockResolvedValue({
+      status: "reflected",
+      reflection: {
+        modelRef: "ollama/qwen3.5:latest",
+        wakefulness: "attentive",
+        focus: "stay warm",
+        desiredAction: "plan",
+        summary: "Active and ready.",
+        concerns: [],
+        threadTitle: null,
+        problemStatement: null,
+        lastConclusion: null,
+        nextStep: null,
+        interests: [],
+        openQuestions: [],
+        candidateItems: [],
+        activeItem: null,
+      },
+      rawText: "{}",
+    });
+
+    const cfg = makeShadowConfigWithGate({
+      tickMs: 1000,
+      localModel: "ollama/qwen3.5:latest",
+      idleActivityGateMinutes: 30,
+    });
+    const runner = startConsciousnessKernel({ cfg });
+
+    expect(
+      recordConsciousnessKernelConversationTurn({
+        cfg,
+        agentId: "main",
+        sessionKey: "agent:main:webchat",
+        channel: "webchat",
+        userMessageText: "Hello kernel.",
+        assistantReplyText: "Acknowledged.",
+      }),
+    ).toBe(true);
+
+    // Activity was just recorded; next tick should pass the gate.
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(runConsciousnessKernelInnerLoopMock).toHaveBeenCalledTimes(1);
+    runner.stop();
+  });
+
+  it("idle-activity-gate: disabled when idleActivityGateMinutes is 0", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "argent-kernel-idle-gate-off-"));
+    vi.stubEnv("ARGENT_STATE_DIR", stateDir);
+
+    runConsciousnessKernelInnerLoopMock.mockResolvedValue({
+      status: "reflected",
+      reflection: {
+        modelRef: "ollama/qwen3.5:latest",
+        wakefulness: "attentive",
+        focus: "stay warm",
+        desiredAction: "plan",
+        summary: "Active and ready.",
+        concerns: [],
+        threadTitle: null,
+        problemStatement: null,
+        lastConclusion: null,
+        nextStep: null,
+        interests: [],
+        openQuestions: [],
+        candidateItems: [],
+        activeItem: null,
+      },
+      rawText: "{}",
+    });
+
+    // Gate explicitly disabled (0). No user activity ever recorded.
+    // With the gate off, the kernel should reflect on every tick regardless.
+    const cfg = makeShadowConfigWithGate({
+      tickMs: 1000,
+      localModel: "ollama/qwen3.5:latest",
+      idleActivityGateMinutes: 0,
+    });
+    const runner = startConsciousnessKernel({ cfg });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runConsciousnessKernelInnerLoopMock).toHaveBeenCalledTimes(1);
     runner.stop();
   });
 

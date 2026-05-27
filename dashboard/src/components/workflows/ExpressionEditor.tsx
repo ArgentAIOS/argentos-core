@@ -50,11 +50,15 @@ function toStored(val: string): string {
 
 /** Resolve a simple dot-path on an object (e.g. "firstName" on {firstName:"Jo"}) */
 function resolvePath(obj: unknown, path: string): unknown {
-  if (!obj || typeof obj !== "object") return undefined;
+  if (!obj || typeof obj !== "object") {
+    return undefined;
+  }
   const parts = path.split(".");
   let cur: unknown = obj;
   for (const p of parts) {
-    if (cur == null || typeof cur !== "object") return undefined;
+    if (cur == null || typeof cur !== "object") {
+      return undefined;
+    }
     cur = (cur as Record<string, unknown>)[p];
   }
   return cur;
@@ -66,7 +70,9 @@ function resolveExpression(
   pipelineVars?: Record<string, unknown>,
   execData?: Record<string, unknown>,
 ): string | null {
-  if (!execData && !pipelineVars) return null;
+  if (!execData && !pipelineVars) {
+    return null;
+  }
 
   // Replace each {{ ... }} token
   const resolved = expr.replace(/\{\{\s*(.+?)\s*\}\}/g, (_match, inner: string) => {
@@ -126,7 +132,9 @@ function buildAutocompleteItems(
   const json = execData?.["$json"] ?? execData;
   if (json && typeof json === "object") {
     for (const key of Object.keys(json as Record<string, unknown>)) {
-      if (key.startsWith("$")) continue; // skip meta keys
+      if (key.startsWith("$")) {
+        continue;
+      } // skip meta keys
       items.push({
         label: `$json.${key}`,
         insert: `$json.${key}`,
@@ -359,7 +367,9 @@ export function ExpressionEditor({
   );
 
   const filteredItems = useMemo(() => {
-    if (!filter) return autocompleteItems;
+    if (!filter) {
+      return autocompleteItems;
+    }
     const lower = filter.toLowerCase();
     return autocompleteItems.filter((item) => item.label.toLowerCase().includes(lower));
   }, [autocompleteItems, filter]);
@@ -436,7 +446,9 @@ export function ExpressionEditor({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!showDropdown || filteredItems.length === 0) return;
+    if (!showDropdown || filteredItems.length === 0) {
+      return;
+    }
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -492,9 +504,13 @@ export function ExpressionEditor({
   // ── Live preview ────────────────────────────────────────────────────
 
   const previewValue = useMemo(() => {
-    if (mode !== "expression" || !isExpression(value)) return null;
+    if (mode !== "expression" || !isExpression(value)) {
+      return null;
+    }
     const raw = toEditable(value);
-    if (!raw.includes("{{")) return null;
+    if (!raw.includes("{{")) {
+      return null;
+    }
     return resolveExpression(raw, pipelineVariables, lastExecutionData);
   }, [value, mode, pipelineVariables, lastExecutionData]);
 

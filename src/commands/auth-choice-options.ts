@@ -24,6 +24,8 @@ export type AuthChoiceGroupId =
   | "cloudflare-ai-gateway"
   | "moonshot"
   | "zai"
+  | "xai"
+  | "groq"
   | "xiaomi"
   | "opencode-zen"
   | "minimax"
@@ -122,6 +124,18 @@ const AUTH_CHOICE_GROUP_DEFS: {
     label: "Z.AI",
     hint: "Direct API or Coding Plan",
     choices: ["zai-api-key", "zai-coding-api-key"],
+  },
+  {
+    value: "xai",
+    label: "xAI (Grok)",
+    hint: "API key for Grok-4 / Grok-4 Fast / Grok Code Fast 1",
+    choices: ["xai-api-key"],
+  },
+  {
+    value: "groq",
+    label: "Groq",
+    hint: "Fast hosted Llama / Qwen / GPT-OSS — free tier available",
+    choices: ["groq-api-key"],
   },
   {
     value: "copilot",
@@ -285,6 +299,17 @@ export function buildAuthChoiceOptions(params: {
     hint: "Claude, GPT, Gemini via opencode.ai/zen",
   });
   options.push({ value: "minimax-api", label: "MiniMax M2.1" });
+  // xAI / Groq — see #296 + #297 (surface) and #380 (apply-handlers).
+  options.push({
+    value: "xai-api-key",
+    label: "xAI API key (Grok)",
+    hint: "Grok 4, Grok 4 Fast, Grok Code Fast 1 — get a key at console.x.ai",
+  });
+  options.push({
+    value: "groq-api-key",
+    label: "Groq API key",
+    hint: "Fast LPU-hosted Llama / Qwen / GPT-OSS — console.groq.com/keys",
+  });
   if (params.includeSkip) {
     options.push({ value: "skip", label: "Skip for now" });
   }

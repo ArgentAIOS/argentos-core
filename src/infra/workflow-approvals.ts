@@ -195,3 +195,26 @@ export async function resolveDurableWorkflowApproval(
   `;
   return row;
 }
+
+// Resolves a workflow approval by its primary-key id. Used by callback-driven
+// surfaces (Telegram inline buttons) where the caller only carries the
+// approval id, not run/node. Atomically transitions pending → approved/denied
+// in a single statement and returns the row so callers can drive the run-
+// resume or read run_id/node_id without a second query.
+export async function resolveDurableWorkflowApprovalById(
+  sql: Sql,
+  input: { approvalId: string; approved: boolean; reason?: string; approvedBy?: string },
+) {
+  const status = input.approved ? "approved" : "denied";
+  const [row] = await sql`
+    UPDATE workflow_approvals SET
+      status = ${status},
+      resolved_at = NOW(),
+      resolved_by = ${input.approvedBy ?? "operator"},
+      resolution_note = ${input.reason ?? null}
+    WHERE id = ${input.approvalId}
+      AND status = 'pending'
+    RETURNING *
+  `;
+  return row;
+}

@@ -1,6 +1,6 @@
 {
   "name": "@argentos/google-meet",
-  "version": "2026.4.30",
+  "version": "2026.5.6.6",
   "description": "ArgentOS Google Meet extension scaffold with setup/status preflight for browser and realtime voice integration.",
   "type": "module",
   "devDependencies": {

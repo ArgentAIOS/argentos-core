@@ -51,7 +51,9 @@ const defaultConfig: ConfigData = {
 function loadConfig(): ConfigData {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...defaultConfig, ...JSON.parse(stored) };
+    if (stored) {
+      return { ...defaultConfig, ...JSON.parse(stored) };
+    }
   } catch {
     /* ignore */
   }
@@ -84,7 +86,9 @@ function AgentTab({ gatewayRequest }: { gatewayRequest?: ConfigPanelProps["gatew
 
   useEffect(() => {
     const req = gatewayRequest ?? gateway.request;
-    if (!req) return;
+    if (!req) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -178,7 +182,9 @@ function DictionaryTab({
   const addEntry = () => {
     const term = newTerm.trim();
     const replacement = newReplacement.trim();
-    if (!term || !replacement) return;
+    if (!term || !replacement) {
+      return;
+    }
     const entry: DictionaryEntry = {
       id: String(Date.now()),
       term,
@@ -292,7 +298,9 @@ export function ConfigPanel({
   const [config, setConfig] = useState<ConfigData>(loadConfig);
 
   useEffect(() => {
-    if (!isOpen || !requestedTab) return;
+    if (!isOpen || !requestedTab) {
+      return;
+    }
     const tab = requestedTab as CoreTabType;
     if (TABS.some((t) => t.id === tab)) {
       setActiveTab(tab);

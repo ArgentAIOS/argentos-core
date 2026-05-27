@@ -34,7 +34,9 @@ function doBroadcast(event: string, payload: unknown) {
 }
 
 function flushPendingBroadcasts() {
-  if (!broadcastFn) return;
+  if (!broadcastFn) {
+    return;
+  }
   while (pendingBroadcasts.length > 0) {
     const item = pendingBroadcasts.shift();
     if (item) {
@@ -278,7 +280,9 @@ export default function register(api: any) {
   api.registerHook(
     "agent:bootstrap",
     async (event: any) => {
-      if (event.type !== "agent" || event.action !== "bootstrap") return;
+      if (event.type !== "agent" || event.action !== "bootstrap") {
+        return;
+      }
 
       const instructions = `## 📄 DocPanel Tool
 
@@ -376,7 +380,9 @@ When using \`doc_panel\`, you can still provide a brief verbal summary while the
     // Document patterns
     let patternMatches = 0;
     for (const pattern of DOCUMENT_PATTERNS) {
-      if (pattern.test(content)) patternMatches++;
+      if (pattern.test(content)) {
+        patternMatches++;
+      }
     }
     if (patternMatches >= 3) {
       documentScore += 25;
@@ -401,7 +407,9 @@ When using \`doc_panel\`, you can still provide a brief verbal summary while the
       suggestedTitle = headerMatch[1].trim();
     } else {
       const boldMatch = content.match(/^\*\*(.+?)\*\*/m);
-      if (boldMatch) suggestedTitle = boldMatch[1].trim();
+      if (boldMatch) {
+        suggestedTitle = boldMatch[1].trim();
+      }
     }
 
     // Detect content type
@@ -412,7 +420,9 @@ When using \`doc_panel\`, you can still provide a brief verbal summary while the
       if (codeContent > content.length * 0.6) {
         contentType = "code";
         const langMatch = content.match(/```(\w+)/);
-        if (langMatch) language = langMatch[1];
+        if (langMatch) {
+          language = langMatch[1];
+        }
       }
     }
 
@@ -471,7 +481,9 @@ When using \`doc_panel\`, you can still provide a brief verbal summary while the
         event.content?.text ||
         event.text ||
         (typeof event.content === "string" ? event.content : "");
-      if (!text || typeof text !== "string") return;
+      if (!text || typeof text !== "string") {
+        return;
+      }
 
       // Skip if agent already used doc_panel tool this turn
       const toolCalls = ctx?.toolCalls || [];
@@ -486,7 +498,9 @@ When using \`doc_panel\`, you can still provide a brief verbal summary while the
       // Analyze the response content
       const analysis = analyzeContent(text);
 
-      if (!analysis.isDocument) return;
+      if (!analysis.isDocument) {
+        return;
+      }
 
       api.logger.info(
         `[doc-router] Auto-routing to DocPanel (score: ${analysis.confidence}, reason: ${analysis.reason}, title: "${analysis.suggestedTitle}")`,

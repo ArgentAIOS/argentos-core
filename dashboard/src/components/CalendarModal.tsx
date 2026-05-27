@@ -30,7 +30,9 @@ const platformLogos = {
 };
 
 const PlatformLogo = ({ platform }: { platform: MeetingPlatform }) => {
-  if (!platform) return null;
+  if (!platform) {
+    return null;
+  }
   return (
     <img src={platformLogos[platform]} alt={platform} className="w-5 h-5 rounded object-contain" />
   );
@@ -94,7 +96,9 @@ export function CalendarModal({ isOpen, onClose }: CalendarModalProps) {
   const withAccountQuery = useCallback(
     (path: string, accountOverride?: string | null) => {
       const candidate = (accountOverride ?? selectedAccount).trim();
-      if (!candidate) return path;
+      if (!candidate) {
+        return path;
+      }
       const join = path.includes("?") ? "&" : "?";
       return `${path}${join}account=${encodeURIComponent(candidate)}`;
     },
@@ -105,7 +109,9 @@ export function CalendarModal({ isOpen, onClose }: CalendarModalProps) {
     setAccountLoading(true);
     try {
       const response = await fetchLocalApi("/api/calendar/accounts");
-      if (!response.ok) return selectedAccount || getStoredCalendarAccount() || "";
+      if (!response.ok) {
+        return selectedAccount || getStoredCalendarAccount() || "";
+      }
 
       const data = await response.json();
       const options: CalendarAccountOption[] = Array.isArray(data?.accounts)
@@ -236,7 +242,9 @@ export function CalendarModal({ isOpen, onClose }: CalendarModalProps) {
     const diffMs = endDate.getTime() - startDate.getTime();
     const diffMins = Math.round(diffMs / 60000);
 
-    if (diffMins < 60) return `${diffMins}m`;
+    if (diffMins < 60) {
+      return `${diffMins}m`;
+    }
     const hours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;

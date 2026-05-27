@@ -56,15 +56,23 @@ type PersonalSkillsResponse = {
 };
 
 function formatTimestamp(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) {
+    return "—";
+  }
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return value;
+  if (!Number.isFinite(parsed)) {
+    return value;
+  }
   return new Date(parsed).toLocaleString();
 }
 
 function metricTone(value: "low" | "medium" | "high"): string {
-  if (value === "high") return "text-red-300 border-red-500/30 bg-red-500/10";
-  if (value === "medium") return "text-amber-300 border-amber-500/30 bg-amber-500/10";
+  if (value === "high") {
+    return "text-red-300 border-red-500/30 bg-red-500/10";
+  }
+  if (value === "medium") {
+    return "text-amber-300 border-amber-500/30 bg-amber-500/10";
+  }
   return "text-emerald-300 border-emerald-500/30 bg-emerald-500/10";
 }
 
@@ -149,7 +157,9 @@ export function PersonalSkillsPanel(props: {
 
   const deleteSkill = async (row: PersonalSkillRow) => {
     const confirmed = window.confirm(`Delete Personal Skill "${row.title}"?`);
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
     setActionBusy(`${row.id}:delete`);
     try {
       await request("skills.personal.delete", { id: row.id });

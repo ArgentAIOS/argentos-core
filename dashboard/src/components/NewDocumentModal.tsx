@@ -66,9 +66,13 @@ export function NewDocumentModal({
 
   // Close on Escape
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -87,7 +91,9 @@ export function NewDocumentModal({
   }, []);
 
   const handleCreate = useCallback(() => {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      return;
+    }
 
     const resolvedFolder = isCreatingFolder ? newFolderName.trim() : folder;
 

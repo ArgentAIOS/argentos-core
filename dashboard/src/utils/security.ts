@@ -134,7 +134,9 @@ export async function setChallengePhrase(phrase: string): Promise<void> {
 
 export async function verifyChallengePhrase(phrase: string): Promise<boolean> {
   const storedHash = localStorage.getItem(CHALLENGE_STORAGE_KEY);
-  if (!storedHash) return false;
+  if (!storedHash) {
+    return false;
+  }
   const inputHash = await hashPhrase(phrase);
   return storedHash === inputHash;
 }

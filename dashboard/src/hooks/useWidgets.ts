@@ -46,7 +46,9 @@ export function useWidgets() {
 
   // Fetch custom widgets from API
   const fetchCustomWidgets = useCallback(async () => {
-    if (!WIDGET_API_ENABLED) return;
+    if (!WIDGET_API_ENABLED) {
+      return;
+    }
     try {
       const res = await fetchLocalApi("/api/widgets", { credentials: "include" });
       if (res.ok) {
@@ -65,7 +67,9 @@ export function useWidgets() {
 
   // SSE for real-time widget updates
   useEffect(() => {
-    if (!WIDGET_API_ENABLED) return;
+    if (!WIDGET_API_ENABLED) {
+      return;
+    }
 
     const es = new EventSource("/api/widgets/events");
     esRef.current = es;

@@ -104,7 +104,9 @@ export function isOpsSubTabAllowed(
   tabId: string,
   surfaceProfile: DashboardSurfaceProfile,
 ): boolean {
-  if (!WORKFORCE_ONLY_OPS_TABS.has(tabId)) return true;
+  if (!WORKFORCE_ONLY_OPS_TABS.has(tabId)) {
+    return true;
+  }
   return isWorkforceSurfaceAllowed(surfaceProfile);
 }
 
