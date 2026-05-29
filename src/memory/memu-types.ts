@@ -633,7 +633,8 @@ export type PersonalSkillReviewAction =
   | "deleted"
   | "usage_reinforced"
   | "usage_decayed"
-  | "procedure_selected";
+  | "procedure_selected"
+  | "rejected";
 
 export interface PersonalSkillCandidate {
   id: string;

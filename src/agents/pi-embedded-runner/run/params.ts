@@ -64,6 +64,12 @@ export type RunEmbeddedPiAgentParams = {
   clientTools?: ClientToolDefinition[];
   /** Disable built-in tools for this run (LLM-only mode). */
   disableTools?: boolean;
+
+  /**
+   * When true, this run is for the primary operator agent (the main "argent" agent the user interacts with directly).
+   * This enables lighter/faster paths for tool surface and prompt construction (see Phase 0 of Grok Enhancements plan).
+   */
+  isPrimaryOperator?: boolean;
   provider?: string;
   model?: string;
   /** Treat provider/model as explicit user choice (skip model router rerouting). */

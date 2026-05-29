@@ -31,6 +31,7 @@ import {
 import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { provisionFamilyWorker } from "../family-worker-provisioning.js";
 import { jsonResult, readStringParam, readStringArrayParam, readNumberParam } from "./common.js";
+import { recordOperatorSelfExtensionAction } from "../../infra/agent-events.js";
 
 const FamilyToolSchema = Type.Object({
   action: Type.Union([
@@ -171,6 +172,14 @@ export interface FamilyToolSpawnContext {
   agentGroupChannel?: string | null;
   agentGroupSpace?: string | null;
   requesterAgentIdOverride?: string;
+  /**
+   * wf-4 (grok/main-operator-evolution): runId for primary operator fast path visibility.
+   * Threaded exclusively via createLightOperatorTools when isPrimaryOperator.
+   * Enables recordOperatorSelfExtensionAction for goal-driven parallel delegations
+   * (dispatch_contracted, dispatch, spawn, publish/message handoffs) with direct
+   * correlation to the operator's originating turn in AgentEvents + timings.
+   */
+  runId?: string;
 }
 
 type FamilyTelemetryCounterKey =
@@ -344,6 +353,9 @@ export function createFamilyTool(
     name: "family",
     description: `Manage the agent family — register new agents, list members, send messages, share knowledge, spawn agents.
 
+Heavily used by the primary operator for self-building / capability growth work (via curator.create_delegation_task + dispatch/spawn + publish/message returns).
+wf-4: On light operator surface, all delegation actions (dispatch*, spawn*, publish, message) emit recordOperatorSelfExtensionAction for full visibility + runId correlation in logs/AgentEvents/timings.
+
 Actions:
   register — Create or update a family agent. Required: id, name, role. Optional: persona, tools, model, team.
   list — List all registered family members with alive/dead status.
@@ -362,6 +374,7 @@ Actions:
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
+      const runId = (opts as any)?.runId as string | undefined; // wf-4: only on gated operator light path
 
       switch (action) {
         case "register":
@@ -369,24 +382,49 @@ Actions:
         case "list":
           return await handleList();
         case "message":
+          // wf-4: record operator family message (often used for delegation handoff return per capability contract)
+          recordOperatorSelfExtensionAction(runId, "family", "message", {
+            recipient: readStringParam(params, "recipient"),
+            message_type: readStringParam(params, "message_type"),
+          });
           return await handleMessage(params, opts?.agentId, opts);
         case "inbox":
           return await handleInbox(params, opts?.agentId);
         case "publish":
+          // wf-4: record operator publish (primary return path for delegated self-extension work)
+          recordOperatorSelfExtensionAction(runId, "family", "publish", {
+            category: readStringParam(params, "category"),
+            title: readStringParam(params, "title")?.slice(0, 120),
+          });
           return await handlePublish(params, opts?.agentId);
         case "search":
           return await handleSearch(params);
         case "telemetry":
           return handleTelemetry(params);
         case "spawn":
+          recordOperatorSelfExtensionAction(runId, "family", "spawn", {
+            id: readStringParam(params, "id"),
+            mode: readStringParam(params, "mode"),
+          });
           return await handleSpawn(params, opts);
         case "dispatch":
+          recordOperatorSelfExtensionAction(runId, "family", "dispatch", {
+            mode: readStringParam(params, "mode") || "auto",
+          });
           return await handleDispatch(params, opts);
         case "dispatch_contracted":
+          // Primary entry for goal-driven parallel delegations on operator fast path (uses capability allowlists + contracts)
+          recordOperatorSelfExtensionAction(runId, "family", "dispatch_contracted", {
+            mode: readStringParam(params, "mode") || "auto",
+            hasContract: true,
+          });
           return await handleDispatchContracted(params, opts);
         case "contract_history":
           return await handleContractHistory(params);
         case "spawn_team":
+          recordOperatorSelfExtensionAction(runId, "family", "spawn_team", {
+            team: readStringParam(params, "team"),
+          });
           return await handleSpawnTeam(params, opts);
         default:
           return jsonResult({ error: `Unknown action: ${action}` });
@@ -996,6 +1034,7 @@ async function handleSpawn(
   if (!agent) {
     return jsonResult({ error: `Agent "${id}" is not registered. Use register first.` });
   }
+
   if (agent.status !== "active") {
     return jsonResult({ error: `Agent "${id}" is inactive.` });
   }
@@ -1592,133 +1631,5 @@ async function handleSpawnTeam(
     project,
     spawned: results,
     message: `Spawned ${successCount}/${members.length} agents from team "${team}".`,
-  });
-}
-
-// ── Shared spawn helper ──────────────────────────────────────────────────
-
-async function spawnFamilyAgent(
-  agentId: string,
-  task: string,
-  spawnCtx?: FamilyToolSpawnContext & { agentId?: string },
-  modelOverride?: string,
-  toolsAllow?: string[],
-  toolsDeny?: string[],
-): Promise<{ ok: boolean; childSessionKey?: string; runId?: string; error?: string }> {
-  try {
-    const { spawnSubagentSession } = await import("./sessions-spawn-helpers.js");
-    const { normalizeDeliveryContext } = await import("../../utils/delivery-context.js");
-    const { loadConfig } = await import("../../config/config.js");
-    const { normalizeAgentId, parseAgentSessionKey } = await import("../../routing/session-key.js");
-    const { resolveMainSessionAlias, resolveInternalSessionKey, resolveDisplaySessionKey } =
-      await import("./sessions-helpers.js");
-
-    const cfg = loadConfig();
-    const { mainKey, alias } = resolveMainSessionAlias(cfg);
-
-    const requesterSessionKey = spawnCtx?.agentSessionKey;
-    const requesterInternalKey = requesterSessionKey
-      ? resolveInternalSessionKey({ key: requesterSessionKey, alias, mainKey })
-      : alias;
-    const requesterDisplayKey = resolveDisplaySessionKey({
-      key: requesterInternalKey,
-      alias,
-      mainKey,
-    });
-
-    const requesterOrigin = normalizeDeliveryContext({
-      channel: spawnCtx?.agentChannel,
-      accountId: spawnCtx?.agentAccountId,
-      to: spawnCtx?.agentTo,
-      threadId: spawnCtx?.agentThreadId,
-    });
-
-    const result = await spawnSubagentSession({
-      task,
-      label: `family:${agentId}`,
-      modelOverride,
-      toolsAllow,
-      toolsDeny,
-      requesterInternalKey,
-      requesterDisplayKey,
-      requesterOrigin,
-      requesterAgentIdOverride: spawnCtx?.requesterAgentIdOverride,
-      requestedAgentId: agentId,
-      groupId: spawnCtx?.agentGroupId,
-      groupChannel: spawnCtx?.agentGroupChannel,
-      groupSpace: spawnCtx?.agentGroupSpace,
-    });
-
-    return {
-      ok: result.ok,
-      childSessionKey: result.childSessionKey,
-      runId: result.runId,
-      warning: result.ok ? result.warning : undefined,
-      modelDiagnostic: result.ok ? result.modelDiagnostic : undefined,
-      error: result.ok ? undefined : (result as { error?: string }).error,
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: msg };
-  }
-}
-
-// ── publish ───────────────────────────────────────────────────────────────
-
-async function handlePublish(params: Record<string, unknown>, callerAgentId?: string) {
-  const title = readStringParam(params, "title", { required: true });
-  const content = readStringParam(params, "content", { required: true });
-  const category = readStringParam(params, "category", { required: true }) as
-    | "lesson"
-    | "fact"
-    | "tool_tip"
-    | "pattern";
-  const confidence = readNumberParam(params, "confidence") ?? 0.7;
-  const sourceAgentId = readStringParam(params, "source_agent_id") ?? callerAgentId ?? "argent";
-
-  const family = await getAgentFamily();
-  const entry = await family.publishKnowledge({
-    sourceAgentId,
-    category,
-    title,
-    content,
-    confidence,
-  });
-
-  return jsonResult({
-    ok: true,
-    knowledge: {
-      id: entry.id,
-      title: entry.title,
-      category: entry.category,
-      confidence: entry.confidence,
-      sourceAgent: entry.sourceAgentId,
-    },
-    message: `Knowledge "${title}" published to family library.`,
-  });
-}
-
-// ── search ────────────────────────────────────────────────────────────────
-
-async function handleSearch(params: Record<string, unknown>) {
-  const query = readStringParam(params, "query", { required: true });
-  const limit = readNumberParam(params, "limit", { integer: true }) ?? 10;
-
-  const family = await getAgentFamily();
-  const results = await family.searchKnowledge(query, limit);
-
-  return jsonResult({
-    query,
-    count: results.length,
-    results: results.map((r) => ({
-      id: r.id,
-      title: r.title,
-      category: r.category,
-      content: r.content,
-      confidence: r.confidence,
-      endorsements: r.endorsements,
-      sourceAgent: r.sourceAgentId,
-      createdAt: r.createdAt,
-    })),
   });
 }

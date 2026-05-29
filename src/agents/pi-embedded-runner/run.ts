@@ -1105,6 +1105,7 @@ export async function runEmbeddedPiAgent(
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
             isHeartbeat: params.isHeartbeat,
+            isPrimaryOperator: params.isPrimaryOperator,
           });
 
           const { aborted, promptError, timedOut, sessionIdUsed, lastAssistant } = attempt;

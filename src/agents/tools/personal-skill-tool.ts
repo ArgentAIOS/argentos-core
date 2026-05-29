@@ -7,6 +7,7 @@ import type {
 import type { AnyAgentTool } from "./common.js";
 import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { jsonResult, readNumberParam, readStringArrayParam, readStringParam } from "./common.js";
+import { recordOperatorSelfExtensionAction } from "../../infra/agent-events.js";
 
 const PERSONAL_SKILL_ACTIONS = ["list", "create", "patch"] as const;
 
@@ -77,21 +78,16 @@ type PersonalSkillToolAction = (typeof PERSONAL_SKILL_ACTIONS)[number];
 
 function normalizeStateFilter(value: string | undefined): PersonalSkillCandidateState | undefined {
   const normalized = value?.trim().toLowerCase();
-  if (
-    normalized === "candidate" ||
-    normalized === "incubating" ||
-    normalized === "promoted" ||
-    normalized === "rejected" ||
-    normalized === "deprecated"
-  ) {
-    return normalized;
+  if (!normalized) return undefined;
+  if (["promoted", "incubating", "candidate", "rejected", "archived"].includes(normalized)) {
+    return normalized as PersonalSkillCandidateState;
   }
   return undefined;
 }
 
-function cleanStringArray(values: string[] | undefined): string[] | undefined {
-  if (!values) return undefined;
-  const cleaned = values.map((value) => value.trim()).filter(Boolean);
+function cleanStringArray(arr: string[] | undefined): string[] | undefined {
+  if (!arr || arr.length === 0) return undefined;
+  const cleaned = arr.map((s) => s.trim()).filter((s) => s.length > 0);
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
@@ -130,7 +126,10 @@ async function resolveScopedMemory(agentId: string) {
   return memory.withAgentId ? memory.withAgentId(agentId) : memory;
 }
 
-export function createPersonalSkillTool(options: { agentId: string }): AnyAgentTool {
+export function createPersonalSkillTool(options: { agentId: string; runId?: string }): AnyAgentTool {
+  const agentId = options.agentId;
+  const runId = options.runId;
+
   return {
     label: "Personal Skill",
     name: "personal_skill",
@@ -138,136 +137,163 @@ export function createPersonalSkillTool(options: { agentId: string }): AnyAgentT
       "Manage DB-backed Personal Skills as operator procedures. Use this to list, intentionally create, or patch Personal Skills instead of relying only on passive promotion.",
     parameters: PersonalSkillToolSchema,
     execute: async (_toolCallId, args) => {
-      const params = args as Record<string, unknown>;
-      const action = readStringParam(params, "action", {
-        required: true,
-      }) as PersonalSkillToolAction;
-      const memory = await resolveScopedMemory(options.agentId);
+      try {
+        const params = args as Record<string, unknown>;
+        const action = readStringParam(params, "action", {
+          required: true,
+        }) as PersonalSkillToolAction;
+        const memory = await resolveScopedMemory(agentId);
 
-      if (action === "list") {
-        const state = normalizeStateFilter(readStringParam(params, "state"));
-        const limit = Math.min(50, Math.max(1, readNumberParam(params, "limit") ?? 10));
-        const rows = await memory.listPersonalSkillCandidates({ state, limit });
-        const text =
-          rows.length === 0
-            ? "No Personal Skills found."
-            : rows.map((row) => formatPersonalSkillRow(row)).join("\n\n");
-        return {
-          content: [{ type: "text", text }],
-          details: {
+        if (action === "list") {
+          const state = normalizeStateFilter(readStringParam(params, "state"));
+          const limit = Math.min(50, Math.max(1, readNumberParam(params, "limit") ?? 10));
+          const rows = await memory.listPersonalSkillCandidates({ state, limit });
+          const text =
+            rows.length === 0
+              ? "No Personal Skills found."
+              : rows.map((row) => formatPersonalSkillRow(row)).join("\n\n");
+          return {
+            content: [{ type: "text", text }],
+            details: {
+              ok: true,
+              action,
+              count: rows.length,
+              rows,
+            },
+          };
+        }
+
+        if (action === "create") {
+          const title = readStringParam(params, "title", { required: true });
+          const summary = readStringParam(params, "summary", { required: true });
+          const triggerPatterns = cleanStringArray(readStringArrayParam(params, "triggerPatterns"));
+          const preconditions = cleanStringArray(readStringArrayParam(params, "preconditions"));
+          const executionSteps = cleanStringArray(readStringArrayParam(params, "executionSteps"));
+          const expectedOutcomes = cleanStringArray(readStringArrayParam(params, "expectedOutcomes"));
+          const relatedTools = cleanStringArray(readStringArrayParam(params, "relatedTools"));
+          const operatorNotes = readStringParam(params, "operatorNotes");
+          const reason =
+            readStringParam(params, "reason") ?? "Agent intentionally authored a Personal Skill";
+          const procedureOutline = buildProcedureOutline({
+            procedureOutline: readStringParam(params, "procedureOutline"),
+            executionSteps,
+            expectedOutcomes,
+          });
+
+          const input: CreatePersonalSkillCandidateInput = {
+            title,
+            summary,
+            triggerPatterns,
+            procedureOutline,
+            preconditions,
+            executionSteps,
+            expectedOutcomes,
+            relatedTools,
+            operatorNotes: operatorNotes ?? null,
+            confidence: 0.75,
+            strength: 0.55,
+            evidenceCount: 1,
+            recurrenceCount: 1,
+            state: "incubating",
+          };
+          const created = await memory.createPersonalSkillCandidate(input);
+
+          const isOperatorPath = !!runId;
+          await memory.createPersonalSkillReviewEvent({
+            candidateId: created.id,
+            actorType: isOperatorPath ? "operator" : "system",
+            action: "authored",
+            reason,
+            details: {
+              source: "personal_skill_tool",
+              action,
+              operatorProvenance: isOperatorPath,
+            },
+          });
+
+          recordOperatorSelfExtensionAction(runId, "personal_skill", action, {
+            id: created.id,
+            title: created.title,
+          });
+
+          return jsonResult({
             ok: true,
             action,
-            count: rows.length,
-            rows,
-          },
-        };
-      }
-
-      if (action === "create") {
-        const title = readStringParam(params, "title", { required: true });
-        const summary = readStringParam(params, "summary", { required: true });
-        const triggerPatterns = cleanStringArray(readStringArrayParam(params, "triggerPatterns"));
-        const preconditions = cleanStringArray(readStringArrayParam(params, "preconditions"));
-        const executionSteps = cleanStringArray(readStringArrayParam(params, "executionSteps"));
-        const expectedOutcomes = cleanStringArray(readStringArrayParam(params, "expectedOutcomes"));
-        const relatedTools = cleanStringArray(readStringArrayParam(params, "relatedTools"));
-        const operatorNotes = readStringParam(params, "operatorNotes");
-        const reason =
-          readStringParam(params, "reason") ?? "Agent intentionally authored a Personal Skill";
-        const procedureOutline = buildProcedureOutline({
-          procedureOutline: readStringParam(params, "procedureOutline"),
-          executionSteps,
-          expectedOutcomes,
-        });
-
-        const input: CreatePersonalSkillCandidateInput = {
-          title,
-          summary,
-          triggerPatterns,
-          procedureOutline,
-          preconditions,
-          executionSteps,
-          expectedOutcomes,
-          relatedTools,
-          operatorNotes: operatorNotes ?? null,
-          confidence: 0.75,
-          strength: 0.55,
-          evidenceCount: 1,
-          recurrenceCount: 1,
-          state: "incubating",
-        };
-        const created = await memory.createPersonalSkillCandidate(input);
-        await memory.createPersonalSkillReviewEvent({
-          candidateId: created.id,
-          actorType: "system",
-          action: "authored",
-          reason,
-          details: {
-            source: "personal_skill_tool",
-            action,
-          },
-        });
-        return jsonResult({
-          ok: true,
-          action,
-          row: created,
-        });
-      }
-
-      if (action === "patch") {
-        const id = readStringParam(params, "id", { required: true });
-        const fields: Parameters<typeof memory.updatePersonalSkillCandidate>[1] = {};
-        const title = readStringParam(params, "title");
-        const summary = readStringParam(params, "summary");
-        const triggerPatterns = cleanStringArray(readStringArrayParam(params, "triggerPatterns"));
-        const preconditions = cleanStringArray(readStringArrayParam(params, "preconditions"));
-        const executionSteps = cleanStringArray(readStringArrayParam(params, "executionSteps"));
-        const expectedOutcomes = cleanStringArray(readStringArrayParam(params, "expectedOutcomes"));
-        const relatedTools = cleanStringArray(readStringArrayParam(params, "relatedTools"));
-        const operatorNotes = readStringParam(params, "operatorNotes");
-        const procedureOutline = buildProcedureOutline({
-          procedureOutline: readStringParam(params, "procedureOutline"),
-          executionSteps,
-          expectedOutcomes,
-        });
-        if (title !== undefined) fields.title = title;
-        if (summary !== undefined) fields.summary = summary;
-        if (triggerPatterns !== undefined) fields.triggerPatterns = triggerPatterns;
-        if (preconditions !== undefined) fields.preconditions = preconditions;
-        if (executionSteps !== undefined) fields.executionSteps = executionSteps;
-        if (expectedOutcomes !== undefined) fields.expectedOutcomes = expectedOutcomes;
-        if (relatedTools !== undefined) fields.relatedTools = relatedTools;
-        if (procedureOutline !== undefined) fields.procedureOutline = procedureOutline;
-        if (operatorNotes !== undefined) fields.operatorNotes = operatorNotes;
-        if (Object.keys(fields).length === 0) {
-          throw new Error("patch requires at least one field to update");
+            row: created,
+          });
         }
-        fields.lastReviewedAt = new Date().toISOString();
-        const updated = await memory.updatePersonalSkillCandidate(id, fields);
-        if (!updated) {
-          throw new Error(`personal skill "${id}" not found`);
-        }
-        await memory.createPersonalSkillReviewEvent({
-          candidateId: updated.id,
-          actorType: "system",
-          action: "patched",
-          reason:
-            readStringParam(params, "reason") ??
-            "Agent intentionally patched a Personal Skill after runtime use or correction",
-          details: {
-            source: "personal_skill_tool",
+
+        if (action === "patch") {
+          const id = readStringParam(params, "id", { required: true });
+          const fields: Parameters<typeof memory.updatePersonalSkillCandidate>[1] = {};
+          const title = readStringParam(params, "title");
+          const summary = readStringParam(params, "summary");
+          const triggerPatterns = cleanStringArray(readStringArrayParam(params, "triggerPatterns"));
+          const preconditions = cleanStringArray(readStringArrayParam(params, "preconditions"));
+          const executionSteps = cleanStringArray(readStringArrayParam(params, "executionSteps"));
+          const expectedOutcomes = cleanStringArray(readStringArrayParam(params, "expectedOutcomes"));
+          const relatedTools = cleanStringArray(readStringArrayParam(params, "relatedTools"));
+          const operatorNotes = readStringParam(params, "operatorNotes");
+          const procedureOutline = buildProcedureOutline({
+            procedureOutline: readStringParam(params, "procedureOutline"),
+            executionSteps,
+            expectedOutcomes,
+          });
+          if (title !== undefined) fields.title = title;
+          if (summary !== undefined) fields.summary = summary;
+          if (triggerPatterns !== undefined) fields.triggerPatterns = triggerPatterns;
+          if (preconditions !== undefined) fields.preconditions = preconditions;
+          if (executionSteps !== undefined) fields.executionSteps = executionSteps;
+          if (expectedOutcomes !== undefined) fields.expectedOutcomes = expectedOutcomes;
+          if (relatedTools !== undefined) fields.relatedTools = relatedTools;
+          if (procedureOutline !== undefined) fields.procedureOutline = procedureOutline;
+          if (operatorNotes !== undefined) fields.operatorNotes = operatorNotes;
+          if (Object.keys(fields).length === 0) {
+            throw new Error("patch requires at least one field to update");
+          }
+          fields.lastReviewedAt = new Date().toISOString();
+          const updated = await memory.updatePersonalSkillCandidate(id, fields);
+          if (!updated) {
+            throw new Error(`personal skill "${id}" not found`);
+          }
+
+          const isOperatorPath = !!runId;
+          await memory.createPersonalSkillReviewEvent({
+            candidateId: updated.id,
+            actorType: isOperatorPath ? "operator" : "system",
+            action: "patched",
+            reason:
+              readStringParam(params, "reason") ??
+              "Agent intentionally patched a Personal Skill after runtime use or correction",
+            details: {
+              source: "personal_skill_tool",
+              action,
+              patchedFields: Object.keys(fields),
+              operatorProvenance: isOperatorPath,
+            },
+          });
+
+          recordOperatorSelfExtensionAction(runId, "personal_skill", action, {
+            id,
+            fieldsUpdated: Object.keys(fields),
+          });
+
+          return jsonResult({
+            ok: true,
             action,
-            patchedFields: Object.keys(fields),
-          },
-        });
+            id,
+            row: updated,
+          });
+        }
+
+        throw new Error(`Unknown personal_skill action: ${action}`);
+      } catch (err: any) {
         return jsonResult({
-          ok: true,
-          action,
-          row: updated,
+          ok: false,
+          action: (args as any)?.action || "unknown",
+          error: err?.message || String(err),
         });
       }
-
-      throw new Error(`unsupported action "${String(action)}"`);
     },
   };
 }

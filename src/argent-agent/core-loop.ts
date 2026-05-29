@@ -29,6 +29,11 @@
  *     → Yield CoreEvent (superset of AgentEvent)
  *
  * Built for Argent Core — March 5, 2026
+ *
+ * Operator fast path note (Grok Enhancements Phase 0):
+ * When the primary operator agent runs (isPrimaryOperator), this loop should eventually
+ * use lighter SIS injection, reduced event publishing, and operator-specific ToolExecutor
+ * config to keep latency low. The pi-embedded path is being optimized first.
  */
 
 import type {

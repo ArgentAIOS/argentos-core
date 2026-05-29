@@ -100,6 +100,11 @@ export type EmbeddedRunAttemptParams = {
   enforceFinalTag?: boolean;
   /** Whether this is a heartbeat run (for subsystem tool set detection). */
   isHeartbeat?: boolean;
+  /**
+   * When true, this run is for the primary operator agent (the main "argent" agent the user interacts with directly).
+   * Enables the operator fast path (light tools + minimal prompt profile) — Phase 0 of Grok Enhancements.
+   */
+  isPrimaryOperator?: boolean;
 };
 
 export type EmbeddedRunAttemptResult = {

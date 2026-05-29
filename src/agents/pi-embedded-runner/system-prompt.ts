@@ -7,6 +7,7 @@ import type { EmbeddedSandboxInfo } from "./types.js";
 import type { ReasoningLevel, ThinkLevel } from "./utils.js";
 import { buildAgentSystemPrompt, type PromptMode } from "../system-prompt.js";
 import { buildToolSummaryMap } from "../tool-summaries.js";
+import { resolveOperatorPromptProfile, getEffectivePromptModeForBuilder } from "../operator-prompt-profiles.js";
 
 export function buildEmbeddedSystemPrompt(params: {
   workspaceDir: string;
@@ -18,6 +19,12 @@ export function buildEmbeddedSystemPrompt(params: {
   heartbeatPrompt?: string;
   skillsPrompt?: string;
   docsPath?: string;
+  /**
+   * When true, use a lighter/faster prompt profile for the primary operator agent.
+   * This skips or condenses heavy sections (rich tooling, full channel capabilities, etc.)
+   * in favor of high-signal operator-focused context. Part of Grok Enhancements Phase 0.
+   */
+  isPrimaryOperator?: boolean;
   ttsHint?: string;
   reactionGuidance?: {
     level: "minimal" | "extensive";
@@ -49,7 +56,12 @@ export function buildEmbeddedSystemPrompt(params: {
   contextFiles?: EmbeddedContextFile[];
   memoryCitationsMode?: MemoryCitationsMode;
   sessionKey?: string;
+  isPrimaryOperator?: boolean;
 }): Promise<string> {
+  // Phase 0: use centralized operator prompt profile resolver for stable fast-path decisions.
+  const profile = resolveOperatorPromptProfile(params.isPrimaryOperator, params.promptMode);
+  const effectivePromptMode = getEffectivePromptModeForBuilder(profile);
+
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
     defaultThinkLevel: params.defaultThinkLevel,
@@ -63,7 +75,7 @@ export function buildEmbeddedSystemPrompt(params: {
     ttsHint: params.ttsHint,
     workspaceNotes: params.workspaceNotes,
     reactionGuidance: params.reactionGuidance,
-    promptMode: params.promptMode,
+    promptMode: effectivePromptMode,
     runtimeInfo: params.runtimeInfo,
     messageToolHints: params.messageToolHints,
     sandboxInfo: params.sandboxInfo,
