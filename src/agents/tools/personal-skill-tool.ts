@@ -6,8 +6,8 @@ import type {
 } from "../../memory/memu-types.js";
 import type { AnyAgentTool } from "./common.js";
 import { getMemoryAdapter } from "../../data/storage-factory.js";
-import { jsonResult, readNumberParam, readStringArrayParam, readStringParam } from "./common.js";
 import { recordOperatorSelfExtensionAction } from "../../infra/agent-events.js";
+import { jsonResult, readNumberParam, readStringArrayParam, readStringParam } from "./common.js";
 
 const PERSONAL_SKILL_ACTIONS = ["list", "create", "patch"] as const;
 
@@ -126,9 +126,24 @@ async function resolveScopedMemory(agentId: string) {
   return memory.withAgentId ? memory.withAgentId(agentId) : memory;
 }
 
-export function createPersonalSkillTool(options: { agentId: string; runId?: string }): AnyAgentTool {
+export function createPersonalSkillTool(options: {
+  agentId: string;
+  runId?: string;
+  /** Phase 0.5 (Hermes Absorption): captured turn messages (messagesSnapshot) for richer self-extension context. */
+  turnMessages?: readonly unknown[];
+}): AnyAgentTool {
   const agentId = options.agentId;
   const runId = options.runId;
+  // Bind the optional richer turn context to every self-extension recording (count today; the
+  // messages themselves in a follow-on slice). Inert unless invoked via the operator surface.
+  const recordSelfExt = (action: string, details: Record<string, unknown> = {}): void =>
+    recordOperatorSelfExtensionAction(
+      runId,
+      "personal_skill",
+      action,
+      details,
+      options.turnMessages,
+    );
 
   return {
     label: "Personal Skill",
@@ -169,7 +184,9 @@ export function createPersonalSkillTool(options: { agentId: string; runId?: stri
           const triggerPatterns = cleanStringArray(readStringArrayParam(params, "triggerPatterns"));
           const preconditions = cleanStringArray(readStringArrayParam(params, "preconditions"));
           const executionSteps = cleanStringArray(readStringArrayParam(params, "executionSteps"));
-          const expectedOutcomes = cleanStringArray(readStringArrayParam(params, "expectedOutcomes"));
+          const expectedOutcomes = cleanStringArray(
+            readStringArrayParam(params, "expectedOutcomes"),
+          );
           const relatedTools = cleanStringArray(readStringArrayParam(params, "relatedTools"));
           const operatorNotes = readStringParam(params, "operatorNotes");
           const reason =
@@ -211,7 +228,7 @@ export function createPersonalSkillTool(options: { agentId: string; runId?: stri
             },
           });
 
-          recordOperatorSelfExtensionAction(runId, "personal_skill", action, {
+          recordSelfExt(action, {
             id: created.id,
             title: created.title,
           });
@@ -231,7 +248,9 @@ export function createPersonalSkillTool(options: { agentId: string; runId?: stri
           const triggerPatterns = cleanStringArray(readStringArrayParam(params, "triggerPatterns"));
           const preconditions = cleanStringArray(readStringArrayParam(params, "preconditions"));
           const executionSteps = cleanStringArray(readStringArrayParam(params, "executionSteps"));
-          const expectedOutcomes = cleanStringArray(readStringArrayParam(params, "expectedOutcomes"));
+          const expectedOutcomes = cleanStringArray(
+            readStringArrayParam(params, "expectedOutcomes"),
+          );
           const relatedTools = cleanStringArray(readStringArrayParam(params, "relatedTools"));
           const operatorNotes = readStringParam(params, "operatorNotes");
           const procedureOutline = buildProcedureOutline({
@@ -273,7 +292,7 @@ export function createPersonalSkillTool(options: { agentId: string; runId?: stri
             },
           });
 
-          recordOperatorSelfExtensionAction(runId, "personal_skill", action, {
+          recordSelfExt(action, {
             id,
             fieldsUpdated: Object.keys(fields),
           });

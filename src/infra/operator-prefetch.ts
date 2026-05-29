@@ -18,6 +18,14 @@ export interface WarmOperatorContextOptions {
   sisLessonLimit?: number;
   /** Max Personal Skill candidates to pre-warm (incubating + recent) */
   personalSkillLimit?: number;
+  /**
+   * Optional captured turn messages (messagesSnapshot) from the just-completed operator
+   * fast-path turn — Hermes-aligned richer context. When present we record its presence/count
+   * so the path is observable. Deep consumption into MemU/SIS (curator review quality, goal
+   * state, skill extraction) is the documented NEXT slice — intentionally not written here yet
+   * because it needs a real session/observation target and a wired, runnable operator surface.
+   */
+  lastTurnMessages?: readonly unknown[];
 }
 
 /**
@@ -55,6 +63,24 @@ export function warmPrimaryOperatorContext(opts: WarmOperatorContextOptions = {}
         }
       } catch {
         /* ignore */
+      }
+
+      // 3. Hermes-aligned richer turn context (messagesSnapshot from the completed turn).
+      //    Plumbing only: record presence + count so the path is observable in fast-path runs.
+      //    NEXT SLICE: consume these messages into MemU/SIS (curator review quality, goal state,
+      //    skill extraction) — modeled on Hermes passing full messages to memory providers on
+      //    completed turns. Intentionally NOT written here until the operator surface is wired
+      //    and runnable, so we never guess the observation/session target blind.
+      const lastTurnMessages = opts.lastTurnMessages;
+      if (
+        Array.isArray(lastTurnMessages) &&
+        lastTurnMessages.length > 0 &&
+        process.env.ARGENT_DEBUG
+      ) {
+        console.info(
+          `[operator-prefetch] richer turn context available: ${lastTurnMessages.length} messages ` +
+            `(agent=${agentId}); MemU/SIS consumption pending wiring`,
+        );
       }
 
       // Future: MemU warming, high-confidence skill candidates only, frozen context blocks, etc.

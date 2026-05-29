@@ -34,6 +34,9 @@ export type AgentRunContext = {
     operatorSkillsActions?: number;
     operatorFamilyActions?: number;
     operatorWorkflowActions?: number;
+    // Phase 0.5 (Hermes Absorption): count of captured turn messages on the last operator
+    // self-extension action — a hint for prefetch / richer-context consumption (count only).
+    operatorLastTurnMessageCount?: number;
   }>;
 };
 
@@ -158,10 +161,7 @@ export function recordOperatorLightToolsCount(runId: string, count: number): voi
  * fast path was selected (prompt profile + light tools + prefetch).
  * Listeners (dashboards, tracers, log aggregators) can surface this cleanly.
  */
-export function emitOperatorFastPathEvent(
-  runId: string,
-  data: Record<string, unknown> = {}
-): void {
+export function emitOperatorFastPathEvent(runId: string, data: Record<string, unknown> = {}): void {
   if (!runId) return;
   emitAgentEvent({
     runId,
@@ -197,16 +197,29 @@ export function recordOperatorSelfExtensionAction(
   runId: string | undefined,
   tool: "curator" | "personal_skill" | "skills" | "family" | "workflow",
   action: string,
-  details: Record<string, unknown> = {}
+  details: Record<string, unknown> = {},
+  /**
+   * Optional richer turn context (Hermes-aligned). The operator fast path may pass the
+   * captured turn messages (messagesSnapshot) so memory/curator consumption can use them.
+   * Only the lightweight count is recorded here (visibility + prefetch hint); deep MemU/SIS
+   * consumption of the messages themselves is a follow-on slice.
+   */
+  turnMessages?: readonly unknown[],
 ): void {
   const safeDetails = { ...details };
+  const turnMessageCount = Array.isArray(turnMessages) ? turnMessages.length : undefined;
+  if (turnMessageCount !== undefined) {
+    safeDetails.turnMessageCount = turnMessageCount;
+  }
 
   if (!runId) {
     // Fallback: still highly visible in terminal / container logs.
     // Correlates via surrounding [turn-latency] / [tony-stark] lines that carry runId.
     console.info(
       `[operator-self-ext] tool=${tool} action=${action}` +
-        (Object.keys(safeDetails).length > 0 ? ` details=${JSON.stringify(safeDetails).slice(0, 280)}` : "")
+        (Object.keys(safeDetails).length > 0
+          ? ` details=${JSON.stringify(safeDetails).slice(0, 280)}`
+          : ""),
     );
     return;
   }
@@ -214,10 +227,14 @@ export function recordOperatorSelfExtensionAction(
   const context = runContextById.get(runId);
   if (context) {
     const timings = (context.timings ??= {});
+    if (turnMessageCount !== undefined) {
+      timings.operatorLastTurnMessageCount = turnMessageCount;
+    }
     if (tool === "curator") {
       timings.operatorCuratorActions = ((timings.operatorCuratorActions as number) ?? 0) + 1;
     } else if (tool === "personal_skill") {
-      timings.operatorPersonalSkillActions = ((timings.operatorPersonalSkillActions as number) ?? 0) + 1;
+      timings.operatorPersonalSkillActions =
+        ((timings.operatorPersonalSkillActions as number) ?? 0) + 1;
     } else if (tool === "skills") {
       timings.operatorSkillsActions = ((timings.operatorSkillsActions as number) ?? 0) + 1;
     } else if (tool === "family") {

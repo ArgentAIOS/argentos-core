@@ -22,23 +22,22 @@
  * was updated from earlier "stability" stance now that the surface is proven.
  */
 import type { AnyAgentTool } from "./pi-tools.types.js";
+// Stable high-value additions for the operator (add here as bidirectional surfaces land)
+import { createExecTool } from "./bash-tools.js";
+import {
+  CAPABILITY_DELEGATION_TOOL_ALLOWLIST,
+  CAPABILITY_DELEGATION_TOOL_DENY,
+} from "./tools/capability-delegation.js";
+import { createCuratorTool } from "./tools/curator-tool.js";
 import { createFamilyTool } from "./tools/family-tool.js";
-import { createSkillsTool } from "./tools/skills-tool.js";
 import {
   createMemoryRecallTool,
   createMemoryStoreTool,
   createMemoryCategoriesTool,
   createMemoryReflectTool,
 } from "./tools/memu-tools.js";
-
-// Stable high-value additions for the operator (add here as bidirectional surfaces land)
-import { createExecTool } from "./bash-tools.js";
 import { createPersonalSkillTool } from "./tools/personal-skill-tool.js";
-import { createCuratorTool } from "./tools/curator-tool.js";
-import {
-  CAPABILITY_DELEGATION_TOOL_ALLOWLIST,
-  CAPABILITY_DELEGATION_TOOL_DENY,
-} from "./tools/capability-delegation.js";
+import { createSkillsTool } from "./tools/skills-tool.js";
 import { createWorkflowBuilderTool } from "./tools/workflow-builder-tool.js";
 
 export interface LightOperatorToolsOptions {
@@ -53,6 +52,12 @@ export interface LightOperatorToolsOptions {
    * and AgentEvents for measurement of self-extension activity on the fast path.
    */
   runId?: string;
+  /**
+   * Phase 0.5 (Hermes Absorption): captured turn messages (messagesSnapshot) from the
+   * completed operator fast-path turn. Threaded to curator + personal_skill so self-extension
+   * recordings carry richer turn context (count today; deep MemU/SIS consumption is the next slice).
+   */
+  turnMessages?: readonly unknown[];
 }
 
 /**
@@ -61,9 +66,7 @@ export interface LightOperatorToolsOptions {
  * This set is intentionally small and high-signal compared to the full
  * createArgentCodingTools surface.
  */
-export function createLightOperatorTools(
-  options: LightOperatorToolsOptions = {}
-): AnyAgentTool[] {
+export function createLightOperatorTools(options: LightOperatorToolsOptions = {}): AnyAgentTool[] {
   const tools: AnyAgentTool[] = [];
 
   // === Core Self-Extension & Coordination Tools ===
@@ -100,6 +103,7 @@ export function createLightOperatorTools(
       const personalSkillTool = createPersonalSkillTool({
         agentId: effectiveAgentId,
         runId: options.runId, // Phase 3 visibility threading
+        turnMessages: options.turnMessages, // Phase 0.5: richer turn context
       });
       tools.push(personalSkillTool);
     } catch (err) {
@@ -113,6 +117,7 @@ export function createLightOperatorTools(
       const curatorTool = createCuratorTool({
         agentId: effectiveAgentId,
         runId: options.runId, // Phase 3 visibility threading
+        turnMessages: options.turnMessages, // Phase 0.5: richer turn context
       });
       tools.push(curatorTool);
     } catch (err) {
