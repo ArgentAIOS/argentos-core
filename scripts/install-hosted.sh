@@ -412,8 +412,16 @@ activate_pinned_pnpm() {
     if is_truthy "$DRY_RUN"; then
       info "Would run: corepack prepare $pinned --activate"
     else
-      "$node_dir/corepack" enable 2>/dev/null || true
-      if "$node_dir/corepack" prepare "$pinned" --activate >/dev/null 2>&1; then
+      # corepack and npm are `#!/usr/bin/env node` scripts. When this installer
+      # provisions its own private Node runtime, that node_dir is NOT on PATH,
+      # so corepack/npm die with "env: node: No such file or directory" before
+      # doing anything — silently breaking pinned-pnpm activation. Also, under
+      # `curl | bash` corepack's download-confirm prompt has no TTY to answer.
+      # Put node on PATH and disable the prompt so the pinned pnpm is actually
+      # fetched + activated.
+      PATH="$node_dir:$PATH" "$node_dir/corepack" enable >/dev/null 2>&1 || true
+      local corepack_log
+      if corepack_log="$(PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 "$node_dir/corepack" prepare "$pinned" --activate 2>&1)"; then
         # Route through corepack so the shim — not any global pnpm — is used.
         PNPM_EXEC="$node_dir/corepack"
         PNPM_SUBCOMMAND="pnpm"
@@ -421,6 +429,7 @@ activate_pinned_pnpm() {
         return 0
       fi
       warn "corepack prepare $pinned failed — attempting npm fallback"
+      [[ -n "$corepack_log" ]] && printf '      corepack: %s\n' "$corepack_log" >&2 || true
     fi
   fi
 
@@ -429,9 +438,9 @@ activate_pinned_pnpm() {
   if [[ -n "$PNPM_EXEC" ]]; then
     local current_version
     if [[ -n "$PNPM_SUBCOMMAND" ]]; then
-      current_version="$("$PNPM_EXEC" "$PNPM_SUBCOMMAND" --version 2>/dev/null || true)"
+      current_version="$(PATH="$node_dir:$PATH" "$PNPM_EXEC" "$PNPM_SUBCOMMAND" --version 2>/dev/null || true)"
     else
-      current_version="$("$PNPM_EXEC" --version 2>/dev/null || true)"
+      current_version="$(PATH="$node_dir:$PATH" "$PNPM_EXEC" --version 2>/dev/null || true)"
     fi
     if [[ -n "$current_version" && "$current_version" == "$pinned_version" ]]; then
       return 0
@@ -445,7 +454,7 @@ activate_pinned_pnpm() {
     if is_truthy "$DRY_RUN"; then
       info "Would run: npm install -g pnpm@$pinned_version"
     else
-      "$npm_bin" install -g "pnpm@$pinned_version" >/dev/null 2>&1 \
+      PATH="$node_dir:$PATH" "$npm_bin" install -g "pnpm@$pinned_version" >/dev/null 2>&1 \
         || warn "npm install -g pnpm@$pinned_version failed"
       if [[ -x "$node_dir/pnpm" ]]; then
         PNPM_EXEC="$node_dir/pnpm"
