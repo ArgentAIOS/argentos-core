@@ -1,5 +1,11 @@
 import { Type } from "@sinclair/typebox";
-import { type AnyAgentTool, jsonResult, readStringArrayParam, readStringParam } from "./common.js";
+import {
+  type AnyAgentTool,
+  isPrimaryOperator,
+  jsonResult,
+  readStringArrayParam,
+  readStringParam,
+} from "./common.js";
 import { callGatewayTool, type GatewayCallOptions } from "./gateway.js";
 
 const WORKFLOW_BUILDER_ACTIONS = ["draft", "save_draft"] as const;
@@ -53,7 +59,7 @@ export function createWorkflowBuilderTool(options?: { agentSessionKey?: string }
     label: "Workflow Builder",
     name: "workflow_builder",
     description:
-      "Draft ArgentOS workflows from operator intent using the same canonical graph and canvas contract as the Operations workflow board. Use this before manually instructing the operator to drag nodes.",
+      "Draft ArgentOS workflows from operator intent using the same canonical graph and canvas contract as the Operations workflow board. Use this before manually instructing the operator to drag nodes. Recognizes 'build for me', delegation, handoff, supervisor contract, and parallel goals; emits family.dispatch_contracted steps (gated to primary operator via isPrimaryOperator for self-extension power).",
     parameters: WorkflowBuilderToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -63,8 +69,24 @@ export function createWorkflowBuilderTool(options?: { agentSessionKey?: string }
         gatewayToken: readStringParam(params, "gatewayToken"),
         timeoutMs: typeof params.timeoutMs === "number" ? params.timeoutMs : undefined,
       };
+      const rawIntent = readStringParam(params, "intent", { required: true });
+      const lowerIntent = rawIntent.toLowerCase();
+
+      // Light operator tooling polish (Phases 4+5): detect delegation / "build for me" / handoff / parallel goals
+      // and inject orchestration hints so the goal engine can emit dispatch_contracted supervisor steps.
+      const delegationHints = {
+        wantsBuildForMe: /\b(build for me|build-for-me|delegate.*me|supervisor handoff)\b/.test(lowerIntent),
+        wantsHandoffContract: /\b(handoff|dispatch.contracted|contracted dispatch|supervisor contract)\b/.test(lowerIntent),
+        wantsParallel: /\b(parallel|concurrent|multiple.*agent|split.*task|3 sub|five sub|wf-5)\b/.test(lowerIntent),
+        isPrimaryContext: isPrimaryOperator(),
+      };
+
+      const augmentedIntent = delegationHints.wantsBuildForMe || delegationHints.wantsHandoffContract || delegationHints.wantsParallel
+        ? `${rawIntent}\n\n[Delegation Orchestration Hint - primary=${delegationHints.isPrimaryContext}]: Prefer family.dispatch_contracted for 'build for me' growth work (with skillsRequired + promotePattern when appropriate). Support parallel sub-goal splits via multiple contracted dispatches. Gate advanced self-extension to primary operator.`
+        : rawIntent;
+
       const draftParams = {
-        intent: readStringParam(params, "intent", { required: true }),
+        intent: augmentedIntent,
         name: readStringParam(params, "name"),
         description: readStringParam(params, "description"),
         ownerAgentId: readStringParam(params, "ownerAgentId"),
@@ -75,6 +97,8 @@ export function createWorkflowBuilderTool(options?: { agentSessionKey?: string }
         timezone: readStringParam(params, "timezone"),
         preferredTools: readStringArrayParam(params, "preferredTools"),
         sessionKey: options?.agentSessionKey,
+        // Pass hints downstream for goal-orchestration engine (wf authoring surface)
+        _delegationHints: delegationHints,
       };
       const draft = await callGatewayTool("workflows.draft", gatewayOpts, draftParams);
 
@@ -83,8 +107,9 @@ export function createWorkflowBuilderTool(options?: { agentSessionKey?: string }
           ok: true,
           action,
           draft,
+          delegationHints: delegationHints,
           nextStep:
-            "Review the generated graph with the operator, then call workflow_builder.save_draft or workflows.create when they want it added to the board.",
+            "Review the generated graph with the operator (note delegation hints for dispatch_contracted 'build for me' steps if present). Then call workflow_builder.save_draft or workflows.create when they want it added to the board. Primary operator can use promotePattern on resulting contracts for growth pattern capture.",
         });
       }
 
