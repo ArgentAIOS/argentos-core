@@ -248,3 +248,39 @@ export async function imageResultFromFile(params: {
     details: params.details,
   });
 }
+
+/**
+ * Self-Extension & Delegation gate (ArgentOS Grok Enhancements - Phases 4 + 5).
+ *
+ * Strictly returns true only for the primary operator's worktree/context.
+ * All advanced supervisor/handoff, "build for me", parallel delegation, and
+ * promote-pattern features in family-tool / dispatch contracts must be gated
+ * behind this check.
+ *
+ * This keeps delegation natural and powerful for the operator's own growth work
+ * while preventing family agents or spawned sub-agents from self-extending
+ * without explicit primary oversight.
+ *
+ * Heuristics (dev-friendly, production-safe):
+ * - Explicit env ARGENT_IS_PRIMARY_OPERATOR=1 forces true; =0 forces false.
+ * - In the canonical primary dev tree (argent-core, no nested worktree) we default true.
+ * - All other contexts (installed runtimes, family workers, secondary worktrees) default false.
+ *
+ * Future hardening: marker file .argent-primary-operator in worktree root,
+ * or binding to device identity + operator profile.
+ */
+export function isPrimaryOperator(): boolean {
+  const env = process.env.ARGENT_IS_PRIMARY_OPERATOR;
+  if (env === "1") return true;
+  if (env === "0") return false;
+
+  // Primary dev worktree heuristic (matches user's primary environment).
+  // Avoid matching linked worktrees or production deploys.
+  const cwd = process.cwd();
+  const isPrimaryTree =
+    cwd.includes("argent-core") &&
+    !cwd.includes("/worktrees/") &&
+    !cwd.includes("\\worktrees\\");
+
+  return isPrimaryTree;
+}

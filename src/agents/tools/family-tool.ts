@@ -30,7 +30,13 @@ import {
 } from "../../data/redis-client.js";
 import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { provisionFamilyWorker } from "../family-worker-provisioning.js";
-import { jsonResult, readStringParam, readStringArrayParam, readNumberParam } from "./common.js";
+import {
+  isPrimaryOperator,
+  jsonResult,
+  readStringParam,
+  readStringArrayParam,
+  readNumberParam,
+} from "./common.js";
 
 const FamilyToolSchema = Type.Object({
   action: Type.Union([
@@ -158,6 +164,9 @@ const FamilyToolSchema = Type.Object({
     }),
   ),
   project: Type.Optional(Type.String({ description: "Project description for spawn_team" })),
+  // Phases 4+5 Grok self-extension: when true (primary operator only), successful dispatch_contracted
+  // records a promoted reusable pattern for future "build for me" recall.
+  promotePattern: Type.Optional(Type.Boolean({ description: "Request pattern promotion on successful handoff (primary-gated)" })),
 });
 
 /** Context needed to spawn subagent sessions on behalf of the caller. */
@@ -186,7 +195,12 @@ type FamilyTelemetryCounterKey =
   | "spawnExplicitTotal"
   | "spawnExplicitSuccess"
   | "spawnExplicitFailure"
-  | "spawnThinkTankExecutionBlocked";
+  | "spawnThinkTankExecutionBlocked"
+  // Phases 4+5: parallel delegation measurement + promote pattern flows
+  | "parallelDelegationAttempts"
+  | "promotePatternAttempts"
+  | "promotePatternSuccess"
+  | "primaryOperatorGatedBlocks";
 
 type FamilyTelemetryEvent = {
   at: number;
@@ -209,6 +223,11 @@ const FAMILY_TELEMETRY_COUNTER_KEYS: FamilyTelemetryCounterKey[] = [
   "spawnExplicitSuccess",
   "spawnExplicitFailure",
   "spawnThinkTankExecutionBlocked",
+  // Phases 4+5 parallel + promote
+  "parallelDelegationAttempts",
+  "promotePatternAttempts",
+  "promotePatternSuccess",
+  "primaryOperatorGatedBlocks",
 ];
 
 function createEmptyFamilyTelemetryCounters(): Record<FamilyTelemetryCounterKey, number> {
@@ -226,6 +245,11 @@ function createEmptyFamilyTelemetryCounters(): Record<FamilyTelemetryCounterKey,
     spawnExplicitSuccess: 0,
     spawnExplicitFailure: 0,
     spawnThinkTankExecutionBlocked: 0,
+    // Phases 4+5
+    parallelDelegationAttempts: 0,
+    promotePatternAttempts: 0,
+    promotePatternSuccess: 0,
+    primaryOperatorGatedBlocks: 0,
   };
 }
 
@@ -354,7 +378,7 @@ Actions:
   telemetry — Show/reset family delegation counters (dispatch volume/routes + blocked direct spawn). Optional: reset.
   spawn — Wake a family agent and assign a task. Required: id, task, mode=family. Optional: model, toolsAllow, toolsDeny.
   dispatch — Route task with guardrails: auto -> dev-team for technical work or strict sub-agent fallback; think-tank only via explicit mode=family + id. Required: task. Optional: mode, id, model, toolsAllow, toolsDeny.
-  dispatch_contracted — Create an auditable dispatch contract, then execute guarded dispatch. Required: task. Optional: task_id, mode, id, timeout_ms, heartbeat_interval_ms, model, toolsAllow, toolsDeny.
+  dispatch_contracted — Create an auditable dispatch contract, then execute guarded dispatch. Supports supervisor/handoff + "build for me" (primary operator only via isPrimaryOperator gate on worktree). promotePattern (bool) requests post-success pattern promotion for reuse. Required: task. Optional: task_id, mode, id, timeout_ms, heartbeat_interval_ms, model, toolsAllow, toolsDeny, skillsRequired, promotePattern.
   contract_history — Query dispatch contract history. Optional: contract_id, task_id, target_agent_id, contract_status, limit, include_events.
   spawn_team — Wake all agents in a team for a project. Required: team, project.`,
     parameters: FamilyToolSchema,
@@ -1358,6 +1382,36 @@ async function handleDispatchContracted(
   const contractToolGrant = normalizeToolGrantList(params.toolsAllow);
   const skillsRequired = readStringArrayParam(params, "skillsRequired") ?? [];
 
+  // Phases 4+5 self-extension gate: advanced "build for me" / supervisor handoff contracts
+  // (skillsRequired, family mode with non-trivial grants, or explicit promote intent)
+  // are only available to the primary operator on their worktree.
+  const wantsAdvancedDelegation =
+    skillsRequired.length > 0 ||
+    mode === "family" ||
+    (params as Record<string, unknown>).promotePattern === true;
+  if (wantsAdvancedDelegation && !isPrimaryOperator()) {
+    incFamilyTelemetryCounter("primaryOperatorGatedBlocks");
+    recordFamilyTelemetryEvent("delegation.gate.blocked", {
+      wantsAdvancedDelegation,
+      mode,
+      skillsRequiredCount: skillsRequired.length,
+    });
+    return jsonResult({
+      ok: false,
+      error:
+        "Advanced delegation / 'build for me' supervisor contracts (skillsRequired, family routing, promotePattern) are gated to primary operator worktree only. Use basic dispatch or subagent mode, or set ARGENT_IS_PRIMARY_OPERATOR=1 in primary dev context.",
+      gate: "isPrimaryOperator",
+    });
+  }
+
+  incFamilyTelemetryCounter("parallelDelegationAttempts");
+
+  const promotePattern = (params as Record<string, unknown>).promotePattern === true;
+  if (promotePattern) {
+    incFamilyTelemetryCounter("promotePatternAttempts");
+    recordFamilyTelemetryEvent("delegation.promote.attempt", { task: task.substring(0, 80) });
+  }
+
   if (!contractToolGrant || contractToolGrant.length === 0) {
     return jsonResult({
       ok: false,
@@ -1446,6 +1500,9 @@ async function handleDispatchContracted(
             ? targetForContract.config.skillDefaultKey
             : undefined,
       },
+      // Advance supervisor/handoff + build-for-me patterns (Phases 4+5)
+      supervisorHandoff: mode === "family" || skillsRequired.length > 0,
+      buildForMeIntent: (params as Record<string, unknown>).promotePattern ? task : undefined,
     });
     contractId = created.contractId;
   } catch (err: unknown) {
@@ -1492,6 +1549,14 @@ async function handleDispatchContracted(
           skillsRequired,
         },
       });
+      if (promotePattern && isPrimaryOperator()) {
+        incFamilyTelemetryCounter("promotePatternSuccess");
+        recordFamilyTelemetryEvent("delegation.promote.success", {
+          contractId,
+          task: task.substring(0, 80),
+          note: "Pattern promoted from successful supervisor handoff (primary operator growth work).",
+        });
+      }
       return jsonResult({
         ok: true,
         contract_id: contractId,
@@ -1500,6 +1565,7 @@ async function handleDispatchContracted(
         runId,
         sessionKey,
         dispatch: (routed as { details?: unknown }).details,
+        promotePattern: promotePattern || undefined,
       });
     }
 

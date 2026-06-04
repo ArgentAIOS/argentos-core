@@ -57,6 +57,9 @@ export interface CreateDispatchContractInput {
   createdAt?: Date;
   expiresAt?: Date;
   metadata?: Record<string, unknown>;
+  // Phases 4+5 supervisor/handoff + "build for me" (self-extension)
+  supervisorHandoff?: boolean;
+  buildForMeIntent?: string;
 }
 
 export interface AppendDispatchContractEventInput {
@@ -406,7 +409,12 @@ export async function createDispatchContract(
   const contractId = input.contractId ?? crypto.randomUUID();
   const now = input.createdAt ?? new Date();
   const toolGrantSnapshot = normalizeToolGrantSnapshot(input.toolGrantSnapshot);
-  const metadata = input.metadata ?? {};
+  const metadata = {
+    ...(input.metadata ?? {}),
+    // Phases 4+5 supervisor/handoff contracts + build-for-me patterns
+    supervisorHandoff: input.supervisorHandoff ?? undefined,
+    buildForMeIntent: input.buildForMeIntent ?? undefined,
+  };
 
   const sql = await getSql();
   requireStoreAvailable(sql);

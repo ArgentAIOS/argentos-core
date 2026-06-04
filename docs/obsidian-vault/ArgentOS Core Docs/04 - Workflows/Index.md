@@ -39,6 +39,7 @@ Operator workflows, automation, hooks, plugins, skills, and connectors.
 - [Web Tools](<90 - Public Docs Mirror/docs/tools/web.md>) - Web search + fetch tools (Brave Search API, Perplexity direct/OpenRouter)
 - [Approval Gates](<90 - Public Docs Mirror/docs/workflows/approval-gates.md>) - Add human review to your AI workflows
 - [Building Blocks](<90 - Public Docs Mirror/docs/workflows/building-blocks.md>) - The 5 building blocks of every workflow
+- [Delegation & Self-Extension (Grok Phases 4+5)](<../../ops/GROK-ENHANCEMENTS-SELF-EXTENSION-PHASES-4-5-2026-05-28.md>) - family.dispatch_contracted + promotePattern + isPrimaryOperator gate + workflow_builder "build for me" hints for operator growth work (primary worktree only)
 - [Connectors](<90 - Public Docs Mirror/docs/workflows/connectors.md>) - Connect your favorite apps to AI workflows
 - [Getting Started](<90 - Public Docs Mirror/docs/workflows/getting-started.md>) - Build your first AI workflow in 5 minutes
 - [Workflows](<90 - Public Docs Mirror/docs/workflows/index.md>) - Build visual AI-powered automations with drag-and-drop
