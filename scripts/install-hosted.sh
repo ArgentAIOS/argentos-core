@@ -1727,15 +1727,23 @@ UIPLIST
     echo "    CLI:       argent secrets restore-key <paste-key-here>"
     echo ""
 
-    if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
-      # Non-interactive — just print and continue
+    if is_truthy "$NO_PROMPT" || is_truthy "$NO_ONBOARD" || [[ ! -r /dev/tty ]]; then
+      # Non-interactive (NO_PROMPT, NO_ONBOARD, or no controlling tty) —
+      # just print and continue. The key is already saved to disk; the YES
+      # prompt is awareness-only and must never block unattended installs
+      # (curl | bash, CI, the install-smoke harness). See argentos-core#429.
       ok "Master encryption key generated. Back it up immediately."
     else
-      # Interactive — require explicit acknowledgment
+      # Interactive — require explicit acknowledgment. Break on EOF (read
+      # returns non-zero) so a readable-but-empty tty (e.g. Docker -t with no
+      # human) can't spin this loop forever. See argentos-core#429.
       while true; do
         printf "  Type YES once you have copied this key: " >/dev/tty
         local ack=""
-        IFS= read -r ack </dev/tty 2>/dev/null || ack=""
+        if ! IFS= read -r ack </dev/tty 2>/dev/null; then
+          ok "No interactive input on tty; continuing. Back up the key above immediately."
+          break
+        fi
         ack="$(printf '%s' "$ack" | tr '[:lower:]' '[:upper:]')"
         if [[ "$ack" == "YES" ]]; then
           ok "Key acknowledged. Continuing setup."
