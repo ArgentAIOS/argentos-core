@@ -78,6 +78,9 @@ importers:
       '@napi-rs/canvas':
         specifier: ^0.1.89
         version: 0.1.97
+      '@noble/ed25519':
+        specifier: 3.0.0
+        version: 3.0.0
       '@sentry/node':
         specifier: ^10.38.0
         version: 10.45.0

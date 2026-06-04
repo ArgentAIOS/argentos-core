@@ -2,6 +2,24 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.5.6.7
+
+### Fixes
+
+- **Public `curl | bash` install no longer dies on the pinned pnpm.** On a Mac
+  with no compatible system Node, the installer provisions its own private Node
+  runtime — but the pinned-pnpm activation invoked `corepack`/`npm` (both
+  `#!/usr/bin/env node` scripts) without that Node on `PATH`, so they failed
+  with `env: node: No such file or directory` and the install fell back to a
+  mismatched global pnpm and aborted. The activation now puts the runtime Node
+  on `PATH`, disables corepack's non-interactive download prompt
+  (`COREPACK_ENABLE_DOWNLOAD_PROMPT=0`), and surfaces the corepack error instead
+  of swallowing it.
+- **Dashboard (port 8080) builds again.** The dashboard's `vite build` imports
+  shared UI source that depends on `@noble/ed25519`; under the installer's
+  `--ignore-workspace` install it was unresolved and the build failed. Declared
+  `@noble/ed25519` so it resolves for the dashboard bundle.
+
 ## 2026.5.6.6
 
 ### Highlights
