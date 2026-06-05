@@ -567,16 +567,22 @@ export async function runEmbeddedAttempt(
       executablePersonalSkillBlock =
         buildExecutablePersonalSkillContextBlock(executablePersonalSkill);
       if (executablePersonalSkill) {
-        await scopedMemory.createPersonalSkillReviewEvent({
-          candidateId: executablePersonalSkill.id,
-          actorType: "system",
-          action: "procedure_selected",
-          reason: "Runtime selected this Personal Skill as the active procedure for the turn",
-          details: {
-            sessionKey: params.sessionKey ?? params.sessionId,
-            runId: params.runId,
-          },
-        });
+        // Bookkeeping write — its result is not consumed this turn, so it must
+        // not block the critical path. Fire-and-forget; the persistent gateway
+        // process flushes it in the background. See #405 (personal-skill block
+        // was ~5 serial memory ops on the hot path, the May turn-latency regression).
+        void scopedMemory
+          .createPersonalSkillReviewEvent({
+            candidateId: executablePersonalSkill.id,
+            actorType: "system",
+            action: "procedure_selected",
+            reason: "Runtime selected this Personal Skill as the active procedure for the turn",
+            details: {
+              sessionKey: params.sessionKey ?? params.sessionId,
+              runId: params.runId,
+            },
+          })
+          .catch((err) => log.debug(`personal skill review event failed: ${String(err)}`));
         params.onAgentEvent?.({
           stream: "lifecycle",
           data: {
@@ -595,7 +601,9 @@ export async function runEmbeddedAttempt(
           },
         });
       }
-      await Promise.all(
+      // lastUsedAt is bookkeeping — not consumed this turn. Fire-and-forget off
+      // the critical path (persistent gateway flushes it). See #405.
+      void Promise.all(
         matchedPersonalSkills.map((entry) =>
           entry.id
             ? scopedMemory.updatePersonalSkillCandidate(entry.id, {
@@ -603,10 +611,14 @@ export async function runEmbeddedAttempt(
               })
             : Promise.resolve(null),
         ),
-      );
+      ).catch((err) => log.debug(`personal skill lastUsedAt update failed: ${String(err)}`));
     } catch (err) {
       log.debug(`personal skill review unavailable: ${String(err)}`);
     }
+    // Phase marker (#405): isolates the personal-skill block's wall-clock so the
+    // remaining read-side cost (getMemoryAdapter + review + list) is measurable
+    // separately from async_io_started, which currently lumps it in.
+    markPhase("personal_skills");
     if (matchedSkillCandidates.length > 0) {
       params.onAgentEvent?.({
         stream: "lifecycle",
