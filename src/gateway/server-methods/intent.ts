@@ -1,5 +1,5 @@
 import type { GatewayRequestHandlers } from "./types.js";
-import { loadOptionalExport } from "../../utils/optional-module.js";
+import { runIntentSimulation } from "../../infra/intent-simulation-runner.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 type SimulateIntentParams = {
@@ -7,15 +7,6 @@ type SimulateIntentParams = {
   agentModel?: string;
   judgeModel?: string;
 };
-
-const runIntentSimulationOptional = loadOptionalExport<
-  (params: {
-    agentId: string;
-    scenarios: unknown[];
-    agentModel?: string;
-    judgeModel?: string;
-  }) => Promise<unknown>
->(import.meta.url, "../../infra/intent-simulation-runner.js", "runIntentSimulation");
 
 export const intentHandlers: GatewayRequestHandlers = {
   "intent.simulate": async ({ params, respond, context }) => {
@@ -25,14 +16,6 @@ export const intentHandlers: GatewayRequestHandlers = {
 
       if (!agentId) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "agentId is required"));
-        return;
-      }
-      if (!runIntentSimulationOptional) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, "intent simulation unavailable in this build"),
-        );
         return;
       }
 
@@ -58,7 +41,7 @@ export const intentHandlers: GatewayRequestHandlers = {
       );
 
       // 4. Run the simulation
-      const report = await runIntentSimulationOptional({
+      const report = await runIntentSimulation({
         agentId,
         scenarios: T1_MSP_SCENARIOS,
         agentModel: p.agentModel,

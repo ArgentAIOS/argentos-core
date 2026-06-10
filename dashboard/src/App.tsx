@@ -5318,7 +5318,7 @@ function App() {
             </div>
           ) : opsView === "org" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <OrgChartWidget />
+              <OrgChartWidget operatorName={operatorDisplayName ?? undefined} />
             </div>
           ) : opsView === "schedule" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
@@ -5457,14 +5457,14 @@ function App() {
               </div>
             </div>
           </div>
-          ) : showWorkforce && allowWorkforceSurface ? (
-          <div className="flex-1 min-h-0 relative">
-            <WorkforceBoard
-              gatewayRequest={gateway.request}
-              focus={workforceFocus}
-              onClose={() => setShowWorkforce(false)}
-            />
-          </div>
+        </div>
+      ) : showWorkforce && allowWorkforceSurface ? (
+        <div className="flex-1 min-h-0 relative">
+          <WorkforceBoard
+            gatewayRequest={gateway.request}
+            focus={workforceFocus}
+            onClose={() => setShowWorkforce(false)}
+          />
         </div>
       ) : (
         <div ref={containerRef} className="flex-1 flex min-h-0 relative gap-0">

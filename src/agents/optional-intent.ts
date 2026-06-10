@@ -6,7 +6,8 @@ import type {
   IntentRuntimeMode,
   IntentValidationMode,
 } from "../config/types.js";
-import { loadOptionalToolFactory } from "./optional-tool-factory.js";
+import { evaluateIntentSimulationGateForConfig } from "./intent-runtime-gate.js";
+import { buildIntentSystemPromptHint, resolveEffectiveIntentForAgent } from "./intent.js";
 
 export type OptionalIntentIssue = {
   path: string;
@@ -40,34 +41,6 @@ export type OptionalIntentRuntimeGateEvaluation = {
   reportPath?: string;
 };
 
-type ResolveEffectiveIntentForAgentFn = (params: {
-  config?: ArgentConfig;
-  agentId: string;
-}) => OptionalResolvedIntentForAgent | null;
-
-type BuildIntentSystemPromptHintFn = (policy: IntentPolicyConfig) => string | undefined;
-
-type EvaluateIntentSimulationGateForConfigFn = (params: {
-  intent?: ArgentConfig["intent"];
-  agentId?: string;
-  workspaceDir?: string;
-  cwd?: string;
-}) => Promise<OptionalIntentRuntimeGateEvaluation>;
-
-const resolveEffectiveIntentForAgentOptional =
-  loadOptionalToolFactory<ResolveEffectiveIntentForAgentFn>(
-    "./intent.js",
-    "resolveEffectiveIntentForAgent",
-  );
-const buildIntentSystemPromptHintOptional = loadOptionalToolFactory<BuildIntentSystemPromptHintFn>(
-  "./intent.js",
-  "buildIntentSystemPromptHint",
-);
-const evaluateIntentSimulationGateForConfigOptional =
-  loadOptionalToolFactory<EvaluateIntentSimulationGateForConfigFn>(
-    "./intent-runtime-gate.js",
-    "evaluateIntentSimulationGateForConfig",
-  );
 const INTENT_SIMULATION_CACHE_TTL_MS = 30_000;
 const intentSimulationGateCache = new Map<
   string,
@@ -77,31 +50,14 @@ const intentSimulationGateCache = new Map<
   }
 >();
 
-function createDisabledGateEvaluation(): OptionalIntentRuntimeGateEvaluation {
-  return {
-    evaluation: {
-      enabled: false,
-      mode: "warn",
-      minPassRate: 0.8,
-      minComponentScores: {},
-      requiredSuites: [],
-      overallPassRate: null,
-      aggregateScores: null,
-      blocking: false,
-      reasons: [],
-    },
-    warnings: [],
-  };
-}
-
 export function resolveEffectiveIntentForAgentIfAvailable(params: {
   config?: ArgentConfig;
   agentId?: string;
 }): OptionalResolvedIntentForAgent | null {
-  if (!resolveEffectiveIntentForAgentOptional || !params.agentId) {
+  if (!params.agentId) {
     return null;
   }
-  return resolveEffectiveIntentForAgentOptional({
+  return resolveEffectiveIntentForAgent({
     config: params.config,
     agentId: params.agentId,
   });
@@ -110,10 +66,10 @@ export function resolveEffectiveIntentForAgentIfAvailable(params: {
 export function buildIntentSystemPromptHintIfAvailable(
   policy: IntentPolicyConfig | undefined,
 ): string | undefined {
-  if (!buildIntentSystemPromptHintOptional || !policy) {
+  if (!policy) {
     return undefined;
   }
-  return buildIntentSystemPromptHintOptional(policy);
+  return buildIntentSystemPromptHint(policy);
 }
 
 function buildIntentSimulationCacheKey(params: {
@@ -144,18 +100,15 @@ export async function evaluateIntentSimulationGateForConfigIfAvailable(params: {
   workspaceDir?: string;
   cwd?: string;
 }): Promise<OptionalIntentRuntimeGateEvaluation> {
-  if (!evaluateIntentSimulationGateForConfigOptional) {
-    return createDisabledGateEvaluation();
-  }
   const cacheKey = buildIntentSimulationCacheKey(params);
   if (!cacheKey) {
-    return evaluateIntentSimulationGateForConfigOptional(params);
+    return evaluateIntentSimulationGateForConfig(params);
   }
   const cached = intentSimulationGateCache.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < INTENT_SIMULATION_CACHE_TTL_MS) {
     return cached.value;
   }
-  const value = evaluateIntentSimulationGateForConfigOptional(params);
+  const value = evaluateIntentSimulationGateForConfig(params);
   intentSimulationGateCache.set(cacheKey, {
     cachedAt: Date.now(),
     value,

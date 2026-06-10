@@ -1,4 +1,3 @@
-// Core stub: WorkerFlowModal is a Business feature.
-export function WorkerFlowModal(_props: Record<string, unknown>) {
-  return null;
-}
+// Core override: real WorkerFlowModal — rendering is gated at runtime via
+// isWorkforceSurfaceAllowed() in configSurfaceProfile.ts.
+export { WorkerFlowModal } from "./WorkerFlowModal";
