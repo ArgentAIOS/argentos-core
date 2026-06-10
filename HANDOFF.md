@@ -1,86 +1,50 @@
 # HANDOFF — argent-core session bridge
 
-**From:** 2026-06-04 session (operator: Jason, assistant: Claude Opus 4.8)
-**To:** the next session (morning 2026-06-05)
-**Branch:** `dev` @ `8f84de96`; `main` @ `v2026.5.6.7`
-**Theme:** shipped 2 installer fixes → deleted-then-recovered the Grok work → _measured_ the real perf truth (and reversed the plan) → found the trust-breaking bottleneck → built a new working method (`goal-contract`)
+**From:** 2026-06-10 evening session (Claude Fable 5, ultracode, autonomous; ended early — usage ceiling)
+**Branch:** `feat/business-into-core-2026-06-10` @ `abf1340a` (WIP commit, NOT verified) — based on `origin/dev` @ `8f84de96`
+**Theme:** Jason's reset: "merge all business logic back into core, one source of truth" → recon (7 agents) → distillation merge ~80% landed, interrupted mid-flight.
 
-> Vault story: `~/Obsidian Vault/Argent/Daily Updates/2026-06-04 - Perf truth-finding, Grok recovery, working-method.md` + `Orchestration Handoffs/2026-06-04 - Perf truth, Grok recovery, working-method.md`.
+## Decisions made THIS session (all logged in ORCHESTRATION.md decision log)
 
----
+1. **Open source approved** — Jason consulted Richard. Revenue = Titanium services (clients pay for install/run). `ArgentAIOS/argentos-core` is PUBLIC; pushing business code is intentional. Push/PR cleared.
+2. **Positioning:** ArgentOS = _governed agent workforce for businesses_ — NOT a Hermes/OpenClaw personal-agent race. Stability/governance/audit is the moat.
+3. **Distillation merge** (Jason chose over mechanical): real modules verbatim, slop filtered, spine must RUN.
+4. License machinery merges but deprioritized + strictly non-blocking. No gating work.
+5. `src/workforce/jobs.ts` (legacy SQLite JobsModule) NOT merged; delete its orphan test `src/data/jobs.test.ts` instead (still TODO).
+6. **#405 turn-speed promoted to co-equal goal** — Jason: "turns are painful." Deliver a measured number.
 
-## TL;DR — where everything stands
+## State of the merge (read `ops/BUSINESS_MERGE_LANDING_MAP_2026-06-10.md` — the canonical plan)
 
-| Thread                               | State                                                                                                                                                                    |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **#432** installer path unification  | ✅ Shipped to prod (`argentos.ai` `8633ee5`), verified via deploy-success signal, **closed**                                                                             |
-| **#429** unattended-install hang     | ✅ Fixed, merged to `dev` (PR #434), functionally tested, **closed**                                                                                                     |
-| **Grok self-extension**              | ⚠️ I deleted it (wrong call), recovered the recoverable half → `grok-recovery/self-extension`. Runtime half lost; design reconstructed. **Reference, not a foundation.** |
-| **#406** session-pipeline cache      | 🛑 **Premise disproven by measurement.** Cache built + tested but **held unwired** — it targets ~3% of the cost.                                                         |
-| **#405** turn latency (the real one) | 🟢 Real bottleneck found + safe half fixed on `perf/personal-skill-critical-path-405`. **This is the morning priority.**                                                 |
-| **Method**                           | 🆕 `goal-contract` skill created (`~/.claude/skills/goal-contract/SKILL.md`)                                                                                             |
-| **ArgentOS direction**               | Keep (Richard's selling it) but **narrow to the agent-governance spine**                                                                                                 |
+Recon found the merge is SMALL: gateway handlers byte-identical already in core; storage/tables/tests already in core; only ~13 impl files needed + seam conversion. Optional loaders NEVER resolved in bundled runtimes (recon-proven) → all converted to static imports.
 
-## The morning priority — finish #405 (turn speed = Jason's trust)
+**On disk in `abf1340a` (UNVERIFIED — no tsgo/tests/lint run yet):**
 
-The real reason turns feel slow: the **personal-skill block** in `src/agents/pi-embedded-runner/run/attempt.ts` (~525–609, added **2026-05-03**) runs ~5 **sequential memory-backend awaits every turn**, eagerly and serially _before_ the QW-1 parallel-I/O batch (line ~668). Measured: it's **81% of slow-turn wall-clock** on May operator turns; slow-turn rate doubled April→May (12%→25%), matching this code's date.
+- ✅ 5 tools at `src/agents/tools/`, static-imported in `argent-tools.ts`, public-core blocklist removed, `argent-tools-core.ts` deleted
+- ✅ Intent: `src/agents/{intent-simulation,intent-runtime-gate}.ts` landed; `src/infra/intent-simulation-{runner,scenarios-t1}.ts` replaced (fake all-pass stub GONE); `intent-core.ts`, `intent-runtime-gate-core.ts`, `intent-cli-core.ts` deleted; static imports in `server-methods/intent.ts` + `optional-intent.ts`
+- ✅ `src/infra/job-orchestrator-runner.ts` landed; bridge converted to static import
+- ✅ `src/licensing/` (8 files); `server-startup.ts` static import; `license-core.ts` deleted; `org-scope.ts` + `tsdown.config.ts` updated
+- ✅ Dashboard: WorkforceBoard + WorkerFlowModal + worker-wizard landed; bridges rewired; `configSurfaceProfile.ts` flipped; `App.tsx` + sentinel test + OrgChartWidget edited
+- ❌ **INCOMPLETE — slice C remainder:** `src/infra/execution-worker-runner.ts` union-merge NOT done (core's 178-line facade still in place; Business's 1264-line real runner at `/Users/sem/code/ArgentOS-Business/src/workers/execution-worker-runner.ts` not yet merged; core's evolved helpers must win; keep tsdown standalone entry; consumers: server-close.ts, server-reload-handlers.ts, 4 passing helper tests). Also: `server.impl.ts:219-224` loaders NOT yet converted; `execution-worker-runner-core.ts` not deleted; `src/data/jobs.test.ts` not deleted.
 
-**Done (safe half, `d5bd5e5d`):** the two bookkeeping _writes_ (`createPersonalSkillReviewEvent`, `lastUsedAt` updates) are now fire-and-forget (results unused in-turn; safe in the persistent gateway), plus a `markPhase("personal_skills")` so the read cost is measurable.
+## Next session — exact order
 
-**Next (use the `goal-contract` skill to lock it first):**
+1. Finish slice C (above). Then `git status` sanity vs landing map's "What LANDS" table.
+2. **Green loop:** `pnpm tsgo` (baseline = 216 errors on clean dev, count in `/tmp/tsgo-baseline-count.txt`; expect ≤216, several known-failing seam errors should CLEAR); targeted vitest: 7 formerly-orphan tests + 4 execution-worker helper tests + `argent-tools.public-core.test.ts` + `dashboard-surface-profile.test.ts`; then full unit suite vs dev baseline; `pnpm lint`; `node scripts/check-invariants.mjs`; `cd dashboard && npx tsc -b --noEmit` (own project, not covered by root tsgo).
+3. **Cleanup wave (slice F):** delete `src/agents/optional-tool-factory.ts` + `src/utils/optional-module.ts` IF importerless now; public-core export machinery (`scripts/export-public-core.ts`, `src/infra/public-core-export.ts`, `public-core-denylist.test.ts` — already failing on dev); docs/sentinels: `AGENTS.md:5,9` (lane-lock still bans business in core — now false), `.argent-repo.json:6`, `docs/concepts/core-business-boundary.md`, `README.md:133-141`, `ops/AGENT_PERSONA_ONBOARDING_PROMPT.md:73`.
+4. **Runtime smoke:** `pnpm gateway:dev` boots clean with NO license file; spine demo: jobs template → assignment → `jobs.assignments.runNow` dispatches execution worker (simulate mode); `intent.simulate` returns a REAL report.
+5. Dev version bump (`YYYY.M.D-dev.N` per AGENTS.md contract) + push + PR to dev. Push is CLEARED (decision #1).
+6. **Lane 2 #405** on `perf/personal-skill-critical-path-405` (@ d5bd5e5d, has writes-fix + `personal_skills` marker): per-agent TTL(60s)+write-invalidated cache wrapping `{reviewPersonalSkillCandidates → listPersonalSkillCandidates(50)}` — the review is an O(N) serial PG chain, 24 candidates rewritten per turn observed, 30k rows in personal_skill_reviews; cache-miss fill joins QW-1 batch (results first consumed attempt.ts:872, dependency-clean); invalidate at 5 mutation sites (personal-skill-tool.ts, server-methods/skills.ts, live-inbox/capture.ts, sis-runner.ts, recordPersonalSkillUsage). ~250 LOC. Measure warm turn <200ms via `[tony-stark]` lines in `~/.argentos/logs/gateway.log` (run `pnpm gateway:dev` + `pnpm tui` — persistent process needed for warm turns).
 
-1. **Measure the read cost** — run 2–3 turns with `perf/personal-skill-critical-path-405` active, read the new `personal_skills` phase from `~/.argentos/logs/gateway.log` `[tony-stark]` lines.
-2. **Fix the reads** — `getMemoryAdapter` + `reviewPersonalSkillCandidates` + `listPersonalSkillCandidates(50)`. Options, pick by the number: **cache candidates per agent** across turns / **parallelize** into the QW-1 batch / **gate** the whole block when there are no candidates.
+## Recon artifacts (do NOT redo recon — it's done and paid for)
 
-Suggested locked contract:
-
-```
-GOAL: cut per-turn personal-skill latency so a warm turn starts responding <1s.
-ACCEPTANCE: personal_skills phase <200ms on 2nd+ turn (tony-stark); same skills still matched.
-NON-GOALS: session-pipeline cache, installer, dashboard, tool-registry rebuild.
-BUDGET: ~half-day, ≤4 files, behind the existing memory adapter.
-TRIPWIRE: new subsystem or >4 files → STOP and report.
-```
-
-## Grok work — recovered, durable, reference-only
-
-I deleted the May-28 Grok tree on a wrong "not needed" call; Jason clarified mid-delete that it was the real fix (Hermes-style fast skill injection + memory + autonomy).
-
-- **Recovered:** delegation/skill/autonomy half (5 files) + reconstructed design doc → **`origin/grok-recovery/self-extension`** (`7204772c`), type-clean.
-- **Lost:** runtime fast-path half (uncommitted in a worktree, `--force` removed). Design + snippets survive in `ops/GROK-ENHANCEMENTS-SELF-EXTENSION-PHASES-4-5-2026-05-28.md`.
-- It's **reference** — the gate is a brittle `process.cwd()` match, `promotePattern` is a stub, `_delegationHints` is ignored by the gateway. Mine it for the governance/skill-injection build; don't harden it as-is.
-
-## Branch ledger (all pushed to origin)
-
-| Branch                                  | Commit     | Contains                                            | Next                                                   |
-| --------------------------------------- | ---------- | --------------------------------------------------- | ------------------------------------------------------ |
-| `perf/personal-skill-critical-path-405` | `d5bd5e5d` | writes off critical path + `personal_skills` marker | **measure reads → fix reads**                          |
-| `perf/session-pipeline-cache-406`       | (slice 1)  | `SessionPipelineCache` + 12 tests                   | held unwired (premise disproven); reference            |
-| `grok-recovery/self-extension`          | `7204772c` | recovered Grok code + design doc                    | Jason's call; reference for governance/skill-injection |
-
-## Strategic + method context (don't lose this)
-
-- **ArgentOS is kept** (Richard committed to selling it) but the direction is **narrow to the governance spine** — agents with their own jobs + tools, governed. The bloat is _blocking_ the actual product. **subCTL is NOT for sale.** North-star: Hermes-style fast skill injection (the #405 fix is step one).
-- **Working method (new):** use the **`goal-contract`** skill before any phase — Goal / Acceptance / Non-goals / **Budget** / **Tripwire**. The budget+tripwire are the missing "cost leg" that caps BOTH objective-drift and overcorrection (the 1-hour-task-becomes-a-day failure). Report against the contract at the budget and before declaring done. It's a _visibility_ forcing-function, not a programmatic lock — Jason stays the circuit-breaker.
+- Landing map: `ops/BUSINESS_MERGE_LANDING_MAP_2026-06-10.md`
+- Full 7-agent recon JSON (175KB): `/private/tmp/claude-501/-Users-sem-code-argent-core/ae3b70e2-17ca-47cc-aebc-b8edbbc477e4/tasks/w1wmhq3s4.output`
+- Interrupted landing workflow (5 slices, resumable but slices are mostly on disk — cheaper to just finish slice C by hand): run `wf_31ddadc8-3a4`, script at `.../workflows/scripts/business-into-core-landing-wf_31ddadc8-3a4.js`
 
 ## Sticky notes
 
-- **gpt-5.3-codex at `think low` silently skips tool calls** — bump to medium or swap if Argent's tools aren't firing.
-- **argentos.ai auto-deploys from `main`** (Railway, ~30-40min cold / 1-3min warm). Verify a deploy via the GitHub deployment `success` state, NOT curl alone (zero-downtime swap + identical content can mask it).
-- **Lockfile:** `@noble/ed25519@3.0.0` must be in the **root importer** of `pnpm-lock.yaml` or frozen-lockfile CI insta-fails (fixed on both branches).
-- Closet items logged in `~/Obsidian Vault/Follow-Ups & To-Dos.md` (Grok fate, #429 prod-ship-on-release, #426 deferred).
-
-## Verification commands
-
-```bash
-cd /Users/sem/code/argent-core
-git log --oneline origin/dev -2
-git branch -r | grep -E "perf/|grok-recovery"          # the 3 work branches
-ls ~/.claude/skills/goal-contract/SKILL.md             # new method skill
-# read the real perf numbers any time:
-grep -a "tony-stark" ~/.argentos/logs/gateway.log | grep -aE "tools=1(0|1)[0-9]" | tail -5
-```
-
----
-
-_Session ended ~bedtime 2026-06-04. Two fixes shipped + closed, Grok recovered, the real perf bottleneck found and half-fixed, and — maybe the most important thing — a working method (`goal-contract`) to stop the drift/overcorrection that's been the core friction. Morning pickup: finish #405 (turn speed), locked via goal-contract._
+- Pre-commit hook runs check-invariants (passed at abf1340a). Root `pnpm tsgo` does NOT cover dashboard/.
+- `pnpm check:loc` (500-line cap) is NOT in CI — WorkforceBoard 3818 lines landed as-is; splitting = logged follow-up.
+- Worker-wizard may still be unmounted (slice E was mid-flight) — check for a mount point + the seven fetchLocalApi conversions.
+- ArgentOS-Business + ArgentOS-Legacy repos: read-only sources, do not delete (Jason's call).
+- Memory saved: `project_argentos_open_source_positioning.md` (the strategy reset).
