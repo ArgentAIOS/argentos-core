@@ -26,14 +26,18 @@ const COPILOT_DOMAINS: CopilotDomain[] = [
 
 function readString(params: Record<string, unknown>, key: string): string | undefined {
   const value = params[key];
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function readNumber(params: Record<string, unknown>, key: string): number | undefined {
   const value = params[key];
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
   return undefined;
 }
 
@@ -199,16 +203,16 @@ export const copilotHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      const [assignment, template, context, events, assignmentRuns] = await Promise.all([
+      const [assignment, template, task, events, assignmentRuns] = await Promise.all([
         storage.jobs.getAssignment(run.assignmentId),
         storage.jobs.getTemplate(run.templateId),
-        storage.jobs.getContextForTask(run.taskId),
+        storage.tasks.get(run.taskId),
         storage.jobs.listEvents({ limit: 120 }),
         storage.jobs.listRuns({ assignmentId: run.assignmentId, limit: 12 }),
       ]);
       const linkedEvents = events.filter((event) => {
-        const payload = (event.payload ?? {}) as Record<string, unknown>;
-        const metadata = (event.metadata ?? {}) as Record<string, unknown>;
+        const payload = event.payload ?? {};
+        const metadata = event.metadata ?? {};
         return (
           payload.runId === run.id ||
           payload.assignmentId === run.assignmentId ||
@@ -222,7 +226,7 @@ export const copilotHandlers: GatewayRequestHandlers = {
           run,
           assignment,
           template,
-          task: context?.task ?? null,
+          task: task ?? null,
           assignmentRuns,
           events: linkedEvents,
         },

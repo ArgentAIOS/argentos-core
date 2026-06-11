@@ -743,7 +743,9 @@ async function runConsolidationOnce(
     ];
 
     // Path 2: Parse model-extracted tool_lessons from consolidation response
-    const modelLessons = parseToolLessonsFromResponse(parsed.rawJson as Record<string, unknown>);
+    const modelLessons = parseToolLessonsFromResponse(
+      parsed.rawJson as unknown as Record<string, unknown>,
+    );
     allExtracted.push(...modelLessons);
 
     if (allExtracted.length > 0) {

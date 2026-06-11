@@ -1,25 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const evaluateIntentSimulationGateSpy = vi.fn();
-const loadOptionalToolFactoryMock = vi.fn((modulePath: string, exportName: string) => {
-  if (
-    modulePath === "./intent-runtime-gate.js" &&
-    exportName === "evaluateIntentSimulationGateForConfig"
-  ) {
-    return evaluateIntentSimulationGateSpy;
-  }
-  return undefined;
-});
 
-vi.mock("./optional-tool-factory.js", () => ({
-  loadOptionalToolFactory: loadOptionalToolFactoryMock,
+vi.mock("./intent-runtime-gate.js", () => ({
+  evaluateIntentSimulationGateForConfig: evaluateIntentSimulationGateSpy,
 }));
 
 describe("optional intent simulation gate cache", () => {
   beforeEach(() => {
     vi.resetModules();
     evaluateIntentSimulationGateSpy.mockReset();
-    loadOptionalToolFactoryMock.mockClear();
   });
 
   it("reuses cached evaluations for identical inputs", async () => {
@@ -43,8 +33,8 @@ describe("optional intent simulation gate cache", () => {
     const params = {
       agentId: "main",
       workspaceDir: "/tmp/workspace",
-      intent: { runtimeMode: "advisory" },
-    } as any;
+      intent: { runtimeMode: "advisory" as const },
+    };
 
     const first = await mod.evaluateIntentSimulationGateForConfigIfAvailable(params);
     const second = await mod.evaluateIntentSimulationGateForConfigIfAvailable(params);
@@ -89,8 +79,8 @@ describe("optional intent simulation gate cache", () => {
     const params = {
       agentId: "main",
       workspaceDir: "/tmp/workspace",
-      intent: { runtimeMode: "advisory" },
-    } as any;
+      intent: { runtimeMode: "advisory" as const },
+    };
 
     const first = await mod.evaluateIntentSimulationGateForConfigIfAvailable(params);
     mod.clearIntentSimulationGateCache();

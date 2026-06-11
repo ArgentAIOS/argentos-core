@@ -10,6 +10,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "channel_config",
   "changelog",
   "connector_setup",
+  "copilot_system_tool",
   "cron",
   "doc_panel",
   "doc_panel_delete",
@@ -20,6 +21,8 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "edit_line_range",
   "edit_regex",
   "gateway",
+  "intent_tool",
+  "jobs_tool",
   "knowledge_collections_list",
   "knowledge_search",
   "marketplace",
@@ -36,6 +39,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "memory_timeline",
   "message",
   "nodes",
+  "onboarding_pack",
   "personal_skill",
   "session_status",
   "sessions_history",
@@ -51,6 +55,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "visual_presence",
   "web_fetch",
   "web_search",
+  "workforce_setup_tool",
 ] as const;
 
 export const PUBLIC_CORE_POWER_USER_TOOL_NAMES = [
@@ -94,14 +99,6 @@ export const PUBLIC_CORE_HOLD_TOOL_NAMES = [
   "twilio_comm",
   "vercel_deploy",
   "vip_email",
-] as const;
-
-export const PUBLIC_CORE_BUSINESS_BLOCKED_TOOL_NAMES = [
-  "copilot_system_tool",
-  "intent_tool",
-  "jobs_tool",
-  "onboarding_pack",
-  "workforce_setup_tool",
 ] as const;
 
 export type ProductSurfaceProfile = "full" | "public-core";
@@ -206,13 +203,9 @@ export function resolveBuiltinToolAllowlist(params?: {
     allow.add(toolName);
   }
   const publicCore = config?.distribution?.publicCore;
-  const businessBlocked = new Set<string>(PUBLIC_CORE_BUSINESS_BLOCKED_TOOL_NAMES);
-  for (const toolName of businessBlocked) {
-    allow.delete(toolName);
-  }
   for (const toolName of publicCore?.alsoAllowTools ?? []) {
     const normalized = normalizeToolName(toolName);
-    if (normalized && !businessBlocked.has(normalized)) {
+    if (normalized) {
       allow.add(normalized);
     }
   }

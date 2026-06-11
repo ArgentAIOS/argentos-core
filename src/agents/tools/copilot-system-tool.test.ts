@@ -55,7 +55,7 @@ describe("copilot_system_tool", () => {
   it("returns system overview", async () => {
     const { createCopilotSystemTool } = await import("./copilot-system-tool.js");
     const tool = createCopilotSystemTool();
-    const result = await tool.execute({ action: "overview" });
+    const result = await tool.execute("test-call", { action: "overview" });
     expect(
       (result.details as { domains: Array<{ domain: string }> }).domains.length,
     ).toBeGreaterThan(4);
@@ -64,7 +64,7 @@ describe("copilot_system_tool", () => {
   it("returns workforce overview", async () => {
     const { createCopilotSystemTool } = await import("./copilot-system-tool.js");
     const tool = createCopilotSystemTool();
-    const result = await tool.execute({ action: "workforce_overview" });
+    const result = await tool.execute("test-call", { action: "workforce_overview" });
     expect(result.details).toMatchObject({
       templatesCount: 1,
       assignmentsCount: 1,
@@ -76,7 +76,7 @@ describe("copilot_system_tool", () => {
   it("sets domain access mode", async () => {
     const { createCopilotSystemTool } = await import("./copilot-system-tool.js");
     const tool = createCopilotSystemTool();
-    const result = await tool.execute({
+    const result = await tool.execute("test-call", {
       action: "access_mode_set",
       domain: "workforce",
       mode: "assist-live-limited",

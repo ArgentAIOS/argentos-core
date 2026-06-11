@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import path from "node:path";
 import type { CanvasHostServer } from "../canvas-host/server.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
@@ -48,6 +47,8 @@ import {
 } from "../infra/engagement-artifact-watcher.js";
 import { markUnresolvedSurfacesUnavailable } from "../infra/engagement-tracker.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
+import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js";
+import { startExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
 import {
@@ -143,141 +144,16 @@ const logRelay = log.child("relay");
 const logWsControl = log.child("ws");
 const gatewayRuntime = runtimeForLogger(log);
 const canvasRuntime = runtimeForLogger(logCanvas);
-const requireModule = createRequire(import.meta.url);
 
-type ExecutionWorkerRunnerLike = {
-  stop: () => void;
-  updateConfig: (cfg: import("../config/config.js").ArgentConfig) => void;
-  getStatus: (opts?: { agentId?: string }) => {
-    enabled: boolean;
-    globalPaused: boolean;
-    agentCount: number;
-    agents: unknown[];
-  };
-  dispatchNow: (opts?: { agentId?: string; reason?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    dispatched: number;
-    paused: boolean;
-    running: boolean;
-    reason?: string;
-  };
-  pause: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    paused: boolean;
-  };
-  resume: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    paused: boolean;
-  };
-  resetMetrics: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    resetCount: number;
-  };
-};
-
-type ExecApprovalForwarderLike = {
-  handleRequested: (request: unknown) => Promise<void>;
-  handleResolved: (resolved: unknown) => Promise<void>;
-  stop: () => void;
-};
-
-function isMissingModuleError(error: unknown, specifier: string): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message || "";
-  return (
-    message.includes(`Cannot find module '${specifier}'`) ||
-    message.includes(`Cannot find module "${specifier}"`) ||
-    message.includes(`Cannot find package '${specifier}'`) ||
-    message.includes(`Cannot find package "${specifier}"`) ||
-    message.includes(specifier)
-  );
-}
-
-function loadOptionalGatewayExport<T>(specifier: string, exportName: string): T | null {
-  try {
-    const mod = requireModule(specifier) as Record<string, unknown>;
-    const candidate = mod[exportName];
-    return typeof candidate === "function" ? (candidate as T) : null;
-  } catch (error) {
-    if (isMissingModuleError(error, specifier)) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-const startExecutionWorkerRunnerOptional = loadOptionalGatewayExport<
-  (params: { cfg: import("../config/config.js").ArgentConfig }) => ExecutionWorkerRunnerLike
->("../infra/execution-worker-runner.js", "startExecutionWorkerRunner");
-const createExecApprovalForwarderOptional = loadOptionalGatewayExport<
-  () => ExecApprovalForwarderLike
->("../infra/exec-approval-forwarder.js", "createExecApprovalForwarder");
-
-function createNoopExecutionWorkerRunner(): ExecutionWorkerRunnerLike {
-  return {
-    stop: () => {},
-    updateConfig: () => {},
-    getStatus: () => ({
-      enabled: false,
-      globalPaused: false,
-      agentCount: 0,
-      agents: [],
-    }),
-    dispatchNow: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      dispatched: 0,
-      paused: false,
-      running: false,
-      reason: "execution worker unavailable",
-    }),
-    pause: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      paused: false,
-    }),
-    resume: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      paused: false,
-    }),
-    resetMetrics: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      resetCount: 0,
-    }),
-  };
-}
-
-function createNoopExecApprovalForwarder(): ExecApprovalForwarderLike {
-  return {
-    handleRequested: async () => {},
-    handleResolved: async () => {},
-    stop: () => {},
-  };
-}
-
-function createAuthProfileStatusResolver(
-  cfg: import("../config/config.js").ArgentConfig,
-): () => Array<{ name: string; available: boolean; cooldownUntil?: number }> {
+function createAuthProfileStatusResolver(): () => Array<{
+  name: string;
+  available: boolean;
+  cooldownUntil?: number;
+}> {
   const agentDir = resolveArgentAgentDir();
   return () => {
     try {
-      const store = ensureAuthProfileStore(agentDir, { config: cfg });
+      const store = ensureAuthProfileStore(agentDir);
       const profileIds = listProfilesForProvider(store, "anthropic");
       const now = Date.now();
       return profileIds.map((profileId) => {
@@ -601,9 +477,9 @@ export async function startGatewayServer(
   const nodeRegistry = new NodeRegistry();
   const nodePresenceTimers = new Map<string, ReturnType<typeof setInterval>>();
   const nodeSubscriptions = createNodeSubscriptionManager();
-  const nodeSendEvent = (opts: { nodeId: string; event: string; payloadJSON?: string | null }) => {
-    const payload = safeParseJson(opts.payloadJSON ?? null);
-    nodeRegistry.sendEvent(opts.nodeId, opts.event, payload);
+  const nodeSendEvent = (evt: { nodeId: string; event: string; payloadJSON?: string | null }) => {
+    const payload = safeParseJson(evt.payloadJSON ?? null);
+    nodeRegistry.sendEvent(evt.nodeId, evt.event, payload);
   };
   const nodeSendToSession = (sessionKey: string, event: string, payload: unknown) =>
     nodeSubscriptions.sendToSession(sessionKey, event, payload, nodeSendEvent);
@@ -743,12 +619,7 @@ export async function startGatewayServer(
 
   let heartbeatRunner = startHeartbeatRunner({ cfg: cfgAtStart });
   let contemplationRunner = startContemplationRunner({ cfg: cfgAtStart });
-  let executionWorkerRunner = startExecutionWorkerRunnerOptional
-    ? startExecutionWorkerRunnerOptional({ cfg: cfgAtStart })
-    : createNoopExecutionWorkerRunner();
-  if (!startExecutionWorkerRunnerOptional) {
-    log.info("execution worker runner unavailable in this build; using no-op stub");
-  }
+  let executionWorkerRunner = startExecutionWorkerRunner({ cfg: cfgAtStart });
   let jobOrchestratorRunner = startJobOrchestratorRunner({
     cfg: cfgAtStart,
     executionWorkerRunner,
@@ -775,9 +646,13 @@ export async function startGatewayServer(
   // writer's bugs can't take the kernel down. Only runs when the kernel is
   // enabled — there's nothing to measure otherwise.
   const kernelEngagementLedgerPath: string | null = (() => {
-    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) return null;
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) {
+      return null;
+    }
     const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
-    if (!kernelAgentId) return null;
+    if (!kernelAgentId) {
+      return null;
+    }
     try {
       return resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId).engagementLedgerPath;
     } catch {
@@ -841,9 +716,13 @@ export async function startGatewayServer(
   // no signal on noatime-mounted volumes — operators get the fallback ack
   // button in Phase 3b.4.
   const engagementArtifactWatcher: ArtifactWatcherHandle | null = (() => {
-    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) return null;
+    if (cfgAtStart.agents?.defaults?.kernel?.enabled !== true) {
+      return null;
+    }
     const kernelAgentId = resolveDefaultAgentId(cfgAtStart);
-    if (!kernelAgentId) return null;
+    if (!kernelAgentId) {
+      return null;
+    }
     try {
       const kernelPaths = resolveConsciousnessKernelPaths(cfgAtStart, kernelAgentId);
       return startEngagementArtifactWatcher({
@@ -862,7 +741,7 @@ export async function startGatewayServer(
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
-    getAuthProfileStatus: createAuthProfileStatusResolver(cfgAtStart),
+    getAuthProfileStatus: createAuthProfileStatusResolver(),
     getConfig: () => loadConfig(),
   });
 
@@ -885,12 +764,7 @@ export async function startGatewayServer(
     );
 
   const execApprovalManager = new ExecApprovalManager();
-  const execApprovalForwarder = createExecApprovalForwarderOptional
-    ? createExecApprovalForwarderOptional()
-    : createNoopExecApprovalForwarder();
-  if (!createExecApprovalForwarderOptional) {
-    log.info("exec approval forwarder unavailable in this build; using no-op stub");
-  }
+  const execApprovalForwarder = createExecApprovalForwarder();
   const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
     forwarder: execApprovalForwarder,
   });
@@ -1099,7 +973,7 @@ export async function startGatewayServer(
   });
 
   return {
-    close: async (opts) => {
+    close: async (closeOpts) => {
       if (diagnosticsEnabled) {
         stopDiagnosticHeartbeat();
       }
@@ -1111,7 +985,7 @@ export async function startGatewayServer(
       if (relayClient) {
         relayClient.disconnect();
       }
-      await close(opts);
+      await close(closeOpts);
     },
   };
 }

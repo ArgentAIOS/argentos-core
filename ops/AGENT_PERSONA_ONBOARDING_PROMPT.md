@@ -70,7 +70,7 @@ Do not touch without a specific Master bus task:
 - AppForge/TableForge.
 - AOS connector implementations.
 - OpenClaw Voice/Meet/runtime surfaces.
-- Business/licensing/private overlay code.
+- Workforce/governance/licensing code (first-class in core since 2026-06-10, but owned by other lanes).
 - Unrelated agent runtime behavior.
 
 ## First Task
