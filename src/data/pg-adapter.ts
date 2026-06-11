@@ -87,6 +87,7 @@ import type {
 } from "./types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getPgClient, closePgClient, setAgentContext } from "./pg-client.js";
+import { PG_BOOTSTRAP_SCHEMA_SQL } from "./pg/bootstrap-schema.js";
 import * as schema from "./pg/schema.js";
 
 const log = createSubsystemLogger("data/pg-adapter");
@@ -2134,11 +2135,18 @@ class PgTaskAdapter implements TaskAdapter {
     const now = new Date();
     const hasDeps = Array.isArray(input.dependsOn) && input.dependsOn.length > 0;
     const initialStatus: TaskStatus = hasDeps ? "blocked" : "pending";
+    const agentId = input.agentId ?? this.agentId;
+    // tasks.agent_id has an FK to agents(id); a family worker created after
+    // init (or a fresh database) may not have its row yet.
+    await this.db
+      .insert(schema.agents)
+      .values({ id: agentId, name: agentId, status: "active", createdAt: now, updatedAt: now })
+      .onConflictDoNothing();
     const [row] = await this.db
       .insert(schema.tasks)
       .values({
         id,
-        agentId: input.agentId ?? this.agentId,
+        agentId,
         title: input.title,
         description: input.description,
         status: initialStatus,
@@ -3394,6 +3402,7 @@ export class PgAdapter implements StorageAdapter {
   public tasks: TaskAdapter;
   public teams: TeamAdapter;
   public jobs: JobAdapter;
+  private agentId: string;
   private _ready = false;
   private sqlClient: ReturnType<typeof postgres>;
   private db: PostgresJsDatabase<typeof schema>;
@@ -3408,6 +3417,41 @@ export class PgAdapter implements StorageAdapter {
     this.teams = new PgTeamAdapter(this.db);
     this.jobAdapter = new PgJobAdapter(this.db);
     this.jobs = this.jobAdapter;
+  }
+
+  /**
+   * Fresh-database bootstrap: when the core tables don't exist at all (a
+   * brand-new install's database), apply the full generated schema so the
+   * gateway can self-provision without a hand-run drizzle-kit push. Existing
+   * databases skip this entirely and rely on the idempotent ensures below.
+   */
+  private async bootstrapFreshDatabase(): Promise<void> {
+    const [row] = await this.sqlClient<{ tasks: string | null; agents: string | null }[]>`
+      SELECT to_regclass('public.tasks')::text AS tasks,
+             to_regclass('public.agents')::text AS agents
+    `;
+    if (row?.tasks || row?.agents) {
+      return;
+    }
+    log.info("pg adapter: fresh database detected — applying bootstrap schema");
+    await this.sqlClient.unsafe(PG_BOOTSTRAP_SCHEMA_SQL);
+    log.info("pg adapter: bootstrap schema applied");
+  }
+
+  /**
+   * The tasks table has an FK to agents(id); on a fresh database nothing has
+   * created the configured agent's row yet, so the first orchestrator task
+   * insert dies on the constraint. Seed idempotently at init.
+   */
+  private async seedAgentRows(): Promise<void> {
+    const now = new Date();
+    const ids = [...new Set([this.agentId, "main"])];
+    for (const id of ids) {
+      await this.db
+        .insert(schema.agents)
+        .values({ id, name: id, status: "active", createdAt: now, updatedAt: now })
+        .onConflictDoNothing();
+    }
   }
 
   private async ensureCoreSchema(): Promise<void> {
@@ -3515,7 +3559,9 @@ export class PgAdapter implements StorageAdapter {
   async init(): Promise<void> {
     // Set RLS agent context for this connection
     await setAgentContext(this.sqlClient, this.agentId);
+    await this.bootstrapFreshDatabase();
     await this.ensureCoreSchema();
+    await this.seedAgentRows();
     await this.jobAdapter.init();
     this._ready = true;
     log.info("pg adapter: initialized", { agentId: this.agentId });
