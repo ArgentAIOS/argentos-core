@@ -186,13 +186,12 @@ function requireIntent(action: string, value: unknown): IntentConfig {
 
 export function createIntentTool(): AnyAgentTool {
   return {
-    type: "function",
+    label: "Intent",
     name: "intent_tool",
     description:
       "Intent Co-Pilot control plane: inspect intent by layer, resolve effective policy, draft/validate/diff/apply updates, manage access mode, and rollback from intent history.",
     parameters: IntentToolSchema,
-    strict: true,
-    async execute(args) {
+    async execute(_toolCallId, args) {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action");
       const cfg = loadConfig();

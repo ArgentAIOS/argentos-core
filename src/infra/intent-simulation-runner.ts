@@ -428,7 +428,7 @@ export async function runIntentSimulation(config: SimulationConfig): Promise<Sim
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   // Resolve intent hierarchy for the agent
-  const argentConfig = await loadConfig();
+  const argentConfig = loadConfig();
   const resolved = resolveEffectiveIntentForAgent({
     config: argentConfig,
     agentId: config.agentId,

@@ -103,7 +103,9 @@ export function startJobOrchestratorRunner(opts: {
   };
 
   const hookHandler = (event: InternalHookEvent) => {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     const eventType = `${event.type}:${event.action}`;
     const idempotencyKey = `${eventType}:${event.sessionKey}:${event.timestamp.getTime()}`;
     void enqueueEvent({
@@ -129,13 +131,17 @@ export function startJobOrchestratorRunner(opts: {
 
   function resolvePollMs(nextCfg: ArgentConfig): number {
     const raw = readOrchestratorPollMs(nextCfg);
-    if (!Number.isFinite(raw)) return DEFAULT_POLL_MS;
+    if (!Number.isFinite(raw)) {
+      return DEFAULT_POLL_MS;
+    }
     const bounded = Math.max(1_000, Math.min(60_000, Math.floor(raw ?? DEFAULT_POLL_MS)));
     return bounded;
   }
 
   function scheduleNext() {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     if (timer) {
       clearTimeout(timer);
       timer = null;
@@ -147,7 +153,9 @@ export function startJobOrchestratorRunner(opts: {
   }
 
   function scheduleImmediate() {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     if (inCycle) {
       rerunRequested = true;
       return;
@@ -221,7 +229,7 @@ export function startJobOrchestratorRunner(opts: {
       metrics.eventTasksCreated += eventResult.createdTasks;
       metrics.eventsProcessed += eventResult.processedEvents;
       if (timeTasksCreated > 0 || eventResult.createdTasks > 0) {
-        opts.executionWorkerRunner?.dispatchNow({
+        opts.executionWorkerRunner?.dispatchNow?.({
           reason: eventResult.createdTasks > 0 ? "job-orchestrator-event" : "job-orchestrator-due",
         });
       }
@@ -280,7 +288,9 @@ function readOrchestratorPollMs(cfg: ArgentConfig): number | undefined {
 
 function tryGetAgentId(context: Record<string, unknown>): string | undefined {
   const raw = context.agentId;
-  if (typeof raw !== "string") return undefined;
+  if (typeof raw !== "string") {
+    return undefined;
+  }
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
@@ -288,7 +298,9 @@ function tryGetAgentId(context: Record<string, unknown>): string | undefined {
 function sanitizeContext(context: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(context)) {
-    if (value === undefined) continue;
+    if (value === undefined) {
+      continue;
+    }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       out[key] = value;
       continue;

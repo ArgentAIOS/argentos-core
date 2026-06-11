@@ -277,8 +277,7 @@ function buildDraftContext(params: Record<string, unknown>): DraftContext {
     targetAgentId: trimOrUndefined(readStringParam(params, "targetAgentId")),
     assignmentTitle: trimOrUndefined(readStringParam(params, "assignmentTitle")),
     cadenceMinutes: readNumberParam(params, "cadenceMinutes", { integer: true }),
-    reviewRequired:
-      typeof params.reviewRequired === "boolean" ? (params.reviewRequired as boolean) : undefined,
+    reviewRequired: typeof params.reviewRequired === "boolean" ? params.reviewRequired : undefined,
     scopeLimit: trimOrUndefined(readStringParam(params, "scopeLimit")),
     toolsAllow: readStringArrayParam(params, "toolsAllow"),
     toolsDeny: readStringArrayParam(params, "toolsDeny"),
@@ -445,12 +444,11 @@ async function createWorkerFromDraft(context: DraftContext) {
 
 export function createWorkforceSetupTool(): AnyAgentTool {
   return {
-    type: "function",
+    label: "Workforce Setup",
     name: "workforce_setup_tool",
     description:
       "Guide the operator through setting up a worker role. Use this to draft missing fields, suggest the next questions, list assignable agents, and create workforce templates/assignments once the role contract is clear.",
     parameters: WorkforceSetupToolSchema,
-    strict: true,
     async execute(_toolCallId, args) {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
@@ -568,9 +566,10 @@ export function createWorkforceSetupTool(): AnyAgentTool {
           });
         }
         const storage = await getWorkforceStorageAdapter();
-        const assignment = await storage.jobs.createAssignment(
-          buildAssignmentDraft(context, templateId),
-        );
+        const assignment = await storage.jobs.createAssignment({
+          ...buildAssignmentDraft(context, templateId),
+          templateId,
+        });
         return jsonResult({ ok: true, assignment });
       }
 
@@ -592,9 +591,10 @@ export function createWorkforceSetupTool(): AnyAgentTool {
           context.targetMode === "create" ? await createWorkerFromDraft(context) : undefined;
         const storage = await getWorkforceStorageAdapter();
         const template = await storage.jobs.createTemplate(buildTemplateDraft(context));
-        const assignment = await storage.jobs.createAssignment(
-          buildAssignmentDraft(context, template.id),
-        );
+        const assignment = await storage.jobs.createAssignment({
+          ...buildAssignmentDraft(context, template.id),
+          templateId: template.id,
+        });
         return jsonResult({
           ok: true,
           worker,

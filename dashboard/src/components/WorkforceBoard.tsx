@@ -768,7 +768,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
         addOption(run.agentId, run.agentId);
       }
 
-      const options = Array.from(optionMap.values()).sort((a, b) => {
+      const options = Array.from(optionMap.values()).toSorted((a, b) => {
         const aPrimary = a.id === "main" || a.id === "argent";
         const bPrimary = b.id === "main" || b.id === "argent";
         if (aPrimary !== bPrimary) {
@@ -1563,7 +1563,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
       });
     }
 
-    return Array.from(map.values()).sort((left, right) => {
+    return Array.from(map.values()).toSorted((left, right) => {
       const leftPrimary = left.agentId === "main" || left.agentId === "argent";
       const rightPrimary = right.agentId === "main" || right.agentId === "argent";
       if (leftPrimary !== rightPrimary) {
@@ -1693,7 +1693,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
         const agentAssignments = assignments.filter(
           (assignment) => assignment.agentId === agent.agentId,
         );
-        const sortedAssignments = [...agentAssignments].sort((left, right) => {
+        const sortedAssignments = [...agentAssignments].toSorted((left, right) => {
           const leftDue = left.nextRunAt ?? Number.POSITIVE_INFINITY;
           const rightDue = right.nextRunAt ?? Number.POSITIVE_INFINITY;
           return leftDue - rightDue;
@@ -1702,7 +1702,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
         const latestAssignmentRun = agentAssignments
           .map((assignment) => latestRunByAssignmentId.get(assignment.id))
           .filter((run): run is JobRun => Boolean(run))
-          .sort((left, right) => right.startedAt - left.startedAt)[0];
+          .toSorted((left, right) => right.startedAt - left.startedAt)[0];
         const attentionNeeded =
           agent.blockedTasks > 0 ||
           agent.dueNow > 0 ||
@@ -1741,7 +1741,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
           .toLowerCase();
         return haystack.includes(loweredSearch);
       })
-      .sort((left, right) => right.createdAt - left.createdAt);
+      .toSorted((left, right) => right.createdAt - left.createdAt);
   }, [events, timelineSearch, timelineSourceFilter]);
 
   const selectedAssignmentTemplate = useMemo(
@@ -3741,7 +3741,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
                         <div className="text-white/85">Review history</div>
                         {selectedRun.metadata.reviewHistory
                           .slice()
-                          .reverse()
+                          .toReversed()
                           .map((entry, index) => (
                             <div
                               key={`${selectedRun.id}-history-${index}`}

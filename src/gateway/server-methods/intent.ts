@@ -57,7 +57,7 @@ export const intentHandlers: GatewayRequestHandlers = {
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
-      context.logGateway.error(`Intent simulation failed: ${err}`);
+      context.logGateway.error(`Intent simulation failed: ${String(err)}`);
       context.broadcast("intent.simulation", {
         agentId: String((params as SimulateIntentParams)?.agentId || "main"),
         status: "error",

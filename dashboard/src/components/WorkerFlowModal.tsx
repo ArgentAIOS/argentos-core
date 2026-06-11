@@ -548,7 +548,7 @@ function buildAssignmentMetadata(draft: FlowDraft): Record<string, unknown> {
 function getPrimaryAssignment(assignments: JobAssignment[], agentId: string): JobAssignment | null {
   const matches = assignments
     .filter((assignment) => assignment.agentId === agentId)
-    .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+    .toSorted((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
   return matches.find((assignment) => assignment.enabled) ?? matches[0] ?? null;
 }
 
@@ -562,7 +562,7 @@ function mergeUniqueTools(values: Array<string[] | undefined>): string[] {
       }
     }
   }
-  return Array.from(merged.values()).sort((a, b) => a.localeCompare(b));
+  return Array.from(merged.values()).toSorted((a, b) => a.localeCompare(b));
 }
 
 function readConnectorSelections(meta: Record<string, unknown> | undefined): Array<{
@@ -635,7 +635,7 @@ function buildRunnableConnectorToolNames(
         );
       }),
     ),
-  ).sort((a, b) => a.localeCompare(b));
+  ).toSorted((a, b) => a.localeCompare(b));
 }
 
 function buildPresetDraft(params: {
@@ -956,7 +956,7 @@ export function WorkerFlowModal({
     () =>
       runs
         .filter((run) => run.agentId === selectedAgentId)
-        .sort((left, right) => right.startedAt - left.startedAt)
+        .toSorted((left, right) => right.startedAt - left.startedAt)
         .slice(0, 6),
     [runs, selectedAgentId],
   );
@@ -964,7 +964,7 @@ export function WorkerFlowModal({
     () =>
       events
         .filter((event) => event.targetAgentId === selectedAgentId)
-        .sort((left, right) => right.createdAt - left.createdAt)
+        .toSorted((left, right) => right.createdAt - left.createdAt)
         .slice(0, 8),
     [events, selectedAgentId],
   );
@@ -1110,7 +1110,7 @@ export function WorkerFlowModal({
       setDraftField((current) => {
         const selected = current.tools.selected.includes(toolName)
           ? current.tools.selected.filter((item) => item !== toolName)
-          : [...current.tools.selected, toolName].sort((a, b) => a.localeCompare(b));
+          : [...current.tools.selected, toolName].toSorted((a, b) => a.localeCompare(b));
         return {
           ...current,
           tools: {
@@ -1128,7 +1128,7 @@ export function WorkerFlowModal({
       setDraftField((current) => {
         const selected = current.connectors.selected.includes(tool)
           ? current.connectors.selected.filter((item) => item !== tool)
-          : [...current.connectors.selected, tool].sort((a, b) => a.localeCompare(b));
+          : [...current.connectors.selected, tool].toSorted((a, b) => a.localeCompare(b));
         const selectedActions = current.connectors.selectedActions.filter((value) => {
           const parsed = splitQualifiedConnectorAction(value);
           return parsed?.tool !== tool;
@@ -1157,10 +1157,10 @@ export function WorkerFlowModal({
             ...current.connectors,
             selected: current.connectors.selected.includes(tool)
               ? current.connectors.selected
-              : [...current.connectors.selected, tool].sort((a, b) => a.localeCompare(b)),
+              : [...current.connectors.selected, tool].toSorted((a, b) => a.localeCompare(b)),
             selectedActions: exists
               ? current.connectors.selectedActions.filter((value) => value !== qualified)
-              : [...current.connectors.selectedActions, qualified].sort((a, b) =>
+              : [...current.connectors.selectedActions, qualified].toSorted((a, b) =>
                   a.localeCompare(b),
                 ),
           },

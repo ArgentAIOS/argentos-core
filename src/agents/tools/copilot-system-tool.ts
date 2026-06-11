@@ -89,13 +89,12 @@ function summarizeRun(run: {
 
 export function createCopilotSystemTool(): AnyAgentTool {
   return {
-    type: "function",
+    label: "Copilot System",
     name: "copilot_system_tool",
     description:
       "Cross-domain Co-Pilot control plane for Workforce, Run Story, Tool Policy, Observability, and Onboarding. Includes governance access modes and operator-ready status views.",
     parameters: CopilotSystemToolSchema,
-    strict: true,
-    async execute(args) {
+    async execute(_toolCallId, args) {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action");
 
@@ -176,11 +175,11 @@ export function createCopilotSystemTool(): AnyAgentTool {
         }
         const assignment = await storage.jobs.getAssignment(run.assignmentId);
         const template = await storage.jobs.getTemplate(run.templateId);
-        const taskContext = await storage.jobs.getContextForTask(run.taskId);
+        const task = await storage.tasks.get(run.taskId);
         const events = await storage.jobs.listEvents({ limit: 80 });
         const linkedEvents = events.filter((event) => {
-          const payload = event.payload as Record<string, unknown> | undefined;
-          const metadata = event.metadata as Record<string, unknown> | undefined;
+          const payload = event.payload;
+          const metadata = event.metadata;
           return (
             payload?.runId === run.id ||
             payload?.assignmentId === run.assignmentId ||
@@ -196,11 +195,11 @@ export function createCopilotSystemTool(): AnyAgentTool {
           run: summarizeRun(run),
           assignment,
           template,
-          task: taskContext
+          task: task
             ? {
-                id: taskContext.task.id,
-                status: taskContext.task.status,
-                metadata: taskContext.task.metadata ?? null,
+                id: task.id,
+                status: task.status,
+                metadata: task.metadata ?? null,
               }
             : null,
           neighborRuns: neighborRuns.map((item) => summarizeRun(item)),
@@ -331,7 +330,7 @@ export function createCopilotSystemTool(): AnyAgentTool {
           stats,
           lessonSample: lessons.map((item) => ({
             id: item.id,
-            title: item.title,
+            lesson: item.lesson,
             confidence: item.confidence,
             createdAt: item.createdAt,
           })),

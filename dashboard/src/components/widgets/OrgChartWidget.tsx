@@ -120,7 +120,7 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
   const order = ["development", "marketing", "support", "office"];
 
   return Object.entries(grouped)
-    .sort(([a], [b]) => {
+    .toSorted(([a], [b]) => {
       const ai = order.indexOf(a);
       const bi = order.indexOf(b);
       if (ai !== -1 && bi !== -1) {
@@ -136,7 +136,7 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
     })
     .map(([key, mems]) => {
       // Sort members: alive first, then alphabetically
-      const sorted = [...mems].sort((a, b) => {
+      const sorted = [...mems].toSorted((a, b) => {
         if (a.alive && !b.alive) {
           return -1;
         }
