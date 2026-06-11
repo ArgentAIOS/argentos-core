@@ -1,5 +1,6 @@
 import { LayoutGrid, RefreshCw, Users, Briefcase, Clock3, CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WorkerWizard } from "./worker-wizard";
 
 type GatewayRequest = <T = unknown>(
   method: string,
@@ -626,6 +627,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
     "worker" | "template" | "assignment" | "runs" | "timeline" | "overview" | "copilot"
   >("overview");
   const [reviewNotes, setReviewNotes] = useState("");
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [newWorkerId, setNewWorkerId] = useState("");
   const [newWorkerName, setNewWorkerName] = useState("");
   const [newWorkerRole, setNewWorkerRole] = useState("");
@@ -2077,6 +2079,14 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
                 >
                   Create Worker
                 </button>
+                {gatewayRequest ? (
+                  <button
+                    onClick={() => setWizardOpen(true)}
+                    className="w-full text-xs px-2 py-1.5 rounded border border-emerald-300/35 text-emerald-100"
+                  >
+                    Guided Worker Wizard
+                  </button>
+                ) : null}
               </div>
               <div className="rounded-xl border border-white/10 bg-black/10 p-4">
                 <div className="flex items-center justify-between gap-2 text-[11px] text-white/55 mb-3">
@@ -3899,6 +3909,16 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
           </section>
         </div>
       </div>
+      {gatewayRequest ? (
+        <WorkerWizard
+          isOpen={wizardOpen}
+          onClose={() => {
+            setWizardOpen(false);
+            void load();
+          }}
+          gatewayRequest={gatewayRequest}
+        />
+      ) : null}
     </div>
   );
 }
