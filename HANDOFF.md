@@ -1,8 +1,10 @@
 # HANDOFF — argent-core session bridge
 
-**From:** 2026-06-10 evening session (Claude Fable 5, ultracode, autonomous; ended early — usage ceiling)
-**Branch:** `feat/business-into-core-2026-06-10` @ `abf1340a` (WIP commit, NOT verified) — based on `origin/dev` @ `8f84de96`
-**Theme:** Jason's reset: "merge all business logic back into core, one source of truth" → recon (7 agents) → distillation merge ~80% landed, interrupted mid-flight.
+**From:** 2026-06-10 evening session (Claude Fable 5; resumed on fresh account after usage ceiling)
+**Branch:** `feat/business-into-core-2026-06-10` — based on `origin/dev` @ `8f84de96`
+**Theme:** Jason's reset: "merge all business logic back into core, one source of truth" → recon (7 agents) → distillation merge **LANDED, VERIFIED GREEN, SPINE PROVEN** (see ORCHESTRATION.md "Verification evidence"). PR to dev in flight. Remaining lane: #405 turn-speed fix.
+
+> **Status supersedes the sections below** (written mid-interruption, kept for context): slice C is DONE (real 1264-line execution worker union-merged, server.impl.ts static imports, dead twins deleted), green loop DONE (206 TS errors all-baseline vs dev's 216; suite fixes 9 dev-failing files, adds 0), cleanup wave DONE (loaders/public-core machinery deleted; AGENTS.md/.argent-repo.json/README/boundary-doc rewritten to one-repo reality), runtime smoke DONE (gateway boots clean; license real round-trip non-blocking; **governed spine ran end-to-end on fresh Postgres: template → assignment → orchestrator task → worker dispatch → blocked simulate run with review pending**). Version bumped 2026.6.10-dev.0.
 
 ## Decisions made THIS session (all logged in ORCHESTRATION.md decision log)
 
