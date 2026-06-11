@@ -384,6 +384,13 @@ export async function resolveApiKeyForProvider(params: {
     }
   }
 
+  // Local keyless providers: LM Studio and Ollama servers accept any bearer
+  // token. Mirror the automatic-routing carve-out above so a configured
+  // local model runs without an auth profile (env keys above still win).
+  if (normalized === "lmstudio" || normalized === "ollama") {
+    return { apiKey: normalized, source: "local-provider", mode: "api-key" };
+  }
+
   const authStorePath = resolveAuthStorePathForDisplay(params.agentDir);
   const resolvedAgentDir = path.dirname(authStorePath);
   // GH #193: if the on-disk `order` for this provider referenced a profile

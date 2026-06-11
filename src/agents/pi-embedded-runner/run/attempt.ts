@@ -492,6 +492,7 @@ export async function runEmbeddedAttempt(
     const skillEntries = shouldLoadSkillEntries
       ? loadWorkspaceSkillEntries(effectiveWorkspace)
       : [];
+    markPhase("skill_entries");
     restoreSkillEnv = params.skillsSnapshot
       ? applySkillEnvOverridesFromSnapshot({
           snapshot: params.skillsSnapshot,
@@ -508,6 +509,7 @@ export async function runEmbeddedAttempt(
       config: params.config,
       workspaceDir: effectiveWorkspace,
     });
+    markPhase("skills_prompt");
     let matchedSkillCandidates = matchSkillCandidatesForPrompt({
       prompt: params.prompt,
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
@@ -640,6 +642,7 @@ export async function runEmbeddedAttempt(
     } catch (err) {
       log.debug(`session bootstrap snapshot unavailable: ${String(err)}`);
     }
+    markPhase("session_store");
 
     // QW-1: Start async I/O operations before sync CPU work (Project Tony Stark).
     // These operations are independent — they read from disk/network while we do
