@@ -749,4 +749,158 @@ describe("runGatewayUpdate", () => {
     expect(result.reason).toBe("not-git-install");
     expect(calls.some((call) => call.includes("status --porcelain"))).toBe(false);
   });
+
+  // [#416] Native install scripts must run under the gateway's pinned Node,
+  // and the update must verify the gateway's Node can load better-sqlite3.
+  describe("gateway-node ABI handling (#416)", () => {
+    async function setupGlobalNpmInstall() {
+      const nodeModules = path.join(tempDir, "node_modules");
+      const pkgRoot = path.join(nodeModules, "argentos");
+      await fs.mkdir(pkgRoot, { recursive: true });
+      await fs.writeFile(
+        path.join(pkgRoot, "package.json"),
+        JSON.stringify({ name: "argentos", version: "1.0.0" }),
+        "utf-8",
+      );
+      const gatewayBinDir = path.join(tempDir, "gateway-node", "bin");
+      await fs.mkdir(gatewayBinDir, { recursive: true });
+      const gatewayNode = path.join(gatewayBinDir, "node");
+      await fs.writeFile(gatewayNode, "#!/bin/sh\n", "utf-8");
+      return { nodeModules, pkgRoot, gatewayBinDir, gatewayNode };
+    }
+
+    type RecordedCall = { key: string; env?: NodeJS.ProcessEnv };
+
+    function createGlobalRunner(params: {
+      nodeModules: string;
+      pkgRoot: string;
+      overrides?: (key: string, callCount: Map<string, number>) => CommandResult | undefined;
+    }) {
+      const recorded: RecordedCall[] = [];
+      const callCount = new Map<string, number>();
+      const runCommand = async (argv: string[], options?: { env?: NodeJS.ProcessEnv }) => {
+        const key = argv.join(" ");
+        recorded.push({ key, env: options?.env });
+        callCount.set(key, (callCount.get(key) ?? 0) + 1);
+        const override = params.overrides?.(key, callCount);
+        if (override) {
+          return {
+            stdout: override.stdout ?? "",
+            stderr: override.stderr ?? "",
+            code: override.code ?? 0,
+          };
+        }
+        if (key === `git -C ${params.pkgRoot} rev-parse --show-toplevel`) {
+          return { stdout: "", stderr: "not a git repository", code: 128 };
+        }
+        if (key === "npm root -g") {
+          return { stdout: params.nodeModules, stderr: "", code: 0 };
+        }
+        if (key === "pnpm root -g") {
+          return { stdout: "", stderr: "", code: 1 };
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      };
+      return { recorded, runCommand };
+    }
+
+    it("runs the global update and ABI verification under the gateway's pinned Node", async () => {
+      const { nodeModules, pkgRoot, gatewayBinDir, gatewayNode } = await setupGlobalNpmInstall();
+      const { recorded, runCommand } = createGlobalRunner({ nodeModules, pkgRoot });
+
+      const result = await runGatewayUpdate({
+        cwd: pkgRoot,
+        runCommand: async (argv, options) => runCommand(argv, options),
+        timeoutMs: 5000,
+        readServiceCommand: async () => ({
+          programArguments: [gatewayNode, "/install/dist/index.js", "gateway"],
+        }),
+      });
+
+      expect(result.status).toBe("ok");
+      const updateCall = recorded.find((call) => call.key === "npm i -g argentos@latest");
+      expect(updateCall).toBeDefined();
+      expect(updateCall?.env?.PATH?.startsWith(`${gatewayBinDir}${path.delimiter}`)).toBe(true);
+      const verifyCall = recorded.find((call) => call.key.startsWith(`${gatewayNode} -e `));
+      expect(verifyCall?.key).toContain("better-sqlite3");
+    });
+
+    it("falls back to a from-source rebuild when the gateway Node cannot load the module", async () => {
+      const { nodeModules, pkgRoot, gatewayBinDir, gatewayNode } = await setupGlobalNpmInstall();
+      const { recorded, runCommand } = createGlobalRunner({
+        nodeModules,
+        pkgRoot,
+        overrides: (key, callCount) => {
+          if (key.startsWith(`${gatewayNode} -e `)) {
+            // First verify fails (ABI mismatch), re-verify after heal passes.
+            return callCount.get(key) === 1
+              ? { stderr: "NODE_MODULE_VERSION 147", code: 1 }
+              : { stdout: "native-abi-ok", code: 0 };
+          }
+          return undefined;
+        },
+      });
+
+      const result = await runGatewayUpdate({
+        cwd: pkgRoot,
+        runCommand: async (argv, options) => runCommand(argv, options),
+        timeoutMs: 5000,
+        readServiceCommand: async () => ({
+          programArguments: [gatewayNode, "/install/dist/index.js", "gateway"],
+        }),
+      });
+
+      expect(result.status).toBe("ok");
+      const heal = recorded.find(
+        (call) => call.key === "npm rebuild better-sqlite3 --build-from-source",
+      );
+      expect(heal).toBeDefined();
+      expect(heal?.env?.PATH?.startsWith(`${gatewayBinDir}${path.delimiter}`)).toBe(true);
+      expect(heal?.env?.npm_config_build_from_source).toBe("true");
+      const verifies = recorded.filter((call) => call.key.startsWith(`${gatewayNode} -e `));
+      expect(verifies.length).toBe(2);
+    });
+
+    it("reports an error naming the failed stage when the heal cannot fix the ABI", async () => {
+      const { nodeModules, pkgRoot, gatewayNode } = await setupGlobalNpmInstall();
+      const { runCommand } = createGlobalRunner({
+        nodeModules,
+        pkgRoot,
+        overrides: (key) =>
+          key.startsWith(`${gatewayNode} -e `)
+            ? { stderr: "NODE_MODULE_VERSION 147", code: 1 }
+            : undefined,
+      });
+
+      const result = await runGatewayUpdate({
+        cwd: pkgRoot,
+        runCommand: async (argv, options) => runCommand(argv, options),
+        timeoutMs: 5000,
+        readServiceCommand: async () => ({
+          programArguments: [gatewayNode, "/install/dist/index.js", "gateway"],
+        }),
+      });
+
+      expect(result.status).toBe("error");
+      expect(result.reason).toBe("verify native ABI (gateway node)");
+    });
+
+    it("falls back to the updater's own Node when the service command is not a node binary", async () => {
+      const { nodeModules, pkgRoot } = await setupGlobalNpmInstall();
+      const { recorded, runCommand } = createGlobalRunner({ nodeModules, pkgRoot });
+
+      const result = await runGatewayUpdate({
+        cwd: pkgRoot,
+        runCommand: async (argv, options) => runCommand(argv, options),
+        timeoutMs: 5000,
+        readServiceCommand: async () => ({
+          programArguments: ["/usr/local/bin/argent", "gateway"],
+        }),
+      });
+
+      expect(result.status).toBe("ok");
+      const verifyCall = recorded.find((call) => call.key.startsWith(`${process.execPath} -e `));
+      expect(verifyCall).toBeDefined();
+    });
+  });
 });
