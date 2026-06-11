@@ -2,11 +2,11 @@
 
 THIS REPO IS ARGENTOS-CORE.
 
-Core foundation, gateway, workflow runtime, agent tooling, AppForge substrate, dashboard core platform, installer/update-path, and `argent update` work belongs in `ArgentAIOS/argentos-core` unless Threadmaster explicitly marks the task as business/licensing-layer work.
+ALL ArgentOS product work — core foundation, gateway, workflow runtime, agent tooling, AppForge substrate, dashboard, installer/update-path, AND the business/governance layer (workforce jobs, execution worker, intent simulation/gates, copilot, licensing client) — belongs in `ArgentAIOS/argentos-core`. As of 2026-06-10 this repo is the single source of truth: the former ArgentOS-Business overlay was merged in as first-class code and the repo is open source (revenue model is Titanium deployment/operations services, not license gating).
 
 Do not move core foundation work to `ArgentAIOS/argentos`.
 
-Business, commercial packaging, private licensing-server behavior, and private product contracts belong outside core and must not be assumed in this repository.
+The license SERVER (marketplace/key issuance) remains external; the in-repo licensing client stays strictly non-blocking — nothing may gate gateway startup or features on a license at runtime without an explicit operator decision.
 
 Before any push, PR, merge, or handoff, run: `pnpm check:repo-lane` (the sentinel script verifies repo, branch, lane, and forbidden remotes in one pass).
 

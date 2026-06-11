@@ -5,7 +5,6 @@ import { createConnectorTools } from "../connectors/tools.js";
 import { getPluginToolMeta, resolvePluginTools } from "../plugins/tools.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
-import { loadOptionalToolFactory } from "./optional-tool-factory.js";
 import {
   filterPublicCorePluginTools,
   resolveBuiltinToolAllowlist,
@@ -24,6 +23,7 @@ import { createChannelConfigTool } from "./tools/channel-config-tool.js";
 import { createConnectorSetupTool } from "./tools/connector-setup-tool.js";
 import { createContemplationTool } from "./tools/contemplation-tool.js";
 import { createCoolifyDeployTool } from "./tools/coolify-deploy-tool.js";
+import { createCopilotSystemTool } from "./tools/copilot-system-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createDiscordTool } from "./tools/discord-tool.js";
 import { createDocPanelDeleteTool } from "./tools/doc-panel-delete-tool.js";
@@ -41,6 +41,8 @@ import { createGithubIssueTool } from "./tools/github-issue-tool.js";
 import { createHeygenVideoTool } from "./tools/heygen-video-tool.js";
 import { createImageGenerationTool } from "./tools/image-generation-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
+import { createIntentTool } from "./tools/intent-tool.js";
+import { createJobsTool } from "./tools/jobs-tool.js";
 import {
   createKnowledgeCollectionsListTool,
   createKnowledgeSearchTool,
@@ -64,6 +66,7 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMusicGenerationTool } from "./tools/music-generation-tool.js";
 import { createNamecheapDnsTool } from "./tools/namecheap-dns-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
+import { createOnboardingPackTool } from "./tools/onboarding-pack-tool.js";
 import { createOsDocsTool } from "./tools/os-docs-tool.js";
 import { createPersonalSkillTool } from "./tools/personal-skill-tool.js";
 import { createPluginBuilderTool } from "./tools/plugin-builder-tool.js";
@@ -109,6 +112,7 @@ import {
 } from "./tools/web-tools.js";
 import { createWidgetBuilderTool } from "./tools/widget-builder-tool.js";
 import { createWorkflowBuilderTool } from "./tools/workflow-builder-tool.js";
+import { createWorkforceSetupTool } from "./tools/workforce-setup-tool.js";
 import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
 import { createYoutubeNotebookLmTool } from "./tools/youtube-notebooklm-tool.js";
 import { createYoutubeThumbnailTool } from "./tools/youtube-thumbnail-tool.js";
@@ -154,25 +158,6 @@ export function createArgentTools(options?: {
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
 }): AnyAgentTool[] {
-  const createOnboardingPackTool = loadOptionalToolFactory<
-    (params: { agentSessionKey?: string }) => AnyAgentTool
-  >("./tools/onboarding-pack-tool.js", "createOnboardingPackTool");
-  const createJobsTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/jobs-tool.js",
-    "createJobsTool",
-  );
-  const createWorkforceSetupTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/workforce-setup-tool.js",
-    "createWorkforceSetupTool",
-  );
-  const createIntentTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/intent-tool.js",
-    "createIntentTool",
-  );
-  const createCopilotSystemTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/copilot-system-tool.js",
-    "createCopilotSystemTool",
-  );
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
         config: options?.config,
@@ -232,13 +217,9 @@ export function createArgentTools(options?: {
       config: options?.config,
     }),
     createScheduledTasksTool(),
-    ...(createOnboardingPackTool
-      ? [
-          createOnboardingPackTool({
-            agentSessionKey: options?.agentSessionKey,
-          }),
-        ]
-      : []),
+    createOnboardingPackTool({
+      agentSessionKey: options?.agentSessionKey,
+    }),
     createCronTool({
       agentSessionKey: options?.agentSessionKey,
     }),
@@ -336,10 +317,10 @@ export function createArgentTools(options?: {
         config: options?.config,
       }),
     }),
-    ...(createJobsTool ? [createJobsTool()] : []),
-    ...(createWorkforceSetupTool ? [createWorkforceSetupTool()] : []),
-    ...(createIntentTool ? [createIntentTool()] : []),
-    ...(createCopilotSystemTool ? [createCopilotSystemTool()] : []),
+    createJobsTool(),
+    createWorkforceSetupTool(),
+    createIntentTool(),
+    createCopilotSystemTool(),
     createSpecforgeTool({
       agentSessionKey: options?.agentSessionKey,
       agentId: resolveSessionAgentId({

@@ -120,7 +120,7 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
   const order = ["development", "marketing", "support", "office"];
 
   return Object.entries(grouped)
-    .sort(([a], [b]) => {
+    .toSorted(([a], [b]) => {
       const ai = order.indexOf(a);
       const bi = order.indexOf(b);
       if (ai !== -1 && bi !== -1) {
@@ -136,7 +136,7 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
     })
     .map(([key, mems]) => {
       // Sort members: alive first, then alphabetically
-      const sorted = [...mems].sort((a, b) => {
+      const sorted = [...mems].toSorted((a, b) => {
         if (a.alive && !b.alive) {
           return -1;
         }
@@ -446,13 +446,18 @@ const styles = {
 
 type ViewMode = "list" | "tree";
 
-export function OrgChartWidget() {
+interface OrgChartWidgetProps {
+  operatorName?: string;
+}
+
+export function OrgChartWidget({ operatorName }: OrgChartWidgetProps = {}) {
   const { request, connected } = useGateway();
   const [teams, setTeams] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [view, setView] = useState<ViewMode>("list");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const operatorLabel = operatorName?.trim() || "Jason";
 
   const fetchMembers = useCallback(async () => {
     if (!connected) {
@@ -471,7 +476,7 @@ export function OrgChartWidget() {
 
   // Initial load + 30s polling
   useEffect(() => {
-    fetchMembers();
+    void fetchMembers();
     intervalRef.current = setInterval(fetchMembers, 30_000);
     return () => {
       if (intervalRef.current) {
@@ -569,7 +574,7 @@ export function OrgChartWidget() {
             <div style={styles.treeOwnerCard}>
               <div style={{ display: "flex", alignItems: "center" }}>
                 <span style={{ marginRight: "4px" }}>&#11088;</span>
-                <span style={styles.treeNodeName}>Jason</span>
+                <span style={styles.treeNodeName}>{operatorLabel}</span>
                 <span style={styles.treeBadge(true)}>OWNER</span>
               </div>
               <div style={styles.treeNodeSub}>Human Operator</div>

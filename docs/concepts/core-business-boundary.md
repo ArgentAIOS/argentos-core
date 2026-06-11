@@ -1,76 +1,60 @@
 ---
-summary: "ArgentOS Core versus Business boundary and licensing overlay model"
+summary: "ArgentOS is one open-source codebase — the historical Core/Business overlay split and its 2026-06-10 merge-back"
 read_when:
-  - Working on public Core packaging
-  - Moving features between Core and Business
-  - Adding license-gated Business behavior
-title: "Core and Business Boundary"
+  - Wondering why licensing/workforce/intent code lives in this repo
+  - Considering re-introducing a public/private code split
+  - Working on license-related behavior
+title: "Core and Business Boundary (historical)"
 ---
 
 # Core and Business boundary
 
-Last updated: 2026-04-24
+Last updated: 2026-06-10
 
-## Product rule
+## Current rule: one repo, one source of truth
 
-Every user installs **Core** first. Core must be useful without a license key and
-must not hide personal-agent capabilities behind Business gates.
+As of **2026-06-10** there is no Core/Business code boundary. The former
+ArgentOS-Business overlay — licensing client, workforce jobs runtime, execution
+worker, job orchestrator, intent simulation + runtime gates, copilot control
+plane, business agent tools, and the workforce dashboard surfaces — lives in
+this repository as ordinary first-class code. The repository is public/open
+source. Revenue comes from deploying and operating ArgentOS for clients
+(Titanium services), not from license-gating features.
 
-Business is a licensed overlay on top of Core. A Business customer activates a
-license key, Core validates it with the licensing server, and then the Business
-overlay enables worker-agent governance features.
+What remains true:
 
-## Core includes
+- **The license server is external.** `src/licensing/` is the client side
+  (validation, offline grace, org secret sync). Key issuance/revocation lives
+  in the marketplace service, not here.
+- **License checks are strictly non-blocking.** Gateway startup validates a
+  license if `~/.argentos/license.json` exists and logs the result; it never
+  blocks boot and no feature hard-gates on license state at runtime.
+- **Workforce persistence is PostgreSQL-canonical.** SQLite installs stay
+  fully functional with workforce features inert (the runner self-disables;
+  the gateway guard refuses non-PG workforce writes in production unless
+  `ARGENT_ALLOW_NON_PG_WORKFORCE=1`).
 
-- Main agent and family agents.
-- Personal chat, model routing, provider profiles, local fallback behavior, and
-  configured-provider selection.
-- Memory, MemU, Memory v3 health, user-owned vaults, and vault import paths.
-- Operations, live logs, system settings, database/gateway diagnostics, and
-  other local operator controls.
-- Marketplace discovery and install flows for skills, plugins, and connectors.
-- Personal skills creation, skill listing, and skill execution.
-- Connectors and AOS command-line utilities that are public, small, and safe to
-  ship to all users.
-- Consciousness kernel controls, including shadowed Rust kernel/gateway surfaces
-  when they are public-safe.
-- Audio/TTS, image attachment handling, screenshots, and other personal-agent
-  runtime capabilities.
-- Install, update, doctor, migration, and public release rails.
+## Historical context (pre-2026-06-10)
 
-## Business includes
+From 2026-03 to 2026-06 the plan of record was a licensed "Business overlay":
+business code was extracted to a private `ArgentOS-Business` repo
+(2026-05-05), Core shipped `*-core.ts` stubs and `loadOptionalExport` seams,
+and a private-registry distribution slice was drafted
+(`ops/BUSINESS_GAP_AND_LAYERING_PLAN.md` in the Business repo).
 
-- Worker agents as a distinct class from the main agent and family agents.
-- Workforce/job orchestration, job boards, assignments, and worker execution
-  lanes.
-- Governance through the worker-agent system, including intent hierarchy,
-  approvals, promotion gates, and executive review.
-- Observer/training periods where workers can run through turns without live
-  authority.
-- Worker onboarding and organization-scoped worker configuration.
-- Private registry/package distribution, organization entitlements, and
-  Business-only license sync behavior.
+That architecture was retired for three reasons:
 
-## Licensing flow
+1. **The optional-loader seams never worked in shipped builds.** Production
+   and dev both run the tsdown bundle, whose flat chunk layout made every
+   relative `createRequire` specifier resolve to nothing — the gated features
+   were silently absent even when "installed" (verified 2026-06-10 against
+   Legacy's dist).
+2. **The split stalled the product.** The overlay repo couldn't compile in
+   isolation for a month while core's copies drifted.
+3. **The commercial model changed.** Clients pay Titanium to install and run
+   ArgentOS; nobody was buying self-hosted licenses. Open source widens the
+   funnel for the services business.
 
-1. Install Core from the public installer.
-2. Enter a Business license key.
-3. Core calls the licensing server and receives entitlements.
-4. If entitled, Core downloads/enables the Business overlay.
-5. `argent update` updates Core for everyone and updates the Business overlay
-   only when the local install has active Business entitlements.
-
-No Core feature should display "not available in public Core" unless that
-feature is truly Business-only under this document.
-
-## Engineering guardrails
-
-- Public Core must not import Business-only modules on the startup path.
-- Business may depend on Core extension points; Core must not depend on
-  Business internals.
-- Removing a dashboard route from Core requires checking this boundary first.
-- If a feature is personal-agent, family-agent, marketplace, memory, vault,
-  operations, diagnostics, provider, install, or update related, assume it is
-  Core unless this document says otherwise.
-- License checks should enable Business behavior; they should not disable Core
-  behavior.
+The extraction-era repos (`ArgentOS-Business`, `ArgentOS-Legacy`) are retained
+read-only for history. The merge-back landing map is
+`ops/BUSINESS_MERGE_LANDING_MAP_2026-06-10.md`.

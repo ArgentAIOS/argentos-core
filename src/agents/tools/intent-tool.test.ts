@@ -44,7 +44,7 @@ describe("intent_tool", () => {
   it("returns overview with intent mode and issue counts", async () => {
     const { createIntentTool } = await import("./intent-tool.js");
     const tool = createIntentTool();
-    const result = await tool.execute({ action: "overview" });
+    const result = await tool.execute("test-call", { action: "overview" });
     expect(result.details).toMatchObject({
       accessMode: "assist-draft",
       intentEnabled: true,
@@ -56,7 +56,7 @@ describe("intent_tool", () => {
   it("updates and reads intent access mode", async () => {
     const { createIntentTool } = await import("./intent-tool.js");
     const tool = createIntentTool();
-    const setResult = await tool.execute({
+    const setResult = await tool.execute("test-call", {
       action: "access_mode_set",
       mode: "assist-propose",
     });
@@ -64,7 +64,7 @@ describe("intent_tool", () => {
     expect(setResult.details).toMatchObject({ mode: "assist-propose" });
 
     mockGetCopilotAccessMode.mockResolvedValueOnce("assist-propose");
-    const getResult = await tool.execute({ action: "access_mode_get" });
+    const getResult = await tool.execute("test-call", { action: "access_mode_get" });
     expect(getResult.details).toMatchObject({ mode: "assist-propose" });
   });
 
@@ -72,7 +72,7 @@ describe("intent_tool", () => {
     const { createIntentTool } = await import("./intent-tool.js");
     const tool = createIntentTool();
     await expect(
-      tool.execute({
+      tool.execute("test-call", {
         action: "apply",
         proposedIntent: {
           enabled: true,
@@ -86,7 +86,7 @@ describe("intent_tool", () => {
     mockGetCopilotAccessMode.mockResolvedValue("assist-live-limited");
     const { createIntentTool } = await import("./intent-tool.js");
     const tool = createIntentTool();
-    const result = await tool.execute({
+    const result = await tool.execute("test-call", {
       action: "apply",
       actor: "ai-assisted",
       reason: "test",

@@ -132,13 +132,15 @@ TypeScript (ESM), strict typing, Oxlint + Oxfmt. See [CONTRIBUTING.md](CONTRIBUT
 
 ## Business & Enterprise
 
-Core is the free foundation. [ArgentOS Business](https://argentos.ai/business) adds:
+It's all in this repo — open source, one codebase. That includes the governed-workforce layer:
 
-- Multi-agent workforce management
+- Multi-agent workforce management (job templates, assignments, runs)
 - Execution worker with approval workflows
 - Job orchestrator for team scheduling
-- Industry-specific intent packs (legal, healthcare, MSP, finance)
-- Operations dashboard (Workflow Map, Org Chart, Workloads)
+- Intent simulation and runtime intent gates
+- Operations dashboard (Workforce Board, Org Chart, Worker Wizard)
+
+Want it deployed and operated for your business? [Titanium](https://argentos.ai/business) installs and runs ArgentOS for clients end to end.
 
 ## Links
 

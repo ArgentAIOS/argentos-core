@@ -81,15 +81,12 @@ export function isOperationsSurfaceAllowed(surfaceProfile: DashboardSurfaceProfi
 }
 
 /**
- * Workforce surfaces (JobsBoard, OrgChart) are Business-only.
- * This is a runtime gate — the code ships in both tiers but only renders
- * when a Business overlay supplies an explicit enablement path.
- * Core must fail closed here so "full" Core dashboards do not expose gated
- * workforce controls.
+ * Workforce surfaces (WorkforceBoard, JobsBoard, OrgChart) are profile-driven:
+ * allowed on "full", hidden on "public-core". Runtime gate — does not affect
+ * code export.
  */
 export function isWorkforceSurfaceAllowed(surfaceProfile: DashboardSurfaceProfile): boolean {
-  void surfaceProfile;
-  return false;
+  return surfaceProfile !== "public-core";
 }
 
 /**
