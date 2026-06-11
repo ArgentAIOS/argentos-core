@@ -10,6 +10,7 @@ import type { MessagingToolSend } from "../../pi-embedded-messaging.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { AuthStorage, ModelRegistry } from "../../pi-model-discovery.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { PromptMode } from "../../system-prompt.js";
 import type { TaskMutationEvidence } from "../../tool-claim-validation.js";
 import type { ClientToolDefinition } from "./params.js";
 
@@ -87,6 +88,14 @@ export type EmbeddedRunAttemptParams = {
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
   extraSystemPrompt?: string;
+  /**
+   * System prompt assembly mode for this run. When omitted, subagent session
+   * keys get "subagent" and everything else gets "full". The execution worker
+   * passes "minimal" so worker turns ship the slim scaffold (no context files,
+   * no personal skills, no cross-channel context) per the blank-slate law
+   * (#407/#442 worker-lane prompt shrink).
+   */
+  promptMode?: PromptMode;
   streamParams?: AgentStreamParams;
   /**
    * Per-tier `reasoningEffort` override resolved by the model router (GH #186).

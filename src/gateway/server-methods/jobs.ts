@@ -757,6 +757,36 @@ export const jobsHandlers: GatewayRequestHandlers = {
           reason: "assignment-run-now",
         });
       }
+      // #445: an open task (blocked included) gates task creation for the
+      // assignment, so Run Now can succeed while queuing nothing. Name the
+      // gating task instead of returning a silent OK. Resolve via job runs —
+      // task metadata is not stable linkage (tasks.block replaces it).
+      let blockedBy: { taskId: string; status: string; title: string } | undefined;
+      let hint: string | undefined;
+      if (queuedTasks === 0) {
+        const runs = await storage.jobs.listRuns({ assignmentId, limit: 10 });
+        const seenTaskIds = new Set<string>();
+        for (const run of runs) {
+          if (!run.taskId || seenTaskIds.has(run.taskId)) {
+            continue;
+          }
+          seenTaskIds.add(run.taskId);
+          const task = await storage.tasks.get(run.taskId);
+          if (
+            task &&
+            (task.status === "pending" ||
+              task.status === "in_progress" ||
+              task.status === "blocked")
+          ) {
+            blockedBy = { taskId: task.id, status: task.status, title: task.title };
+            hint =
+              task.status === "blocked"
+                ? `Run Now queued nothing: blocked task ${task.id} gates this assignment — retry or supersede it first.`
+                : `Run Now queued nothing: ${task.status} task ${task.id} is already open for this assignment.`;
+            break;
+          }
+        }
+      }
       await emitAuditEvent(storage, {
         eventType: "assignment.run_now",
         targetAgentId: assignment.agentId,
@@ -766,6 +796,7 @@ export const jobsHandlers: GatewayRequestHandlers = {
           agentId: assignment.agentId,
           queuedTasks,
           actor: "operator",
+          ...(blockedBy ? { blockedByTaskId: blockedBy.taskId } : {}),
         },
         metadata: { assignmentId, templateId: assignment.templateId, actor: "operator" },
       });
@@ -776,6 +807,8 @@ export const jobsHandlers: GatewayRequestHandlers = {
           assignmentId,
           queuedTasks,
           dispatched: queuedTasks > 0,
+          ...(blockedBy ? { blockedBy } : {}),
+          ...(hint ? { hint } : {}),
         },
         undefined,
       );

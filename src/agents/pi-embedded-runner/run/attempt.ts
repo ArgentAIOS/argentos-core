@@ -6,6 +6,7 @@ import type {
   AgentSessionLike,
   Transport,
 } from "../../../argent-agent/pi-bridge/index.js";
+import type { PromptMode } from "../../system-prompt.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
   streamSimple,
@@ -366,6 +367,18 @@ export function resolveArgentProviderFallbackReason(providerName: string): strin
   return undefined;
 }
 
+/**
+ * Local OpenAI-compatible providers must use the Argent provider even in
+ * pi_only runtime mode: Pi's openai-completions driver ships tool specs as
+ * prompt text (no `tools` API field), so the server never declares a native
+ * tool-call channel and small local models can only answer with textual
+ * pseudo-calls (#442). LM Studio / Ollama support native tools.
+ */
+export function requiresArgentProviderForNativeTools(providerName: string): boolean {
+  const normalized = providerName.trim().toLowerCase();
+  return normalized === "lmstudio" || normalized === "ollama";
+}
+
 async function resolveArgentProvider(providerName: string, baseURL?: string, apiKey?: string) {
   if (resolveArgentProviderFallbackReason(providerName)) {
     return null;
@@ -392,8 +405,12 @@ async function resolveArgentProvider(providerName: string, baseURL?: string, api
     case "zai-coding":
       return createArgentZAI(opts);
     case "nvidia":
-    case "ollama":
       return createArgentOpenAI(opts);
+    case "ollama":
+    case "lmstudio":
+      // Local OpenAI-compatible runtimes ignore bearer auth — never fail on a
+      // missing key (client-site boxes run keyless, #442).
+      return createArgentOpenAI({ apiKey: "local-no-key", ...opts });
     case "inception":
       return createArgentInception(opts);
     case "openai-codex":
@@ -672,13 +689,20 @@ export async function runEmbeddedAttempt(
       .then(() => true)
       .catch(() => false);
     const prewarmSessionFilePromise = prewarmSessionFile(params.sessionFile);
-    const crossChannelPromise = !isSystemSessionKey(params.sessionKey)
-      ? readCrossChannelContextEvents({
-          agentId: sessionAgentId,
-          limit: 10,
-          excludeSessionKey: params.sessionKey,
-        })
-      : undefined;
+    const promptMode: PromptMode =
+      params.promptMode ?? (isSubagentSessionKey(params.sessionKey) ? "subagent" : "full");
+    // "minimal" runs (execution-worker lane) ship a blank-slate scaffold:
+    // no cross-channel context, no personal skills, no project context files,
+    // no heartbeat prompt — the task prompt carries the role contract (#442/#407).
+    const isMinimalPromptRun = promptMode === "minimal" || promptMode === "none";
+    const crossChannelPromise =
+      !isSystemSessionKey(params.sessionKey) && !isMinimalPromptRun
+        ? readCrossChannelContextEvents({
+            agentId: sessionAgentId,
+            limit: 10,
+            excludeSessionKey: params.sessionKey,
+          })
+        : undefined;
 
     markPhase("async_io_started");
     // Sync CPU work runs while I/O operations are in-flight
@@ -893,13 +917,24 @@ export async function runEmbeddedAttempt(
         })
       : undefined;
 
+    // Minimal runs keep the caller's directive + the intent governance hint;
+    // everything else is operator-session scaffolding the blank-slate law bans.
     const extraSystemPromptParts: Array<{ name: string; value: string | undefined }> = [
       { name: "caller-extra-system-prompt", value: params.extraSystemPrompt?.trim() },
       { name: "intent-hint", value: intentPromptHint?.trim() },
       { name: "cross-channel-context", value: crossChannelContextHint },
-      { name: "matched-personal-skills", value: matchedPersonalSkillsContext },
-      { name: "executable-personal-skill", value: executablePersonalSkillBlock },
-      { name: "room-reader-opportunity", value: roomReaderOpportunityBlock },
+      {
+        name: "matched-personal-skills",
+        value: isMinimalPromptRun ? undefined : matchedPersonalSkillsContext,
+      },
+      {
+        name: "executable-personal-skill",
+        value: isMinimalPromptRun ? undefined : executablePersonalSkillBlock,
+      },
+      {
+        name: "room-reader-opportunity",
+        value: isMinimalPromptRun ? undefined : roomReaderOpportunityBlock,
+      },
     ];
     const effectiveExtraSystemPrompt = extraSystemPromptParts
       .map((p) => p.value)
@@ -945,7 +980,10 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "subagent" : "full";
+    const heartbeatPromptForRun =
+      isDefaultAgent && !isMinimalPromptRun
+        ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+        : undefined;
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
     // Opt-in prompt budget audit — gated on ARGENT_PROMPT_BUDGET_LOG=1.
@@ -963,12 +1001,7 @@ export async function runEmbeddedAttempt(
           (workspaceNotes ?? []).filter((n): n is string => Boolean(n)),
         );
         tracker.record("message-tool-hints", messageToolHints);
-        tracker.record(
-          "heartbeat-prompt-in",
-          isDefaultAgent
-            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-            : undefined,
-        );
+        tracker.record("heartbeat-prompt-in", heartbeatPromptForRun);
         tracker.record("skills-prompt-in", skillsPrompt);
         tracker.record("tts-hint", ttsHint);
         return buildEmbeddedSystemPrompt({
@@ -978,9 +1011,7 @@ export async function runEmbeddedAttempt(
           extraSystemPrompt: effectiveExtraSystemPrompt || undefined,
           ownerNumbers: params.ownerNumbers,
           reasoningTagHint,
-          heartbeatPrompt: isDefaultAgent
-            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-            : undefined,
+          heartbeatPrompt: heartbeatPromptForRun,
           skillsPrompt,
           docsPath: docsPath ?? undefined,
           ttsHint,
@@ -995,7 +1026,7 @@ export async function runEmbeddedAttempt(
           userTimezone,
           userTime,
           userTimeFormat,
-          contextFiles,
+          contextFiles: isMinimalPromptRun ? [] : contextFiles,
           memoryCitationsMode: params.config?.memory?.citations,
           sessionKey: params.sessionKey,
         });
@@ -1256,7 +1287,10 @@ export async function runEmbeddedAttempt(
           );
           activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
         }
-      } else if (runtimePolicy.argentRuntimeEnabled) {
+      } else if (
+        runtimePolicy.argentRuntimeEnabled ||
+        requiresArgentProviderForNativeTools(params.provider)
+      ) {
         try {
           const argentProvider = await resolveArgentProvider(
             params.provider,
@@ -1264,9 +1298,25 @@ export async function runEmbeddedAttempt(
             providerApiKey,
           );
           if (argentProvider) {
-            activeSession.agent.streamFn = createArgentStreamSimple(argentProvider);
-            log.info(`[argent-runtime] Using Argent provider for ${params.provider}`);
-          } else {
+            const argentStream = createArgentStreamSimple(argentProvider);
+            // Pi's agent loop carries our tools as customTools (rendered as
+            // prompt text) and leaves context.tools empty, so the provider
+            // request would declare NO native tools (#442). Merge the
+            // policy-filtered toolset into the stream context; execution
+            // still flows back through pi's loop by tool name.
+            const nativeStreamTools = tools;
+            activeSession.agent.streamFn = (model, context, options) => {
+              const ctx = context as { tools?: unknown[] };
+              const merged =
+                ctx.tools && ctx.tools.length > 0
+                  ? context
+                  : ({ ...context, tools: nativeStreamTools } as typeof context);
+              return argentStream(model, merged, options);
+            };
+            log.info(
+              `[argent-runtime] Using Argent provider for ${params.provider} (native tools=${nativeStreamTools.length})`,
+            );
+          } else if (runtimePolicy.argentRuntimeEnabled) {
             applyPiStreamFallbackPolicy(
               runtimePolicy.mode,
               resolveArgentProviderFallbackReason(params.provider) ??
@@ -1278,19 +1328,36 @@ export async function runEmbeddedAttempt(
                 );
               },
             );
+          } else {
+            activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+              streamSimple,
+              providerApiKey,
+            );
           }
         } catch (err) {
-          applyPiStreamFallbackPolicy(
-            runtimePolicy.mode,
-            `Failed to create Argent provider for "${params.provider}"`,
-            () => {
-              activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
-                streamSimple,
-                providerApiKey,
-              );
-            },
-            err,
-          );
+          if (runtimePolicy.argentRuntimeEnabled) {
+            applyPiStreamFallbackPolicy(
+              runtimePolicy.mode,
+              `Failed to create Argent provider for "${params.provider}"`,
+              () => {
+                activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+                  streamSimple,
+                  providerApiKey,
+                );
+              },
+              err,
+            );
+          } else {
+            // pi_only + local native-tools provider: pi IS the configured
+            // default, so fall back to it directly (no fallback-policy assert).
+            log.warn(
+              `[argent-runtime] native-tools provider failed for "${params.provider}"; using Pi stream`,
+            );
+            activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+              streamSimple,
+              providerApiKey,
+            );
+          }
         }
       } else {
         activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
