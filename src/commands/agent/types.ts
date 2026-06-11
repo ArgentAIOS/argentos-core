@@ -73,6 +73,12 @@ export type AgentCommandOpts = {
   priority?: boolean;
   runId?: string;
   extraSystemPrompt?: string;
+  /**
+   * System prompt assembly mode for the embedded run. The execution worker
+   * passes "minimal" so worker turns ship the blank-slate scaffold
+   * (#407/#442). Omitted → normal resolution (subagent key or full).
+   */
+  promptMode?: "full" | "subagent" | "minimal" | "none";
   /** Explicit provider override for this run, bypassing session-stored model routing state. */
   providerOverride?: string;
   /** Explicit model override for this run, bypassing session-stored model routing state. */

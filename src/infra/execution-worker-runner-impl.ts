@@ -982,6 +982,10 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
           message: prompt,
           extraSystemPrompt:
             "This is an explicit queue-draining worker run. Prefer concrete action over discussion.",
+          // Blank-slate worker scaffold (#407/#442): no context files, personal
+          // skills, memory sections, or cross-channel context — the task prompt
+          // above carries the role contract, and toolsAllow carries the grants.
+          promptMode: "minimal",
           bestEffortDeliver: false,
           providerOverride: workerModelOverride?.provider,
           modelOverride: workerModelOverride?.model,
