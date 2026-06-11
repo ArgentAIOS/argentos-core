@@ -1223,6 +1223,28 @@ describe("MRQL Gold-Set Regression", () => {
       expect(topThree.some((entry: string) => entry.includes("communication"))).toBe(false);
     });
 
+    it("favorite-color diagnostic query keeps the canonical color slot despite noisy adjacent terms", async () => {
+      const result = await tool.execute("call_18b_diagnostic_noise", {
+        query:
+          "Jason favorite color mossy oak green reranker buried exact fact silver memory diagnostics",
+        mode: "identity",
+        types: ["profile"],
+        limit: 10,
+        deep: true,
+        include_coverage: true,
+      });
+      const data = result.details as any;
+      expect(data.queryClass).toBe("identity_property");
+      expect(data.mode).toBe("identity");
+      expect(data.results[0]?.summary).toContain("favorite color");
+      expect(data.results[0]?.summary).toContain("mossy oak green");
+      expect(data.answer?.value).toContain("mossy oak green");
+      expect(data.answer?.sourceSummary).toContain("favorite color");
+      expect(data.recallTelemetry?.queryVariants).toContain("Jason's favorite color");
+      expect(data.recallTelemetry?.queryVariants).not.toContain("Jason's favorite color mossy");
+      expect(data.recallTelemetry?.postRerankTop?.[0]?.summary).toContain("mossy oak green");
+    });
+
     it("dog-name query escalates to identity and surfaces direct profile answer", async () => {
       const result = await tool.execute("call_18c", {
         query: "What's my dog's name?",

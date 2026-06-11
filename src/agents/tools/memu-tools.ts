@@ -728,7 +728,18 @@ function sanitizeFavoriteSlotKey(rawSlotKey: string): string {
 }
 
 function canonicalizeIdentityPropertySlotKey(slotKey: string): string {
-  switch (slotKey.trim().toLowerCase()) {
+  const normalized = slotKey.trim().toLowerCase();
+  const firstToken = normalized.split(/\s+/)[0] ?? "";
+
+  // Noisy diagnostic or compound prompts can append neighboring clauses after the
+  // requested favorite slot (for example "favorite color bugfix exact..."). Keep
+  // stable singleton identity properties canonical so exact stored facts like
+  // "favorite color is ..." are still recognized and protected by reranking.
+  if (["color", "number", "voice"].includes(firstToken)) {
+    return firstToken;
+  }
+
+  switch (normalized) {
     case "dog":
     case "dog name":
     case "fur baby":
@@ -737,7 +748,7 @@ function canonicalizeIdentityPropertySlotKey(slotKey: string): string {
     case "pet name":
       return "dog name";
     default:
-      return slotKey.trim().toLowerCase();
+      return normalized;
   }
 }
 
