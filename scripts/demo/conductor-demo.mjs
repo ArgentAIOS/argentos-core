@@ -96,10 +96,10 @@ dispatcher could act on immediately.`;
 const SOP = `1. Use the tasks tool to list open, unassigned tasks whose title starts with "[TICKET]". These ticket tasks are READ-ONLY source material — never modify, assign, complete, or comment on them.
 2. For each ticket, determine: (a) issue category (email/auth, network, onboarding, hardware, security, line-of-business app), (b) severity and business impact, (c) the right assignee queue (Tier 1, Tier 2, Field Tech, Security, or Account Manager), (d) anything that should be escalated immediately.
 3. Draft the reply email that would be sent to the ticket's user: professional, concrete next step, realistic ETA. Mark security-suspicious tickets for phishing review and include user-safety guidance in the draft.
-4. Write the FULL triage log in your reply: one section per ticket with category, severity, routing decision, escalation flag, and the complete reply draft. Do NOT send any message or email — your written triage log is the deliverable.
-5. Finish by marking YOUR OWN assigned work task (the one this job run gave you — not the tickets) completed with the tasks tool, so the run records your triage log for operator review.`;
+4. Compose the FULL triage log: one section per ticket with category, severity, routing decision, escalation flag, and the complete reply draft. Do NOT send any message or email — the triage log is the deliverable.
+5. Finish with ONE work_report call: outcome "done", and put the ENTIRE triage log from step 4 in the summary field. Filing the report completes the run — do not modify ANY task on the board, including your own.`;
 
-const SUCCESS = `Every open [TICKET] task appears in the run output with: category, severity, routing queue, escalation flag, and a complete reply-email draft. Zero mutations to the board; zero outbound messages.`;
+const SUCCESS = `A work_report is filed whose summary covers every open [TICKET] task with: category, severity, routing queue, escalation flag, and a complete reply-email draft. Zero board mutations by the worker; zero outbound messages.`;
 
 let nextId = 1;
 const pending = new Map();
