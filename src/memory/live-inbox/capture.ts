@@ -17,6 +17,7 @@ import type {
   MemoryType,
   Significance,
 } from "../memu-types.js";
+import { invalidatePersonalSkillReadCache } from "../../agents/skills/personal-skill-read-cache.js";
 import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { logVerbose } from "../../globals.js";
 import { contentHash } from "../memu-store.js";
@@ -603,6 +604,7 @@ export async function reinforceOrCreatePersonalSkillCandidateFromLiveInbox(param
 
   if (!duplicate) {
     const created = await params.store.createPersonalSkillCandidate?.(proposed);
+    invalidatePersonalSkillReadCache();
     return created ? { action: "created", candidateId: created.id } : { action: "skipped" };
   }
 
@@ -617,6 +619,7 @@ export async function reinforceOrCreatePersonalSkillCandidateFromLiveInbox(param
     sourceMemoryIds: mergedSourceMemoryIds,
     lastReinforcedAt: now,
   });
+  invalidatePersonalSkillReadCache();
 
   return {
     action: "reinforced",

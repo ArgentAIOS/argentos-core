@@ -112,6 +112,7 @@ import {
   mergeMatchedSkills,
   recordPersonalSkillUsage,
   reviewPersonalSkillCandidates,
+  getCachedPersonalSkillCandidates,
   resolveRoomReaderOpportunity,
   resolveSkillsPromptForRun,
   selectExecutablePersonalSkill,
@@ -522,18 +523,22 @@ export async function runEmbeddedAttempt(
       config: params.config,
     });
 
-    let matchedPersonalSkillsContext: string | undefined;
-    let executablePersonalSkillBlock: string | undefined;
-    let executablePersonalSkillPlan:
-      | ReturnType<typeof buildPersonalSkillExecutionPlan>
-      | null
-      | undefined;
-    try {
+    // #405: the personal-skill block (review + list + match) used to run as
+    // serial memory awaits on the hot path — 81% of slow-turn wall-clock.
+    // It now (a) reads through a per-agent TTL cache (warm turns: zero
+    // backend round trips) and (b) runs concurrently with the QW-1 batch,
+    // so cold fills overlap bootstrap I/O and sync tool creation. Outputs
+    // are first consumed after the QW-1 await (system-prompt parts).
+    const personalSkillsStartedAt = Date.now();
+    const personalSkillsPromise = (async () => {
       const memory = await getMemoryAdapter();
       const scopedMemory = memory.withAgentId ? memory.withAgentId(sessionAgentId) : memory;
-      await reviewPersonalSkillCandidates({ memory: scopedMemory });
-      const personalSkills = await scopedMemory.listPersonalSkillCandidates({
-        limit: 50,
+      const personalSkills = await getCachedPersonalSkillCandidates({
+        agentId: sessionAgentId,
+        fill: async () => {
+          await reviewPersonalSkillCandidates({ memory: scopedMemory });
+          return scopedMemory.listPersonalSkillCandidates({ limit: 50 });
+        },
       });
       const activePersonalSkills = personalSkills.filter(
         (candidate) =>
@@ -548,35 +553,39 @@ export async function runEmbeddedAttempt(
         candidates: activePersonalSkills,
         limit: 5,
       });
-      matchedSkillCandidates = mergeMatchedSkills({
+      const merged = mergeMatchedSkills({
         personal: matchedPersonalSkills,
         generic: matchedSkillCandidates,
         limit: 5,
       });
-      matchedPersonalSkillsContext = buildMatchedPersonalSkillsContextBlock({
-        matches: matchedSkillCandidates,
+      const context = buildMatchedPersonalSkillsContextBlock({
+        matches: merged,
         candidates: activePersonalSkills,
         limit: 2,
       });
       const executablePersonalSkill = selectExecutablePersonalSkill({
         prompt: params.prompt,
-        matches: matchedSkillCandidates,
+        matches: merged,
         candidates: promotedPersonalSkills,
       });
-      executablePersonalSkillPlan = buildPersonalSkillExecutionPlan(executablePersonalSkill);
-      executablePersonalSkillBlock =
-        buildExecutablePersonalSkillContextBlock(executablePersonalSkill);
+      const plan = buildPersonalSkillExecutionPlan(executablePersonalSkill);
+      const block = buildExecutablePersonalSkillContextBlock(executablePersonalSkill);
       if (executablePersonalSkill) {
-        await scopedMemory.createPersonalSkillReviewEvent({
-          candidateId: executablePersonalSkill.id,
-          actorType: "system",
-          action: "procedure_selected",
-          reason: "Runtime selected this Personal Skill as the active procedure for the turn",
-          details: {
-            sessionKey: params.sessionKey ?? params.sessionId,
-            runId: params.runId,
-          },
-        });
+        // Bookkeeping write — result unused this turn; the persistent gateway
+        // flushes it in the background. Deliberately does NOT invalidate the
+        // read cache (day-granularity decay input only). See #405.
+        void scopedMemory
+          .createPersonalSkillReviewEvent({
+            candidateId: executablePersonalSkill.id,
+            actorType: "system",
+            action: "procedure_selected",
+            reason: "Runtime selected this Personal Skill as the active procedure for the turn",
+            details: {
+              sessionKey: params.sessionKey ?? params.sessionId,
+              runId: params.runId,
+            },
+          })
+          .catch((err) => log.debug(`personal skill review event failed: ${String(err)}`));
         params.onAgentEvent?.({
           stream: "lifecycle",
           data: {
@@ -587,7 +596,7 @@ export async function runEmbeddedAttempt(
               scope: executablePersonalSkill.scope,
             },
             plan:
-              executablePersonalSkillPlan?.steps.map((step) => ({
+              plan?.steps.map((step) => ({
                 index: step.index,
                 text: step.text,
                 expectedTools: step.expectedTools,
@@ -595,7 +604,9 @@ export async function runEmbeddedAttempt(
           },
         });
       }
-      await Promise.all(
+      // lastUsedAt is bookkeeping — not consumed this turn. Fire-and-forget off
+      // the critical path (persistent gateway flushes it). See #405.
+      void Promise.all(
         matchedPersonalSkills.map((entry) =>
           entry.id
             ? scopedMemory.updatePersonalSkillCandidate(entry.id, {
@@ -603,46 +614,11 @@ export async function runEmbeddedAttempt(
               })
             : Promise.resolve(null),
         ),
-      );
-    } catch (err) {
+      ).catch((err) => log.debug(`personal skill lastUsedAt update failed: ${String(err)}`));
+      return { merged, context, plan, block };
+    })().catch((err) => {
       log.debug(`personal skill review unavailable: ${String(err)}`);
-    }
-    if (matchedSkillCandidates.length > 0) {
-      params.onAgentEvent?.({
-        stream: "lifecycle",
-        data: {
-          phase: "skill_candidates",
-          matchedSkills: matchedSkillCandidates.map((entry) => ({
-            id: entry.id,
-            name: entry.name,
-            source: entry.source,
-            kind: entry.kind,
-            state: entry.state,
-            score: entry.score,
-            confidence: entry.confidence,
-            provenanceCount: entry.provenanceCount,
-            reasons: entry.reasons,
-          })),
-        },
-      });
-    }
-    const roomReaderOpportunity = resolveRoomReaderOpportunity({
-      prompt: params.prompt,
-      entries: shouldLoadSkillEntries ? skillEntries : undefined,
-      resolvedSkills: params.skillsSnapshot?.resolvedSkills,
-      matchedSkills: matchedSkillCandidates,
-    });
-    const roomReaderOpportunityBlock = buildRoomReaderOpportunityPromptBlock(roomReaderOpportunity);
-    params.onAgentEvent?.({
-      stream: "lifecycle",
-      data: {
-        phase: "room_reader_opportunity",
-        mode: roomReaderOpportunity.mode,
-        patterns: roomReaderOpportunity.patterns,
-        recommended: roomReaderOpportunity.recommended,
-        confidence: roomReaderOpportunity.confidence,
-        reasons: roomReaderOpportunity.reasons,
-      },
+      return null;
     });
 
     // Load session store early — discovered tools needed for tool creation
@@ -758,12 +734,14 @@ export async function runEmbeddedAttempt(
       intentGate,
       docsPath,
       crossChannelEvents,
+      personalSkillsResult,
     ] = await Promise.all([
       bootstrapPromise,
       machineNamePromise,
       intentGatePromise,
       docsPathPromise,
       crossChannelPromise,
+      personalSkillsPromise,
     ]);
     const workspaceNotes = hookAdjustedBootstrapFiles.some(
       (file) => file.name === DEFAULT_BOOTSTRAP_FILENAME && !file.missing,
@@ -771,6 +749,53 @@ export async function runEmbeddedAttempt(
       ? ["Reminder: commit your changes in this workspace after edits."]
       : undefined;
     markPhase("async_io_done");
+    // #405: personal-skill outputs land here, after the parallel batch.
+    if (personalSkillsResult) {
+      matchedSkillCandidates = personalSkillsResult.merged;
+    }
+    const matchedPersonalSkillsContext = personalSkillsResult?.context;
+    const executablePersonalSkillBlock = personalSkillsResult?.block;
+    const executablePersonalSkillPlan = personalSkillsResult?.plan;
+    // Duration of the personal-skill work itself (overlapped with other I/O,
+    // so phase deltas no longer expose it). Read from the [tony-stark] line.
+    phaseTimes.personal_skills = Date.now() - personalSkillsStartedAt;
+    if (matchedSkillCandidates.length > 0) {
+      params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: {
+          phase: "skill_candidates",
+          matchedSkills: matchedSkillCandidates.map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            source: entry.source,
+            kind: entry.kind,
+            state: entry.state,
+            score: entry.score,
+            confidence: entry.confidence,
+            provenanceCount: entry.provenanceCount,
+            reasons: entry.reasons,
+          })),
+        },
+      });
+    }
+    const roomReaderOpportunity = resolveRoomReaderOpportunity({
+      prompt: params.prompt,
+      entries: shouldLoadSkillEntries ? skillEntries : undefined,
+      resolvedSkills: params.skillsSnapshot?.resolvedSkills,
+      matchedSkills: matchedSkillCandidates,
+    });
+    const roomReaderOpportunityBlock = buildRoomReaderOpportunityPromptBlock(roomReaderOpportunity);
+    params.onAgentEvent?.({
+      stream: "lifecycle",
+      data: {
+        phase: "room_reader_opportunity",
+        mode: roomReaderOpportunity.mode,
+        patterns: roomReaderOpportunity.patterns,
+        recommended: roomReaderOpportunity.recommended,
+        confidence: roomReaderOpportunity.confidence,
+        reasons: roomReaderOpportunity.reasons,
+      },
+    });
     const runtimeChannel = normalizeMessageChannel(params.messageChannel ?? params.messageProvider);
     let runtimeCapabilities = runtimeChannel
       ? (resolveChannelCapabilities({
