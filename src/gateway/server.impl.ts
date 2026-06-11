@@ -271,13 +271,15 @@ function createNoopExecApprovalForwarder(): ExecApprovalForwarderLike {
   };
 }
 
-function createAuthProfileStatusResolver(
-  cfg: import("../config/config.js").ArgentConfig,
-): () => Array<{ name: string; available: boolean; cooldownUntil?: number }> {
+function createAuthProfileStatusResolver(): () => Array<{
+  name: string;
+  available: boolean;
+  cooldownUntil?: number;
+}> {
   const agentDir = resolveArgentAgentDir();
   return () => {
     try {
-      const store = ensureAuthProfileStore(agentDir, { config: cfg });
+      const store = ensureAuthProfileStore(agentDir);
       const profileIds = listProfilesForProvider(store, "anthropic");
       const now = Date.now();
       return profileIds.map((profileId) => {
@@ -862,7 +864,7 @@ export async function startGatewayServer(
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
-    getAuthProfileStatus: createAuthProfileStatusResolver(cfgAtStart),
+    getAuthProfileStatus: createAuthProfileStatusResolver(),
     getConfig: () => loadConfig(),
   });
 

@@ -858,7 +858,7 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
         // "use", "tool", "marketplace") and runs up the usage counter.
         !isAudioTranscriptPollutedSkill(candidate),
     )
-    .map((candidate) => {
+    .map((candidate): SkillMatchCandidate | null => {
       const titleTerms = tokenize(candidate.title);
       const triggerTerms = tokenize(candidate.triggerPatterns.join(" "));
       const haystackTerms = new Set(
