@@ -6,6 +6,7 @@ import type {
 } from "../../memory/memu-types.js";
 import type { AnyAgentTool } from "./common.js";
 import { getMemoryAdapter } from "../../data/storage-factory.js";
+import { invalidatePersonalSkillReadCache } from "../skills/personal-skill-read-cache.js";
 import { jsonResult, readNumberParam, readStringArrayParam, readStringParam } from "./common.js";
 
 const PERSONAL_SKILL_ACTIONS = ["list", "create", "patch"] as const;
@@ -197,6 +198,7 @@ export function createPersonalSkillTool(options: { agentId: string }): AnyAgentT
           state: "incubating",
         };
         const created = await memory.createPersonalSkillCandidate(input);
+        invalidatePersonalSkillReadCache();
         await memory.createPersonalSkillReviewEvent({
           candidateId: created.id,
           actorType: "system",
@@ -244,6 +246,7 @@ export function createPersonalSkillTool(options: { agentId: string }): AnyAgentT
         }
         fields.lastReviewedAt = new Date().toISOString();
         const updated = await memory.updatePersonalSkillCandidate(id, fields);
+        invalidatePersonalSkillReadCache();
         if (!updated) {
           throw new Error(`personal skill "${id}" not found`);
         }

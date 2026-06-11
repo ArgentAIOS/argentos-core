@@ -17,6 +17,7 @@ import type { ArgentConfig } from "../config/config.js";
 import type { MemoryAdapter } from "../data/adapter.js";
 import type { CreatePersonalSkillCandidateInput, Lesson } from "../memory/memu-types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { invalidatePersonalSkillReadCache } from "../agents/skills/personal-skill-read-cache.js";
 import { getReplyFromConfig } from "../auto-reply/reply.js";
 import { loadConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions.js";
@@ -963,6 +964,9 @@ async function createPersonalSkillCandidatesFromLessons(
     existingTitles.add(normalizedTitle);
     if (sourceLessonId) existingLessonIds.add(sourceLessonId);
     created += 1;
+  }
+  if (created > 0) {
+    invalidatePersonalSkillReadCache();
   }
 
   return created;
