@@ -3,5 +3,5 @@
   "lane": "core",
   "forbiddenRemotes": ["ArgentAIOS/argentos"],
   "installChannel": "dev",
-  "rule": "Core foundation work must land here unless explicitly marked business/licensing."
+  "rule": "Single source of truth: all ArgentOS work (core + business/governance layer) lands here. Only the external license server lives elsewhere."
 }
