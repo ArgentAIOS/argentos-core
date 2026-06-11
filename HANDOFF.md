@@ -1,5 +1,7 @@
 # HANDOFF — argent-core session bridge
 
+> **2026-06-11 overnight addendum:** five more PRs merged (#439 fresh-PG self-bootstrap proven on a zero-table DB, #440 worker-wizard mounted, #441 conductor demo kit + local-provider auth + state-dir fix + cold-turn markers, #443 SOP fix). dev = 118eb985 / v2026.6.11-dev.0. Worker mechanics proven with real local-LLM turns; local-model tool-calling broken by prompt-injected tool text (#442 — 43k-token prompt evidence for #407). Morning checklist in the vault Daily Update 2026-06-11.
+
 **From:** 2026-06-10 evening session (Claude Fable 5; resumed on fresh account after usage ceiling)
 **Branch:** `feat/business-into-core-2026-06-10` — based on `origin/dev` @ `8f84de96`
 **Theme:** Jason's reset: "merge all business logic back into core, one source of truth" → recon (7 agents) → distillation merge **LANDED, VERIFIED GREEN, SPINE PROVEN** (see ORCHESTRATION.md "Verification evidence"). PR to dev in flight. Lane 2 DONE: #405 read-side fix shipped as PR #436 (measured: critical-path reads 2/turn → 0/turn warm).
