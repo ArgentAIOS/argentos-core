@@ -378,11 +378,10 @@ const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
 // real impact, a tiny TTL can be added here without touching callers.
 function resolveGatewayConfigToken() {
   try {
-    const argentConfigPath = path.join(
-      process.env.HOME || os.homedir(),
-      ".argentos",
-      "argent.json",
-    );
+    const stateDir =
+      process.env.ARGENT_STATE_DIR?.trim() ||
+      path.join(process.env.HOME || os.homedir(), ".argentos");
+    const argentConfigPath = path.join(stateDir, "argent.json");
     if (!fs.existsSync(argentConfigPath)) {
       return null;
     }
