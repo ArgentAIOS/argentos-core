@@ -330,6 +330,7 @@ type WorkerAgentState = {
   lastDispatchReason?: string;
   lastTaskSnapshot?: WorkerTaskSnapshot;
   noProgressByTask: Map<string, number>;
+  textualToolCallTasks: Set<string>;
   stats: {
     totalRuns: number;
     totalSkips: number;
@@ -580,7 +581,35 @@ function hasExecutionEvidence(result: {
   return text.length > 0;
 }
 
-function buildTaskExecutionPrompt(task: Task, jobContext?: JobExecutionContext): string {
+/**
+ * Textual pseudo-tool-calls: smaller local models sometimes WRITE a tool
+ * invocation as message text instead of emitting a native tool call —
+ * observed dialects from gemma/qwen under the worker prompt:
+ *   <|tool_call>call:tasks.search{...}   [ tasks: list, status: open ]
+ *   <tool_call>{"name": ...}             [Tool Call: tasks (...)]
+ * Nothing executes, so the run records zero work. Detect them so the next
+ * attempt can correct the model explicitly.
+ */
+const TEXTUAL_TOOL_CALL_PATTERNS = [
+  /<\|?tool_call\|?>?/i,
+  /<tool_call>/i,
+  /\[tool[_ ]?call\b/i,
+  /\bcall:[a-z_]+[.({]/i,
+  /^\s*\[\s*[a-z_]+\s*:\s*[a-z_]+/im,
+];
+
+export function looksLikeTextualToolCall(text: string): boolean {
+  if (!text.trim()) {
+    return false;
+  }
+  return TEXTUAL_TOOL_CALL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function buildTaskExecutionPrompt(
+  task: Task,
+  jobContext?: JobExecutionContext,
+  opts?: { textualToolCallNudge?: boolean },
+): string {
   const lines = [
     "[WORKER_EXEC]",
     `Task: ${task.id} — ${task.title}`,
@@ -672,12 +701,20 @@ function buildTaskExecutionPrompt(task: Task, jobContext?: JobExecutionContext):
     "",
     "You are in explicit execution mode.",
     "Do the work for this task now using tools.",
+    "Tools run ONLY through the native tool-call interface. Never write a tool invocation as message text (no <tool_call> tags, no 'call:tool{...}', no '[tool: ...]' notation) — text like that executes nothing and counts as zero work.",
     "Before marking blocked, attempt at least two distinct recovery paths and record what failed.",
     "If blocked after retries, mark it blocked with a concrete reason and the attempted recoveries.",
     "If completed, mark it completed.",
     "Always update task state on the board when work changes status.",
     "Return a concise summary with evidence of what changed.",
   );
+  if (opts?.textualToolCallNudge) {
+    lines.push(
+      "",
+      "FORMAT CORRECTION: your previous attempt wrote tool invocations as plain text, so nothing executed.",
+      "Invoke each tool through the tool-call interface now — one tool call at a time, no narration of the call itself.",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -802,6 +839,7 @@ function resolveWorkerStates(cfg: ArgentConfig, previous: Map<string, WorkerAgen
       lastDispatchReason: prev?.lastDispatchReason,
       lastTaskSnapshot: prev?.lastTaskSnapshot,
       noProgressByTask: prev?.noProgressByTask ?? new Map<string, number>(),
+      textualToolCallTasks: prev?.textualToolCallTasks ?? new Set<string>(),
       stats: prev?.stats ?? createEmptyWorkerStats(),
     });
   }
@@ -831,6 +869,7 @@ function resolveWorkerStates(cfg: ArgentConfig, previous: Map<string, WorkerAgen
       lastDispatchReason: prev?.lastDispatchReason,
       lastTaskSnapshot: prev?.lastTaskSnapshot,
       noProgressByTask: prev?.noProgressByTask ?? new Map<string, number>(),
+      textualToolCallTasks: prev?.textualToolCallTasks ?? new Set<string>(),
       stats: prev?.stats ?? createEmptyWorkerStats(),
     });
   }
@@ -916,7 +955,9 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
     });
     const intentHint = resolvedIntent ? buildIntentSystemPromptHint(resolvedIntent.policy) : "";
     const prompt = [
-      buildTaskExecutionPrompt(before, jobContext),
+      buildTaskExecutionPrompt(before, jobContext, {
+        textualToolCallNudge: state.textualToolCallTasks.has(before.id),
+      }),
       intentHint?.trim() ? `\n${intentHint.trim()}` : "",
     ]
       .filter(Boolean)
@@ -973,7 +1014,16 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
     if (accepted) {
       progressed += 1;
       state.noProgressByTask.delete(before.id);
+      state.textualToolCallTasks.delete(before.id);
     } else {
+      const executedToolCount = toolValidation?.executedTools.length ?? 0;
+      const resultText = (result.payloads ?? []).map((payload) => payload.text ?? "").join("\n");
+      if (executedToolCount === 0 && looksLikeTextualToolCall(resultText)) {
+        state.textualToolCallTasks.add(before.id);
+        log.warn(
+          `worker ${state.agentId}: textual pseudo-tool-call detected on task ${before.id}; next attempt gets a format correction`,
+        );
+      }
       const attempts = (state.noProgressByTask.get(before.id) ?? 0) + 1;
       state.noProgressByTask.set(before.id, attempts);
       if (attempts >= state.config.maxNoProgressAttempts) {
@@ -983,6 +1033,7 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         );
         progressed += 1;
         state.noProgressByTask.delete(before.id);
+        state.textualToolCallTasks.delete(before.id);
       }
     }
 
