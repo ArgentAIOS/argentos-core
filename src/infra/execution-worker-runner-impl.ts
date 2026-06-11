@@ -13,6 +13,7 @@ import {
 } from "../agents/intent.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import { evaluateRelationshipExecution } from "../agents/relationship-eval.js";
+import { clearWorkReport, takeWorkReport } from "../agents/tools/work-report-tool.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { agentCommand } from "../commands/agent.js";
 import { loadConfig } from "../config/config.js";
@@ -702,12 +703,24 @@ function buildTaskExecutionPrompt(
     "You are in explicit execution mode.",
     "Do the work for this task now using tools.",
     "Tools run ONLY through the native tool-call interface. Never write a tool invocation as message text (no <tool_call> tags, no 'call:tool{...}', no '[tool: ...]' notation) — text like that executes nothing and counts as zero work.",
-    "Before marking blocked, attempt at least two distinct recovery paths and record what failed.",
-    "If blocked after retries, mark it blocked with a concrete reason and the attempted recoveries.",
-    "If completed, mark it completed.",
-    "Always update task state on the board when work changes status.",
-    "Return a concise summary with evidence of what changed.",
+    "Before reporting blocked, attempt at least two distinct recovery paths and record what failed.",
   );
+  if (jobContext) {
+    // v2 D5 completion contract: job runs end with a filed report; the
+    // RUNNER updates the board. Never instruct board mutation here — that
+    // competes with read-only SOPs (#443).
+    lines.push(
+      'COMPLETION CONTRACT: end with ONE work_report tool call — outcome "done", "blocked", or "need_input" — with your COMPLETE results in the summary field (the full deliverable, not an abstract).',
+      "Filing the work_report is what completes this run. Do NOT modify any task on the board, including this one — the runner records the outcome from your report.",
+    );
+  } else {
+    lines.push(
+      "If blocked after retries, mark it blocked with a concrete reason and the attempted recoveries.",
+      "If completed, mark it completed.",
+      "Always update task state on the board when work changes status.",
+      "Return a concise summary with evidence of what changed.",
+    );
+  }
   if (opts?.textualToolCallNudge) {
     lines.push(
       "",
@@ -967,18 +980,32 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
       : {};
 
     const workerModelOverride = parseModelOverrideRef(state.config.model);
+    // v2 D5: every worker turn gets the work_report tool — filing the report
+    // is how a run completes, so it must survive template grant filtering.
+    const toolsAllowWithReport =
+      sessionPolicy.toolsAllow && sessionPolicy.toolsAllow.length > 0
+        ? sessionPolicy.toolsAllow.includes("work_report")
+          ? sessionPolicy.toolsAllow
+          : [...sessionPolicy.toolsAllow, "work_report"]
+        : sessionPolicy.toolsAllow;
+    const workerRunId = `worker-${state.agentId}-${before.id}-${Date.now()}`;
+    // The tool keys by the run id it captured at tool-creation time, which a
+    // cached agent session can hold stale — the session key is the stable
+    // fallback (worker runs are sequential per agent). Clear both, take both.
+    clearWorkReport(workerRunId);
+    clearWorkReport(sessionKey);
     const result = await withSessionToolPolicyOverride({
       cfg,
       agentId: state.agentId,
       sessionKey,
-      toolsAllow: sessionPolicy.toolsAllow,
+      toolsAllow: toolsAllowWithReport,
       toolsDeny: sessionPolicy.toolsDeny,
       run: async () =>
         await agentCommand({
           agentId: state.agentId,
           sessionKey,
           lane: "cron",
-          runId: `worker-${state.agentId}-${before.id}-${Date.now()}`,
+          runId: workerRunId,
           message: prompt,
           extraSystemPrompt:
             "This is an explicit queue-draining worker run. Prefer concrete action over discussion.",
@@ -992,7 +1019,6 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         }),
     });
 
-    const after = await storage.tasks.get(before.id);
     const toolValidation = extractToolValidation(result.meta);
     const simulationViolation =
       (jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow") &&
@@ -1003,6 +1029,24 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         `Simulation-mode policy violation: executed external tools (${toolValidation?.externalToolsExecuted.join(", ")})`,
       );
     }
+    // v2 D5: a filed work_report is the completion contract for job tasks —
+    // the RUNNER updates the board from it; workers never mutate their own
+    // task row (#443). Simulation violations always win over the report.
+    const workReport = takeWorkReport(workerRunId) ?? takeWorkReport(sessionKey);
+    log.info(
+      `worker ${state.agentId}: report lookup runId=${workerRunId} sessionKey=${sessionKey} found=${workReport ? workReport.outcome : "none"}`,
+    );
+    if (workReport && jobTaskContext && !simulationViolation) {
+      if (workReport.outcome === "done") {
+        await storage.tasks.complete(before.id);
+      } else {
+        await storage.tasks.block(
+          before.id,
+          `work_report(${workReport.outcome}): ${workReport.summary.slice(0, 400)}`,
+        );
+      }
+    }
+    const after = await storage.tasks.get(before.id);
     const evidenceOk = hasExecutionEvidence(result);
     const boardChanged = Boolean(
       after &&
@@ -1026,6 +1070,11 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         state.textualToolCallTasks.add(before.id);
         log.warn(
           `worker ${state.agentId}: textual pseudo-tool-call detected on task ${before.id}; next attempt gets a format correction`,
+        );
+      }
+      if (!workReport && jobTaskContext) {
+        log.info(
+          `worker ${state.agentId}: no work_report filed on job task ${before.id}; counting as no progress (no_report)`,
         );
       }
       const attempts = (state.noProgressByTask.get(before.id) ?? 0) + 1;
@@ -1061,6 +1110,14 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
       .filter((score): score is number => Number.isFinite(score))
       .slice(0, 5);
     const runMetadata = {
+      workReport: workReport
+        ? {
+            outcome: workReport.outcome,
+            summary: workReport.summary,
+            evidence: workReport.evidence,
+            filedAt: workReport.filedAt,
+          }
+        : null,
       intent: resolvedIntent
         ? {
             runtimeMode: resolvedIntent.runtimeMode,
@@ -1102,7 +1159,9 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
       if (jobTaskContext) {
         await storage.jobs.completeRunForTask(before.id, {
           status: "completed",
-          summary: "Execution worker completed the job task.",
+          // The filed report IS the deliverable — its summary is what the
+          // operator reads on the run (triage log, drafts, findings).
+          summary: workReport?.summary ?? "Execution worker completed the job task.",
           metadata: runMetadata,
         });
       }
@@ -1112,9 +1171,11 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         await storage.jobs.completeRunForTask(before.id, {
           status: "blocked",
           blockers:
-            typeof latest.metadata?.blockedReason === "string"
-              ? latest.metadata.blockedReason
-              : "Task blocked during execution",
+            workReport?.summary ??
+            // tasks.block writes metadata.blockReason (not "blockedReason").
+            (typeof latest.metadata?.blockReason === "string"
+              ? latest.metadata.blockReason
+              : "Task blocked during execution"),
           metadata: runMetadata,
         });
       }
@@ -1122,8 +1183,9 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
       await storage.jobs.completeRunForTask(before.id, {
         status: "failed",
         blockers:
-          typeof latest.metadata?.failureReason === "string"
-            ? latest.metadata.failureReason
+          // tasks.fail writes metadata.failReason (not "failureReason").
+          typeof latest.metadata?.failReason === "string"
+            ? latest.metadata.failReason
             : "Task failed during execution",
         metadata: runMetadata,
       });

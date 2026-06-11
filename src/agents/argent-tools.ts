@@ -111,6 +111,7 @@ import {
   createWebSearchTool,
 } from "./tools/web-tools.js";
 import { createWidgetBuilderTool } from "./tools/widget-builder-tool.js";
+import { createWorkReportTool } from "./tools/work-report-tool.js";
 import { createWorkflowBuilderTool } from "./tools/workflow-builder-tool.js";
 import { createWorkforceSetupTool } from "./tools/workforce-setup-tool.js";
 import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
@@ -157,6 +158,8 @@ export function createArgentTools(options?: {
   requireExplicitMessageTarget?: boolean;
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
+  /** Run id of this agent turn — keys the work_report registry (v2 D5). */
+  runId?: string;
 }): AnyAgentTool[] {
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
@@ -319,6 +322,10 @@ export function createArgentTools(options?: {
     }),
     createJobsTool(),
     createWorkforceSetupTool(),
+    createWorkReportTool({
+      runId: options?.runId,
+      sessionKey: options?.agentSessionKey,
+    }),
     createIntentTool(),
     createCopilotSystemTool(),
     createSpecforgeTool({
