@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../config/config.js";
 import { updateSessionStore, resolveStorePath } from "../config/sessions.js";
 import {
@@ -9,6 +9,22 @@ import {
   resolveIdleSalienceAnchorHours,
   DEFAULT_IDLE_SALIENCE_ANCHOR_HOURS,
 } from "./idle-salience-gate.js";
+
+// Controllable board for the gate's cache refresh. Default: storage throws
+// (cache stays cold) — individual tests set `mockBoardTasks` to warm it.
+let mockBoardTasks: Array<{ updatedAt: number }> | null = null;
+vi.mock("../data/storage-factory.js", () => ({
+  getStorageAdapter: async () => {
+    if (!mockBoardTasks) {
+      throw new Error("no storage in this test");
+    }
+    return { tasks: { list: async () => mockBoardTasks } };
+  },
+}));
+
+async function flushAsync() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 /**
  * LIMBIC law 3 for the background fan-spinners: an idle gateway burns zero
@@ -24,6 +40,7 @@ describe("idle salience gate", () => {
     cfg = {
       session: { store: path.join(dir, "sessions-{agentId}.json") },
     } as ArgentConfig;
+    mockBoardTasks = null;
   });
 
   afterEach(() => {
@@ -123,6 +140,51 @@ describe("idle salience gate", () => {
     expect(gate.evaluate({ cfg, agentId: "a", anchorHours: 24, nowMs: t0 + 60_000 }).salient).toBe(
       false,
     );
+  });
+
+  it("warm world: baseline snapshots the real board; only real deltas admit", async () => {
+    const t0 = Date.now();
+    // Storage available from creation (production shape) — the creation-time
+    // refresh warms the cache before the first evaluate.
+    mockBoardTasks = [{ updatedAt: t0 - 60_000 }];
+    const gate = createIdleSalienceGate({ subsystem: "test" });
+    await flushAsync();
+
+    expect(gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 })).toMatchObject({
+      salient: true,
+      reason: "first-cognition",
+    });
+    expect(
+      gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 + 30 * 60_000 }),
+    ).toMatchObject({ salient: false, skipReason: "skip(no-salience)" });
+
+    // A real board change admits once the next refresh observes it.
+    mockBoardTasks = [{ updatedAt: t0 + 45 * 60_000 }, { updatedAt: t0 - 60_000 }];
+    gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 + 60 * 60_000 });
+    await flushAsync();
+    expect(
+      gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 + 90 * 60_000 }),
+    ).toMatchObject({ salient: true, reason: "board-delta" });
+  });
+
+  it("cold start: cache warm-up is not a board event (the 2026-06-12 soak false positive)", async () => {
+    // Storage down at creation — baseline admits against a cold (null) cache.
+    const gate = createIdleSalienceGate({ subsystem: "test" });
+    const t0 = Date.now();
+    expect(gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 }).salient).toBe(true);
+
+    // Storage comes up; the cache warms between beats.
+    mockBoardTasks = [{ updatedAt: t0 - 60_000 }];
+    gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 + 30 * 60_000 });
+    await flushAsync();
+
+    // The newly-warm snapshot is backfilled silently — never a phantom admit.
+    expect(
+      gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 + 60 * 60_000 }),
+    ).toMatchObject({ salient: false, skipReason: "skip(no-salience)" });
+    expect(
+      gate.evaluate({ cfg, agentId: "main", anchorHours: 24, nowMs: t0 + 90 * 60_000 }),
+    ).toMatchObject({ salient: false, skipReason: "skip(no-salience)" });
   });
 
   it("resolveIdleSalienceAnchorHours: default 24, clamps negatives, passes 0 through", () => {

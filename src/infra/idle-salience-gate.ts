@@ -102,6 +102,10 @@ export function createIdleSalienceGate(params: { subsystem: string }): IdleSalie
     })();
   };
 
+  // Warm the board cache at creation — at runner cadences (≥30m) the first
+  // evaluate then sees a real snapshot instead of the cold null cache.
+  refreshBoardCache();
+
   return {
     evaluate({ cfg, agentId, anchorHours, nowMs = Date.now() }) {
       let state = states.get(agentId);
@@ -115,6 +119,21 @@ export function createIdleSalienceGate(params: { subsystem: string }): IdleSalie
       }
       const board = boardCache;
       refreshBoardCache();
+      // Cache warm-up is not a board event: if the baseline run was admitted
+      // against a cold (null) snapshot, backfill it silently the first time
+      // real values appear — otherwise decideTickSalience reads null→value
+      // as a delta and admits a phantom run (caught by the 2026-06-12 idle
+      // soak). Tradeoff, same as the kernel's: delta detection can lag one
+      // observation window.
+      if (
+        state.lastSalientRunAt !== null &&
+        state.lastBoardMaxUpdatedAt === null &&
+        state.lastBoardTaskCount === null &&
+        (board.maxUpdatedAt !== null || board.taskCount !== null)
+      ) {
+        state.lastBoardMaxUpdatedAt = board.maxUpdatedAt;
+        state.lastBoardTaskCount = board.taskCount;
+      }
       const verdict = decideTickSalience({
         nowMs,
         lastSalientCognitionAt: state.lastSalientRunAt,
