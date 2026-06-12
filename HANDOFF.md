@@ -1,54 +1,87 @@
 # HANDOFF — argent-core session bridge
 
-> **2026-06-11 overnight addendum:** five more PRs merged (#439 fresh-PG self-bootstrap proven on a zero-table DB, #440 worker-wizard mounted, #441 conductor demo kit + local-provider auth + state-dir fix + cold-turn markers, #443 SOP fix). dev = 118eb985 / v2026.6.11-dev.0. Worker mechanics proven with real local-LLM turns; local-model tool-calling broken by prompt-injected tool text (#442 — 43k-token prompt evidence for #407). Morning checklist in the vault Daily Update 2026-06-11.
+**From:** 2026-06-11 all-day session (Claude Fable 5: v2 design → 5 shipped contracts; the 6/10 handoff is superseded, in git history)
+**Branch:** `dev` @ `fb726ece` = **v2026.6.11-dev.5** — clean, pushed, deployed to Jason's live box (snapshot synced, gateway restarted, kernel quiet verified live at 02:30:49Z)
+**Mission:** OVERNIGHT SPRINT (Jason's explicit authorization, 2026-06-11 ~21:45: "a really big sprint… throughout the night while I'm sleeping"). Work the backlog below in order, one locked contract at a time.
 
-**From:** 2026-06-10 evening session (Claude Fable 5; resumed on fresh account after usage ceiling)
-**Branch:** `feat/business-into-core-2026-06-10` — based on `origin/dev` @ `8f84de96`
-**Theme:** Jason's reset: "merge all business logic back into core, one source of truth" → recon (7 agents) → distillation merge **LANDED, VERIFIED GREEN, SPINE PROVEN** (see ORCHESTRATION.md "Verification evidence"). PR to dev in flight. Lane 2 DONE: #405 read-side fix shipped as PR #436 (measured: critical-path reads 2/turn → 0/turn warm).
+---
 
-> **Status supersedes the sections below** (written mid-interruption, kept for context): slice C is DONE (real 1264-line execution worker union-merged, server.impl.ts static imports, dead twins deleted), green loop DONE (206 TS errors all-baseline vs dev's 216; suite fixes 9 dev-failing files, adds 0), cleanup wave DONE (loaders/public-core machinery deleted; AGENTS.md/.argent-repo.json/README/boundary-doc rewritten to one-repo reality), runtime smoke DONE (gateway boots clean; license real round-trip non-blocking; **governed spine ran end-to-end on fresh Postgres: template → assignment → orchestrator task → worker dispatch → blocked simulate run with review pending**). Version bumped 2026.6.10-dev.0.
+## What landed today (all on dev, all measured)
 
-## Decisions made THIS session (all logged in ORCHESTRATION.md decision log)
+| PR/commit                                    | What                                                                                                                                                                                                                       | Proof                                                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| #447                                         | Worker native tool calls + `promptMode:"minimal"` worker lane (#442/#407)                                                                                                                                                  | worker prompt 40k→2,056 tokens; native `tools` field on the wire                                               |
+| #450                                         | `work_report` completion contract (v2 D5) + **the dropped-customTools fix** (`createAgentSession` ignored `options.customTools` — NO custom tool executed on the embedded pi_only path; masked by boardChanged acceptance) | conductor demo **COMPLETED on gemma-4-12b-QAT**, 2,934-char triage log on the run record, zero board mutations |
+| #451                                         | Kernel deterministic salience gate (LIMBIC law 3) + self-stimulation guard (`origin: background` zero-weighted for salience)                                                                                               | 60-min soak: 117 ticks, 0 inference; natural A/B: old code burned ~25 reflections same hour, same LM Studio    |
+| #448                                         | Updater runs native rebuilds under the gateway's pinned Node + ABI verify/heal                                                                                                                                             | closes #416                                                                                                    |
+| fb726ece                                     | Update unstick (regenerated artifacts blocked rebase → box stuck on dev.1 two days) + disableImageTool flags actually implemented                                                                                          | Jason's box updated dev.1→dev.5 minutes later                                                                  |
+| `ops/WORKER_RUNTIME_V2_DESIGN_2026-06-11.md` | The flagship design: D1–D11, Pi-Conductor + LIMBIC addenda; P1 + P4-lite delivered with measured numbers                                                                                                                   | Jason approved; Pi gate numbers + PG-native grades LOCKED                                                      |
 
-1. **Open source approved** — Jason consulted Richard. Revenue = Titanium services (clients pay for install/run). `ArgentAIOS/argentos-core` is PUBLIC; pushing business code is intentional. Push/PR cleared.
-2. **Positioning:** ArgentOS = _governed agent workforce for businesses_ — NOT a Hermes/OpenClaw personal-agent race. Stability/governance/audit is the moat.
-3. **Distillation merge** (Jason chose over mechanical): real modules verbatim, slop filtered, spine must RUN.
-4. License machinery merges but deprioritized + strictly non-blocking. No gating work.
-5. `src/workforce/jobs.ts` (legacy SQLite JobsModule) NOT merged; delete its orphan test `src/data/jobs.test.ts` instead (still TODO).
-6. **#405 turn-speed promoted to co-equal goal** — Jason: "turns are painful." Deliver a measured number.
+**Doctrine inputs (read before working):** project memory dir (worker-blank-slate law incl. position-ledger refinement · machine-purrs-first · cost discipline · sandbox gateway isolation · autonomy: pick next work, no menus), the v2 design doc above, and `/Users/sem/code/evy-mini/EVY-KERNEL-DESIGN.md` (LIMBIC/1 — Jason wants its DNA in everything kernel/worker).
 
-## State of the merge (read `ops/BUSINESS_MERGE_LANDING_MAP_2026-06-10.md` — the canonical plan)
+## OVERNIGHT BACKLOG — in order, one locked contract each
 
-Recon found the merge is SMALL: gateway handlers byte-identical already in core; storage/tables/tests already in core; only ~13 impl files needed + seam conversion. Optional loaders NEVER resolved in bundled runtimes (recon-proven) → all converted to static imports.
+### 1. Worker Runtime v2 P2 — blank-slate ephemeral sessions + role profiles (THE flagship, due before 6/22)
 
-**On disk in `abf1340a` (UNVERIFIED — no tsgo/tests/lint run yet):**
+```
+=== LOCKED CONTRACT ===
+GOAL: Worker runs execute in ephemeral role-scoped sessions built FROM the
+template (v2 D1+D2) — the worker prompt provably contains ONLY company
+alignment + role contract + granted tools + granted knowledge; the
+withSessionToolPolicyOverride mutate/restore hack dies.
+ACCEPTANCE:
+  - Role profile compiled per (templateId, version): system prompt = alignment
+    block + rolePrompt + SOP + successDefinition + mode directives + tool
+    rules; tool set = grants + work_report; cached, invalidated on edit
+  - Worker session is ephemeral per run (worker:<assignmentId>:<runId>, or via
+    the sessions_spawn seam), never the agent main session; discarded after
+  - withSessionToolPolicyOverride deleted; grant filtering structural
+  - Prompt-cleanliness test BY INSPECTION (the law): the worker transcript
+    contains zero SOUL/IDENTITY/memory/skills/operator text beyond the profile
+  - Conductor demo still COMPLETES on gemma-4-12b-QAT (sandboxed gateway,
+    isolation flags); worker prompt stays ≤2.5k tokens
+  - Full suite at dev baseline parity (42/134 + the documented model-auth flake)
+NON-GOALS: P3 (leases), P5 (grading), position-ledger retrieval, dashboard,
+cross-process workers.
+BUDGET: the night's big rock — ~10 files. TRIPWIRE: if the sessions_spawn
+seam can't carry it without refactoring the spawn machinery itself, ship the
+profile-compile + prompt-cleanliness half and report the ripple.
+RULES: house rules + sandbox isolation flags + API_PORT override + never seed
+via :9242. Report against ACCEPTANCE in the PR body before merging.
+=== Work only to this contract. ===
+```
 
-- ✅ 5 tools at `src/agents/tools/`, static-imported in `argent-tools.ts`, public-core blocklist removed, `argent-tools-core.ts` deleted
-- ✅ Intent: `src/agents/{intent-simulation,intent-runtime-gate}.ts` landed; `src/infra/intent-simulation-{runner,scenarios-t1}.ts` replaced (fake all-pass stub GONE); `intent-core.ts`, `intent-runtime-gate-core.ts`, `intent-cli-core.ts` deleted; static imports in `server-methods/intent.ts` + `optional-intent.ts`
-- ✅ `src/infra/job-orchestrator-runner.ts` landed; bridge converted to static import
-- ✅ `src/licensing/` (8 files); `server-startup.ts` static import; `license-core.ts` deleted; `org-scope.ts` + `tsdown.config.ts` updated
-- ✅ Dashboard: WorkforceBoard + WorkerFlowModal + worker-wizard landed; bridges rewired; `configSurfaceProfile.ts` flipped; `App.tsx` + sentinel test + OrgChartWidget edited
-- ❌ **INCOMPLETE — slice C remainder:** `src/infra/execution-worker-runner.ts` union-merge NOT done (core's 178-line facade still in place; Business's 1264-line real runner at `/Users/sem/code/ArgentOS-Business/src/workers/execution-worker-runner.ts` not yet merged; core's evolved helpers must win; keep tsdown standalone entry; consumers: server-close.ts, server-reload-handlers.ts, 4 passing helper tests). Also: `server.impl.ts:219-224` loaders NOT yet converted; `execution-worker-runner-core.ts` not deleted; `src/data/jobs.test.ts` not deleted.
+### 2. P3 — lease lifecycle (claim/heartbeat/halt + full runNow semantics) — only if P2 lands clean
 
-## Next session — exact order
+Design is locked: v2 doc D4+D6 (CAS claim + TTL, runner-side heartbeat, alive handshake, kill flag, boot-time orphan sweep; runNow re-queues the blocked task by default, `{fresh:true}` supersedes). Closes #445 properly, advances #425. Same rules. ~Half a night; skip without guilt if P2 consumed it.
 
-1. Finish slice C (above). Then `git status` sanity vs landing map's "What LANDS" table.
-2. **Green loop:** `pnpm tsgo` (baseline = 216 errors on clean dev, count in `/tmp/tsgo-baseline-count.txt`; expect ≤216, several known-failing seam errors should CLEAR); targeted vitest: 7 formerly-orphan tests + 4 execution-worker helper tests + `argent-tools.public-core.test.ts` + `dashboard-surface-profile.test.ts`; then full unit suite vs dev baseline; `pnpm lint`; `node scripts/check-invariants.mjs`; `cd dashboard && npx tsc -b --noEmit` (own project, not covered by root tsgo).
-3. **Cleanup wave (slice F):** delete `src/agents/optional-tool-factory.ts` + `src/utils/optional-module.ts` IF importerless now; public-core export machinery (`scripts/export-public-core.ts`, `src/infra/public-core-export.ts`, `public-core-denylist.test.ts` — already failing on dev); docs/sentinels: `AGENTS.md:5,9` (lane-lock still bans business in core — now false), `.argent-repo.json:6`, `docs/concepts/core-business-boundary.md`, `README.md:133-141`, `ops/AGENT_PERSONA_ONBOARDING_PROMPT.md:73`.
-4. **Runtime smoke:** `pnpm gateway:dev` boots clean with NO license file; spine demo: jobs template → assignment → `jobs.assignments.runNow` dispatches execution worker (simulate mode); `intent.simulate` returns a REAL report.
-5. Dev version bump (`YYYY.M.D-dev.N` per AGENTS.md contract) + push + PR to dev. Push is CLEARED (decision #1).
-6. **Lane 2 #405** on `perf/personal-skill-critical-path-405` (@ d5bd5e5d, has writes-fix + `personal_skills` marker): per-agent TTL(60s)+write-invalidated cache wrapping `{reviewPersonalSkillCandidates → listPersonalSkillCandidates(50)}` — the review is an O(N) serial PG chain, 24 candidates rewritten per turn observed, 30k rows in personal_skill_reviews; cache-miss fill joins QW-1 batch (results first consumed attempt.ts:872, dependency-clean); invalidate at 5 mutation sites (personal-skill-tool.ts, server-methods/skills.ts, live-inbox/capture.ts, sis-runner.ts, recordPersonalSkillUsage). ~250 LOC. Measure warm turn <200ms via `[tony-stark]` lines in `~/.argentos/logs/gateway.log` (run `pnpm gateway:dev` + `pnpm tui` — persistent process needed for warm turns).
+### 3. Heartbeat + contemplation deterministic gating (the remaining fan-spinners)
 
-## Recon artifacts (do NOT redo recon — it's done and paid for)
+Same LIMBIC treatment as #451: ~96 full idle agent turns/day between them (30m defaults each). Salience/presence-gate them with first-class skip reasons; config semantics preserved. Inventory in PR #451's body.
 
-- Landing map: `ops/BUSINESS_MERGE_LANDING_MAP_2026-06-10.md`
-- Full 7-agent recon JSON (175KB): `/private/tmp/claude-501/-Users-sem-code-argent-core/ae3b70e2-17ca-47cc-aebc-b8edbbc477e4/tasks/w1wmhq3s4.output`
-- Interrupted landing workflow (5 slices, resumable but slices are mostly on disk — cheaper to just finish slice C by hand): run `wf_31ddadc8-3a4`, script at `.../workflows/scripts/business-into-core-landing-wf_31ddadc8-3a4.js`
+### 4. Closet quick wins (only if time remains)
 
-## Sticky notes
+- api-server.cjs ignores `ARGENT_PG_URL` (isolation leak #5 — caused a live-board incident this week; see closet)
+- gateway.log rotation (the 755MB incident)
+- dependabot triage pass (148 vulns, 11 critical — repo is public now)
 
-- Pre-commit hook runs check-invariants (passed at abf1340a). Root `pnpm tsgo` does NOT cover dashboard/.
-- `pnpm check:loc` (500-line cap) is NOT in CI — WorkforceBoard 3818 lines landed as-is; splitting = logged follow-up.
-- Worker-wizard may still be unmounted (slice E was mid-flight) — check for a mount point + the seven fetchLocalApi conversions.
-- ArgentOS-Business + ArgentOS-Legacy repos: read-only sources, do not delete (Jason's call).
-- Memory saved: `project_argentos_open_source_positioning.md` (the strategy reset).
+## Overnight ground rules (Jason-specific)
+
+- **NO voice pings 23:00–07:00** (he is sleeping; mirror his Evy quiet-hours constants). Morning deliverables instead: vault note `Argent/Daily Updates/2026-06-12 - Overnight sprint….md` (follow the 6/11 note's shape: shipped / honest findings / morning checklist / open follow-ups) + ONE voice ping after 07:00 if the session is still alive.
+- **His LIVE box is hands-off** — no `argent update`, no gateway restarts, no writes to `~/.argentos` or his PG (`postgres://localhost:5433/argentos`). Test gateways: scratch `ARGENT_STATE_DIR` + `ARGENT_DISABLE_BONJOUR=1` + `ARGENT_KEYCHAIN_DISABLE_WRITE=1` + `ARGENT_SKIP_PLUGINS=1` + `API_PORT≠9242` + `ARGENT_PG_URL=<scratch db on :5433>` + kill-by-port teardown. The dashboard api child connects to HIS PG regardless (known leak) — never seed through it.
+- **Merging:** PRs to dev; self-merge when (a) full suite at baseline parity, (b) acceptance measured and written in the PR body, (c) version bump per AGENTS.md (`2026.6.12-dev.N`, start dev.0). Matches the #444 overnight precedent. Anything irreversible or outward-facing beyond this repo waits for morning.
+- **Cost discipline** (memory): one contract at a time; no parallel fleets without a named payoff. Five subscriptions exist; the constraint is judgment, not tokens.
+- **Update-flow knowledge:** Jason's install = git clone `/Users/sem/argentos` (NOT `/Users/sem/code/argent-core`, the dev workspace) → runtime snapshot at `~/.argentos/lib/node_modules/argentos`; `/Users/sem/bin/argent` shim sets `ARGENT_GIT_DIR`. Never run `argent update` with cwd inside the dev workspace.
+
+## Live-system facts (verified tonight)
+
+- LM Studio on THIS box (M5 Max) :1234, `google/gemma-4-12b-qat` loaded at 80k ctx. The M3 Ultra (256GB, tailnet) is the designated cognition host going forward (needs LM Studio network serving enabled).
+- Scratch PG `argentos_wr2_test` on :5433 still exists (6 demo tickets + work_report-SOP template + assignment `6aabe019-fe73-4b82-876c-71dbd5c3bec8`). Sandbox state dir `/tmp/argent-wr2-test` intact — reusable for P2 measurement. WS helper: `/tmp/argent-wr2-test/runnow.mjs` (connect handshake requires `client.id: "test"` literally).
+- Suite baseline: 42 failed files / 134 failed tests on dev; `model-auth.test.ts` flakes +1 under any scheduling change (closet-owned, passes in isolation). The `pi-tools.ts:396` net-new tsc error is FIXED as of fb726ece.
+- Open issues touched today: #445 (P0 shipped; full semantics = P3), #446 (config auto-migrate doesn't persist), #449 (closed twin of #450).
+
+## Open decisions awaiting Jason (do NOT decide overnight)
+
+- v2 design: `work_report` `need_input` routing (park vs page); whether `toolsDeny` dies in the grant-only migration.
+- Evy Week-1 kernel build kickoff (separate project; the evy-mini session owns it).
+- Dependabot triage priorities.
