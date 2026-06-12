@@ -924,8 +924,8 @@ function getDatabaseBackupPlistPath() {
 }
 
 function readStorageConfigSummary() {
-  const configPath =
-    process.env.ARGENT_CONFIG_PATH || path.join(process.env.HOME || "", ".argentos", "argent.json");
+  // Same state-dir-aware resolution as STORAGE_CONFIG_PATH (isolation leak #5).
+  const configPath = STORAGE_CONFIG_PATH;
   const defaults = {
     backend: "sqlite",
     readFrom: "sqlite",
@@ -2389,7 +2389,15 @@ app.get("/api/cron/jobs", (req, res) => {
 // TASK API - Backend task management (SQLite)
 // ============================================
 
-const STORAGE_CONFIG_PATH = path.join(process.env.HOME || "", ".argentos", "argent.json");
+// Isolation leak #5 fix: honor ARGENT_CONFIG_PATH / ARGENT_STATE_DIR like the
+// gateway does — a sandboxed gateway's api child must never silently read the
+// operator's ~/.argentos/argent.json (this hit the live board on 2026-06-09).
+const STORAGE_CONFIG_PATH =
+  process.env.ARGENT_CONFIG_PATH?.trim() ||
+  path.join(
+    process.env.ARGENT_STATE_DIR?.trim() || path.join(process.env.HOME || "", ".argentos"),
+    "argent.json",
+  );
 
 function readStorageBackend() {
   try {
@@ -2432,13 +2440,16 @@ function readStorageConfig() {
 }
 
 function resolvePgConnectionString() {
-  const fromConfig = STORAGE_CONFIG.postgresConnectionString;
-  if (fromConfig) {
-    return fromConfig;
-  }
+  // Explicit env wins: an exported ARGENT_PG_URL is operator intent (it is
+  // exactly how sandboxed gateways isolate their scratch database), so it
+  // must never lose to a config file read from the default location.
   const fromEnv = process.env.ARGENT_PG_URL || process.env.DATABASE_URL;
   if (typeof fromEnv === "string" && fromEnv.trim()) {
     return fromEnv.trim();
+  }
+  const fromConfig = STORAGE_CONFIG.postgresConnectionString;
+  if (fromConfig) {
+    return fromConfig;
   }
   return "postgres://localhost:5433/argentos";
 }
