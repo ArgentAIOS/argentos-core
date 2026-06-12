@@ -7,7 +7,9 @@ import { maybeRemoveDeprecatedCliAuthProfiles } from "./doctor-auth.js";
 
 let originalAgentDir: string | undefined;
 let originalPiAgentDir: string | undefined;
+let originalStateDir: string | undefined;
 let tempAgentDir: string | undefined;
+let tempStateDir: string | undefined;
 
 function makePrompter(confirmValue: boolean): DoctorPrompter {
   return {
@@ -24,9 +26,14 @@ function makePrompter(confirmValue: boolean): DoctorPrompter {
 beforeEach(() => {
   originalAgentDir = process.env.ARGENT_AGENT_DIR;
   originalPiAgentDir = process.env.PI_CODING_AGENT_DIR;
+  originalStateDir = process.env.ARGENT_STATE_DIR;
   tempAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "argent-auth-"));
+  tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "argent-state-"));
   process.env.ARGENT_AGENT_DIR = tempAgentDir;
   process.env.PI_CODING_AGENT_DIR = tempAgentDir;
+  // The deprecated-profile sweep walks <stateDir>/agents/<id>/agent for every
+  // configured agent — isolate it so tests never touch the real state dir.
+  process.env.ARGENT_STATE_DIR = tempStateDir;
 });
 
 afterEach(() => {
@@ -40,9 +47,18 @@ afterEach(() => {
   } else {
     process.env.PI_CODING_AGENT_DIR = originalPiAgentDir;
   }
+  if (originalStateDir === undefined) {
+    delete process.env.ARGENT_STATE_DIR;
+  } else {
+    process.env.ARGENT_STATE_DIR = originalStateDir;
+  }
   if (tempAgentDir) {
     fs.rmSync(tempAgentDir, { recursive: true, force: true });
     tempAgentDir = undefined;
+  }
+  if (tempStateDir) {
+    fs.rmSync(tempStateDir, { recursive: true, force: true });
+    tempStateDir = undefined;
   }
 });
 
@@ -105,5 +121,67 @@ describe("maybeRemoveDeprecatedCliAuthProfiles", () => {
     expect(next.auth?.profiles?.["openai-codex:codex-cli"]).toBeUndefined();
     expect(next.auth?.order?.anthropic).toBeUndefined();
     expect(next.auth?.order?.["openai-codex"]).toBeUndefined();
+  });
+
+  it("sweeps deprecated profiles from every agent's store, not just the default", async () => {
+    if (!tempAgentDir || !tempStateDir) {
+      throw new Error("Missing temp dirs");
+    }
+    // Default agent store (env-pinned): clean, with a real profile that must
+    // survive and must NOT be copied into other agents' stores.
+    const mainAuthPath = path.join(tempAgentDir, "auth-profiles.json");
+    fs.writeFileSync(
+      mainAuthPath,
+      `${JSON.stringify({
+        version: 1,
+        profiles: {
+          "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-keep" },
+        },
+      })}\n`,
+      "utf8",
+    );
+    // Agent literally named "main": carries only the deprecated codex-cli
+    // profile (the live-box bug scenario).
+    const mainAgentDir = path.join(tempStateDir, "agents", "main", "agent");
+    fs.mkdirSync(mainAgentDir, { recursive: true });
+    const mainAgentAuthPath = path.join(mainAgentDir, "auth-profiles.json");
+    fs.writeFileSync(
+      mainAgentAuthPath,
+      `${JSON.stringify({
+        version: 1,
+        profiles: {
+          "openai-codex:codex-cli": {
+            type: "oauth",
+            provider: "openai-codex",
+            access: "stale-a",
+            refresh: "stale-r",
+            expires: Date.now() + 60_000,
+          },
+        },
+        order: { "openai-codex": ["openai-codex:codex-cli"] },
+      })}\n`,
+      "utf8",
+    );
+
+    const cfg = {
+      agents: { list: [{ id: "argent", default: true }, { id: "main" }] },
+    };
+
+    await maybeRemoveDeprecatedCliAuthProfiles(cfg, makePrompter(true));
+
+    const mainAgentRaw = JSON.parse(fs.readFileSync(mainAgentAuthPath, "utf8")) as {
+      profiles?: Record<string, unknown>;
+      order?: Record<string, string[]>;
+    };
+    expect(mainAgentRaw.profiles?.["openai-codex:codex-cli"]).toBeUndefined();
+    expect(mainAgentRaw.order?.["openai-codex"]).toBeUndefined();
+    // The unmerged (raw) update must not smear default-agent credentials
+    // into the other agent's store file.
+    expect(mainAgentRaw.profiles?.["anthropic:default"]).toBeUndefined();
+
+    const mainRaw = JSON.parse(fs.readFileSync(mainAuthPath, "utf8")) as {
+      profiles?: Record<string, unknown>;
+    };
+    expect(mainRaw.profiles?.["anthropic:default"]).toBeDefined();
   });
 });

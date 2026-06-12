@@ -1,6 +1,6 @@
 {
   "snapshotAt": "2026-06-12T04:06:58.501Z",
-  "totalErrors": 191,
+  "totalErrors": 189,
   "errors": [
     {
       "file": "src/agents/compaction.ts",
@@ -787,18 +787,6 @@
       "line": 475,
       "code": "TS2339",
       "message": "Property 'at' does not exist on type 'CronSchedule'."
-    },
-    {
-      "file": "src/gateway/server-methods/commands.ts",
-      "line": 72,
-      "code": "TS2554",
-      "message": "Expected 2 arguments, but got 1."
-    },
-    {
-      "file": "src/gateway/server-methods/commands.ts",
-      "line": 93,
-      "code": "TS2322",
-      "message": "Type 'string | undefined' is not assignable to type 'ThinkLevel | undefined'."
     },
     {
       "file": "src/gateway/server-methods/connectors.ts",
