@@ -8,16 +8,15 @@ import { buildAgentMainSessionKey } from "../routing/session-key.js";
 import { createArgentCodingTools } from "./pi-tools.js";
 
 /**
- * Worker-lane tool grants (#442/#407): the execution worker patches
- * `toolsAllow`/`toolsDeny` onto its session entry (agent:<id>:worker-execution)
- * before dispatching agentCommand. The tool registry handed to the model must
- * shrink to the granted set — otherwise every worker turn ships the full
- * 100+-tool schema block (the measured ~43k-token prompt that breaks
+ * Worker-lane tool grants (#442/#407, Worker Runtime v2 D1): job runs are
+ * born in ephemeral sessions whose entry carries `toolsAllow`/`toolsDeny`
+ * (see worker-ephemeral-session.ts). The tool registry handed to the model
+ * must shrink to the granted set — otherwise every worker turn ships the
+ * full 100+-tool schema block (the measured ~43k-token prompt that breaks
  * local-model tool calling).
  *
- * This mirrors the exact write path of withSessionToolPolicyOverride in
- * execution-worker-runner-impl.ts, including a custom session.store path —
- * which also pins the cfg.session.store (not cfg.sessionStore) read-side fix.
+ * This pins the generic session-policy read side with a custom session.store
+ * path — including the cfg.session.store (not cfg.sessionStore) fix.
  */
 describe("worker session tool policy filters the model-visible registry", () => {
   let storeDir: string;

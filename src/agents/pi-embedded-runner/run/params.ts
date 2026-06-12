@@ -108,6 +108,8 @@ export type RunEmbeddedPiAgentParams = {
   extraSystemPrompt?: string;
   /** System prompt assembly mode (see EmbeddedRunAttemptParams.promptMode). */
   promptMode?: PromptMode;
+  /** Full system prompt replacement (see EmbeddedRunAttemptParams.systemPromptOverride). */
+  systemPromptOverride?: string;
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
