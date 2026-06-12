@@ -56,6 +56,8 @@ export const HeartbeatSchema = z
     accountId: z.string().optional(),
     prompt: z.string().optional(),
     ackMaxChars: z.number().int().nonnegative().optional(),
+    salienceGate: z.boolean().optional(),
+    salienceAnchorHours: z.number().nonnegative().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
@@ -150,6 +152,8 @@ export const ContemplationIntervalSchema = z
       })
       .strict()
       .optional(),
+    salienceGate: z.boolean().optional(),
+    salienceAnchorHours: z.number().nonnegative().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {

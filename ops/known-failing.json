@@ -1,6 +1,6 @@
 {
-  "snapshotAt": "2026-06-11T02:36:43.921Z",
-  "totalErrors": 198,
+  "snapshotAt": "2026-06-12T04:06:58.501Z",
+  "totalErrors": 191,
   "errors": [
     {
       "file": "src/agents/compaction.ts",
@@ -39,22 +39,10 @@
       "message": "Type '(toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: AgentToolUpdateCallback<unknown> | undefined) => Promise<string | AgentToolResult<...>>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
     },
     {
-      "file": "src/agents/pi-tools.policy.ts",
-      "line": 284,
-      "code": "TS2339",
-      "message": "Property 'sessionStore' does not exist on type 'ArgentConfig'."
-    },
-    {
       "file": "src/agents/pi-tools.schema.ts",
       "line": 5,
       "code": "TS2351",
       "message": "This expression is not constructable."
-    },
-    {
-      "file": "src/agents/pi-tools.ts",
-      "line": 395,
-      "code": "TS2561",
-      "message": "Object literal may only specify known properties, but 'disableImageTool' does not exist in type '{ sandboxBrowserBridgeUrl?: string | undefined; allowHostBrowserControl?: boolean | undefined; agentSessionKey?: string | undefined; agentChannel?: GatewayMessageChannel | undefined; ... 21 more ...; disableMessageTool?: boolean | undefined; }'. Did you mean to write 'disableMessageTool'?"
     },
     {
       "file": "src/agents/session-tool-result-guard-wrapper.ts",
@@ -558,13 +546,13 @@
       "file": "src/config/load-profile.ts",
       "line": 34,
       "code": "TS2353",
-      "message": "Object literal may only specify known properties, and 'enabled' does not exist in type '{ every?: string | undefined; activeHours?: { start?: string | undefined; end?: string | undefined; timezone?: string | undefined; } | undefined; model?: string | undefined; session?: string | undefined; ... 6 more ...; verifier?: { ...; } | undefined; }'."
+      "message": "Object literal may only specify known properties, and 'enabled' does not exist in type '{ every?: string | undefined; activeHours?: { start?: string | undefined; end?: string | undefined; timezone?: string | undefined; } | undefined; model?: string | undefined; session?: string | undefined; ... 8 more ...; salienceAnchorHours?: number | undefined; }'."
     },
     {
       "file": "src/config/load-profile.ts",
       "line": 57,
       "code": "TS2353",
-      "message": "Object literal may only specify known properties, and 'enabled' does not exist in type '{ every?: string | undefined; activeHours?: { start?: string | undefined; end?: string | undefined; timezone?: string | undefined; } | undefined; model?: string | undefined; session?: string | undefined; ... 6 more ...; verifier?: { ...; } | undefined; }'."
+      "message": "Object literal may only specify known properties, and 'enabled' does not exist in type '{ every?: string | undefined; activeHours?: { start?: string | undefined; end?: string | undefined; timezone?: string | undefined; } | undefined; model?: string | undefined; session?: string | undefined; ... 8 more ...; salienceAnchorHours?: number | undefined; }'."
     },
     {
       "file": "src/connectors/catalog.ts",
@@ -651,40 +639,10 @@
       "message": "Argument of type '(row: { id: string; }) => string' is not assignable to parameter of type '(value: Row, index: number, array: Row[]) => string'."
     },
     {
-      "file": "src/data/migrate/sqlite-to-pg.ts",
-      "line": 121,
-      "code": "TS2769",
-      "message": "No overload matches this call."
-    },
-    {
-      "file": "src/data/migrate/sqlite-to-pg.ts",
-      "line": 661,
-      "code": "TS2322",
-      "message": "Type 'PgTableWithColumns<{ name: \"tasks\"; schema: undefined; columns: { id: PgColumn<{ name: \"id\"; tableName: \"tasks\"; dataType: \"string\"; columnType: \"PgText\"; data: string; driverParam: string; notNull: true; hasDefault: false; ... 6 more ...; generated: undefined; }, {}, {}>; ... 20 more ...; jobTemplateId: PgColumn<.....' is not assignable to type 'PgTableWithColumns<{ name: \"resources\"; schema: undefined; columns: { id: PgColumn<{ name: \"id\"; tableName: \"resources\"; dataType: \"string\"; columnType: \"PgText\"; data: string; driverParam: string; notNull: true; hasDefault: false; ... 6 more ...; generated: undefined; }, {}, {}>; ... 8 more ...; updatedAt: PgColumn...'."
-    },
-    {
       "file": "src/data/migrate/validate-stack.ts",
       "line": 78,
       "code": "TS2351",
       "message": "This expression is not constructable."
-    },
-    {
-      "file": "src/data/pg-adapter.ts",
-      "line": 3403,
-      "code": "TS2339",
-      "message": "Property 'agentId' does not exist on type 'PgAdapter'."
-    },
-    {
-      "file": "src/data/pg-adapter.ts",
-      "line": 3517,
-      "code": "TS2339",
-      "message": "Property 'agentId' does not exist on type 'PgAdapter'."
-    },
-    {
-      "file": "src/data/pg-adapter.ts",
-      "line": 3521,
-      "code": "TS2339",
-      "message": "Property 'agentId' does not exist on type 'PgAdapter'."
     },
     {
       "file": "src/data/redis-agent-state.ts",
@@ -916,43 +874,43 @@
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1166,
+      "line": 1189,
       "code": "TS2353",
       "message": "Object literal may only specify known properties, and 'fallback' does not exist in type 'Episode'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1172,
+      "line": 1195,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1173,
+      "line": 1196,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1181,
+      "line": 1204,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1191,
+      "line": 1214,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1192,
+      "line": 1215,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1193,
+      "line": 1216,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
@@ -1012,7 +970,7 @@
     },
     {
       "file": "src/infra/heartbeat-runner.ts",
-      "line": 1149,
+      "line": 1177,
       "code": "TS2339",
       "message": "Property 'dashboard' does not exist on type 'ArgentConfig'."
     },

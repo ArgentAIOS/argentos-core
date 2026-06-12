@@ -61,6 +61,7 @@ import {
 } from "./episode-types.js";
 import { isWithinActiveHours } from "./heartbeat-active-hours.js";
 import { loadScoreState } from "./heartbeat-score.js";
+import { createIdleSalienceGate, resolveIdleSalienceAnchorHours } from "./idle-salience-gate.js";
 import {
   createSchedulerDedupe,
   getSchedulerDedupe,
@@ -68,6 +69,10 @@ import {
 } from "./scheduler-dedupe.js";
 
 const log = createSubsystemLogger("gateway/contemplation");
+
+// Idle-salience gate (LIMBIC law 3): contemplation cycles skip
+// deterministically unless something happened since the last salient cycle.
+const contemplationSalienceGate = createIdleSalienceGate({ subsystem: "contemplation" });
 
 const OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat";
 const OLLAMA_SEASONING_MODEL = "qwen3:1.7b";
@@ -963,6 +968,24 @@ async function runContemplationOnce(
         activeRuns,
       });
       return { status: "skipped", reason: "agent-busy" };
+    }
+
+    // LIMBIC law 3 (#451 extended to the contemplation fan-spinner): bare
+    // idleness is not salience. Contemplate when something happened since
+    // the last salient cycle (operator activity that has since settled, a
+    // board delta) or on the anchor — never forever on an idle box. Last
+    // check before dispatch so an admitted (salience-consuming) verdict is
+    // never wasted by a downstream skip.
+    if (contemplation?.salienceGate !== false) {
+      const verdict = contemplationSalienceGate.evaluate({
+        cfg,
+        agentId: resolvedAgentId,
+        anchorHours: resolveIdleSalienceAnchorHours(contemplation?.salienceAnchorHours),
+        nowMs: startedAt,
+      });
+      if (!verdict.salient) {
+        return { status: "skipped", reason: "no-salience" };
+      }
     }
 
     let text = "";
