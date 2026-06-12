@@ -375,6 +375,7 @@ const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.kernel.allowVision": "Consciousness Kernel Allow Vision",
   "agents.defaults.kernel.idleActivityGateMinutes":
     "Consciousness Kernel Idle Activity Gate (minutes)",
+  "agents.defaults.kernel.salienceAnchorHours": "Consciousness Kernel Salience Anchor (hours)",
   "agents.defaults.kernel.operatorNotifications": "Kernel Operator Notifications",
   "agents.defaults.kernel.operatorNotifications.enabled": "Kernel Operator Notifications Enabled",
   "agents.defaults.kernel.operatorNotifications.cooldownMs":
@@ -961,6 +962,8 @@ const FIELD_HELP: Record<string, string> = {
     "Allow future vision-capable kernel modes to request camera context.",
   "agents.defaults.kernel.idleActivityGateMinutes":
     "Skip inner reflection if no operator activity (chat or agent message) has been seen in the last N minutes. Default: 30. Set to 0 to disable the gate.",
+  "agents.defaults.kernel.salienceAnchorHours":
+    "With zero salience (no operator activity or task-board change since the last cognition), allow at most one kernel cognition per N hours. Default: 24. Set to 0 to disable the anchor — an idle gateway then burns zero kernel inference.",
   "agents.defaults.kernel.operatorNotifications":
     "Optional outbound targets for kernel requests that need operator input. Uses the normal channel delivery pipeline, so Telegram/Slack/Discord/plugin targets stay configurable instead of hardcoded.",
   "agents.defaults.kernel.operatorNotifications.enabled":

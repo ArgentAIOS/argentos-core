@@ -93,6 +93,14 @@ export type AgentConsciousnessKernelConfig = {
    * `selfState.conversation.lastUserMessageAt`.
    */
   idleActivityGateMinutes?: number;
+  /**
+   * Deterministic salience anchor: with zero salience (no operator activity,
+   * no task-board delta since the last cognition), allow at most one
+   * cognition per this many hours. Default: 24. Set 0 to disable the anchor
+   * (pure salience gating). Cognition outside the anchor requires a real
+   * salience signal — an idle gateway burns zero kernel inference.
+   */
+  salienceAnchorHours?: number;
   /** Configurable outbound surfaces for kernel requests that need operator input. */
   operatorNotifications?: AgentConsciousnessKernelOperatorNotificationsConfig;
 };
