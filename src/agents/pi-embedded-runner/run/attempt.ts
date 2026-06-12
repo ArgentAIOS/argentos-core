@@ -991,6 +991,14 @@ export async function runEmbeddedAttempt(
     // runs the function but the inner tracker is inert (record() calls no-op).
     const { result: appendPrompt, tracker: promptBudgetTracker } = await runWithPromptBudget(
       async (tracker) => {
+        // Worker Runtime v2 (D1+D2): a compiled role profile replaces the
+        // entire assembled prompt. Built up from the template, never filtered
+        // down from the operator scaffold — so the builder is skipped, not
+        // configured.
+        if (params.systemPromptOverride) {
+          tracker.record("system-prompt-override", params.systemPromptOverride);
+          return params.systemPromptOverride;
+        }
         // Record each extraSystemPrompt contributor BEFORE buildEmbeddedSystemPrompt
         // so the log reflects the actual upstream injectors, not the glued string.
         for (const part of extraSystemPromptParts) {
@@ -1206,9 +1214,14 @@ export async function runEmbeddedAttempt(
         sessionClearedReason: sessionBootstrapSnapshot?.sessionClearedReason,
         fallbackChannel: runtimeChannel ?? undefined,
       });
-      const effectiveSystemPromptText = [systemPromptText, sessionBootstrapHint]
-        .filter((entry): entry is string => Boolean(entry))
-        .join("\n\n");
+      // Profile-override runs ship the override verbatim: the bootstrap hint
+      // carries operator-session state (last session key, cleared-from), which
+      // the blank-slate law bans from worker transcripts.
+      const effectiveSystemPromptText = params.systemPromptOverride
+        ? systemPromptText
+        : [systemPromptText, sessionBootstrapHint]
+            .filter((entry): entry is string => Boolean(entry))
+            .join("\n\n");
       applySystemPromptOverrideToSession(activeSession, effectiveSystemPromptText);
       const cacheTrace = createCacheTrace({
         cfg: params.config,

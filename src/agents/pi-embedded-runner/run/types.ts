@@ -96,6 +96,14 @@ export type EmbeddedRunAttemptParams = {
    * (#407/#442 worker-lane prompt shrink).
    */
   promptMode?: PromptMode;
+  /**
+   * Full replacement for the assembled system prompt (Worker Runtime v2 role
+   * profiles). When set, this exact text is the system prompt: the embedded
+   * builder is skipped and the session bootstrap hint is NOT appended —
+   * appending anything would leak operator-session context into a
+   * blank-slate worker run.
+   */
+  systemPromptOverride?: string;
   streamParams?: AgentStreamParams;
   /**
    * Per-tier `reasoningEffort` override resolved by the model router (GH #186).

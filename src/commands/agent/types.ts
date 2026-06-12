@@ -79,6 +79,14 @@ export type AgentCommandOpts = {
    * (#407/#442). Omitted → normal resolution (subagent key or full).
    */
   promptMode?: "full" | "subagent" | "minimal" | "none";
+  /**
+   * Full replacement for the assembled system prompt (Worker Runtime v2 role
+   * profiles, design D1+D2). When set, the embedded run ships exactly this
+   * text as the system prompt — no operator scaffold, no bootstrap hint, no
+   * appended sections. Pass promptMode "minimal" alongside so per-run context
+   * loading (skills, cross-channel, context files) is skipped too.
+   */
+  systemPromptOverride?: string;
   /** Explicit provider override for this run, bypassing session-stored model routing state. */
   providerOverride?: string;
   /** Explicit model override for this run, bypassing session-stored model routing state. */

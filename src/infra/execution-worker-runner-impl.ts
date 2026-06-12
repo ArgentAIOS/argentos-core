@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { ToolClaimValidation } from "../agents/tool-claim-validation.js";
 import type { ArgentConfig } from "../config/config.js";
 import type { AgentExecutionWorkerConfig } from "../config/types.agent-defaults.js";
@@ -14,15 +13,16 @@ import {
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import { evaluateRelationshipExecution } from "../agents/relationship-eval.js";
 import { clearWorkReport, takeWorkReport } from "../agents/tools/work-report-tool.js";
+import { getCompiledRoleProfile } from "../agents/worker-role-profile.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { agentCommand } from "../commands/agent.js";
 import { loadConfig } from "../config/config.js";
-import { resolveStorePath, updateSessionStore, type SessionEntry } from "../config/sessions.js";
 import { getStorageAdapter } from "../data/storage-factory.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
+import { createEphemeralWorkerSession } from "./worker-ephemeral-session.js";
 
 const log = createSubsystemLogger("gateway/execution-worker");
 
@@ -394,6 +394,9 @@ async function maybeCreatePersonalSkillCandidateFromTaskOutcome(params: {
   return true;
 }
 
+// Per-run governance context. Role-contract content (rolePrompt, SOP,
+// success definition, scenarios) lives in the compiled role profile now —
+// only the fields the runner still reads survive here.
 type JobExecutionContext = {
   assignmentId: string;
   assignmentTitle: string;
@@ -401,13 +404,8 @@ type JobExecutionContext = {
   deploymentStage: "simulate" | "shadow" | "limited-live" | "live";
   departmentId?: string;
   scopeLimit?: string;
-  reviewRequired?: boolean;
-  rolePrompt: string;
-  sop?: string;
-  successDefinition?: string;
   relationshipContract?: JobRelationshipContract;
   departmentPolicy?: IntentPolicyConfig;
-  simulationScenarios?: string[];
 };
 
 function buildIntentVerdict(params: {
@@ -606,11 +604,7 @@ export function looksLikeTextualToolCall(text: string): boolean {
   return TEXTUAL_TOOL_CALL_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-function buildTaskExecutionPrompt(
-  task: Task,
-  jobContext?: JobExecutionContext,
-  opts?: { textualToolCallNudge?: boolean },
-): string {
+function buildTaskCoreLines(task: Task): string[] {
   const lines = [
     "[WORKER_EXEC]",
     `Task: ${task.id} — ${task.title}`,
@@ -623,166 +617,64 @@ function buildTaskExecutionPrompt(
   if (task.dueAt) {
     lines.push(`Due: ${new Date(task.dueAt).toISOString()}`);
   }
-  if (jobContext) {
-    lines.push(
-      `Job Assignment: ${jobContext.assignmentTitle} (${jobContext.assignmentId})`,
-      `Deployment Stage: ${jobContext.deploymentStage.toUpperCase()}`,
-      `Job Mode: ${jobContext.executionMode.toUpperCase()}`,
-      `Role Contract: ${jobContext.rolePrompt}`,
-    );
-    if (jobContext.departmentId) {
-      lines.push(`Department Identity: ${jobContext.departmentId}`);
-    }
-    if (jobContext.departmentPolicy?.objective) {
-      lines.push(`Department Objective: ${jobContext.departmentPolicy.objective}`);
-    }
-    if (jobContext.departmentPolicy?.tradeoffHierarchy?.length) {
-      lines.push(
-        `Department Tradeoffs: ${jobContext.departmentPolicy.tradeoffHierarchy.join(" > ")}`,
-      );
-    }
-    if (jobContext.departmentPolicy?.neverDo?.length) {
-      lines.push(`Department Never Do: ${jobContext.departmentPolicy.neverDo.join(", ")}`);
-    }
-    if (jobContext.relationshipContract?.relationshipObjective) {
-      lines.push(
-        `Relationship Objective: ${jobContext.relationshipContract.relationshipObjective}`,
-      );
-    }
-    if (jobContext.relationshipContract?.toneProfile) {
-      lines.push(`Tone Profile: ${jobContext.relationshipContract.toneProfile}`);
-    }
-    if (jobContext.relationshipContract?.trustPriorities?.length) {
-      lines.push(`Trust Priorities: ${jobContext.relationshipContract.trustPriorities.join(", ")}`);
-    }
-    if (jobContext.relationshipContract?.continuityRequirements?.length) {
-      lines.push(
-        `Continuity Requirements: ${jobContext.relationshipContract.continuityRequirements.join(", ")}`,
-      );
-    }
-    if (jobContext.relationshipContract?.honestyRules?.length) {
-      lines.push(`Honesty Rules: ${jobContext.relationshipContract.honestyRules.join(", ")}`);
-    }
-    if (jobContext.relationshipContract?.handoffStyle) {
-      lines.push(`Handoff Style: ${jobContext.relationshipContract.handoffStyle}`);
-    }
-    if (jobContext.relationshipContract?.relationalFailureModes?.length) {
-      lines.push(
-        `Avoid These Relationship Failures: ${jobContext.relationshipContract.relationalFailureModes.join(", ")}`,
-      );
-    }
-    if (jobContext.simulationScenarios?.length) {
-      lines.push(`Simulation Scenarios: ${jobContext.simulationScenarios.join(" | ")}`);
-    }
-    if (jobContext.scopeLimit) {
-      lines.push(`Limited-Live Scope Boundary: ${jobContext.scopeLimit}`);
-    }
-    if (jobContext.sop) {
-      lines.push(`Job SOP:\n${jobContext.sop}`);
-    }
-    if (jobContext.successDefinition) {
-      lines.push(`Job Definition of Done: ${jobContext.successDefinition}`);
-    }
-    if (jobContext.executionMode === "simulate" || jobContext.deploymentStage === "shadow") {
-      lines.push(
-        "SIMULATION MODE IS ENFORCED.",
-        "Do not perform live third-party writes.",
-        "Produce draft/internal-note artifacts only and clearly mark them as simulated output.",
-      );
-    } else if (jobContext.deploymentStage === "limited-live") {
-      lines.push(
-        "LIMITED-LIVE MODE IS ENFORCED.",
-        "Stay strictly within the declared scope boundary.",
-        "Do not widen authority, improvise policy, or send outbound customer messaging unless the scope explicitly allows it.",
-        "If the request exceeds the stated scope, stop and escalate instead of stretching the role.",
-      );
-    }
+  return lines;
+}
+
+const TEXTUAL_TOOL_CALL_NUDGE_LINES = [
+  "",
+  "FORMAT CORRECTION: your previous attempt wrote tool invocations as plain text, so nothing executed.",
+  "Invoke each tool through the tool-call interface now — one tool call at a time, no narration of the call itself.",
+];
+
+/**
+ * Task message for a job run (Worker Runtime v2 D1+D2): only the task and the
+ * per-assignment facts. The role contract, SOP, alignment, mode directives,
+ * tool rules, and completion contract all live in the compiled role profile's
+ * system prompt — repeating them here would just burn worker-prompt budget.
+ */
+function buildJobTaskMessage(
+  task: Task,
+  jobContext: JobExecutionContext,
+  opts?: { textualToolCallNudge?: boolean },
+): string {
+  const lines = buildTaskCoreLines(task);
+  lines.push(
+    `Job Assignment: ${jobContext.assignmentTitle} (${jobContext.assignmentId})`,
+    `Deployment Stage: ${jobContext.deploymentStage.toUpperCase()}`,
+    `Job Mode: ${jobContext.executionMode.toUpperCase()}`,
+  );
+  if (jobContext.scopeLimit) {
+    lines.push(`Limited-Live Scope Boundary: ${jobContext.scopeLimit}`);
   }
+  lines.push(
+    "",
+    "You are in explicit execution mode.",
+    "Do the work for this task now using tools, then file your work_report.",
+  );
+  if (opts?.textualToolCallNudge) {
+    lines.push(...TEXTUAL_TOOL_CALL_NUDGE_LINES);
+  }
+  return lines.join("\n");
+}
+
+/** Task prompt for plain board tasks (no job template — the agent draining its own queue). */
+function buildTaskExecutionPrompt(task: Task, opts?: { textualToolCallNudge?: boolean }): string {
+  const lines = buildTaskCoreLines(task);
   lines.push(
     "",
     "You are in explicit execution mode.",
     "Do the work for this task now using tools.",
     "Tools run ONLY through the native tool-call interface. Never write a tool invocation as message text (no <tool_call> tags, no 'call:tool{...}', no '[tool: ...]' notation) — text like that executes nothing and counts as zero work.",
     "Before reporting blocked, attempt at least two distinct recovery paths and record what failed.",
+    "If blocked after retries, mark it blocked with a concrete reason and the attempted recoveries.",
+    "If completed, mark it completed.",
+    "Always update task state on the board when work changes status.",
+    "Return a concise summary with evidence of what changed.",
   );
-  if (jobContext) {
-    // v2 D5 completion contract: job runs end with a filed report; the
-    // RUNNER updates the board. Never instruct board mutation here — that
-    // competes with read-only SOPs (#443).
-    lines.push(
-      'COMPLETION CONTRACT: end with ONE work_report tool call — outcome "done", "blocked", or "need_input" — with your COMPLETE results in the summary field (the full deliverable, not an abstract).',
-      "Filing the work_report is what completes this run. Do NOT modify any task on the board, including this one — the runner records the outcome from your report.",
-    );
-  } else {
-    lines.push(
-      "If blocked after retries, mark it blocked with a concrete reason and the attempted recoveries.",
-      "If completed, mark it completed.",
-      "Always update task state on the board when work changes status.",
-      "Return a concise summary with evidence of what changed.",
-    );
-  }
   if (opts?.textualToolCallNudge) {
-    lines.push(
-      "",
-      "FORMAT CORRECTION: your previous attempt wrote tool invocations as plain text, so nothing executed.",
-      "Invoke each tool through the tool-call interface now — one tool call at a time, no narration of the call itself.",
-    );
+    lines.push(...TEXTUAL_TOOL_CALL_NUDGE_LINES);
   }
   return lines.join("\n");
-}
-
-async function withSessionToolPolicyOverride<T>(params: {
-  cfg: ArgentConfig;
-  agentId: string;
-  sessionKey: string;
-  toolsAllow?: string[];
-  toolsDeny?: string[];
-  run: () => Promise<T>;
-}): Promise<T> {
-  const hasOverride = Boolean(
-    (params.toolsAllow && params.toolsAllow.length > 0) ||
-    (params.toolsDeny && params.toolsDeny.length > 0),
-  );
-  if (!hasOverride) {
-    return await params.run();
-  }
-
-  const storePath = resolveStorePath(params.cfg.session?.store, { agentId: params.agentId });
-  let previous: SessionEntry | undefined;
-  let existed = false;
-
-  await updateSessionStore(storePath, (store) => {
-    const existing = store[params.sessionKey];
-    existed = Boolean(existing);
-    previous = existing ? { ...existing } : undefined;
-    const next: SessionEntry = {
-      ...(existing ?? { sessionId: randomUUID() }),
-      updatedAt: Date.now(),
-    };
-    if (params.toolsAllow && params.toolsAllow.length > 0) {
-      next.toolsAllow = params.toolsAllow;
-    } else {
-      delete next.toolsAllow;
-    }
-    if (params.toolsDeny && params.toolsDeny.length > 0) {
-      next.toolsDeny = params.toolsDeny;
-    } else {
-      delete next.toolsDeny;
-    }
-    store[params.sessionKey] = next;
-  });
-
-  try {
-    return await params.run();
-  } finally {
-    await updateSessionStore(storePath, (store) => {
-      if (existed && previous) {
-        store[params.sessionKey] = previous;
-      } else {
-        delete store[params.sessionKey];
-      }
-    });
-  }
 }
 
 function mergeWorkerConfig(
@@ -948,17 +840,8 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
             (jobTaskContext.assignment.executionMode === "live" ? "live" : "simulate"),
           departmentId,
           scopeLimit: jobTaskContext.assignment.scopeLimit,
-          reviewRequired: jobTaskContext.assignment.reviewRequired,
-          rolePrompt: jobTaskContext.template.rolePrompt,
-          sop: jobTaskContext.template.sop,
-          successDefinition: jobTaskContext.template.successDefinition,
           relationshipContract: jobTaskContext.template.relationshipContract,
           departmentPolicy,
-          simulationScenarios: Array.isArray(jobTaskContext.template.metadata?.simulationScenarios)
-            ? jobTaskContext.template.metadata.simulationScenarios.filter(
-                (item): item is string => typeof item === "string" && item.trim().length > 0,
-              )
-            : undefined,
         }
       : undefined;
 
@@ -966,58 +849,81 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
       config: cfg,
       agentId: state.agentId,
     });
+    // Worker Runtime v2 (D1+D2): job runs execute against a compiled role
+    // profile — the complete worker system prompt plus structural tool
+    // grants — in an ephemeral per-run session. Company alignment lives in
+    // the profile; the agent-level intent hint is operator-agent posture and
+    // is appended only to non-job (own-queue) prompts.
+    const profile = jobTaskContext
+      ? getCompiledRoleProfile({
+          cfg,
+          template: jobTaskContext.template,
+          assignment: jobTaskContext.assignment,
+        })
+      : undefined;
     const intentHint = resolvedIntent ? buildIntentSystemPromptHint(resolvedIntent.policy) : "";
-    const prompt = [
-      buildTaskExecutionPrompt(before, jobContext, {
-        textualToolCallNudge: state.textualToolCallTasks.has(before.id),
-      }),
-      intentHint?.trim() ? `\n${intentHint.trim()}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const prompt =
+      profile && jobContext
+        ? buildJobTaskMessage(before, jobContext, {
+            textualToolCallNudge: state.textualToolCallTasks.has(before.id),
+          })
+        : [
+            buildTaskExecutionPrompt(before, {
+              textualToolCallNudge: state.textualToolCallTasks.has(before.id),
+            }),
+            intentHint?.trim() ? `\n${intentHint.trim()}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+    // Stage-driven denies (simulate/limited-live) are per-assignment, so they
+    // stay runtime-resolved; the grant side comes from the profile.
     const sessionPolicy = jobTaskContext
       ? await storage.jobs.resolveSessionToolPolicyForAssignment(jobTaskContext)
       : {};
 
-    const workerModelOverride = parseModelOverrideRef(state.config.model);
-    // v2 D5: every worker turn gets the work_report tool — filing the report
-    // is how a run completes, so it must survive template grant filtering.
-    const toolsAllowWithReport =
-      sessionPolicy.toolsAllow && sessionPolicy.toolsAllow.length > 0
-        ? sessionPolicy.toolsAllow.includes("work_report")
-          ? sessionPolicy.toolsAllow
-          : [...sessionPolicy.toolsAllow, "work_report"]
-        : sessionPolicy.toolsAllow;
+    // D8 model resolution: template model → agent executionWorker model → default.
+    const workerModelOverride = parseModelOverrideRef(profile?.model ?? state.config.model);
     const workerRunId = `worker-${state.agentId}-${before.id}-${Date.now()}`;
-    // The tool keys by the run id it captured at tool-creation time, which a
-    // cached agent session can hold stale — the session key is the stable
-    // fallback (worker runs are sequential per agent). Clear both, take both.
-    clearWorkReport(workerRunId);
-    clearWorkReport(sessionKey);
-    const result = await withSessionToolPolicyOverride({
-      cfg,
-      agentId: state.agentId,
-      sessionKey,
-      toolsAllow: toolsAllowWithReport,
-      toolsDeny: sessionPolicy.toolsDeny,
-      run: async () =>
-        await agentCommand({
+    const ephemeralSession = profile
+      ? await createEphemeralWorkerSession({
+          cfg,
           agentId: state.agentId,
-          sessionKey,
-          lane: "cron",
+          assignmentId: jobTaskContext?.assignment.id ?? "unassigned",
           runId: workerRunId,
-          message: prompt,
-          extraSystemPrompt:
-            "This is an explicit queue-draining worker run. Prefer concrete action over discussion.",
-          // Blank-slate worker scaffold (#407/#442): no context files, personal
-          // skills, memory sections, or cross-channel context — the task prompt
-          // above carries the role contract, and toolsAllow carries the grants.
-          promptMode: "minimal",
-          bestEffortDeliver: false,
-          providerOverride: workerModelOverride?.provider,
-          modelOverride: workerModelOverride?.model,
-        }),
-    });
+          toolsAllow: profile.toolsAllow,
+          toolsDeny: sessionPolicy.toolsDeny,
+        })
+      : undefined;
+    const runSessionKey = ephemeralSession?.sessionKey ?? sessionKey;
+    // Ephemeral sessions make the runId closure fresh by construction, but
+    // clear/take both keys so the persistent non-job lane stays correct too.
+    clearWorkReport(workerRunId);
+    clearWorkReport(runSessionKey);
+    let result: Awaited<ReturnType<typeof agentCommand>>;
+    try {
+      result = await agentCommand({
+        agentId: state.agentId,
+        sessionKey: runSessionKey,
+        lane: "cron",
+        runId: workerRunId,
+        message: prompt,
+        extraSystemPrompt: profile
+          ? undefined
+          : "This is an explicit queue-draining worker run. Prefer concrete action over discussion.",
+        // Blank-slate worker scaffold (#407/#442): no context files, personal
+        // skills, memory sections, or cross-channel context. Job runs replace
+        // the prompt wholesale with the compiled role profile (v2 D1+D2).
+        promptMode: "minimal",
+        systemPromptOverride: profile?.systemPrompt,
+        bestEffortDeliver: false,
+        providerOverride: workerModelOverride?.provider,
+        modelOverride: workerModelOverride?.model,
+      });
+    } finally {
+      // The session is disposable the moment the turn returns: the report
+      // registry and run record carry everything durable.
+      await ephemeralSession?.dispose();
+    }
 
     const toolValidation = extractToolValidation(result.meta);
     const simulationViolation =
@@ -1032,9 +938,9 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
     // v2 D5: a filed work_report is the completion contract for job tasks —
     // the RUNNER updates the board from it; workers never mutate their own
     // task row (#443). Simulation violations always win over the report.
-    const workReport = takeWorkReport(workerRunId) ?? takeWorkReport(sessionKey);
+    const workReport = takeWorkReport(workerRunId) ?? takeWorkReport(runSessionKey);
     log.info(
-      `worker ${state.agentId}: report lookup runId=${workerRunId} sessionKey=${sessionKey} found=${workReport ? workReport.outcome : "none"}`,
+      `worker ${state.agentId}: report lookup runId=${workerRunId} sessionKey=${runSessionKey} found=${workReport ? workReport.outcome : "none"}`,
     );
     if (workReport && jobTaskContext && !simulationViolation) {
       if (workReport.outcome === "done") {
