@@ -49,6 +49,7 @@ import { markUnresolvedSurfacesUnavailable } from "../infra/engagement-tracker.j
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js";
 import { startExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
+import { startGatewayLogRotation } from "../infra/gateway-log-rotation.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
 import {
@@ -745,6 +746,10 @@ export async function startGatewayServer(
     getConfig: () => loadConfig(),
   });
 
+  // launchd appends stdout/stderr to logs/gateway.log with no system
+  // rotation (the 755MB incident) — cap it in-process.
+  const logRotation = startGatewayLogRotation();
+
   // Agent state broadcaster — tracks processing/idle transitions for dashboard
   const agentStateBroadcaster = createAgentStateBroadcaster(broadcast);
 
@@ -974,6 +979,7 @@ export async function startGatewayServer(
 
   return {
     close: async (closeOpts) => {
+      logRotation.stop();
       if (diagnosticsEnabled) {
         stopDiagnosticHeartbeat();
       }
