@@ -160,15 +160,20 @@ export function createArgentTools(options?: {
   disableMessageTool?: boolean;
   /** Run id of this agent turn — keys the work_report registry (v2 D5). */
   runId?: string;
+  /** Omit the image-understanding tool (e.g. when the turn carries inbound images). */
+  disableImageTool?: boolean;
+  /** Omit the image-generation tool (e.g. when the turn carries inbound images). */
+  disableImageGenerationTool?: boolean;
 }): AnyAgentTool[] {
-  const imageTool = options?.agentDir?.trim()
-    ? createImageTool({
-        config: options?.config,
-        agentDir: options.agentDir,
-        sandboxRoot: options?.sandboxRoot,
-        modelHasVision: options?.modelHasVision,
-      })
-    : null;
+  const imageTool =
+    !options?.disableImageTool && options?.agentDir?.trim()
+      ? createImageTool({
+          config: options?.config,
+          agentDir: options.agentDir,
+          sandboxRoot: options?.sandboxRoot,
+          modelHasVision: options?.modelHasVision,
+        })
+      : null;
   const webSearchTool = createWebSearchTool({
     config: options?.config,
     sandboxed: options?.sandboxed,
@@ -367,7 +372,7 @@ export function createArgentTools(options?: {
     createWidgetBuilderTool(),
     createWorkflowBuilderTool({ agentSessionKey: options?.agentSessionKey }),
     // Media generation tools
-    createImageGenerationTool(),
+    ...(options?.disableImageGenerationTool ? [] : [createImageGenerationTool()]),
     createVideoGenerationTool(),
     createAudioGenerationTool({
       agentSessionKey: options?.agentSessionKey,

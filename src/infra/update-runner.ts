@@ -1112,6 +1112,25 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
         };
       }
 
+      // #413 follow-up: the regenerated tracked artifacts are excluded from
+      // the dirty CHECK, but `git rebase` still refuses on unstaged changes —
+      // so every successful build left the next update permanently stuck on
+      // "rebase-failed". Restore them (committed versions are the sanctioned
+      // fallbacks; the build step rewrites them right after) like we already
+      // do for pnpm-lock.yaml.
+      await runCommand(
+        [
+          "git",
+          "-C",
+          gitRoot,
+          "checkout",
+          "--",
+          "dist/control-ui/",
+          "dashboard/provider-catalog/index.cjs",
+          "dashboard/src/lib/_generated/",
+        ],
+        { cwd: gitRoot, timeoutMs },
+      ).catch(() => null);
       const rebaseStep = await runStep(
         step("git rebase", ["git", "-C", gitRoot, "rebase", selectedSha], gitRoot),
       );
