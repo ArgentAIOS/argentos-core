@@ -2052,6 +2052,9 @@ export async function runEmbeddedPiAgent(
                 ),
                 userMessageText: basePromptText,
                 assistantReplyText: userFacingAssistantText,
+                // Self-originated runs must not register as operator activity
+                // or the kernel's salience gate never closes (self-stimulation).
+                origin: params.lane === "cron" || params.isHeartbeat ? "background" : "operator",
               });
             } catch (err) {
               log.warn(
