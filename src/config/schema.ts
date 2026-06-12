@@ -363,6 +363,10 @@ const FIELD_LABELS: Record<string, string> = {
     "Contemplation Discovery Every Episodes",
   "agents.defaults.contemplation.discoveryPhase.maxDurationMs":
     "Contemplation Discovery Max Duration (ms)",
+  "agents.defaults.contemplation.salienceGate": "Contemplation Idle-Salience Gate",
+  "agents.defaults.contemplation.salienceAnchorHours": "Contemplation Salience Anchor (hours)",
+  "agents.defaults.heartbeat.salienceGate": "Heartbeat Idle-Salience Gate",
+  "agents.defaults.heartbeat.salienceAnchorHours": "Heartbeat Salience Anchor (hours)",
   "agents.defaults.kernel": "Consciousness Kernel",
   "agents.defaults.kernel.enabled": "Consciousness Kernel Enabled",
   "agents.defaults.kernel.mode": "Consciousness Kernel Mode",
@@ -941,6 +945,14 @@ const FIELD_HELP: Record<string, string> = {
     "Run discovery phase every N episodes (optional).",
   "agents.defaults.contemplation.discoveryPhase.maxDurationMs":
     "Max discovery phase runtime budget in milliseconds (optional).",
+  "agents.defaults.contemplation.salienceGate":
+    "Deterministic idle-salience gate (LIMBIC law 3): contemplation runs only when something happened since the last salient cycle — operator activity, a task-board change, or a due anchor. Default: true.",
+  "agents.defaults.contemplation.salienceAnchorHours":
+    "With zero salience, allow at most one contemplation per N hours. Default: 24. 0 disables the anchor (pure salience gating).",
+  "agents.defaults.heartbeat.salienceGate":
+    "Deterministic idle-salience gate (LIMBIC law 3): a due heartbeat dispatches only on operator activity since the last salient beat, a task-board change, or a due anchor. Event-driven beats (exec completions) bypass the gate. Default: true.",
+  "agents.defaults.heartbeat.salienceAnchorHours":
+    "With zero salience, allow at most one heartbeat per N hours. Default: 24. 0 disables the anchor (pure salience gating).",
   "agents.defaults.kernel":
     "Main-agent-only continuous executive controls. Slice 4 keeps shadow mode non-outbound while moving contemplation and SIS scheduling authority into the kernel lane and adding private local-model inner reflection.",
   "agents.defaults.kernel.enabled":

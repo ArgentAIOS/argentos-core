@@ -365,6 +365,19 @@ export type AgentDefaultsConfig = {
       /** Enable/disable the verification sidecar (default: true when contract tasks exist). */
       enabled?: boolean;
     };
+    /**
+     * Deterministic idle-salience gate (LIMBIC law 3, same doctrine as the
+     * kernel gate): a due heartbeat dispatches the agent turn only on
+     * operator activity since the last salient beat, a task-board delta,
+     * or a due anchor — otherwise it skips with a first-class reason.
+     * Default: true. Event-driven beats (exec completions) bypass the gate.
+     */
+    salienceGate?: boolean;
+    /**
+     * With zero salience, still run at most one heartbeat per this many
+     * hours (default: 24). 0 disables the anchor (pure salience gating).
+     */
+    salienceAnchorHours?: number;
   };
   /** Autonomous contemplation cycles + optional model override/fallbacks. */
   contemplation?: {
@@ -389,6 +402,18 @@ export type AgentDefaultsConfig = {
       /** Hard time budget for discovery work in ms. */
       maxDurationMs?: number;
     };
+    /**
+     * Deterministic idle-salience gate (LIMBIC law 3): contemplation runs
+     * only when something happened since the last salient cycle — operator
+     * activity, a task-board delta, or a due anchor. Kills the
+     * contemplate-forever-while-idle loop. Default: true.
+     */
+    salienceGate?: boolean;
+    /**
+     * With zero salience, still run at most one contemplation per this
+     * many hours (default: 24). 0 disables the anchor.
+     */
+    salienceAnchorHours?: number;
   };
   /** Explicit queue-draining task execution loop (separate from contemplation). */
   executionWorker?: AgentExecutionWorkerConfig;
