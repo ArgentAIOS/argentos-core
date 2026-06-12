@@ -1,5 +1,5 @@
 {
-  "snapshotAt": "2026-06-12T03:56:46.627Z",
+  "snapshotAt": "2026-06-12T04:06:58.501Z",
   "totalErrors": 191,
   "errors": [
     {
@@ -874,43 +874,43 @@
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1192,
+      "line": 1189,
       "code": "TS2353",
       "message": "Object literal may only specify known properties, and 'fallback' does not exist in type 'Episode'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1198,
+      "line": 1195,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1199,
+      "line": 1196,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1207,
+      "line": 1204,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1217,
+      "line": 1214,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1218,
+      "line": 1215,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
     {
       "file": "src/infra/contemplation-runner.ts",
-      "line": 1219,
+      "line": 1216,
       "code": "TS18048",
       "message": "'episode' is possibly 'undefined'."
     },
@@ -970,7 +970,7 @@
     },
     {
       "file": "src/infra/heartbeat-runner.ts",
-      "line": 1180,
+      "line": 1177,
       "code": "TS2339",
       "message": "Property 'dashboard' does not exist on type 'ArgentConfig'."
     },
