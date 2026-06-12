@@ -888,6 +888,60 @@ class DualTaskAdapter implements TaskAdapter {
     }
     return writePg ? this.pg.fail(id, reason) : this.sqlite.fail(id, reason);
   }
+
+  // Lease writes follow the standard dual-write template: the CAS guarantee
+  // holds on the writer of record; the secondary is best-effort mirror like
+  // every other task write.
+  async claim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<Task | null> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.claim(id, opts);
+      await secondaryWrite("task.claim", () => this.pg.claim(id, opts));
+      return result;
+    }
+    return writePg ? this.pg.claim(id, opts) : this.sqlite.claim(id, opts);
+  }
+
+  async heartbeatClaim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<boolean> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.heartbeatClaim(id, opts);
+      await secondaryWrite("task.heartbeatClaim", () => this.pg.heartbeatClaim(id, opts));
+      return result;
+    }
+    return writePg ? this.pg.heartbeatClaim(id, opts) : this.sqlite.heartbeatClaim(id, opts);
+  }
+
+  async releaseClaim(
+    id: string,
+    opts?: { claimedBy?: string; requeue?: boolean; reason?: string },
+  ): Promise<Task | null> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.releaseClaim(id, opts);
+      await secondaryWrite("task.releaseClaim", () => this.pg.releaseClaim(id, opts));
+      return result;
+    }
+    return writePg ? this.pg.releaseClaim(id, opts) : this.sqlite.releaseClaim(id, opts);
+  }
+
+  async sweepExpiredClaims(opts?: { now?: number; orphanAll?: boolean }): Promise<Task[]> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.sweepExpiredClaims(opts);
+      await secondaryWrite("task.sweepExpiredClaims", () => this.pg.sweepExpiredClaims(opts));
+      return result;
+    }
+    return writePg ? this.pg.sweepExpiredClaims(opts) : this.sqlite.sweepExpiredClaims(opts);
+  }
 }
 
 // ── Dual Team Adapter ────────────────────────────────────────────────────

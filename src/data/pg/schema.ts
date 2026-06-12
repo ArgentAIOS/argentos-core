@@ -699,6 +699,12 @@ export const tasks = pgTable(
     metadata: jsonb("metadata").default({}),
     jobAssignmentId: text("job_assignment_id"),
     jobTemplateId: text("job_template_id"),
+    // Lease protocol (Worker Runtime v2 D4) — ensured additively by
+    // PgAdapter.ensureCoreSchema for existing databases.
+    claimedBy: text("claimed_by"),
+    claimTtl: timestamp("claim_ttl", { withTimezone: true }),
+    claimAcquiredAt: timestamp("claim_acquired_at", { withTimezone: true }),
+    attempt: integer("attempt").default(0),
   },
   (t) => [
     index("idx_tasks_status").on(t.status),
