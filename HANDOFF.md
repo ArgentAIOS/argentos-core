@@ -24,6 +24,12 @@ Project memory dir (worker-blank-slate law · machine-purrs-first · cost discip
 
 ## Next up (in order)
 
+0. **LIVE-BOX BUG CLUSTER (new #1 — Jason hit this 2026-06-12 ~12:50 after updating to dev.2; his daily-driver chat is flaky):**
+   - **Webchat main-session turn failed as "Context overflow"** on openai-codex/gpt-5.5: ~20s on the codex websocket (OAuth JWT injected), zero model activity, then a pi-classified overflow. Input was only ~77k vs the 272k catalog window — likely a misclassified codex/auth/transport rejection (it was the FIRST session after the update retired the deprecated codex-cli auth profile). Discriminator still pending: retry the same question; if it persists, capture the raw rejection (ARGENT_CACHE_TRACE / payload logging).
+   - **`/compact` resolves the WRONG AGENT:** for session `agent:argent:main` the compact path resolved bare alias `main` → `agents/main/agent/auth-profiles.json` (Jason has a real agent literally named `main`), found only the DEPRECATED codex-cli profile there → "Compaction skipped: No API key". Fix the alias→agent-id resolution (same landmine sessions_spawn already works around); also clean main's stale codex-cli profile (doctor only cleaned argent's).
+   - **Operator-lane prompt diet (#407 operator lane):** Jason's greeting turn cost **76,315 tokens** (120 tool schemas + ~23.5k skills prompt + bootstrap). Workers got the diet in P2; the operator lane never did. This is the structural fix behind all of the above pressure.
+   - Cosmetic: main session entry carries stale `contextTokens: 1050000` (from a prior model; catalog says gpt-5.5 = 272k/128k); two state dirs both have launchd logs (`~/.argent` + `~/.argentos` — doctor's "split state dirs" warning).
+   - Positive finding while diagnosing: the #454 log rotation already ran on his box (`gateway.log.1` = preserved 8.4MB tail) and #448's ABI heal fixed the better-sqlite3/aos-lcm error during the update.
 1. **WR2 P4** — `proposed_action` recording (D9), report/telemetry cross-check (owns the late-report-after-supersede residual), run-event log + Workforce Board read (D7). Design locked in the v2 doc.
 2. **D8 escalation ladder** — primary → bigger model on no-progress; hooks P3's attempt machinery.
 3. **Dependabot P1 bumps** (baileys → protobufjs → one hono sweep → shell-quote) — triage table in the 2026-06-12 vault note; bumps need Jason-awake testing of the WhatsApp channel.
