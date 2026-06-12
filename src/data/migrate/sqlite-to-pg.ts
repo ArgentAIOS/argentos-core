@@ -27,9 +27,10 @@
  *   - Schema already applied (drizzle-kit migrate)
  */
 
+import type { AnyPgTable } from "drizzle-orm/pg-core";
 import Database from "better-sqlite3";
 import { sql as dsql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import postgres from "postgres";
@@ -112,9 +113,9 @@ function normalizeAgentId(value: unknown): string | null {
 }
 
 async function ensureAgentRow(
-  db: ReturnType<typeof drizzle>,
+  db: PostgresJsDatabase<typeof schema>,
   id: string,
-  role: "elder" | "worker" = "worker",
+  role: schema.AgentRole = "generalist",
 ): Promise<void> {
   await db
     .insert(schema.agents)
@@ -490,7 +491,11 @@ async function main() {
           log(`Registering ${taskAgentIds.length} task agent(s)...`);
           if (!DRY_RUN) {
             for (const taskAgentId of taskAgentIds) {
-              await ensureAgentRow(db, taskAgentId, taskAgentId === AGENT_ID ? "elder" : "worker");
+              await ensureAgentRow(
+                db,
+                taskAgentId,
+                taskAgentId === AGENT_ID ? "elder" : "generalist",
+              );
             }
           }
         }
@@ -645,9 +650,15 @@ function chunk<T>(arr: T[], size: number): T[][] {
 async function verify(
   memDb: InstanceType<typeof Database>,
   dashDb: InstanceType<typeof Database> | null,
-  db: ReturnType<typeof drizzle>,
+  db: PostgresJsDatabase<typeof schema>,
 ) {
-  const tables = [
+  // Heterogeneous table list — without the explicit element type, TS infers
+  // the union of the initial literals and rejects the dashboard pushes below.
+  const tables: Array<{
+    name: string;
+    sqliteDb: InstanceType<typeof Database>;
+    pgTable: AnyPgTable;
+  }> = [
     { name: "resources", sqliteDb: memDb, pgTable: schema.resources },
     { name: "memory_items", sqliteDb: memDb, pgTable: schema.memoryItems },
     { name: "memory_categories", sqliteDb: memDb, pgTable: schema.memoryCategories },

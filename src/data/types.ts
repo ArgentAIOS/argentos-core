@@ -46,6 +46,13 @@ export interface Task {
   dependsOn?: string[];
   teamId?: string;
 
+  // Lease (Worker Runtime v2 D4): set by TaskAdapter.claim, cleared on
+  // release or terminal status. Epoch ms.
+  claimedBy?: string;
+  claimTtl?: number;
+  claimAcquiredAt?: number;
+  attempt?: number;
+
   // Metadata
   tags?: string[];
   metadata?: Record<string, unknown>;
@@ -74,6 +81,8 @@ export interface TaskUpdateInput {
   priority?: TaskPriority;
   assignee?: TaskAssignee | null;
   dueAt?: number;
+  /** Reset/set the lease attempt counter (operator re-queue paths). */
+  attempt?: number;
   dependsOn?: string[];
   teamId?: string;
   tags?: string[];

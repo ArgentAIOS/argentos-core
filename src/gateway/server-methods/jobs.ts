@@ -743,26 +743,25 @@ export const jobsHandlers: GatewayRequestHandlers = {
       if (!assignment) {
         throw new Error(`assignment not found: ${assignmentId}`);
       }
+      const fresh = params.fresh === true;
       const now = Date.now();
       await storage.jobs.updateAssignment(assignmentId, {
         nextRunAt: now,
       });
-      const queuedTasks = await storage.jobs.ensureDueTasks({
+      let queuedTasks = await storage.jobs.ensureDueTasks({
         now,
         agentId: assignment.agentId,
       });
-      if (queuedTasks > 0) {
-        dispatchExecutionWorker(context, {
-          agentId: assignment.agentId,
-          reason: "assignment-run-now",
-        });
-      }
-      // #445: an open task (blocked included) gates task creation for the
-      // assignment, so Run Now can succeed while queuing nothing. Name the
-      // gating task instead of returning a silent OK. Resolve via job runs —
-      // task metadata is not stable linkage (tasks.block replaces it).
+      // Worker Runtime v2 D6 (full #445 semantics): an open task gates task
+      // creation for the assignment. Operator intent on Run Now is obviously
+      // "try again", so a BLOCKED gating task is re-queued as a fresh attempt
+      // by default; { fresh: true } supersedes it and cuts a new task. Silent
+      // OK-but-nothing is structurally impossible — the response names what
+      // it did. Gating task resolved via job runs — task metadata is not
+      // stable linkage (tasks.block replaces it).
       let blockedBy: { taskId: string; status: string; title: string } | undefined;
-      let hint: string | undefined;
+      let action: string | undefined;
+      let dispatched = queuedTasks > 0;
       if (queuedTasks === 0) {
         const runs = await storage.jobs.listRuns({ assignmentId, limit: 10 });
         const seenTaskIds = new Set<string>();
@@ -773,19 +772,67 @@ export const jobsHandlers: GatewayRequestHandlers = {
           seenTaskIds.add(run.taskId);
           const task = await storage.tasks.get(run.taskId);
           if (
-            task &&
-            (task.status === "pending" ||
-              task.status === "in_progress" ||
-              task.status === "blocked")
+            !task ||
+            (task.status !== "pending" &&
+              task.status !== "in_progress" &&
+              task.status !== "blocked")
           ) {
-            blockedBy = { taskId: task.id, status: task.status, title: task.title };
-            hint =
-              task.status === "blocked"
-                ? `Run Now queued nothing: blocked task ${task.id} gates this assignment — retry or supersede it first.`
-                : `Run Now queued nothing: ${task.status} task ${task.id} is already open for this assignment.`;
-            break;
+            continue;
           }
+          blockedBy = { taskId: task.id, status: task.status, title: task.title };
+          if (task.status === "blocked" && fresh) {
+            const priorAttempts = task.attempt ?? 0;
+            await storage.tasks.update(task.id, {
+              status: "cancelled",
+              metadata: {
+                ...(task.metadata ?? {}),
+                superseded: true,
+                supersededAt: now,
+                supersededBy: "runNow(fresh)",
+              },
+            });
+            // The first ensureDueTasks pass consumed the assignment's
+            // due-ness (advanced nextRunAt) while the blocked task still
+            // gated it — make it due again so the fresh task actually cuts.
+            await storage.jobs.updateAssignment(assignmentId, { nextRunAt: now });
+            queuedTasks = await storage.jobs.ensureDueTasks({ now, agentId: assignment.agentId });
+            dispatched = queuedTasks > 0;
+            action = `superseded blocked task ${task.id} (after ${priorAttempts} attempt(s)) and queued ${queuedTasks} fresh task(s)`;
+          } else if (task.status === "blocked") {
+            const priorAttempts = task.attempt ?? 0;
+            // Drop the stale block reason (pg writes blockReason, sqlite
+            // blockedReason) — the task is honestly pending again.
+            const {
+              blockReason: _blockReason,
+              blockedReason: _blockedReason,
+              ...carriedMetadata
+            } = (task.metadata ?? {}) as Record<string, unknown>;
+            await storage.tasks.update(task.id, {
+              status: "pending",
+              attempt: 0,
+              metadata: {
+                ...carriedMetadata,
+                requeuedBy: "runNow",
+                requeuedAt: now,
+                ...(priorAttempts > 0 ? { attemptHistory: priorAttempts } : {}),
+              },
+            });
+            dispatched = true;
+            action = `re-queued blocked task ${task.id} as a fresh attempt (history: ${priorAttempts} prior attempt(s)); pass fresh:true to supersede it instead`;
+          } else if (task.status === "pending") {
+            dispatched = true;
+            action = `pending task ${task.id} is already queued for this assignment — dispatched the worker now`;
+          } else {
+            action = `task ${task.id} is in_progress${task.claimedBy ? ` (leased by ${task.claimedBy})` : ""} — letting the live run finish`;
+          }
+          break;
         }
+      }
+      if (dispatched) {
+        dispatchExecutionWorker(context, {
+          agentId: assignment.agentId,
+          reason: "assignment-run-now",
+        });
       }
       await emitAuditEvent(storage, {
         eventType: "assignment.run_now",
@@ -796,6 +843,8 @@ export const jobsHandlers: GatewayRequestHandlers = {
           agentId: assignment.agentId,
           queuedTasks,
           actor: "operator",
+          ...(fresh ? { fresh: true } : {}),
+          ...(action ? { action } : {}),
           ...(blockedBy ? { blockedByTaskId: blockedBy.taskId } : {}),
         },
         metadata: { assignmentId, templateId: assignment.templateId, actor: "operator" },
@@ -806,9 +855,9 @@ export const jobsHandlers: GatewayRequestHandlers = {
           ok: true,
           assignmentId,
           queuedTasks,
-          dispatched: queuedTasks > 0,
+          dispatched,
           ...(blockedBy ? { blockedBy } : {}),
-          ...(hint ? { hint } : {}),
+          ...(action ? { action, hint: action } : {}),
         },
         undefined,
       );

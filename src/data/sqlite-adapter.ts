@@ -549,6 +549,25 @@ class SQLiteTaskAdapter implements TaskAdapter {
   async fail(id: string, reason?: string): Promise<Task | null> {
     return this.tasks.fail(id, reason);
   }
+
+  async claim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<Task | null> {
+    return this.tasks.claim(id, opts);
+  }
+
+  async heartbeatClaim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<boolean> {
+    return this.tasks.heartbeatClaim(id, opts);
+  }
+
+  async releaseClaim(
+    id: string,
+    opts?: { claimedBy?: string; requeue?: boolean; reason?: string },
+  ): Promise<Task | null> {
+    return this.tasks.releaseClaim(id, opts);
+  }
+
+  async sweepExpiredClaims(opts?: { now?: number; orphanAll?: boolean }): Promise<Task[]> {
+    return this.tasks.sweepExpiredClaims(opts);
+  }
 }
 
 // ── Team Adapter (wraps TeamsModule) ─────────────────────────────────────

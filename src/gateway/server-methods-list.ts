@@ -94,6 +94,7 @@ const BASE_METHODS = [
   "execution.worker.runNow",
   "execution.worker.pause",
   "execution.worker.resume",
+  "execution.worker.halt",
   "execution.worker.metrics.reset",
   "commands.list",
   "commands.compact",

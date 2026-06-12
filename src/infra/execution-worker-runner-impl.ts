@@ -10,7 +10,10 @@ import {
   resolveEffectiveIntentForAgent,
   resolveEffectiveIntentForDepartment,
 } from "../agents/intent.js";
-import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
+import {
+  abortEmbeddedPiRun,
+  getActiveEmbeddedRunCount,
+} from "../agents/pi-embedded-runner/runs.js";
 import { evaluateRelationshipExecution } from "../agents/relationship-eval.js";
 import { clearWorkReport, takeWorkReport } from "../agents/tools/work-report-tool.js";
 import { getCompiledRoleProfile } from "../agents/worker-role-profile.js";
@@ -32,6 +35,14 @@ const DEFAULT_MAX_RUN_MINUTES = 12;
 const DEFAULT_MAX_TASKS_PER_CYCLE = 24;
 const DEFAULT_REQUIRE_EVIDENCE = true;
 const DEFAULT_MAX_NO_PROGRESS_ATTEMPTS = 2;
+// Lease protocol (Worker Runtime v2 D4). The TTL is a set-and-forget upper
+// bound — the heartbeat verifies alive; crash recovery comes from the
+// boot-time orphan sweep, not TTL waiting.
+const LEASE_TTL_MS = 15 * 60_000;
+const LEASE_HEARTBEAT_MS = 60_000;
+// Halt: cooperative abort at T=0, unconditional session kill at T=grace —
+// no worker ack required (#423 item 5).
+const HALT_GRACE_MS = 30_000;
 
 export type ExecutionWorkerStatusHint = {
   kind: "paused" | "running" | "queued" | "waiting" | "blocked" | "idle";
@@ -125,6 +136,12 @@ export type ExecutionWorkerRunner = {
   pause: (opts?: { agentId?: string }) => ExecutionWorkerControlResult;
   resume: (opts?: { agentId?: string }) => ExecutionWorkerControlResult;
   resetMetrics: (opts?: { agentId?: string }) => ExecutionWorkerMetricsResetResult;
+  /**
+   * Halt in-flight worker runs (D4): cooperative abort now, hard session
+   * kill at grace, no worker ack required. Global scope also pauses all
+   * agents ("workforce halt").
+   */
+  halt: (opts?: { agentId?: string; reason?: string }) => ExecutionWorkerHaltResult;
 };
 
 export type ExecutionWorkerTaskScope = "assigned" | "all" | "unassigned_or_assigned";
@@ -358,6 +375,26 @@ type WorkerRunResult = {
   blocked?: number;
 };
 
+/** In-flight worker run, registered for halt (D4) while agentCommand is live. */
+type LiveWorkerRun = {
+  runId: string;
+  agentId: string;
+  taskId: string;
+  /** Embedded session id — the handle abortEmbeddedPiRun kills at T=grace. */
+  embeddedSessionId?: string;
+  startedAt: number;
+  abort: AbortController;
+  haltReason?: string;
+};
+
+export type ExecutionWorkerHaltResult = {
+  ok: boolean;
+  scope: "global" | "agent";
+  agentId?: string;
+  halted: number;
+  runs: Array<{ runId: string; agentId: string; taskId: string }>;
+};
+
 type WorkerToolClaimValidation = Pick<
   ToolClaimValidation,
   | "claimedTools"
@@ -508,8 +545,14 @@ function priorityWeight(task: Task): number {
 
 function pickNextTask(allTasks: Task[], agentId: string, scope: WorkerScope): Task | null {
   const byId = new Map(allTasks.map((task) => [task.id, task]));
+  const nowMs = Date.now();
   const candidates = allTasks
     .filter((task) => task.status === "pending" || task.status === "in_progress")
+    // D4: an in_progress task with a live lease belongs to its holder —
+    // never offer it for pickup. Expired/absent leases stay claimable.
+    .filter(
+      (task) => !(task.status === "in_progress" && task.claimedBy && (task.claimTtl ?? 0) > nowMs),
+    )
     .filter((task) => {
       if (!isAutonomousAgentServiceableTask(task, agentId)) {
         return false;
@@ -782,7 +825,12 @@ function resolveWorkerStates(cfg: ArgentConfig, previous: Map<string, WorkerAgen
   return next;
 }
 
-async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promise<WorkerRunResult> {
+async function runWorkerOnce(
+  cfg: ArgentConfig,
+  state: WorkerAgentState,
+  liveRuns: Map<string, LiveWorkerRun>,
+  isPaused: () => boolean,
+): Promise<WorkerRunResult> {
   // Avoid user-facing contention.
   const mainQueue = getQueueSize(CommandLane.Main) + getQueueSize(CommandLane.Interactive);
   const activeRuns = getActiveEmbeddedRunCount();
@@ -791,6 +839,13 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
   }
 
   const storage = await getStorageAdapter();
+  // D4 expiry: lapsed leases return to the queue before this cycle picks.
+  const expired = await storage.tasks.sweepExpiredClaims({ now: Date.now() });
+  if (expired.length > 0) {
+    log.warn(
+      `worker ${state.agentId}: lease expiry requeued ${expired.length} task(s): ${expired.map((t) => t.id).join(", ")}`,
+    );
+  }
   await storage.jobs.ensureDueTasks({ agentId: state.agentId, now: Date.now() });
   const startedAt = Date.now();
   const maxRuntimeMs = state.config.maxRunMinutes * 60_000;
@@ -806,6 +861,12 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
   let blocked = 0;
 
   while (attempted < state.config.maxTasksPerCycle && Date.now() - startedAt < maxRuntimeMs) {
+    // Halt/pause lands mid-cycle too — never drain more tasks after the
+    // operator said stop (the first halt drill caught exactly this).
+    if (isPaused()) {
+      log.info(`worker ${state.agentId}: cycle stopping — paused/halted mid-cycle`);
+      break;
+    }
     const allTasks = await storage.tasks.list();
     state.lastTaskSnapshot = buildWorkerTaskSnapshot(allTasks, state.agentId, taskScope);
     const task = pickNextTask(allTasks, state.agentId, state.config.scope);
@@ -818,8 +879,29 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
     const beforeStatus = before.status;
     const beforeStartedAt = before.startedAt ?? 0;
 
-    if (before.status === "pending") {
-      await storage.tasks.start(before.id);
+    // Persistent attempt counter (lease expiries, halts, crash requeues)
+    // converges crash-looping tasks the in-memory counter can't see.
+    if ((before.attempt ?? 0) >= state.config.maxNoProgressAttempts) {
+      await storage.tasks.block(
+        before.id,
+        `Auto-blocked: ${before.attempt} requeued attempts (${typeof before.metadata?.leaseReleaseReason === "string" ? before.metadata.leaseReleaseReason : "lease"}) without completion`,
+      );
+      attempted += 1;
+      blocked += 1;
+      continue;
+    }
+
+    // D4 claim CAS: pending (or lease-lapsed in_progress) → in_progress with
+    // a fresh lease owned by this run. Lost claim = pick the next task; the
+    // live lease keeps pickNextTask from offering this row again.
+    const workerRunId = `worker-${state.agentId}-${before.id}-${Date.now()}`;
+    const claimed = await storage.tasks.claim(before.id, {
+      claimedBy: workerRunId,
+      ttlMs: LEASE_TTL_MS,
+    });
+    if (!claimed) {
+      log.info(`worker ${state.agentId}: claim lost on task ${before.id}; picking next`);
+      continue;
     }
 
     const jobTaskContext = await storage.jobs.getContextForTask(before.id);
@@ -883,7 +965,6 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
 
     // D8 model resolution: template model → agent executionWorker model → default.
     const workerModelOverride = parseModelOverrideRef(profile?.model ?? state.config.model);
-    const workerRunId = `worker-${state.agentId}-${before.id}-${Date.now()}`;
     const ephemeralSession = profile
       ? await createEphemeralWorkerSession({
           cfg,
@@ -899,6 +980,34 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
     // clear/take both keys so the persistent non-job lane stays correct too.
     clearWorkReport(workerRunId);
     clearWorkReport(runSessionKey);
+
+    // D4 halt + heartbeat: register the live run, refresh the lease while
+    // the turn is in flight. Heartbeats stop at maxRunMinutes so a wedged
+    // provider call lets the lease lapse instead of holding it forever.
+    const liveRun: LiveWorkerRun = {
+      runId: workerRunId,
+      agentId: state.agentId,
+      taskId: before.id,
+      embeddedSessionId: ephemeralSession?.sessionId,
+      startedAt: Date.now(),
+      abort: new AbortController(),
+    };
+    liveRuns.set(workerRunId, liveRun);
+    const heartbeat = setInterval(() => {
+      if (Date.now() - liveRun.startedAt > maxRuntimeMs) {
+        clearInterval(heartbeat);
+        return;
+      }
+      void storage.tasks
+        .heartbeatClaim(before.id, { claimedBy: workerRunId, ttlMs: LEASE_TTL_MS })
+        .catch((err) =>
+          log.warn(
+            `worker ${state.agentId}: lease heartbeat failed on ${before.id}: ${String(err)}`,
+          ),
+        );
+    }, LEASE_HEARTBEAT_MS);
+    heartbeat.unref?.();
+
     let result: Awaited<ReturnType<typeof agentCommand>>;
     try {
       result = await agentCommand({
@@ -907,6 +1016,7 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         lane: "cron",
         runId: workerRunId,
         message: prompt,
+        abortSignal: liveRun.abort.signal,
         extraSystemPrompt: profile
           ? undefined
           : "This is an explicit queue-draining worker run. Prefer concrete action over discussion.",
@@ -919,10 +1029,74 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         providerOverride: workerModelOverride?.provider,
         modelOverride: workerModelOverride?.model,
       });
+    } catch (err) {
+      if (liveRun.haltReason) {
+        // Operator halt: the task is blocked with the reason (lease cleared
+        // by the terminal status) and the run record says who/why. No ack
+        // from the worker was needed or waited for.
+        log.warn(
+          `worker ${state.agentId}: run ${workerRunId} halted (${liveRun.haltReason}); blocking task ${before.id}`,
+        );
+        await storage.tasks.block(before.id, `Run halted by operator: ${liveRun.haltReason}`);
+        if (jobTaskContext) {
+          await storage.jobs.completeRunForTask(before.id, {
+            status: "blocked",
+            blockers: `Run halted by operator: ${liveRun.haltReason}`,
+            metadata: { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+          });
+        }
+        attempted += 1;
+        blocked += 1;
+        break;
+      }
+      // Non-halt failure: requeue with the lease attempt counter so repeated
+      // crashes converge to auto-block instead of looping forever.
+      await storage.tasks.releaseClaim(before.id, {
+        claimedBy: workerRunId,
+        requeue: true,
+        reason: `run_error: ${err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200)}`,
+      });
+      throw err;
     } finally {
+      clearInterval(heartbeat);
+      liveRuns.delete(workerRunId);
       // The session is disposable the moment the turn returns: the report
       // registry and run record carry everything durable.
       await ephemeralSession?.dispose();
+    }
+
+    // Aborts surface as a NORMAL return with meta.aborted (the embedded
+    // runner resolves on abort rather than throwing) — the halt drill
+    // proved the catch above never sees them. Handle both flavors here.
+    if (liveRun.haltReason) {
+      log.warn(
+        `worker ${state.agentId}: run ${workerRunId} halted (${liveRun.haltReason}); blocking task ${before.id}`,
+      );
+      await storage.tasks.block(before.id, `Run halted by operator: ${liveRun.haltReason}`);
+      if (jobTaskContext) {
+        await storage.jobs.completeRunForTask(before.id, {
+          status: "blocked",
+          blockers: `Run halted by operator: ${liveRun.haltReason}`,
+          metadata: { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+        });
+      }
+      attempted += 1;
+      blocked += 1;
+      break;
+    }
+    if (result.meta?.aborted === true) {
+      // Aborted without an operator halt (timeout, shutdown): requeue under
+      // the lease attempt counter so repeats converge to auto-block.
+      log.warn(
+        `worker ${state.agentId}: run ${workerRunId} aborted without halt; requeueing task ${before.id}`,
+      );
+      await storage.tasks.releaseClaim(before.id, {
+        claimedBy: workerRunId,
+        requeue: true,
+        reason: "run_aborted",
+      });
+      attempted += 1;
+      break;
     }
 
     const toolValidation = extractToolValidation(result.meta);
@@ -1096,6 +1270,11 @@ async function runWorkerOnce(cfg: ArgentConfig, state: WorkerAgentState): Promis
         metadata: runMetadata,
       });
     }
+
+    // The lease is per-run: terminal statuses already cleared it; a task
+    // left open (no-progress, still in_progress) gets its lease released so
+    // the next cycle can claim it again.
+    await storage.tasks.releaseClaim(before.id, { claimedBy: workerRunId });
   }
 
   if (attempted === 0) {
@@ -1112,6 +1291,24 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
   let agents = resolveWorkerStates(cfg, new Map());
   let globalPaused = false;
   let pausedAgents = new Set<string>();
+  const liveRuns = new Map<string, LiveWorkerRun>();
+
+  // D4 boot-time orphan sweep: this process just started, so no live runs
+  // exist — any held lease is orphaned by definition. Requeue immediately;
+  // crash recovery time = restart time, not TTL.
+  void (async () => {
+    try {
+      const storage = await getStorageAdapter();
+      const orphaned = await storage.tasks.sweepExpiredClaims({ orphanAll: true });
+      if (orphaned.length > 0) {
+        log.warn(
+          `boot orphan sweep: requeued ${orphaned.length} task(s) with dead leases: ${orphaned.map((t) => t.id).join(", ")}`,
+        );
+      }
+    } catch (err) {
+      log.warn(`boot orphan sweep failed: ${String(err)}`);
+    }
+  })();
 
   const buildStatusHint = (state: WorkerAgentState): ExecutionWorkerStatusHint =>
     buildExecutionWorkerStatusHint({
@@ -1188,7 +1385,12 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
 
       state.running = true;
       try {
-        const result = await runWorkerOnce(cfg, state);
+        const result = await runWorkerOnce(
+          cfg,
+          state,
+          liveRuns,
+          () => globalPaused || pausedAgents.has(state.agentId),
+        );
         state.lastRunMs = Date.now();
         const baseInterval = state.config.intervalMs;
         const busyRetryMs = Math.min(baseInterval, 45_000);
@@ -1451,6 +1653,53 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
     return { ok: true, scope: "agent", agentId: requestedAgentId, resetCount: 1 };
   };
 
+  const halt = (opts?: { agentId?: string; reason?: string }): ExecutionWorkerHaltResult => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    const reason = opts?.reason?.trim() || "workforce halt";
+    // Global halt = pause everything first so nothing new dispatches while
+    // in-flight runs die.
+    if (!requestedAgentId) {
+      globalPaused = true;
+      scheduleNext();
+    } else {
+      pausedAgents.add(requestedAgentId);
+      scheduleNext();
+    }
+    const targets = Array.from(liveRuns.values()).filter(
+      (run) => !requestedAgentId || run.agentId === requestedAgentId,
+    );
+    for (const run of targets) {
+      run.haltReason = reason;
+      // T=0: cooperative interrupt — abort signal cancels between tool calls.
+      run.abort.abort(new Error(`halted: ${reason}`));
+      // T=grace: unconditional session termination, no worker ack required.
+      const embeddedSessionId = run.embeddedSessionId;
+      if (embeddedSessionId) {
+        const hardKill = setTimeout(() => {
+          if (liveRuns.has(run.runId)) {
+            const killed = abortEmbeddedPiRun(embeddedSessionId);
+            log.warn(
+              `halt: hard-killed run ${run.runId} (session ${embeddedSessionId}) after ${HALT_GRACE_MS}ms grace: ${killed}`,
+            );
+          }
+        }, HALT_GRACE_MS);
+        hardKill.unref?.();
+      }
+      log.warn(`halt: run ${run.runId} (task ${run.taskId}) flagged: ${reason}`);
+    }
+    return {
+      ok: true,
+      scope: requestedAgentId ? "agent" : "global",
+      agentId: requestedAgentId || undefined,
+      halted: targets.length,
+      runs: targets.map((run) => ({
+        runId: run.runId,
+        agentId: run.agentId,
+        taskId: run.taskId,
+      })),
+    };
+  };
+
   const stop = () => {
     stopped = true;
     if (timer) {
@@ -1460,5 +1709,5 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
   };
 
   updateConfig(cfg);
-  return { stop, updateConfig, getStatus, dispatchNow, pause, resume, resetMetrics };
+  return { stop, updateConfig, getStatus, dispatchNow, pause, resume, resetMetrics, halt };
 }

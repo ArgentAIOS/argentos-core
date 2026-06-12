@@ -291,6 +291,33 @@ export interface TaskAdapter {
   complete(id: string): Promise<Task | null>;
   block(id: string, reason?: string): Promise<Task | null>;
   fail(id: string, reason?: string): Promise<Task | null>;
+
+  // ── Lease protocol (Worker Runtime v2 D4) ─────────────────────────────
+  /**
+   * Atomic claim CAS: a pending task, or an in_progress task whose lease is
+   * absent or expired, transitions to in_progress with a fresh lease owned
+   * by `claimedBy`. Returns null when the claim is lost — raced by another
+   * claimer or the task moved to a non-claimable state. Lost = pick the
+   * next task, never retry the same row.
+   */
+  claim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<Task | null>;
+  /** Refresh own lease TTL. False when the lease is no longer held by `claimedBy`. */
+  heartbeatClaim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<boolean>;
+  /**
+   * Clear the lease after a run. `requeue` returns the task to pending and
+   * bumps `attempt` (reason recorded as metadata.leaseReleaseReason) — for
+   * lease_expired / halted runs feeding the no-progress machinery.
+   */
+  releaseClaim(
+    id: string,
+    opts?: { claimedBy?: string; requeue?: boolean; reason?: string },
+  ): Promise<Task | null>;
+  /**
+   * Requeue leased tasks: expired leases (claimTtl < now), or ALL held
+   * leases when `orphanAll` (boot-time sweep — no live runs exist yet, so
+   * any held lease is orphaned by definition). Returns the swept tasks.
+   */
+  sweepExpiredClaims(opts?: { now?: number; orphanAll?: boolean }): Promise<Task[]>;
 }
 
 // ── Team Adapter ──────────────────────────────────────────────────────────

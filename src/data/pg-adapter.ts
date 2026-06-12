@@ -2199,12 +2199,23 @@ class PgTaskAdapter implements TaskAdapter {
       }
     }
     if (input.priority !== undefined) updates.priority = input.priority;
+    if (input.attempt !== undefined) updates.attempt = input.attempt;
     if (input.assignee !== undefined) updates.assignee = input.assignee;
     if (input.dueAt !== undefined) updates.dueAt = input.dueAt ? new Date(input.dueAt) : null;
     if (input.dependsOn !== undefined) updates.dependsOn = input.dependsOn;
     if (input.teamId !== undefined) updates.teamId = input.teamId;
     if (input.tags !== undefined) updates.tags = input.tags;
     if (input.metadata !== undefined) updates.metadata = input.metadata;
+    // Terminal statuses end any run that held the task — the lease goes with it.
+    if (
+      input.status === "completed" ||
+      input.status === "failed" ||
+      input.status === "cancelled" ||
+      input.status === "blocked"
+    ) {
+      updates.claimedBy = null;
+      updates.claimTtl = null;
+    }
 
     const [row] = await this.db
       .update(schema.tasks)
@@ -2212,6 +2223,101 @@ class PgTaskAdapter implements TaskAdapter {
       .where(eq(schema.tasks.id, existing.id))
       .returning();
     return this.mapTask(row);
+  }
+
+  // ── Lease protocol (Worker Runtime v2 D4) ───────────────────────────────
+
+  async claim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<Task | null> {
+    const existing = await this.get(id);
+    if (!existing) return null;
+    const now = new Date();
+    const [row] = await this.db
+      .update(schema.tasks)
+      .set({
+        status: "in_progress",
+        claimedBy: opts.claimedBy,
+        claimTtl: new Date(now.getTime() + opts.ttlMs),
+        claimAcquiredAt: now,
+        // Raw-sql params skip the column's Date mapping (postgres-js would
+        // send Date.toString(), which timestamptz rejects) — pass ISO text.
+        startedAt: sql`COALESCE(${schema.tasks.startedAt}, ${now.toISOString()}::timestamptz)`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.tasks.id, existing.id),
+          or(
+            eq(schema.tasks.status, "pending"),
+            and(
+              eq(schema.tasks.status, "in_progress"),
+              or(sql`${schema.tasks.claimedBy} IS NULL`, lte(schema.tasks.claimTtl, now)),
+            ),
+          ),
+        ),
+      )
+      .returning();
+    return row ? this.mapTask(row) : null;
+  }
+
+  async heartbeatClaim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<boolean> {
+    const existing = await this.get(id);
+    if (!existing) return false;
+    const now = new Date();
+    const rows = await this.db
+      .update(schema.tasks)
+      .set({ claimTtl: new Date(now.getTime() + opts.ttlMs), updatedAt: now })
+      .where(and(eq(schema.tasks.id, existing.id), eq(schema.tasks.claimedBy, opts.claimedBy)))
+      .returning({ id: schema.tasks.id });
+    return rows.length > 0;
+  }
+
+  async releaseClaim(
+    id: string,
+    opts?: { claimedBy?: string; requeue?: boolean; reason?: string },
+  ): Promise<Task | null> {
+    const existing = await this.get(id);
+    if (!existing) return null;
+    if (opts?.claimedBy && existing.claimedBy !== opts.claimedBy) return null;
+    const now = new Date();
+    const updates: Record<string, any> = {
+      claimedBy: null,
+      claimTtl: null,
+      updatedAt: now,
+    };
+    if (opts?.requeue && existing.status === "in_progress") {
+      updates.status = "pending";
+      updates.attempt = sql`COALESCE(${schema.tasks.attempt}, 0) + 1`;
+      if (opts.reason) {
+        updates.metadata = { ...(existing.metadata ?? {}), leaseReleaseReason: opts.reason };
+      }
+    }
+    const [row] = await this.db
+      .update(schema.tasks)
+      .set(updates)
+      .where(eq(schema.tasks.id, existing.id))
+      .returning();
+    return row ? this.mapTask(row) : null;
+  }
+
+  async sweepExpiredClaims(opts?: { now?: number; orphanAll?: boolean }): Promise<Task[]> {
+    const now = new Date(opts?.now ?? Date.now());
+    const expiry = opts?.orphanAll
+      ? sql`${schema.tasks.claimedBy} IS NOT NULL`
+      : and(sql`${schema.tasks.claimedBy} IS NOT NULL`, lte(schema.tasks.claimTtl, now));
+    const reason = opts?.orphanAll ? "orphaned_at_boot" : "lease_expired";
+    const rows = await this.db
+      .update(schema.tasks)
+      .set({
+        status: "pending",
+        claimedBy: null,
+        claimTtl: null,
+        attempt: sql`COALESCE(${schema.tasks.attempt}, 0) + 1`,
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || ${JSON.stringify({ leaseReleaseReason: reason })}::jsonb`,
+        updatedAt: now,
+      })
+      .where(and(eq(schema.tasks.status, "in_progress"), expiry))
+      .returning();
+    return rows.map((r) => this.mapTask(r));
   }
 
   async delete(id: string): Promise<boolean> {
@@ -2355,6 +2461,10 @@ class PgTaskAdapter implements TaskAdapter {
       parentTaskId: row.parentTaskId ?? undefined,
       dependsOn: row.dependsOn ?? [],
       teamId: row.teamId ?? undefined,
+      claimedBy: row.claimedBy ?? undefined,
+      claimTtl: row.claimTtl?.getTime() ?? undefined,
+      claimAcquiredAt: row.claimAcquiredAt?.getTime() ?? undefined,
+      attempt: row.attempt ?? undefined,
       tags: row.tags ?? [],
       metadata: row.metadata ?? {},
     };
@@ -3459,7 +3569,14 @@ export class PgAdapter implements StorageAdapter {
       ALTER TABLE tasks
         ADD COLUMN IF NOT EXISTS session_id TEXT,
         ADD COLUMN IF NOT EXISTS channel_id TEXT,
-        ADD COLUMN IF NOT EXISTS depends_on JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ADD COLUMN IF NOT EXISTS depends_on JSONB NOT NULL DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS claimed_by TEXT,
+        ADD COLUMN IF NOT EXISTS claim_ttl TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS claim_acquired_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 0;
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_tasks_claim_ttl ON tasks(claim_ttl) WHERE claimed_by IS NOT NULL;
     `);
     await this.db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);

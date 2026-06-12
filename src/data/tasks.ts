@@ -115,6 +115,20 @@ export class TasksModule {
       // Index already exists — ignore
     }
 
+    // Migration: lease protocol columns (Worker Runtime v2 D4)
+    for (const ddl of [
+      "ALTER TABLE tasks ADD COLUMN claimed_by TEXT",
+      "ALTER TABLE tasks ADD COLUMN claim_ttl INTEGER",
+      "ALTER TABLE tasks ADD COLUMN claim_acquired_at INTEGER",
+      "ALTER TABLE tasks ADD COLUMN attempt INTEGER DEFAULT 0",
+    ]) {
+      try {
+        db.exec(ddl);
+      } catch {
+        // Column already exists — ignore
+      }
+    }
+
     this.initialized = true;
   }
 
@@ -236,10 +250,23 @@ export class TasksModule {
         updates.push("completed_at = ?");
         params.push(now);
       }
+      // Terminal statuses end any run that held the task — the lease goes with it.
+      if (
+        input.status === "completed" ||
+        input.status === "failed" ||
+        input.status === "cancelled" ||
+        input.status === "blocked"
+      ) {
+        updates.push("claimed_by = NULL", "claim_ttl = NULL");
+      }
     }
     if (input.priority !== undefined) {
       updates.push("priority = ?");
       params.push(input.priority);
+    }
+    if (input.attempt !== undefined) {
+      updates.push("attempt = ?");
+      params.push(input.attempt);
     }
     if (input.assignee !== undefined) {
       updates.push("assignee = ?");
@@ -503,6 +530,106 @@ export class TasksModule {
     return this.update(id, { status: "failed", metadata });
   }
 
+  // ── Lease protocol (Worker Runtime v2 D4) ───────────────────────────────
+
+  /** Atomic claim CAS — see TaskAdapter.claim. Null = claim lost. */
+  claim(id: string, opts: { claimedBy: string; ttlMs: number }): Task | null {
+    const task = this.get(id);
+    if (!task) return null;
+    const db = this.conn.getDatabase("dashboard");
+    const now = Date.now();
+    const result = db
+      .prepare(
+        `UPDATE tasks SET
+           status = 'in_progress',
+           claimed_by = ?,
+           claim_ttl = ?,
+           claim_acquired_at = ?,
+           started_at = COALESCE(started_at, ?),
+           updated_at = ?
+         WHERE id = ?
+           AND (
+             status = 'pending'
+             OR (status = 'in_progress' AND (claimed_by IS NULL OR COALESCE(claim_ttl, 0) <= ?))
+           )`,
+      )
+      .run(opts.claimedBy, now + opts.ttlMs, now, now, now, task.id, now);
+    return result.changes > 0 ? this.get(task.id) : null;
+  }
+
+  /** Refresh own lease TTL. False when the lease is no longer held by claimedBy. */
+  heartbeatClaim(id: string, opts: { claimedBy: string; ttlMs: number }): boolean {
+    const task = this.get(id);
+    if (!task) return false;
+    const db = this.conn.getDatabase("dashboard");
+    const now = Date.now();
+    const result = db
+      .prepare(`UPDATE tasks SET claim_ttl = ?, updated_at = ? WHERE id = ? AND claimed_by = ?`)
+      .run(now + opts.ttlMs, now, task.id, opts.claimedBy);
+    return result.changes > 0;
+  }
+
+  /** Clear the lease; requeue returns the task to pending and bumps attempt. */
+  releaseClaim(
+    id: string,
+    opts?: { claimedBy?: string; requeue?: boolean; reason?: string },
+  ): Task | null {
+    const task = this.get(id);
+    if (!task) return null;
+    if (opts?.claimedBy && task.claimedBy !== opts.claimedBy) return null;
+    const db = this.conn.getDatabase("dashboard");
+    const now = Date.now();
+    if (opts?.requeue && task.status === "in_progress") {
+      const metadata = opts.reason
+        ? JSON.stringify({ ...(task.metadata ?? {}), leaseReleaseReason: opts.reason })
+        : JSON.stringify(task.metadata ?? {});
+      db.prepare(
+        `UPDATE tasks SET
+           status = 'pending',
+           claimed_by = NULL,
+           claim_ttl = NULL,
+           attempt = COALESCE(attempt, 0) + 1,
+           metadata = ?,
+           updated_at = ?
+         WHERE id = ?`,
+      ).run(metadata, now, task.id);
+    } else {
+      db.prepare(
+        `UPDATE tasks SET claimed_by = NULL, claim_ttl = NULL, updated_at = ? WHERE id = ?`,
+      ).run(now, task.id);
+    }
+    return this.get(task.id);
+  }
+
+  /** Requeue expired (or, with orphanAll, every) leased in_progress task. */
+  sweepExpiredClaims(opts?: { now?: number; orphanAll?: boolean }): Task[] {
+    const db = this.conn.getDatabase("dashboard");
+    const now = opts?.now ?? Date.now();
+    const where = opts?.orphanAll
+      ? `status = 'in_progress' AND claimed_by IS NOT NULL`
+      : `status = 'in_progress' AND claimed_by IS NOT NULL AND COALESCE(claim_ttl, 0) <= ${Number(now)}`;
+    const rows = db.prepare(`SELECT * FROM tasks WHERE ${where}`).all() as TaskRow[];
+    const reason = opts?.orphanAll ? "orphaned_at_boot" : "lease_expired";
+    const swept: Task[] = [];
+    for (const row of rows) {
+      const task = this.rowToTask(row);
+      const metadata = JSON.stringify({ ...(task.metadata ?? {}), leaseReleaseReason: reason });
+      db.prepare(
+        `UPDATE tasks SET
+           status = 'pending',
+           claimed_by = NULL,
+           claim_ttl = NULL,
+           attempt = COALESCE(attempt, 0) + 1,
+           metadata = ?,
+           updated_at = ?
+         WHERE id = ?`,
+      ).run(metadata, now, task.id);
+      const updated = this.get(task.id);
+      if (updated) swept.push(updated);
+    }
+    return swept;
+  }
+
   /**
    * Get task counts by status
    */
@@ -680,6 +807,10 @@ export class TasksModule {
       parentTaskId: row.parent_task_id || undefined,
       dependsOn,
       teamId: row.team_id || undefined,
+      claimedBy: row.claimed_by || undefined,
+      claimTtl: row.claim_ttl || undefined,
+      claimAcquiredAt: row.claim_acquired_at || undefined,
+      attempt: row.attempt || undefined,
       tags: row.tags ? JSON.parse(row.tags) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     };
@@ -705,6 +836,10 @@ interface TaskRow {
   parent_task_id: string | null;
   depends_on: string | null;
   team_id: string | null;
+  claimed_by: string | null;
+  claim_ttl: number | null;
+  claim_acquired_at: number | null;
+  attempt: number | null;
   tags: string | null;
   metadata: string | null;
 }
