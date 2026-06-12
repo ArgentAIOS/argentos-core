@@ -1,5 +1,9 @@
 import type { GatewayRequestHandlers } from "./types.js";
-import { resolveDefaultAgentId, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import {
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+  resolveSessionAgentId,
+} from "../../agents/agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../../agents/defaults.js";
 import {
   abortEmbeddedPiRun,
@@ -8,6 +12,7 @@ import {
   waitForEmbeddedPiRunEnd,
 } from "../../agents/pi-embedded.js";
 import { getChatCommands } from "../../auto-reply/commands-registry.data.js";
+import { normalizeThinkLevel } from "../../auto-reply/thinking.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -68,8 +73,13 @@ export const commandsHandlers: GatewayRequestHandlers = {
       await waitForEmbeddedPiRunEnd(sessionId, 15_000);
     }
 
-    const agentId = resolveDefaultAgentId(cfg);
-    const workspaceDir = resolveAgentWorkspaceDir({ cfg, agentId });
+    // Resolve the SESSION's agent, not the default agent: a session key like
+    // `agent:argent:main` belongs to agent "argent" — falling back to the
+    // default (or worse, the literal DEFAULT_AGENT_ID "main") reads the wrong
+    // agent's auth profiles and workspace.
+    const agentId = resolveSessionAgentId({ sessionKey, config: cfg });
+    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+    const agentDir = resolveAgentDir(cfg, agentId);
 
     // Resolve model/provider from session or config defaults
     const resolved = resolveSessionModelRef(cfg, entry, agentId);
@@ -86,11 +96,12 @@ export const commandsHandlers: GatewayRequestHandlers = {
       spawnedBy: entry.spawnedBy,
       sessionFile: resolveSessionFilePath(sessionId, entry),
       workspaceDir,
+      agentDir,
       config: cfg,
       skillsSnapshot: entry.skillsSnapshot,
       provider,
       model,
-      thinkLevel: entry.thinkingLevel,
+      thinkLevel: normalizeThinkLevel(entry.thinkingLevel),
       bashElevated: { enabled: false, allowed: false, defaultLevel: "off" },
       customInstructions,
       senderIsOwner: true,

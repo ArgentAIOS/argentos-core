@@ -1,6 +1,6 @@
 import type { ArgentConfig } from "../../config/config.js";
 import type { CommandHandler } from "./commands-types.js";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { resolveAgentDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import {
   abortEmbeddedPiRun,
   compactEmbeddedPiSession,
@@ -73,6 +73,12 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     agentId: params.agentId,
     isGroup: params.isGroup,
   });
+  // Compact with the SESSION's agent dir — without this, compaction falls back
+  // to the global default agent dir (`agents/main/agent`) and reads the wrong
+  // agent's auth profiles when the session belongs to a non-default agent.
+  const compactAgentId =
+    params.agentId?.trim() ||
+    resolveSessionAgentId({ sessionKey: params.sessionKey, config: params.cfg });
   const result = await compactEmbeddedPiSession({
     sessionId,
     sessionKey: params.sessionKey,
@@ -83,6 +89,7 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     spawnedBy: params.sessionEntry.spawnedBy,
     sessionFile: resolveSessionFilePath(sessionId, params.sessionEntry),
     workspaceDir: params.workspaceDir,
+    agentDir: resolveAgentDir(params.cfg, compactAgentId),
     config: params.cfg,
     skillsSnapshot: params.sessionEntry.skillsSnapshot,
     provider: params.provider,

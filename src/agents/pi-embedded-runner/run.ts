@@ -1120,6 +1120,12 @@ export async function runEmbeddedPiAgent(
                 continue;
               }
               const kind = isCompactionFailure ? "compaction_failure" : "context_overflow";
+              // Keep the raw provider rejection in the logs — the chat reply
+              // replaces it with generic overflow text, and misclassified
+              // auth/transport rejections are indistinguishable without it.
+              log.warn(
+                `prompt error classified as ${kind} for ${provider}/${modelId}; raw: ${errorText.slice(0, 600)}`,
+              );
               return {
                 payloads: [
                   {
@@ -1564,8 +1570,9 @@ export async function runEmbeddedPiAgent(
                   );
                 }
               } else {
+                const rawAssistantError = (lastAssistant?.errorMessage ?? "").slice(0, 600);
                 log.warn(
-                  `Model ${provider}/${modelId} hit context overflow (session too large). Skipping auth profile rotation (non-account failure) and forcing model fallback.`,
+                  `Model ${provider}/${modelId} hit context overflow (session too large). Skipping auth profile rotation (non-account failure) and forcing model fallback. Raw: ${rawAssistantError}`,
                 );
               }
             } else {
