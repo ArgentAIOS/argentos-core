@@ -16,6 +16,7 @@ A runaway pushed the Mac's GPU to ~95 °C. Causes + fixes (all in `~/.argentos/a
 - **All autonomic loops were pinned to a heavy local 12B** (`lmstudio/google/gemma-4-12b-qat`) — heartbeat / contemplation / sis / kernel.localModel / intentSimulation. → re-routed to **`lmstudio/gemma-4-e2b-it-mlx`** (light).
 - `executionWorker` → `openai-codex/gpt-5.5`; `agents.defaults.model.primary` → `zai/glm-5.2`.
 - **131 duplicate podcast workflows** had accumulated (an ungoverned loop) → collapsed; cron store pruned to **7 jobs / 4 podcast crons** via the gateway `cron.remove` method (direct `jobs.json` edits get clobbered by the in-memory store).
+- **⚠️ GOTCHA — the model re-route only took effect after LOADING e2b in LM Studio (verified 2026-06-14).** The config change alone did nothing: LM Studio (JIT loading **off**) ignored the requested `gemma-4-e2b-it-mlx` and served every request with the loaded `google/gemma-4-12b-qat` — so memu + the loops kept hitting the heavy 12B. Proof: requesting e2b returned `"model": "google/gemma-4-12b-qat"`. **Fixed:** `lms load gemma-4-e2b-it-mlx` + `lms unload google/gemma-4-12b-qat` (freed ~7 GB); requests now verifiably `served by: gemma-4-e2b-it-mlx`. **Durability:** this load is lost on reboot/LM-Studio restart → **enable LM Studio JIT loading** (Settings → Developer → Just-In-Time Model Loading) or set e2b to auto-load, else it reverts to the 12B-fallback.
 - This incident is the seed of The Machine's ops obligations (idempotency / quarantine / cost-governor / alert) — captured in frontier-infra.
 
 ### 2. Podcast pipeline — LOCKED CONTRACT A1–A5, all DONE + verified on Jason's phone
@@ -37,10 +38,10 @@ A runaway pushed the Mac's GPU to ~95 °C. Causes + fixes (all in `~/.argentos/a
 ## NEXT UP (ArgentOS — priority order)
 
 1. **Telegram inline Approve/Deny buttons** _(logged to the Follow-Ups closet)._ A3 now _alerts_ on `waiting_approval`; let Jason approve/deny from the phone via Telegram `callback_query` → the gateway approve / cancel-run methods (the human-in-the-loop-anywhere feature). Secure it to Jason's chat ID only — the button press is an irreversible operator action.
-2. **WR2 P4** — `proposed_action` recording (D9), report/telemetry cross-check, run-event log + Workforce Board read. Design: `ops/WORKER_RUNTIME_V2_DESIGN_2026-06-11.md`.
+2. **WR2 P4** _(the main pre-tangent build thread — where Fable left off)._ Landed already: **P1** (native tools + grant-only registry — worker prompt 43k→~2k tokens, native calls), **P2** (blank-slate ephemeral sessions, #452), **P3** (lease lifecycle, #453), **D5** (`work_report` contract). **P4 is the stop:** `work_report` _full_ — runner-side board updates, telemetry cross-check, run-event log + Workforce Board read, + **D9** proposed*action recording. Exit criterion (already written): conductor demo SOP back to honest "zero board mutations"; acceptance cites the report, not an `updatedAt` diff. Design: `ops/WORKER_RUNTIME_V2_DESIGN_2026-06-11.md`. *(Conductor was WR2's live regression harness — the same repo now contained private in frontier-infra.)\_
 3. **D8 escalation ladder** — primary → bigger model on no-progress.
 4. **Dependabot P1 bumps** (baileys → protobufjs → hono → shell-quote; needs Jason-awake WhatsApp-channel testing).
-5. **Verify the model re-routes held** — confirm memu (memory extraction) is producing again on `gemma-4-e2b-it-mlx`, and the autonomic loops run cool on the light model.
+5. **Enable LM Studio JIT loading (durability).** e2b is loaded + routing correctly NOW and the 12B is unloaded (verified 2026-06-14) — but a reboot loses it unless JIT loading is on (Settings → Developer) or e2b auto-loads. See §1 gotcha.
 
 ## Live-system facts
 
