@@ -2,7 +2,7 @@ import type { ToolClaimValidation } from "../agents/tool-claim-validation.js";
 import type { ArgentConfig } from "../config/config.js";
 import type { AgentExecutionWorkerConfig } from "../config/types.agent-defaults.js";
 import type { IntentPolicyConfig } from "../config/types.intent.js";
-import type { JobRelationshipContract, Task } from "../data/types.js";
+import type { JobRelationshipContract, RunEvent, Task } from "../data/types.js";
 import type { CreatePersonalSkillCandidateInput } from "../memory/memu-types.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import {
@@ -25,6 +25,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
+import { appendRunEvent, writeRunEventsToMetadata } from "./run-event-log.js";
 import { createEphemeralWorkerSession } from "./worker-ephemeral-session.js";
 
 const log = createSubsystemLogger("gateway/execution-worker");
@@ -94,6 +95,8 @@ export type ExecutionWorkerAgentStatus = {
   lastDispatchRequestedAt: number | null;
   lastDispatchReason?: string;
   statusHint: ExecutionWorkerStatusHint;
+  /** D7: in-flight runs for this agent with their live event log (per-run live state). */
+  liveRuns: Array<{ runId: string; taskId: string; startedAt: number; events: RunEvent[] }>;
   config: {
     every: string;
     model?: string;
@@ -385,6 +388,8 @@ type LiveWorkerRun = {
   startedAt: number;
   abort: AbortController;
   haltReason?: string;
+  /** D7: runner-written lifecycle events; flushed onto the run record at completion. */
+  events: RunEvent[];
 };
 
 export type ExecutionWorkerHaltResult = {
@@ -991,13 +996,19 @@ async function runWorkerOnce(
       embeddedSessionId: ephemeralSession?.sessionId,
       startedAt: Date.now(),
       abort: new AbortController(),
+      events: [],
     };
+    // D7: the claim succeeded just above and the session is now spawned. The
+    // runner is the single writer of these events for the life of the run.
+    appendRunEvent(liveRun.events, "claimed", { taskId: before.id });
+    appendRunEvent(liveRun.events, "spawned", { sessionId: ephemeralSession?.sessionId });
     liveRuns.set(workerRunId, liveRun);
     const heartbeat = setInterval(() => {
       if (Date.now() - liveRun.startedAt > maxRuntimeMs) {
         clearInterval(heartbeat);
         return;
       }
+      appendRunEvent(liveRun.events, "heartbeat");
       void storage.tasks
         .heartbeatClaim(before.id, { claimedBy: workerRunId, ttlMs: LEASE_TTL_MS })
         .catch((err) =>
@@ -1042,7 +1053,10 @@ async function runWorkerOnce(
           await storage.jobs.completeRunForTask(before.id, {
             status: "blocked",
             blockers: `Run halted by operator: ${liveRun.haltReason}`,
-            metadata: { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+            metadata: writeRunEventsToMetadata(
+              { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+              liveRun.events,
+            ),
           });
         }
         attempted += 1;
@@ -1077,7 +1091,10 @@ async function runWorkerOnce(
         await storage.jobs.completeRunForTask(before.id, {
           status: "blocked",
           blockers: `Run halted by operator: ${liveRun.haltReason}`,
-          metadata: { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+          metadata: writeRunEventsToMetadata(
+            { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+            liveRun.events,
+          ),
         });
       }
       attempted += 1;
@@ -1113,6 +1130,9 @@ async function runWorkerOnce(
     // the RUNNER updates the board from it; workers never mutate their own
     // task row (#443). Simulation violations always win over the report.
     const workReport = takeWorkReport(workerRunId) ?? takeWorkReport(runSessionKey);
+    if (workReport) {
+      appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome });
+    }
     log.info(
       `worker ${state.agentId}: report lookup runId=${workerRunId} sessionKey=${runSessionKey} found=${workReport ? workReport.outcome : "none"}`,
     );
@@ -1221,6 +1241,8 @@ async function runWorkerOnce(
         departmentPolicy: jobContext?.departmentPolicy,
         recentScores: recentRelationshipScores,
       }),
+      // D7: the run-event log travels on the run record (single-writer runner).
+      events: liveRun.events,
     };
     if (latest?.status === "completed") {
       completed += 1;
@@ -1508,6 +1530,14 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
         lastDispatchRequestedAt: state.lastDispatchRequestedAt,
         lastDispatchReason: state.lastDispatchReason,
         statusHint: buildStatusHint(state),
+        liveRuns: Array.from(liveRuns.values())
+          .filter((run) => run.agentId === state.agentId)
+          .map((run) => ({
+            runId: run.runId,
+            taskId: run.taskId,
+            startedAt: run.startedAt,
+            events: run.events,
+          })),
         config: {
           every: `${Math.max(1, Math.floor(state.config.intervalMs / 60_000))}m`,
           model: state.config.model,
@@ -1670,6 +1700,8 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
     );
     for (const run of targets) {
       run.haltReason = reason;
+      // D7: record the kill on the run-event log (single-writer runner).
+      appendRunEvent(run.events, "killed", { reason });
       // T=0: cooperative interrupt — abort signal cancels between tool calls.
       run.abort.abort(new Error(`halted: ${reason}`));
       // T=grace: unconditional session termination, no worker ack required.

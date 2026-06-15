@@ -285,6 +285,30 @@ export type JobPromotionState =
   | "rolled-back";
 export type JobRunReviewStatus = "pending" | "approved" | "held" | "rolled-back";
 
+/**
+ * D7 (WR2 P4) — runner-written lifecycle events on a JobRun. The runner is the
+ * single writer; events accrue in-memory during a run (surfaced live via
+ * getStatus) and are flushed onto the run record at completion. This is the
+ * observability substrate that replaces v1's `boardChanged` inference.
+ */
+export type RunEventType =
+  | "claimed"
+  | "spawned"
+  | "alive"
+  | "tool_call"
+  | "heartbeat"
+  | "report"
+  | "killed"
+  | "expired"
+  | "escalated"
+  | "proposed_action";
+export interface RunEvent {
+  ts: number;
+  type: RunEventType;
+  /** Event-specific payload, e.g. { name, granted } for tool_call, { tool, target } for proposed_action. */
+  detail?: Record<string, unknown>;
+}
+
 export interface JobRelationshipContract {
   relationshipObjective?: string;
   toneProfile?: string;
@@ -381,6 +405,8 @@ export interface JobRun {
   createdAt: number;
   startedAt: number;
   endedAt?: number;
+  /** D7 lifecycle events, runner-written; persisted under metadata.events (no migration). */
+  events?: RunEvent[];
   metadata?: Record<string, unknown>;
 }
 

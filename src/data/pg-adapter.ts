@@ -85,6 +85,7 @@ import type {
   TeamMember,
   TeamWithMembers,
 } from "./types.js";
+import { readRunEventsFromMetadata } from "../infra/run-event-log.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getPgClient, closePgClient, setAgentContext } from "./pg-client.js";
 import { PG_BOOTSTRAP_SCHEMA_SQL } from "./pg/bootstrap-schema.js";
@@ -3482,6 +3483,7 @@ class PgJobAdapter implements JobAdapter {
       status: normalizeJobRunStatus(row.status),
       summary: row.summary ?? undefined,
       blockers: row.blockers ?? undefined,
+      events: readRunEventsFromMetadata(row.metadata as Record<string, unknown> | null),
       metadata: (row.metadata as Record<string, unknown>) ?? undefined,
       createdAt: row.createdAt?.getTime() ?? Date.now(),
       startedAt: row.startedAt?.getTime() ?? Date.now(),

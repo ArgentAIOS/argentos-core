@@ -149,6 +149,11 @@ Scheduler/cadence + control API · simulate/limited-live enforcement · intent g
 > | **P3 — lease lifecycle** (D4, D6) | Claim CAS + TTL + heartbeat + alive handshake + hard kill + event wakeup; full `runNow` semantics replace P0 band-aid | Kill a wedged run in ≤ grace period without ack; lease expiry returns task to queue; #445 + #425 closeable |
 > | **P4 — work_report contract** (D5, D7) | `work_report` tool, runner-side board updates, telemetry cross-check, run-event log + Workforce Board read | Conductor demo SOP restored to honest "zero board mutations"; acceptance decisions cite report, not updatedAt diff |
 
+> **P4 IN PROGRESS 2026-06-14 s2 (Opus 4.8), locked contract = full P4 (runner substrate + Workforce Board read):**
+>
+> - **D7 run-event log — DONE.** New `RunEvent` type + `JobRun.events` field (`src/data/types.ts`); pure helper `src/infra/run-event-log.ts` (+5 unit tests); persisted under `metadata.events` (no migration), lifted back via `pg-adapter.mapRun`. Runner (`execution-worker-runner-impl.ts`) is the single writer — appends `claimed/spawned/heartbeat/report/killed`, flushes onto the run record at every `completeRunForTask` site, and `getStatus()` now carries per-agent `liveRuns[]` with their live event log. `alive`≈`heartbeat` (folded); `expired` reserved for the lease-sweep path. tsc clean; 25 tests green across run-event-log/runner/gateway/work-report suites.
+> - Remaining P4: telemetry cross-check (`report_telemetry_mismatch` + late-report-after-cancel guard), D6 skip-reason log, D9 `proposed_action` recording, Workforce Board dashboard read.
+
 Ordering rationale: P1 is the named biggest lever (#442/#407) and unblocks the client-site local-model story; P2 makes the law structural while the prompt work is hot; P3/P4 are execution-honesty and can follow without blocking demos (P0 covers the sharp edge today).
 
 ## 7. Non-goals (v2 explicitly does not)
