@@ -26,6 +26,11 @@ import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import { appendRunEvent, writeRunEventsToMetadata } from "./run-event-log.js";
+import {
+  crossCheckWorkReport,
+  grantsAreWriteCapable,
+  isStaleWorkReport,
+} from "./work-report-crosscheck.js";
 import { createEphemeralWorkerSession } from "./worker-ephemeral-session.js";
 
 const log = createSubsystemLogger("gateway/execution-worker");
@@ -1130,21 +1135,49 @@ async function runWorkerOnce(
     // the RUNNER updates the board from it; workers never mutate their own
     // task row (#443). Simulation violations always win over the report.
     const workReport = takeWorkReport(workerRunId) ?? takeWorkReport(runSessionKey);
-    if (workReport) {
-      appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome });
-    }
     log.info(
       `worker ${state.agentId}: report lookup runId=${workerRunId} sessionKey=${runSessionKey} found=${workReport ? workReport.outcome : "none"}`,
     );
     if (workReport && jobTaskContext && !simulationViolation) {
-      if (workReport.outcome === "done") {
-        await storage.tasks.complete(before.id);
-      } else {
-        await storage.tasks.block(
-          before.id,
-          `work_report(${workReport.outcome}): ${workReport.summary.slice(0, 400)}`,
+      // P4: a report only mutates the board when the runner still owns the task
+      // (stale-report guard — covers runNow-fresh supersede, cancel, lease
+      // takeover) AND its claim of `done` is consistent with run telemetry.
+      const currentTask = await storage.tasks.get(before.id);
+      if (isStaleWorkReport({ currentTask, workerRunId })) {
+        appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome, stale: true });
+        log.warn(
+          `worker ${state.agentId}: stale work_report on task ${before.id} (claim lost or task cancelled); ignoring board write`,
         );
+      } else {
+        const crossCheck = crossCheckWorkReport({
+          outcome: workReport.outcome,
+          isLiveMode:
+            jobContext?.executionMode !== "simulate" && jobContext?.deploymentStage !== "shadow",
+          grantsWriteCapable: grantsAreWriteCapable(profile?.toolsAllow ?? []),
+          externalToolCount: toolValidation?.externalToolsExecuted.length ?? 0,
+        });
+        if (!crossCheck.accepted) {
+          appendRunEvent(liveRun.events, "report", {
+            outcome: workReport.outcome,
+            rejected: crossCheck.reason,
+          });
+          await storage.tasks.block(before.id, `${crossCheck.reason}: ${crossCheck.detail}`);
+        } else {
+          appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome });
+          if (workReport.outcome === "done") {
+            await storage.tasks.complete(before.id);
+          } else {
+            await storage.tasks.block(
+              before.id,
+              `work_report(${workReport.outcome}): ${workReport.summary.slice(0, 400)}`,
+            );
+          }
+        }
       }
+    } else if (workReport) {
+      // Report filed but not actioned (no job context, or a simulation violation
+      // already blocked the task) — still record that it arrived.
+      appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome });
     }
     const after = await storage.tasks.get(before.id);
     const evidenceOk = hasExecutionEvidence(result);
