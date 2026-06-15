@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const resolveServiceKeyAsyncMock = vi.fn<(name: string) => Promise<string | undefined>>();
 
 vi.mock("../../infra/service-keys.js", () => ({
+  resolveServiceKey: vi.fn(),
   resolveServiceKeyAsync: resolveServiceKeyAsyncMock,
 }));
 
