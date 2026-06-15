@@ -129,6 +129,36 @@ type JobRun = {
       targetStage?: string | null;
     }>;
   };
+  /** D7 (WR2 P4): per-run lifecycle events lifted from metadata.events by the runner. */
+  events?: RunEvent[];
+};
+
+/** D7 (WR2 P4): mirrors src/data/types.ts RunEvent — consumed read-only by the board. */
+type RunEvent = {
+  ts: number;
+  type: string;
+  detail?: Record<string, unknown>;
+};
+
+/** D6 (WR2 P4): mirrors src/data/types.ts GateReason — "why didn't this run". */
+type GateReason = {
+  ts: number;
+  gate: string;
+  reason?: string;
+};
+
+/**
+ * D6/D7 (WR2 P4): subset of ExecutionWorkerAgentStatus
+ * (src/infra/execution-worker-runner-impl.ts) consumed from `execution.worker.status`.
+ */
+type ExecutionWorkerAgentStatus = {
+  agentId: string;
+  gateReasons?: GateReason[];
+  liveRuns?: Array<{ runId: string; taskId: string; startedAt: number; events: RunEvent[] }>;
+};
+
+type ExecutionWorkerStatusResponse = {
+  agents?: ExecutionWorkerAgentStatus[];
 };
 
 type JobEvent = {
@@ -585,6 +615,9 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
   const [assignments, setAssignments] = useState<JobAssignment[]>([]);
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [events, setEvents] = useState<JobEvent[]>([]);
+  const [workerStatusByAgentId, setWorkerStatusByAgentId] = useState<
+    Record<string, ExecutionWorkerAgentStatus>
+  >({});
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -681,6 +714,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
         copilotOverviewPayload,
         copilotWorkforcePayload,
         copilotObservabilityPayload,
+        workerStatusPayload,
       ] = await Promise.all([
         safeRequest<JobsOverview>("jobs.overview"),
         safeRequest<{ templates?: JobTemplate[] }>("jobs.templates.list"),
@@ -694,6 +728,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
         safeRequest<CopilotObservabilityOverview>("copilot.observability.overview", {
           horizonDays: 7,
         }),
+        safeRequest<ExecutionWorkerStatusResponse>("execution.worker.status"),
       ]);
 
       const nextTemplates = Array.isArray(templatesPayload?.templates)
@@ -726,6 +761,15 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
       setCopilotOverview(copilotOverviewPayload ?? null);
       setCopilotWorkforceOverview(copilotWorkforcePayload ?? null);
       setCopilotObservabilityOverview(copilotObservabilityPayload ?? null);
+      const workerStatusMap: Record<string, ExecutionWorkerAgentStatus> = {};
+      for (const agent of Array.isArray(workerStatusPayload?.agents)
+        ? workerStatusPayload.agents
+        : []) {
+        if (agent && typeof agent.agentId === "string" && agent.agentId) {
+          workerStatusMap[agent.agentId] = agent;
+        }
+      }
+      setWorkerStatusByAgentId(workerStatusMap);
       const optionMap = new Map<string, AgentOption>();
       const addOption = (idRaw: string | undefined, name?: string) => {
         const id = typeof idRaw === "string" ? idRaw.trim() : "";
@@ -1654,6 +1698,11 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
   const selectedRosterAgent = useMemo(
     () => rosterAgents.find((agent) => agent.agentId === selectedAgentId) ?? null,
     [rosterAgents, selectedAgentId],
+  );
+
+  const selectedWorkerStatus = useMemo(
+    () => (selectedAgentId ? (workerStatusByAgentId[selectedAgentId] ?? null) : null),
+    [selectedAgentId, workerStatusByAgentId],
   );
 
   const selectedAgentLabel = useMemo(() => {
@@ -2917,6 +2966,76 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
                         </div>
                       </div>
                     </div>
+                    {selectedWorkerStatus?.gateReasons &&
+                    selectedWorkerStatus.gateReasons.length > 0 ? (
+                      <div className="rounded-xl border border-amber-300/15 bg-amber-500/5 p-6 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[11px] uppercase tracking-wide text-amber-200/80">
+                            Why didn&apos;t this run
+                          </div>
+                          <div className="text-[10px] text-white/45">
+                            {selectedWorkerStatus.gateReasons.length} recent skips
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          {selectedWorkerStatus.gateReasons
+                            .slice()
+                            .toReversed()
+                            .map((gateReason, index) => (
+                              <div
+                                key={`gate-${selectedAgentId}-${index}-${gateReason.ts}`}
+                                className="rounded border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/70"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-amber-100/90">{gateReason.gate}</span>
+                                  <span className="text-[10px] text-white/40">
+                                    {new Date(gateReason.ts).toLocaleString()}
+                                  </span>
+                                </div>
+                                {gateReason.reason ? (
+                                  <div className="mt-1 text-white/55">{gateReason.reason}</div>
+                                ) : null}
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {selectedWorkerStatus?.liveRuns && selectedWorkerStatus.liveRuns.length > 0 ? (
+                      <div className="rounded-xl border border-cyan-300/15 bg-cyan-500/5 p-6 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[11px] uppercase tracking-wide text-cyan-200/80">
+                            In-flight runs
+                          </div>
+                          <div className="text-[10px] text-white/45">
+                            {selectedWorkerStatus.liveRuns.length} live
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          {selectedWorkerStatus.liveRuns.map((liveRun) => (
+                            <div
+                              key={`live-${liveRun.runId}`}
+                              className="rounded border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-white/70 space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-[11px] text-white/80">
+                                  run {shortId(liveRun.runId)} · task {shortId(liveRun.taskId)}
+                                </span>
+                                <span className="text-[10px] text-white/40">
+                                  started {new Date(liveRun.startedAt).toLocaleString()}
+                                </span>
+                              </div>
+                              {liveRun.events.length > 0 ? (
+                                <div className="text-[11px] text-white/55">
+                                  {liveRun.events.map((event) => event.type).join(" → ")}
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-white/40">no events yet</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3772,6 +3891,45 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
                               ) : null}
                             </div>
                           ))}
+                      </div>
+                    ) : null}
+                    {selectedRun.events && selectedRun.events.length > 0 ? (
+                      <div className="rounded border border-white/10 bg-black/15 px-2 py-2 text-[10px] text-white/60 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-white/85">Run lifecycle</div>
+                          <div className="text-white/45">{selectedRun.events.length} events</div>
+                        </div>
+                        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                          {selectedRun.events.map((event, index) => {
+                            const outcome =
+                              event.detail && typeof event.detail.outcome === "string"
+                                ? event.detail.outcome
+                                : null;
+                            const reason =
+                              event.detail && typeof event.detail.reason === "string"
+                                ? event.detail.reason
+                                : null;
+                            return (
+                              <div
+                                key={`${selectedRun.id}-lifecycle-${index}-${event.ts}`}
+                                className="rounded border border-white/5 bg-white/5 px-2 py-1.5"
+                              >
+                                <div className="flex items-center justify-between gap-2 text-white/80">
+                                  <span>{event.type}</span>
+                                  <span className="text-white/45">
+                                    {new Date(event.ts).toLocaleString()}
+                                  </span>
+                                </div>
+                                {outcome ? (
+                                  <div className="text-white/55">outcome: {outcome}</div>
+                                ) : null}
+                                {reason ? (
+                                  <div className="text-white/55">reason: {reason}</div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     ) : null}
                     <div className="rounded border border-white/10 bg-black/15 px-2 py-2 text-[10px] text-white/60 space-y-2">
