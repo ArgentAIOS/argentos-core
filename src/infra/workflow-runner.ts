@@ -1715,7 +1715,7 @@ async function sendWorkflowEmail(
   to: string,
   subject: string,
   body: string,
-  provider = "sendgrid",
+  provider = "resend",
 ): Promise<{ ok: boolean; error?: string; details?: Record<string, unknown> }> {
   const [{ loadConfig }, { createEmailDeliveryTool }] = await Promise.all([
     import("../config/config.js"),
@@ -1855,7 +1855,7 @@ async function executeAction(
       const provider =
         typeof asRecord(actionType).provider === "string"
           ? String(asRecord(actionType).provider)
-          : "sendgrid";
+          : "resend";
       try {
         const result = actions?.sendEmail
           ? await actions.sendEmail(to, subjectRendered, body)
@@ -2990,7 +2990,7 @@ async function executeOutput(
     case "email": {
       const subject = resolveTemplate(config.subject, context);
       const body = resolveTemplate(config.bodyTemplate, context);
-      const result = await sendWorkflowEmail(node.id, config.to, subject, body, "sendgrid");
+      const result = await sendWorkflowEmail(node.id, config.to, subject, body, "resend");
       return {
         items: [
           {

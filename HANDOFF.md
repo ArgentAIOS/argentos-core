@@ -1,8 +1,28 @@
 # HANDOFF — argent-core session bridge
 
-**From:** 2026-06-14 session (Opus 4.8). Supersedes the 2026-06-13 bridge (in git history @ `b1cc5283`).
-**Branch:** `dev` @ `b1cc5283` = **v2026.6.12-dev.3** — unchanged this session (no argent-core _code_ shipped; the work was operational + cross-project).
-**Scope note:** this session was mostly **operational ArgentOS** (a thermal incident → a locked podcast-pipeline contract) plus a large **frontier-infra / The Machine** arc that has **SPLIT INTO ITS OWN THREAD** → `~/code/frontier-infra/HANDOFF.md`. _This_ file is the **ArgentOS / live-box** thread.
+**From:** 2026-06-14 session 2 (Opus 4.8). Supersedes the 2026-06-14 s1 bridge (git history @ `8a2ef2dc`).
+**Branch:** `dev` — **code shipped this session**: `src/infra/workflow-runner.ts` email-provider default `sendgrid → resend` (see §0).
+**Scope note:** this session **closed NEXT-UP #1 (Telegram Approve/Deny)** and, via the live test, **root-caused + fixed why the podcast pipeline never sent email**. Frontier-infra / The Machine remains its own thread → `~/code/frontier-infra/HANDOFF.md`.
+
+---
+
+## 0. What shipped 2026-06-14 s2 (the live-box approval loop is now real)
+
+### Telegram Approve/Deny — DONE (it was already built; the task was enablement, not a build)
+
+- The feature shipped long ago in **#351** (`workflow-approval-notifier.ts` emits ✅/❌ inline buttons; `bot-handlers.ts:426` parses `wf_app:`/`wf_dny:`, resolves the approval, resumes the run). It was **dormant** behind one unset config key — that's why 319/324 pending approvals had `notification_status='disabled'`.
+- **Enabled** `agents.defaults.kernel.operatorNotifications = { enabled:true, targets:[{channel:"telegram", to:"8693117634"}] }` in `~/.argentos/argent.json` (backup: `argent.json.bak-pre-approvals-notif-20260614`). Live within the 200ms config-cache TTL.
+- **Security is already enforced** by existing config — `inlineButtonsScope` defaults to `allowlist` + `channels.telegram.allowFrom=['8693117634']` ⇒ only Jason's chat can press. No extra guard needed. **No second bot, no new daemon** (the same @ArgentAiBot is the single legitimate getUpdates consumer — a separate poller would 409-conflict).
+- **VERIFIED LIVE**: Jason pressed Approve on keeper `2b992c2c` → approval `approved` by `@JasonBrashear` → run resumed. (It then failed downstream — see the resend fix below; that failure is what exposed the real bug.)
+- **`failed-run-alerter.py` deduped to `failed`-only** (the in-app notifier now owns `waiting_approval` with actionable buttons; the plain-text ping was a redundant double-notify). launchd reloaded.
+
+### Podcast email pipeline — root-caused + fixed (this is why nothing ever sent)
+
+- The approval test resumed, then died: **`No sender address configured … (sendgrid)`**. ArgentOS **never used SendGrid** — `workflow-runner.ts` hardcoded `sendgrid` as the email-provider default in **3 spots** (`sendWorkflowEmail` default param, the `send_email` action fallback, and the `case "email"` node), overriding the email tool's own `resend` default.
+- **Fixed** all 3 → `resend` (typechecks clean; `workflow-runner` tests 50/50 green; no test pinned sendgrid). `sendgrid` stays a valid _explicit_ option in the type union.
+- **Added** `WORKFLOW_EMAIL_FROM = Argent@argentos.ai` to `~/.argentos/service-keys.json` (backup: `service-keys.json.bak-pre-emailfrom-20260614`). Resend API key was already present + enabled.
+- **VERIFIED**: standalone `send_resend` test → Resend `accepted:true`, msg id `877eac8f-…` (sender domain verified, key works). **Gateway restarted** to load the code fix; telegram channel back to `running/polling`.
+- **Backlog cleanup** (Jason-approved): **323 stale `waiting_approval` runs** (MSP Podcast / SaaS Radar / Forward Observer drafts, 2026-05-06 → 06-14, residue of the dup-loop + the dead send path) bulk-cancelled via `workflows.cancel`. **Confirmed: 0 waiting_approval runs, 0 pending approvals** (the 323 orphaned approval rows — `workflows.cancel` doesn't cascade-resolve them — were marked `cancelled` directly). _Note for later: `workflows.cancel` leaving its approval row `pending` is a latent gap worth a cascade fix._
 
 ---
 
@@ -37,7 +57,7 @@ A runaway pushed the Mac's GPU to ~95 °C. Causes + fixes (all in `~/.argentos/a
 
 ## NEXT UP (ArgentOS — priority order)
 
-1. **Telegram inline Approve/Deny buttons** _(logged to the Follow-Ups closet)._ A3 now _alerts_ on `waiting_approval`; let Jason approve/deny from the phone via Telegram `callback_query` → the gateway approve / cancel-run methods (the human-in-the-loop-anywhere feature). Secure it to Jason's chat ID only — the button press is an irreversible operator action.
+1. ~~**Telegram inline Approve/Deny buttons.**~~ **DONE 2026-06-14 s2** — see §0. Was already built (#351); enabled via config + verified live. Secured to Jason's chat by the existing `allowlist` scope.
 2. **WR2 P4** _(the main pre-tangent build thread — where Fable left off)._ Landed already: **P1** (native tools + grant-only registry — worker prompt 43k→~2k tokens, native calls), **P2** (blank-slate ephemeral sessions, #452), **P3** (lease lifecycle, #453), **D5** (`work_report` contract). **P4 is the stop:** `work_report` _full_ — runner-side board updates, telemetry cross-check, run-event log + Workforce Board read, + **D9** proposed*action recording. Exit criterion (already written): conductor demo SOP back to honest "zero board mutations"; acceptance cites the report, not an `updatedAt` diff. Design: `ops/WORKER_RUNTIME_V2_DESIGN_2026-06-11.md`. *(Conductor was WR2's live regression harness — the same repo now contained private in frontier-infra.)\_
 3. **D8 escalation ladder** — primary → bigger model on no-progress.
 4. **Dependabot P1 bumps** (baileys → protobufjs → hono → shell-quote; needs Jason-awake WhatsApp-channel testing).
