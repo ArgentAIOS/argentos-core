@@ -101,4 +101,11 @@ export type AgentCommandOpts = {
    * When provided (even empty), overrides agent/global model fallbacks.
    */
   modelFallbacksOverride?: string[];
+  /**
+   * WR2 P4 "D9" — SIMULATE mode. When true, write-capable tool calls do NOT
+   * execute; each is recorded as a `proposed_action` on the run record and the
+   * worker gets a benign "recorded (simulated)" result. The operator reviews the
+   * proposals; nothing external is touched.
+   */
+  simulateWrites?: boolean;
 };

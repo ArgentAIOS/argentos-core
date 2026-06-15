@@ -2,6 +2,7 @@ import type { SessionSystemPromptReport } from "../../config/sessions/types.js";
 import type { MessagingToolSend } from "../pi-embedded-messaging.js";
 import type { ToolClaimValidation } from "../tool-claim-validation.js";
 import type { SupportQualityValidation } from "./run/support-quality.js";
+import type { ProposedAction } from "./simulate-tool-stub.js";
 
 export type EmbeddedPiAgentMeta = {
   sessionId: string;
@@ -22,6 +23,11 @@ export type EmbeddedPiRunMeta = {
   aborted?: boolean;
   systemPromptReport?: SessionSystemPromptReport;
   toolValidation?: ToolClaimValidation;
+  /**
+   * WR2 P4 "D9" — write-capable tool calls stubbed out in SIMULATE mode. The
+   * runner records each as a `proposed_action` run event for operator review.
+   */
+  proposedActions?: ProposedAction[];
   supportQuality?: SupportQualityValidation;
   error?: {
     kind: "context_overflow" | "compaction_failure" | "role_ordering" | "image_size";

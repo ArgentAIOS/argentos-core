@@ -12,6 +12,7 @@ import type { AuthStorage, ModelRegistry } from "../../pi-model-discovery.js";
 import type { SkillSnapshot } from "../../skills.js";
 import type { PromptMode } from "../../system-prompt.js";
 import type { TaskMutationEvidence } from "../../tool-claim-validation.js";
+import type { ProposedAction } from "../simulate-tool-stub.js";
 import type { ClientToolDefinition } from "./params.js";
 
 export type EmbeddedRunAttemptParams = {
@@ -117,6 +118,11 @@ export type EmbeddedRunAttemptParams = {
   enforceFinalTag?: boolean;
   /** Whether this is a heartbeat run (for subsystem tool set detection). */
   isHeartbeat?: boolean;
+  /**
+   * WR2 P4 "D9" — SIMULATE mode. When true, write-capable tools are wrapped so
+   * their calls are recorded as `proposed_action` instead of executing.
+   */
+  simulateWrites?: boolean;
 };
 
 export type EmbeddedRunAttemptResult = {
@@ -129,6 +135,11 @@ export type EmbeddedRunAttemptResult = {
   assistantTexts: string[];
   toolMetas: Array<{ toolName: string; meta?: string }>;
   taskMutationEvidence?: TaskMutationEvidence[];
+  /**
+   * WR2 P4 "D9" — write-capable tool calls that were stubbed in SIMULATE mode.
+   * The runner records each as a `proposed_action` run event.
+   */
+  proposedActions?: ProposedAction[];
   lastAssistant: AssistantMessage | undefined;
   lastToolError?: { toolName: string; meta?: string; error?: string };
   didSendViaMessagingTool: boolean;

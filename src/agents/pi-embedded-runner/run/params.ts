@@ -113,4 +113,9 @@ export type RunEmbeddedPiAgentParams = {
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
+  /**
+   * WR2 P4 "D9" — SIMULATE mode. When true, write-capable tool calls are stubbed
+   * out (recorded as `proposed_action`, not executed). Forwarded to the attempt.
+   */
+  simulateWrites?: boolean;
 };

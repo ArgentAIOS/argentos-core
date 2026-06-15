@@ -622,6 +622,23 @@ function extractToolValidation(meta: unknown): WorkerToolClaimValidation | undef
   return parsed as WorkerToolClaimValidation;
 }
 
+/** Defensively lift WR2 P4 "D9" proposed_action records off a run's meta. */
+function extractProposedActions(meta: unknown): Array<{ tool: string; args: unknown }> {
+  if (!meta || typeof meta !== "object") {
+    return [];
+  }
+  const candidate = (meta as { proposedActions?: unknown }).proposedActions;
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+  return candidate.filter(
+    (entry): entry is { tool: string; args: unknown } =>
+      Boolean(entry) &&
+      typeof entry === "object" &&
+      typeof (entry as { tool?: unknown }).tool === "string",
+  );
+}
+
 function hasExecutionEvidence(result: {
   meta?: unknown;
   payloads?: Array<{ text?: string }>;
@@ -1050,6 +1067,10 @@ async function runWorkerOnce(
         bestEffortDeliver: false,
         providerOverride: workerModelOverride?.provider,
         modelOverride: workerModelOverride?.model,
+        // WR2 P4 "D9": in SIMULATE (or shadow) mode, write-capable tool calls are
+        // recorded as proposed_action instead of executing — nothing external is touched.
+        simulateWrites:
+          jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow",
       });
     } catch (err) {
       if (liveRun.haltReason) {
@@ -1128,6 +1149,14 @@ async function runWorkerOnce(
     }
 
     const toolValidation = extractToolValidation(result.meta);
+    // WR2 P4 "D9": record each SIMULATE-mode stubbed write as a proposed_action run
+    // event for operator review. These flush onto the run record automatically.
+    for (const proposed of extractProposedActions(result.meta)) {
+      appendRunEvent(liveRun.events, "proposed_action", {
+        tool: proposed.tool,
+        args: proposed.args,
+      });
+    }
     const simulationViolation =
       (jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow") &&
       Boolean(toolValidation && toolValidation.externalToolsExecuted.length > 0);

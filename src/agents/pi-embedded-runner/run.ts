@@ -1107,6 +1107,7 @@ export async function runEmbeddedPiAgent(
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
             isHeartbeat: params.isHeartbeat,
+            simulateWrites: params.simulateWrites,
           });
 
           const { aborted, promptError, timedOut, sessionIdUsed, lastAssistant } = attempt;
@@ -2079,6 +2080,7 @@ export async function runEmbeddedPiAgent(
               aborted,
               systemPromptReport: attempt.systemPromptReport,
               toolValidation: toolValidationForMeta,
+              proposedActions: attempt.proposedActions,
               supportQuality: lastSupportQualityValidation,
               // Handle client tool calls (OpenResponses hosted tools)
               stopReason: attempt.clientToolCall ? "tool_calls" : undefined,

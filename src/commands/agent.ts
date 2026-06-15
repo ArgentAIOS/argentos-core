@@ -632,6 +632,7 @@ export async function agentCommand(
             promptMode: opts.promptMode,
             systemPromptOverride: opts.systemPromptOverride,
             streamParams: opts.streamParams,
+            simulateWrites: opts.simulateWrites,
             agentDir,
             onAgentEvent: (evt) => {
               // Track lifecycle end for fallback emission below.

@@ -142,6 +142,7 @@ import {
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
+import { type ProposedAction, wrapToolForSimulate } from "../simulate-tool-stub.js";
 import {
   applySystemPromptOverrideToSession,
   buildEmbeddedSystemPrompt,
@@ -1140,8 +1141,15 @@ export async function runEmbeddedAttempt(
         });
       }
 
+      // WR2 P4 "D9" — SIMULATE mode: wrap write-capable tools so their calls are
+      // recorded as `proposed_action` rather than executed. Passthrough otherwise.
+      const proposedActions: ProposedAction[] = [];
+      const effectiveTools = params.simulateWrites
+        ? tools.map((t) => wrapToolForSimulate(t, proposedActions))
+        : tools;
+
       const { builtInTools, customTools } = splitSdkTools({
-        tools,
+        tools: effectiveTools,
         sandboxEnabled: !!sandbox?.enabled,
       });
 
@@ -1172,9 +1180,11 @@ export async function runEmbeddedAttempt(
           model: params.model,
           config: params.config,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          tools: tools,
+          tools: effectiveTools,
         }));
-        log.info(`[argent-runtime] Using createArgentAgentSession (tools=${tools.length})`);
+        log.info(
+          `[argent-runtime] Using createArgentAgentSession (tools=${effectiveTools.length})`,
+        );
       } else {
         ({ session } = await createAgentSession({
           cwd: resolvedWorkspace,
@@ -1966,6 +1976,7 @@ export async function runEmbeddedAttempt(
         assistantTexts,
         toolMetas: toolMetasNormalized,
         taskMutationEvidence: getTaskMutationEvidence(),
+        proposedActions,
         lastAssistant,
         lastToolError: getLastToolError?.(),
         didSendViaMessagingTool: didSendViaMessaging,
