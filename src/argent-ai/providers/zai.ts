@@ -103,7 +103,10 @@ interface ZAINonStreamResponse {
 // Constants
 // ============================================================================
 
-const DEFAULT_BASE_URL = "https://api.z.ai/v1/chat/completions";
+// Coding-plan endpoint. The old "/v1/chat/completions" path does not exist on
+// api.z.ai (returns 404); the general "/api/paas/v4" endpoint 401s with a
+// coding-plan key. Callers that pass an explicit baseURL still override this.
+const DEFAULT_BASE_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 const DEFAULT_MAX_TOKENS = 8192;
 
 // ============================================================================
