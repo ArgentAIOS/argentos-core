@@ -309,6 +309,19 @@ export interface RunEvent {
   detail?: Record<string, unknown>;
 }
 
+/**
+ * D6 (WR2 P4) — why a runner cycle did NOT produce work. Appended per skip
+ * (agent-busy, paused, gated, lease-lost, cycle-error) so the Workforce Board
+ * can render "why didn't this run" without log spelunking. Banishes silent
+ * success-that-did-nothing (#445).
+ */
+export interface GateReason {
+  ts: number;
+  /** The gate that fired, e.g. "agent-busy" | "no-runnable-tasks" | "paused" | "cycle-error". */
+  gate: string;
+  reason?: string;
+}
+
 export interface JobRelationshipContract {
   relationshipObjective?: string;
   toneProfile?: string;

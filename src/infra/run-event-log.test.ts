@@ -1,11 +1,35 @@
 import { describe, expect, it } from "vitest";
 import type { RunEvent } from "../data/types.js";
+import type { GateReason } from "../data/types.js";
 import {
+  appendGateReason,
   appendRunEvent,
+  GATE_REASON_LOG_MAX,
   makeRunEvent,
   readRunEventsFromMetadata,
   writeRunEventsToMetadata,
 } from "./run-event-log.js";
+
+describe("appendGateReason (D6 skip log)", () => {
+  it("appends {ts, gate, reason} in order", () => {
+    const buf: GateReason[] = [];
+    appendGateReason(buf, "agent-busy", undefined, 1);
+    const e = appendGateReason(buf, "no-runnable-tasks", "nothing in scope", 2);
+    expect(buf).toEqual([
+      { ts: 1, gate: "agent-busy" },
+      { ts: 2, gate: "no-runnable-tasks", reason: "nothing in scope" },
+    ]);
+    expect(e.gate).toBe("no-runnable-tasks");
+  });
+
+  it("trims to the most recent GATE_REASON_LOG_MAX entries", () => {
+    const buf: GateReason[] = [];
+    for (let i = 0; i < GATE_REASON_LOG_MAX + 10; i++) appendGateReason(buf, "g", String(i), i);
+    expect(buf.length).toBe(GATE_REASON_LOG_MAX);
+    expect(buf[0].reason).toBe("10"); // oldest 10 dropped
+    expect(buf[buf.length - 1].reason).toBe(String(GATE_REASON_LOG_MAX + 9));
+  });
+});
 
 describe("run-event-log (D7)", () => {
   it("makeRunEvent stamps ts and omits empty detail", () => {

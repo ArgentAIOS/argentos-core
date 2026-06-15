@@ -9,7 +9,27 @@
  *
  * These are pure functions so the contract is unit-testable without the full runner.
  */
-import type { RunEvent, RunEventType } from "../data/types.js";
+import type { GateReason, RunEvent, RunEventType } from "../data/types.js";
+
+/** Keep the gate-reason log bounded — it's a "recent why-didn't-this-run" tail, not history. */
+export const GATE_REASON_LOG_MAX = 25;
+
+/**
+ * D6 — append a skip's {ts, gate, reason} to a per-agent gate-reason ring buffer
+ * (single writer = runner), trimming to the most recent GATE_REASON_LOG_MAX.
+ */
+export function appendGateReason(
+  buffer: GateReason[],
+  gate: string,
+  reason?: string,
+  now: number = Date.now(),
+  max: number = GATE_REASON_LOG_MAX,
+): GateReason {
+  const entry: GateReason = reason ? { ts: now, gate, reason } : { ts: now, gate };
+  buffer.push(entry);
+  if (buffer.length > max) buffer.splice(0, buffer.length - max);
+  return entry;
+}
 
 /** Build a single run event with a timestamp. */
 export function makeRunEvent(

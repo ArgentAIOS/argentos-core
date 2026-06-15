@@ -2,7 +2,7 @@ import type { ToolClaimValidation } from "../agents/tool-claim-validation.js";
 import type { ArgentConfig } from "../config/config.js";
 import type { AgentExecutionWorkerConfig } from "../config/types.agent-defaults.js";
 import type { IntentPolicyConfig } from "../config/types.intent.js";
-import type { JobRelationshipContract, RunEvent, Task } from "../data/types.js";
+import type { GateReason, JobRelationshipContract, RunEvent, Task } from "../data/types.js";
 import type { CreatePersonalSkillCandidateInput } from "../memory/memu-types.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import {
@@ -25,7 +25,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
-import { appendRunEvent, writeRunEventsToMetadata } from "./run-event-log.js";
+import { appendGateReason, appendRunEvent, writeRunEventsToMetadata } from "./run-event-log.js";
 import {
   crossCheckWorkReport,
   grantsAreWriteCapable,
@@ -102,6 +102,8 @@ export type ExecutionWorkerAgentStatus = {
   statusHint: ExecutionWorkerStatusHint;
   /** D7: in-flight runs for this agent with their live event log (per-run live state). */
   liveRuns: Array<{ runId: string; taskId: string; startedAt: number; events: RunEvent[] }>;
+  /** D6: recent skip reasons — "why didn't this run" (most recent last). */
+  gateReasons: GateReason[];
   config: {
     every: string;
     model?: string;
@@ -357,6 +359,8 @@ type WorkerAgentState = {
   lastTaskSnapshot?: WorkerTaskSnapshot;
   noProgressByTask: Map<string, number>;
   textualToolCallTasks: Set<string>;
+  /** D6: bounded ring of recent skip reasons — "why didn't this run". */
+  gateReasons: GateReason[];
   stats: {
     totalRuns: number;
     totalSkips: number;
@@ -798,6 +802,7 @@ function resolveWorkerStates(cfg: ArgentConfig, previous: Map<string, WorkerAgen
       lastTaskSnapshot: prev?.lastTaskSnapshot,
       noProgressByTask: prev?.noProgressByTask ?? new Map<string, number>(),
       textualToolCallTasks: prev?.textualToolCallTasks ?? new Set<string>(),
+      gateReasons: prev?.gateReasons ?? [],
       stats: prev?.stats ?? createEmptyWorkerStats(),
     });
   }
@@ -828,6 +833,7 @@ function resolveWorkerStates(cfg: ArgentConfig, previous: Map<string, WorkerAgen
       lastTaskSnapshot: prev?.lastTaskSnapshot,
       noProgressByTask: prev?.noProgressByTask ?? new Map<string, number>(),
       textualToolCallTasks: prev?.textualToolCallTasks ?? new Set<string>(),
+      gateReasons: prev?.gateReasons ?? [],
       stats: prev?.stats ?? createEmptyWorkerStats(),
     });
   }
@@ -1483,6 +1489,8 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
           state.stats.totalSkips += 1;
           state.stats.lastStatus = "skipped";
           state.stats.lastReason = result.reason;
+          // D6: record why this cycle did nothing (#445 — no silent no-ops).
+          appendGateReason(state.gateReasons, result.reason ?? "skipped");
           state.stats.lastAttempted = 0;
           state.stats.lastProgressed = 0;
           state.stats.lastCompleted = 0;
@@ -1499,6 +1507,11 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
         state.stats.totalSkips += 1;
         state.stats.lastStatus = "skipped";
         state.stats.lastReason = "cycle-error";
+        appendGateReason(
+          state.gateReasons,
+          "cycle-error",
+          err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+        );
         state.stats.lastAttempted = 0;
         state.stats.lastProgressed = 0;
         state.stats.lastCompleted = 0;
@@ -1571,6 +1584,7 @@ export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): Execut
             startedAt: run.startedAt,
             events: run.events,
           })),
+        gateReasons: state.gateReasons.slice(-10),
         config: {
           every: `${Math.max(1, Math.floor(state.config.intervalMs / 60_000))}m`,
           model: state.config.model,
