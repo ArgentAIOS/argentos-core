@@ -844,72 +844,38 @@ export const registerTelegramHandlers = ({
             const { getWorkflowSql } = await import("../infra/workflow-pg-client.js");
             const {
               listPendingWorkflowApprovals,
-              selectApprovalForTextCommand,
               resolveDurableWorkflowApprovalById,
+              runApprovalTextCommand,
             } = await import("../infra/workflow-approvals.js");
             const { hasPendingApproval, resolveApproval } =
               await import("../infra/workflow-runner.js");
             const { resumeWorkflowRunAfterApproval } =
               await import("../infra/workflow-execution-service.js");
             const sql = await getWorkflowSql();
-            const pending = await listPendingWorkflowApprovals(sql);
-            const selection = selectApprovalForTextCommand(pending, token);
-
-            if (selection.kind === "none") {
-              await reply("No workflow approvals are pending right now.");
-              return;
-            }
-            if (selection.kind === "not-found") {
-              await reply(`No pending approval matches "${selection.token}".`);
-              return;
-            }
-            if (selection.kind === "ambiguous") {
-              const verb = approved ? "approve" : "deny";
-              const list = selection.rows
-                .map(
-                  (r) =>
-                    `• ${r.workflow_name ?? r.run_id} — reply "${verb} ${r.run_id.slice(0, 8)}"`,
-                )
-                .join("\n");
-              await reply(`${selection.rows.length} approvals are pending — which one?\n${list}`);
-              return;
-            }
-
-            const row = selection.row;
-            const resolved = await resolveDurableWorkflowApprovalById(sql, {
-              approvalId: row.id,
+            const result = await runApprovalTextCommand({
+              sql,
               approved,
-              approvedBy: operatorLabel,
-              reason: approved ? undefined : "Denied via Telegram text reply",
+              token,
+              operatorLabel,
+              deps: {
+                listPending: listPendingWorkflowApprovals,
+                resolveById: resolveDurableWorkflowApprovalById,
+                hasPendingApproval,
+                resolveInMemory: (runId, nodeId, isApproved, reason) =>
+                  resolveApproval(runId, nodeId, isApproved, reason),
+                resumeRun: (runId, nodeId) => {
+                  void resumeWorkflowRunAfterApproval({
+                    sql,
+                    runId,
+                    nodeId,
+                    triggerSource: "telegram:approval_text",
+                  }).catch((err: unknown) => {
+                    runtime.error?.(danger(`workflow approval resume failed: ${String(err)}`));
+                  });
+                },
+              },
             });
-            if (!resolved) {
-              await reply("That approval is no longer pending.");
-              return;
-            }
-            const runId = String(resolved.run_id);
-            const nodeId = String(resolved.node_id);
-            if (hasPendingApproval(runId, nodeId)) {
-              resolveApproval(
-                runId,
-                nodeId,
-                approved,
-                approved ? undefined : "Denied via Telegram",
-              );
-            } else {
-              void resumeWorkflowRunAfterApproval({
-                sql,
-                runId,
-                nodeId,
-                triggerSource: "telegram:approval_text",
-              }).catch((err: unknown) => {
-                runtime.error?.(danger(`workflow approval resume failed: ${String(err)}`));
-              });
-            }
-            const icon = approved ? "✅" : "❌";
-            const verb = approved ? "Approved" : "Denied";
-            await reply(
-              `${icon} ${verb} by ${operatorLabel}.\nWorkflow: ${row.workflow_name ?? runId}\nRun: ${runId}`,
-            );
+            await reply(result.reply);
           } catch (err) {
             runtime.error?.(danger(`workflow approval text command failed: ${String(err)}`));
           }
