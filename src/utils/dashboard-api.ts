@@ -41,26 +41,34 @@ export interface DashboardApiTokenSources {
 export function resolveDashboardApiToken(sources: DashboardApiTokenSources = {}): string | null {
   const env = sources.env ?? process.env;
   const envToken = env.DASHBOARD_API_TOKEN?.trim();
-  if (envToken) {
-    return envToken;
-  }
 
-  // Per-request fetch: see INV-1 / INV-4. We must not cache `argent.json` at
-  // module load — token rotation via `argent update` requires every header
-  // build to see the live value.
-  let config: ArgentConfig | null = null;
+  // Prefer gateway.auth.token (resolved live per-request) over the env var.
+  //
+  // The api-server's accepted set is [DASHBOARD_API_TOKEN captured at ITS boot,
+  // gateway.auth.token resolved live per-request]. The gateway's env
+  // DASHBOARD_API_TOKEN is sourced from the LaunchAgent plist / service-env and
+  // can drift from the api-server's captured value across restarts and
+  // redeploys. Observed 2026-06-16: a stale 48-char plist token 401'd every
+  // DocPanel save (output node) while gateway.auth.token authenticated fine.
+  // gateway.auth.token is the single value both processes always agree on, so
+  // send it first and fall back to the env var only when argent.json carries no
+  // gateway token. Per-request (INV-1 / INV-4): never cache argent.json at
+  // module load — token rotation via `argent update` must be seen every call.
+  let configToken: string | undefined;
   try {
     const loader = sources.loadConfig ?? loadConfig;
-    config = loader();
+    const config: ArgentConfig = loader();
+    configToken = config.gateway?.auth?.token?.trim() || undefined;
   } catch {
     // Config load failures (missing file, bad JSON) shouldn't crash the caller
-    // — fall through to "no token" and let the api-server return 401, which
-    // matches the historical behaviour when the env var was unset.
-    return null;
+    // — fall through to the env var, then to "no token" (api-server 401).
+    configToken = undefined;
   }
 
-  const configToken = config.gateway?.auth?.token?.trim();
-  return configToken ? configToken : null;
+  if (configToken) {
+    return configToken;
+  }
+  return envToken ? envToken : null;
 }
 
 /** Build headers for Dashboard API requests, injecting bearer token when available. */

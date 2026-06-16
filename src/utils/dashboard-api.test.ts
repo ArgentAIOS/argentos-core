@@ -3,11 +3,12 @@ import type { ArgentConfig } from "../config/config.js";
 import { resolveDashboardApiToken } from "./dashboard-api.js";
 
 /**
- * Coverage for the doc_panel "Invalid token" bugfix. Symmetric to the
- * api-server's `resolveAcceptedTokens`: env var first, then `gateway.auth.token`
- * from argent.json, then null. Token rotation via `argent update` only
- * refreshes argent.json — env var stays stale — so the config fallback is the
- * load-bearing branch on real installs.
+ * Coverage for the doc_panel "Invalid token" bugfix. The gateway prefers
+ * `gateway.auth.token` from argent.json (resolved live, always in the
+ * api-server's accepted set), then falls back to the DASHBOARD_API_TOKEN env
+ * var, then null. The env var is sourced from the LaunchAgent plist / service-
+ * env and can drift stale across redeploys (observed 2026-06-16: a stale plist
+ * token 401'd every DocPanel save), so config is the load-bearing branch.
  */
 
 function fakeConfig(token: string | undefined): ArgentConfig {
@@ -17,12 +18,12 @@ function fakeConfig(token: string | undefined): ArgentConfig {
 }
 
 describe("resolveDashboardApiToken", () => {
-  it("prefers DASHBOARD_API_TOKEN env var when set", () => {
+  it("prefers gateway.auth.token over the env var (api-server always accepts the config token)", () => {
     const token = resolveDashboardApiToken({
-      env: { DASHBOARD_API_TOKEN: "env-token-wins" },
-      loadConfig: () => fakeConfig("config-token-loses"),
+      env: { DASHBOARD_API_TOKEN: "stale-plist-env-token" },
+      loadConfig: () => fakeConfig("config-token-wins"),
     });
-    expect(token).toBe("env-token-wins");
+    expect(token).toBe("config-token-wins");
   });
 
   it("falls back to gateway.auth.token from argent.json when env var is unset", () => {
@@ -75,10 +76,10 @@ describe("resolveDashboardApiToken", () => {
     expect(token).toBeNull();
   });
 
-  it("trims whitespace from env-var tokens", () => {
+  it("trims whitespace from env-var tokens (env fallback path, no config token)", () => {
     const token = resolveDashboardApiToken({
       env: { DASHBOARD_API_TOKEN: "  spaced-env-token  " },
-      loadConfig: () => fakeConfig("ignored"),
+      loadConfig: () => fakeConfig(undefined),
     });
     expect(token).toBe("spaced-env-token");
   });
