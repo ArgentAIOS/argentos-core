@@ -513,6 +513,12 @@ export async function buildWorkflowRetryFromStepResumeOptions(params: {
   };
 }
 
+// Upper bound on how long executeWorkflowRunFromRow waits for in-flight approval
+// notifications to drain before returning. The drain (see below) keeps opts.sql
+// alive until markWorkflowApprovalNotified runs; this cap ensures a wedged
+// Telegram send can never hang the run handler (and, for cron, its sql.end()).
+const APPROVAL_NOTIFY_DRAIN_TIMEOUT_MS = 20_000;
+
 export async function executeWorkflowRunFromRow(opts: {
   sql: Sql;
   workflowRow: WorkflowRow;
@@ -550,6 +556,14 @@ export async function executeWorkflowRunFromRow(opts: {
     /* Redis optional */
   }
 
+  // Approval notifications are dispatched fire-and-forget from the
+  // onApprovalRequested callback below. Collect their promises so we can drain
+  // them before returning — the cron runner closes its SQL connection the
+  // instant this function returns (cron/service/timer.ts), which otherwise
+  // abandons notifyWorkflowApprovalRequest + markWorkflowApprovalNotified and
+  // leaves the operator with no inline-button approval message.
+  const pendingApprovalNotifications: Promise<void>[] = [];
+
   await executeWorkflow({
     workflow,
     runId: opts.runId,
@@ -573,7 +587,7 @@ export async function executeWorkflowRunFromRow(opts: {
     },
     onApprovalRequested: (nodeId, request) => {
       const node = workflow.nodes.find((candidate) => candidate.id === nodeId);
-      void (async () => {
+      const approvalWork = (async () => {
         try {
           const row = await upsertDurableWorkflowApproval(opts.sql, {
             workflow,
@@ -651,6 +665,7 @@ export async function executeWorkflowRunFromRow(opts: {
           });
         }
       })();
+      pendingApprovalNotifications.push(approvalWork);
     },
     onStepStart: (nodeId, node) => {
       opts.broadcast?.("workflow.step.started", {
@@ -700,6 +715,23 @@ export async function executeWorkflowRunFromRow(opts: {
       error: message,
     });
   });
+
+  // Drain any in-flight approval notifications before returning so the caller
+  // that owns opts.sql can't close the connection out from under
+  // markWorkflowApprovalNotified. Bounded by APPROVAL_NOTIFY_DRAIN_TIMEOUT_MS so
+  // a wedged Telegram send never hangs the run handler (or cron's sql.end()).
+  if (pendingApprovalNotifications.length > 0) {
+    let drainTimer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled(pendingApprovalNotifications),
+      new Promise<void>((resolve) => {
+        drainTimer = setTimeout(resolve, APPROVAL_NOTIFY_DRAIN_TIMEOUT_MS);
+      }),
+    ]);
+    if (drainTimer) {
+      clearTimeout(drainTimer);
+    }
+  }
 }
 
 export async function resumeWorkflowRunAfterApproval(opts: {

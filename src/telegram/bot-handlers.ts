@@ -813,6 +813,110 @@ export const registerTelegramHandlers = ({
         }
       }
 
+      // Workflow approval text fallback (no-buttons path). The inline-button
+      // callback_query handler above is the primary surface; this lets the
+      // operator resolve a pending approval by replying "approve"/"deny"
+      // (optionally "approve <run-id-prefix>") in the chat that receives
+      // approval notifications. Scoped to operatorNotifications telegram targets
+      // so only the operator's own notification chat can resolve via plain text.
+      const trimmedText = typeof msg.text === "string" ? msg.text.trim() : "";
+      const approvalCommand = trimmedText.match(
+        /^(approve|approved|deny|denied|reject|rejected)(?:\s+([A-Za-z0-9-]+))?$/i,
+      );
+      if (approvalCommand) {
+        const operatorTargets = (
+          cfg.agents?.defaults?.kernel?.operatorNotifications?.targets ?? []
+        ).filter((t) => String(t.channel).toLowerCase() === "telegram" && t.to);
+        const isOperatorChat = operatorTargets.some((t) => String(t.to) === String(chatId));
+        if (isOperatorChat) {
+          const approved = /^appr/i.test(approvalCommand[1]);
+          const token = approvalCommand[2]?.trim();
+          const operatorLabel = msg.from?.username
+            ? `@${msg.from.username}`
+            : `tg:${msg.from?.id ?? "?"}`;
+          const reply = (replyText: string) =>
+            bot.api
+              .sendMessage(chatId, replyText, {
+                ...(resolvedThreadId != null ? { message_thread_id: resolvedThreadId } : {}),
+              })
+              .catch(() => {});
+          try {
+            const { getWorkflowSql } = await import("../infra/workflow-pg-client.js");
+            const {
+              listPendingWorkflowApprovals,
+              selectApprovalForTextCommand,
+              resolveDurableWorkflowApprovalById,
+            } = await import("../infra/workflow-approvals.js");
+            const { hasPendingApproval, resolveApproval } =
+              await import("../infra/workflow-runner.js");
+            const { resumeWorkflowRunAfterApproval } =
+              await import("../infra/workflow-execution-service.js");
+            const sql = await getWorkflowSql();
+            const pending = await listPendingWorkflowApprovals(sql);
+            const selection = selectApprovalForTextCommand(pending, token);
+
+            if (selection.kind === "none") {
+              await reply("No workflow approvals are pending right now.");
+              return;
+            }
+            if (selection.kind === "not-found") {
+              await reply(`No pending approval matches "${selection.token}".`);
+              return;
+            }
+            if (selection.kind === "ambiguous") {
+              const verb = approved ? "approve" : "deny";
+              const list = selection.rows
+                .map(
+                  (r) =>
+                    `• ${r.workflow_name ?? r.run_id} — reply "${verb} ${r.run_id.slice(0, 8)}"`,
+                )
+                .join("\n");
+              await reply(`${selection.rows.length} approvals are pending — which one?\n${list}`);
+              return;
+            }
+
+            const row = selection.row;
+            const resolved = await resolveDurableWorkflowApprovalById(sql, {
+              approvalId: row.id,
+              approved,
+              approvedBy: operatorLabel,
+              reason: approved ? undefined : "Denied via Telegram text reply",
+            });
+            if (!resolved) {
+              await reply("That approval is no longer pending.");
+              return;
+            }
+            const runId = String(resolved.run_id);
+            const nodeId = String(resolved.node_id);
+            if (hasPendingApproval(runId, nodeId)) {
+              resolveApproval(
+                runId,
+                nodeId,
+                approved,
+                approved ? undefined : "Denied via Telegram",
+              );
+            } else {
+              void resumeWorkflowRunAfterApproval({
+                sql,
+                runId,
+                nodeId,
+                triggerSource: "telegram:approval_text",
+              }).catch((err: unknown) => {
+                runtime.error?.(danger(`workflow approval resume failed: ${String(err)}`));
+              });
+            }
+            const icon = approved ? "✅" : "❌";
+            const verb = approved ? "Approved" : "Denied";
+            await reply(
+              `${icon} ${verb} by ${operatorLabel}.\nWorkflow: ${row.workflow_name ?? runId}\nRun: ${runId}`,
+            );
+          } catch (err) {
+            runtime.error?.(danger(`workflow approval text command failed: ${String(err)}`));
+          }
+          return;
+        }
+      }
+
       // Text fragment handling - Telegram splits long pastes into multiple inbound messages (~4096 chars).
       // We buffer “near-limit” messages and append immediately-following parts.
       const text = typeof msg.text === "string" ? msg.text : undefined;

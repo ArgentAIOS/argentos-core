@@ -196,6 +196,80 @@ export async function resolveDurableWorkflowApproval(
   return row;
 }
 
+export interface PendingWorkflowApprovalRow {
+  id: string;
+  run_id: string;
+  node_id: string;
+  workflow_name: string | null;
+  node_label: string | null;
+  message: string;
+  requested_at: string;
+}
+
+// Lists currently-pending workflow approvals, newest first. Used by text-reply
+// approval surfaces (Telegram "approve"/"deny") that carry no approval id and
+// must discover what is awaiting the operator.
+export async function listPendingWorkflowApprovals(
+  sql: Sql,
+  opts?: { limit?: number },
+): Promise<PendingWorkflowApprovalRow[]> {
+  const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
+  const rows = await sql`
+    SELECT id, run_id, node_id, workflow_name, node_label, message, requested_at
+    FROM workflow_approvals
+    WHERE status = 'pending'
+    ORDER BY requested_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as unknown as PendingWorkflowApprovalRow[];
+}
+
+export type ApprovalTextSelection =
+  | { kind: "none" }
+  | { kind: "resolve"; row: PendingWorkflowApprovalRow }
+  | { kind: "ambiguous"; rows: PendingWorkflowApprovalRow[] }
+  | { kind: "not-found"; token: string };
+
+// Pure decision for the text-reply approval surface ("approve"/"deny", with an
+// optional id/run-id token): given the pending approvals, decide which one a
+// bare command resolves. No token + exactly one pending → resolve it; no token
+// + many → ambiguous (caller lists them); a token narrows by approval id or
+// run id (exact, then prefix). Extracted from the Telegram handler so the
+// branching is unit-testable without standing up the bot.
+export function selectApprovalForTextCommand(
+  pending: PendingWorkflowApprovalRow[],
+  token?: string,
+): ApprovalTextSelection {
+  const trimmed = token?.trim();
+  if (trimmed) {
+    const lower = trimmed.toLowerCase();
+    const exact = pending.filter(
+      (row) => row.id.toLowerCase() === lower || row.run_id.toLowerCase() === lower,
+    );
+    const matches =
+      exact.length > 0
+        ? exact
+        : pending.filter(
+            (row) =>
+              row.id.toLowerCase().includes(lower) || row.run_id.toLowerCase().startsWith(lower),
+          );
+    if (matches.length === 0) {
+      return { kind: "not-found", token: trimmed };
+    }
+    if (matches.length === 1) {
+      return { kind: "resolve", row: matches[0] };
+    }
+    return { kind: "ambiguous", rows: matches };
+  }
+  if (pending.length === 0) {
+    return { kind: "none" };
+  }
+  if (pending.length === 1) {
+    return { kind: "resolve", row: pending[0] };
+  }
+  return { kind: "ambiguous", rows: pending };
+}
+
 // Resolves a workflow approval by its primary-key id. Used by callback-driven
 // surfaces (Telegram inline buttons) where the caller only carries the
 // approval id, not run/node. Atomically transitions pending → approved/denied
