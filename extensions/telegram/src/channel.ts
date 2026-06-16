@@ -314,6 +314,51 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
       });
       return { channel: "telegram", ...result };
     },
+    // Telegram supports inline keyboards. When a payload carries
+    // channelData.telegram.buttons (e.g. workflow-approval Approve/Deny), route
+    // it through sendMessageTelegram's `buttons` -> reply_markup path so the
+    // operator gets tappable buttons. Without this, deliver.ts has no
+    // handler.sendPayload and falls back to sendText, dropping the keyboard.
+    sendPayload: async ({ to, payload, accountId, deps, replyToId, threadId }) => {
+      const send = deps?.sendTelegram ?? getTelegramRuntime().channel.telegram.sendMessageTelegram;
+      const replyToMessageId = parseReplyToMessageId(replyToId);
+      const messageThreadId = parseThreadId(threadId);
+      const telegramData = payload.channelData?.telegram as
+        | { buttons?: Array<Array<{ text: string; callback_data: string }>>; quoteText?: string }
+        | undefined;
+      const quoteText =
+        typeof telegramData?.quoteText === "string" ? telegramData.quoteText : undefined;
+      const text = payload.text ?? "";
+      const mediaUrls = payload.mediaUrls?.length
+        ? payload.mediaUrls
+        : payload.mediaUrl
+          ? [payload.mediaUrl]
+          : [];
+      const baseOpts = {
+        verbose: false,
+        messageThreadId,
+        replyToMessageId,
+        quoteText,
+        accountId: accountId ?? undefined,
+      };
+
+      if (mediaUrls.length === 0) {
+        const result = await send(to, text, { ...baseOpts, buttons: telegramData?.buttons });
+        return { channel: "telegram", ...result };
+      }
+
+      // reply_markup is allowed on media; attach buttons to the first send only.
+      let finalResult: Awaited<ReturnType<typeof send>> | undefined;
+      for (let i = 0; i < mediaUrls.length; i += 1) {
+        const isFirst = i === 0;
+        finalResult = await send(to, isFirst ? text : "", {
+          ...baseOpts,
+          mediaUrl: mediaUrls[i],
+          ...(isFirst ? { buttons: telegramData?.buttons } : {}),
+        });
+      }
+      return { channel: "telegram", ...(finalResult ?? { messageId: "unknown", chatId: to }) };
+    },
   },
   status: {
     defaultRuntime: {
