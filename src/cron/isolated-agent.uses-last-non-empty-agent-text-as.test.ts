@@ -91,6 +91,7 @@ function makeJob(payload: CronJob["payload"]): CronJob {
   const now = Date.now();
   return {
     id: "job-1",
+    name: "Test Job",
     enabled: true,
     createdAtMs: now,
     updatedAtMs: now,
