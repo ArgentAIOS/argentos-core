@@ -85,7 +85,8 @@ describe("web_search country and language parameters", () => {
     await tool?.execute?.(1, { query: "test", ui_lang: "de" });
 
     const url = new URL(mockFetch.mock.calls[0][0] as string);
-    expect(url.searchParams.get("ui_lang")).toBe("de");
+    // Brave requires full locale codes; bare "de" normalizes to "de-US" (default country).
+    expect(url.searchParams.get("ui_lang")).toBe("de-US");
   });
 
   it("should pass freshness parameter to Brave API", async () => {

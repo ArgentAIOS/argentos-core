@@ -301,10 +301,10 @@ describe("AppForge saved named views", () => {
               activeViewIdByTable: {},
               items: [
                 {
-                  id: "view-gantt",
+                  id: "view-unknown",
                   tableId: "table-deals",
                   name: "Roadmap",
-                  viewMode: "gantt",
+                  viewMode: "definitely-not-a-view",
                   settings: {},
                 },
               ],

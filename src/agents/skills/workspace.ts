@@ -136,18 +136,25 @@ function loadSkillEntries(
 ): SkillEntry[] {
   const loadSkills = (params: { dir: string; source: string }): Skill[] => {
     const loaded = loadSkillsFromDir(params);
+    let skills: Skill[];
     if (Array.isArray(loaded)) {
-      return loaded;
-    }
-    if (
+      skills = loaded;
+    } else if (
       loaded &&
       typeof loaded === "object" &&
       "skills" in loaded &&
       Array.isArray((loaded as { skills?: unknown }).skills)
     ) {
-      return (loaded as { skills: Skill[] }).skills;
+      skills = (loaded as { skills: Skill[] }).skills;
+    } else {
+      return [];
     }
-    return [];
+    // The PI loadSkillsFromDir ignores the `source` param, so stamp it back —
+    // bundled-skill allowlist detection (entry.skill.source) depends on it.
+    return skills.map((skill) => {
+      const tagged = skill as Skill & { source?: string };
+      return tagged.source ? skill : { ...skill, source: params.source };
+    });
   };
 
   const managedSkillsDir = opts?.managedSkillsDir ?? path.join(CONFIG_DIR, "skills");

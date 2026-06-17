@@ -6,7 +6,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ArgentConfig } from "../../config/config.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { type AnyAgentTool, jsonResult, readNumberParam, readStringParam } from "./common.js";
 
 const DEFAULT_VERCEL_API_URL = "https://api.vercel.com";
@@ -103,8 +103,8 @@ export function createVercelDeployTool(options?: {
   agentSessionKey?: string;
   config?: ArgentConfig;
 }): AnyAgentTool {
-  const resolveKey = (name: string) =>
-    resolveServiceKey(name, options?.config, {
+  const resolveKey = async (name: string): Promise<string | undefined> =>
+    resolveServiceKeyAsync(name, options?.config, {
       sessionKey: options?.agentSessionKey,
       source: "vercel_deploy",
     });
@@ -126,7 +126,7 @@ Actions:
       const action = readStringParam(params, "action", { required: true });
 
       try {
-        const token = resolveKey("VERCEL_API_TOKEN") || process.env.VERCEL_API_TOKEN;
+        const token = (await resolveKey("VERCEL_API_TOKEN")) || process.env.VERCEL_API_TOKEN;
         if (!token)
           throw new Error("No Vercel token found. Add VERCEL_API_TOKEN in Settings > API Keys.");
 
@@ -136,7 +136,7 @@ Actions:
           DEFAULT_VERCEL_API_URL;
         const teamId =
           readStringParam(params, "team_id") ||
-          resolveKey("VERCEL_TEAM_ID") ||
+          (await resolveKey("VERCEL_TEAM_ID")) ||
           process.env.VERCEL_TEAM_ID;
         const includeRaw = asBool(params.include_raw);
 

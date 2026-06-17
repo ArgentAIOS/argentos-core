@@ -131,6 +131,7 @@
     "test:live": "ARGENT_LIVE_TEST=1 vitest run --config vitest.live.config.ts",
     "test:slice": "node scripts/test-slice.mjs",
     "test:ui": "pnpm --dir ui test",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:watch": "vitest",
     "threadmaster:ack": "node scripts/threadmaster-bus.mjs ack",
     "threadmaster:bus": "node scripts/threadmaster-bus.mjs",

@@ -66,8 +66,10 @@ const ChannelConfigToolSchema = Type.Object({
   groupPolicy: Type.Optional(Type.String()),
   mentionGating: Type.Optional(Type.Boolean()),
   threadMode: Type.Optional(Type.String()),
-  allowFrom: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()])),
-  groupAllowFrom: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()])),
+  // Array-only schema avoids anyOf in the serialized JSON Schema (some model APIs
+  // reject anyOf/oneOf/allOf). normalizeListParam still accepts comma-strings at runtime.
+  allowFrom: Type.Optional(Type.Array(Type.String())),
+  groupAllowFrom: Type.Optional(Type.Array(Type.String())),
   token: Type.Optional(
     Type.String({
       description:
