@@ -43,29 +43,28 @@ Gateway is running+healthy. Trunk is **`dev`**, not main.
 - Stale-run sweep done (21 workflow_runs + 29 job_runs). AppForge 401 verified already fixed by #460.
 - Follow-up closet has the full operator-audit backlog under "operator-reality audit findings".
 
-## In-flight when the session was interrupted: argentd ws canary build
+## ~~In-flight~~ SHIPPED 2026-07-02 evening: argentd ws canary build (PR #468)
 
-**Greenlit locked contract, NO Rust code written yet** — was still reading the TS wire contract.
-Resume from the mapped facts below (all in git, nothing lost):
+The locked contract (GOAL: make argentd canary-provable at ws://127.0.0.1:18799) was executed
+to completion in the follow-on Fable session:
 
-- GOAL: make argentd **canary-provable** over the gateway's existing ws JSON-RPC dialect so
-  `argent gateway authority status --installed-canary-url ws://127.0.0.1:18799 --installed-canary-token <t>`
-  and `argent gateway authority smoke-local --confirm-local-only …` go green with full receipts.
-- The gap is precise: argentd's hello (`rust/argentd/src/http.rs:1162 connect_success_response`)
-  advertises a hardcoded `methods` array that OMITS `rustGateway.canaryReceipts.status` and
-  `rustGateway.canaryReceipts.generateLocalProof`; the ws dispatcher (`rust/argentd/src/ws.rs`
-  `match meta.method`) doesn't handle them. Add both methods + advertise them.
-- Receipt payload contract the TS side validates: `src/commands/gateway-authority-status.ts`
-  `normalizeInstalledDaemonCanaryPayload` (~1802) — needs `status:"ok"`, `productionTrafficUsed:false`,
-  `authority.authoritySwitchAllowed:false`, `policy.containsSecrets:false`, and a `receipts[]` where
-  each has `tokenMaterialRedacted:true`, surfaces covering all of `["chat.send","cron.add","workflows.run"]`
-  (`CANARY_RECEIPT_SURFACES`, line 390), plus one `receiptCode:"RUST_CANARY_DENIED"` and one
-  `"RUST_CANARY_DUPLICATE_PREVENTED"`. Receipt shape mirrors `src/infra/rust-gateway-receipt-store.ts`.
-- `generateLocalProof` params: `{confirmLocalOnly, reason, proofRunId}`. `status` params: `{limit:20}`.
-- Probe advertises-method check: `probeInstalledDaemonRuntime` (~1725) reads `hello.features.methods`.
-- NON-GOALS: no authority flips (scheduler/workflow/session/channel/run stay Node), no full method
-  table, loopback-only, no argent-execd/dashboard changes. Budget: rust/argentd + ≤2 TS touchpoints.
-  TRIPWIRE: if the handshake needs subsystems beyond connect/ping/dispatch → STOP and report.
+- `rustGateway.canaryReceipts.status` + `.generateLocalProof` implemented in argentd's ws
+  dispatcher and advertised in hello `features.methods`. Receipts mirror the Node store shape
+  (`src/infra/rust-gateway-receipt-store.ts`); in-memory hub store capped at 1000 — **proof
+  regenerates after a daemon restart** via `status-installed --generate-local-receipts`.
+- Multi-agent adversarial review (3 lenses, 17 agents) confirmed 7 findings, all fixed in the
+  same PR: control-char-safe JSON escaping, JSON-aware param extraction (escaped reasons no
+  longer poison the persisted receipt JSON), reason redaction (`redactSensitiveText` subset, so
+  `tokenMaterialRedacted:true` is truthful), Node-parity limit clamping / duplicateKey /
+  stableReceiptId sanitization.
+- **Live-verified against the installed daemon :18799** (release build deployed; plist gained
+  `ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1`; LaunchAgent bounced):
+  `status-installed --generate-local-receipts --confirm-local-only` → **read-only-ready, zero
+  blockers**, receiptProofComplete=true, probe methodAdvertised=true; `smoke-local` → **passed,
+  zero blockers**; `authority status --installed-canary-url` → canary ok, 6 receipts.
+  Evidence recorded in `rust/argent-execd/PROMOTION_CHECKLIST.md` (remainder item 1 closed).
+- 56 argentd tests green (4 new canary parity tests). Zero TS changes. NON-GOALS held: no
+  authority flips, loopback-only, no argent-execd/dashboard changes.
 
 ## Note on the model switch
 
