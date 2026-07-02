@@ -56,6 +56,7 @@ import {
 import {
   buildWorkflowRetryFromStepResumeOptions,
   createWorkflowRunRecord,
+  denyWorkflowRunAfterApproval,
   executeWorkflowRunFromRow,
   parseWorkflowJsonColumn,
   publicWorkflowRow,
@@ -4074,23 +4075,13 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
       if (!hasPendingApproval(runId, nodeId)) {
         if (durable) {
-          await sql`
-            UPDATE workflow_runs SET status = 'failed', current_node_id = NULL,
-              error = ${reason},
-              ended_at = NOW()
-            WHERE id = ${runId}
-              AND status = 'waiting_approval'
-          `;
-          await sql`
-            UPDATE workflow_step_runs SET
-              approval_status = 'denied',
-              approval_note = ${reason},
-              ended_at = NOW(),
-              status = 'failed'
-            WHERE run_id = ${runId}
-              AND node_id = ${nodeId}
-              AND approval_status = 'pending'
-          `;
+          await denyWorkflowRunAfterApproval({
+            sql,
+            runId,
+            nodeId,
+            reason,
+            broadcast: context?.broadcast,
+          });
           context?.broadcast?.("workflow.approval.resolved", {
             approvalId: durable.id,
             runId,
@@ -4098,12 +4089,6 @@ export const workflowsHandlers: GatewayRequestHandlers = {
             approved: false,
             denied: true,
             reason,
-          });
-          context?.broadcast?.("workflow.run.completed", {
-            runId,
-            workflowId: durable.workflow_id,
-            status: "failed",
-            error: reason,
           });
           respond(true, { ok: true, denied: true, reason, approvalId: durable.id });
           return;

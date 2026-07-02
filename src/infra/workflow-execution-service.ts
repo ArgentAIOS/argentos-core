@@ -827,6 +827,47 @@ export async function resumeWorkflowRunAfterApproval(opts: {
   });
 }
 
+// The single deny path for durable (cron / post-restart) approvals. Every
+// deny surface (gateway workflows.deny, Telegram inline button, Telegram text
+// reply, approval-timeout sweep) must land here — resumeWorkflowRunAfterApproval
+// unconditionally re-executes the pipeline as approved, so routing a denial
+// through it silently runs the gated side effect.
+export async function denyWorkflowRunAfterApproval(opts: {
+  sql: Sql;
+  runId: string;
+  nodeId: string;
+  reason?: string;
+  broadcast?: WorkflowBroadcast;
+}): Promise<{ denied: boolean; reason: string; workflowId?: string }> {
+  const reason = opts.reason ?? "Denied by operator";
+  const [runRow] = await opts.sql`
+    UPDATE workflow_runs SET status = 'failed', current_node_id = NULL,
+      error = ${reason},
+      ended_at = NOW()
+    WHERE id = ${opts.runId}
+      AND status = 'waiting_approval'
+    RETURNING workflow_id
+  `;
+  await opts.sql`
+    UPDATE workflow_step_runs SET
+      approval_status = 'denied',
+      approval_note = ${reason},
+      ended_at = NOW(),
+      status = 'failed'
+    WHERE run_id = ${opts.runId}
+      AND node_id = ${opts.nodeId}
+      AND approval_status = 'pending'
+  `;
+  const workflowId = runRow?.workflow_id ? String(runRow.workflow_id) : undefined;
+  opts.broadcast?.("workflow.run.completed", {
+    runId: opts.runId,
+    workflowId,
+    status: "failed",
+    error: reason,
+  });
+  return { denied: Boolean(runRow), reason, workflowId };
+}
+
 export async function resumeWorkflowRunAfterWait(opts: {
   sql: Sql;
   runId: string;
@@ -1359,6 +1400,82 @@ export async function resumeDueWorkflowWaits(opts: {
       resumed++;
     } catch (err) {
       errors.push(`run=${row.run_id} node=${row.current_node_id}: ${String(err)}`);
+    }
+  }
+
+  // Third sweep: expired durable approvals. The in-process setTimeout that
+  // enforces approval timeouts only exists for non-durable runs; every
+  // gateway/cron run pauses durably, so without this sweep the advertised
+  // "auto-deny at <time>" never fires and approvals pile up as pending
+  // forever (observed live: 70 pending, 61 past timeout_at, 0 ever timed out).
+  const approvalRows = await opts.sql`
+    SELECT a.id, a.run_id, a.node_id, a.timeout_action
+    FROM workflow_approvals a
+    JOIN workflow_runs r ON r.id = a.run_id
+    WHERE a.status = 'pending'
+      AND a.timeout_at IS NOT NULL
+      AND a.timeout_at <= ${now.toISOString()}::timestamptz
+      AND r.status = 'waiting_approval'
+    ORDER BY a.timeout_at ASC
+    LIMIT ${limit}
+  `;
+
+  for (const row of approvalRows as Array<{
+    id?: string;
+    run_id?: string;
+    node_id?: string;
+    timeout_action?: string;
+  }>) {
+    if (!row.id || !row.run_id || !row.node_id) {
+      continue;
+    }
+    const timeoutAction = row.timeout_action === "approve" ? "approve" : "deny";
+    try {
+      // Atomic claim: only the sweep instance that flips pending → timed_out
+      // acts on the run, so concurrent sweeps (or a racing operator tap) can't
+      // double-resolve.
+      const [claimed] = await opts.sql`
+        UPDATE workflow_approvals SET
+          status = 'timed_out',
+          resolved_at = NOW(),
+          resolved_by = 'system:approval_timeout',
+          resolution_note = ${`Approval timed out — auto-${timeoutAction}`}
+        WHERE id = ${row.id}
+          AND status = 'pending'
+        RETURNING id
+      `;
+      if (!claimed) {
+        continue;
+      }
+      opts.broadcast?.("workflow.approval.resolved", {
+        approvalId: row.id,
+        runId: row.run_id,
+        nodeId: row.node_id,
+        approved: timeoutAction === "approve",
+        timedOut: true,
+      });
+      if (timeoutAction === "approve") {
+        await resumeWorkflowRunAfterApproval({
+          sql: opts.sql,
+          runId: row.run_id,
+          nodeId: row.node_id,
+          triggerSource: "cron:approval_timeout",
+          broadcast: opts.broadcast,
+          outboundDeps: opts.outboundDeps,
+        });
+        resumed++;
+      } else {
+        await denyWorkflowRunAfterApproval({
+          sql: opts.sql,
+          runId: row.run_id,
+          nodeId: row.node_id,
+          reason: "Approval timed out — auto-denied",
+          broadcast: opts.broadcast,
+        });
+        failed++;
+      }
+    } catch (err) {
+      errors.push(`approval=${row.id} run=${row.run_id}: ${String(err)}`);
     }
   }
 

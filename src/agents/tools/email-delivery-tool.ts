@@ -261,9 +261,14 @@ Actions:
           "Unknown action. Use: test_provider, send_resend, send_mailgun, send_sendgrid",
         );
       } catch (err) {
-        return textResult(
-          `email_delivery error: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        // Structured failure (details.ok=false) so programmatic callers like
+        // the workflow runner's send_email executor can detect it — a plain
+        // text result here made every provider error read as a success.
+        return jsonResult({
+          ok: false,
+          action,
+          error: `email_delivery error: ${err instanceof Error ? err.message : String(err)}`,
+        });
       }
     },
   };

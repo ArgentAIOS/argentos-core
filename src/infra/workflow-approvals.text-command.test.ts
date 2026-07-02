@@ -76,6 +76,7 @@ function makeDeps(
     hasPendingApproval: vi.fn(() => false),
     resolveInMemory: vi.fn(),
     resumeRun: vi.fn(),
+    denyRun: vi.fn(),
     ...overrides,
   };
 }
@@ -104,7 +105,7 @@ describe("runApprovalTextCommand (resolve + resume wiring)", () => {
     expect(deps.resolveInMemory).not.toHaveBeenCalled();
   });
 
-  it("deny is symmetric → resolves with approved=false", async () => {
+  it("deny on a durable run → denies the run, NEVER resumes it", async () => {
     const pending = [row("approval-r1-approval", "run-1111")];
     const deps = makeDeps(pending);
     const result = await runApprovalTextCommand({
@@ -120,7 +121,31 @@ describe("runApprovalTextCommand (resolve + resume wiring)", () => {
       FAKE_SQL,
       expect.objectContaining({ approved: false }),
     );
-    expect(deps.resumeRun).toHaveBeenCalledTimes(1);
+    // Regression: this used to call resumeRun, which re-executes the pipeline
+    // as APPROVED — a Telegram "deny" fired the gated side effect.
+    expect(deps.denyRun).toHaveBeenCalledWith("run-1111", "approval", expect.any(String));
+    expect(deps.resumeRun).not.toHaveBeenCalled();
+  });
+
+  it("deny on an in-process run → resolves in memory as denied", async () => {
+    const pending = [row("approval-r1-approval", "run-1111")];
+    const deps = makeDeps(pending, { hasPendingApproval: vi.fn(() => true) });
+    const result = await runApprovalTextCommand({
+      sql: FAKE_SQL,
+      approved: false,
+      operatorLabel: "@jason",
+      deps,
+    });
+
+    expect(result.outcome).toBe("resolved");
+    expect(deps.resolveInMemory).toHaveBeenCalledWith(
+      "run-1111",
+      "approval",
+      false,
+      expect.any(String),
+    );
+    expect(deps.resumeRun).not.toHaveBeenCalled();
+    expect(deps.denyRun).not.toHaveBeenCalled();
   });
 
   it("in-process pending run → resolves in memory, no durable resume", async () => {
