@@ -117,6 +117,17 @@ All checkable items executed against fresh `--release` builds of both crates (so
 
 **Honest remainder to real authority (build work, not process):**
 
-1. `argentd` is a scaffold (README non-goals): no WebSocket transport, no gateway method surface — the installed-canary contract (`callGateway` → `rustGateway.canaryReceipts.generateLocalProof`) cannot be satisfied until argentd speaks ws JSON-RPC. This is the long pole: the gateway itself has not been reimplemented in Rust.
+1. ~~`argentd` cannot satisfy the installed-canary contract~~ **DONE 2026-07-02 evening (PR #468):**
+   argentd speaks the ws JSON-RPC dialect and implements + advertises
+   `rustGateway.canaryReceipts.status` / `.generateLocalProof`. Verified live against the
+   installed daemon (`ai.argent.rust-gateway-shadow` :18799, canary flag env set in plist):
+   `argent gateway authority status-installed --generate-local-receipts --confirm-local-only`
+   → **read-only-ready, zero blockers**, receiptProofComplete=true, probe methodAdvertised=true;
+   `argent gateway authority smoke-local --confirm-local-only` → **passed, zero blockers**;
+   `argent gateway authority status --installed-canary-url ws://127.0.0.1:18799` → canary ok,
+   6 receipts covering all three surfaces with DENIED + DUPLICATE_PREVENTED codes.
+   Note: receipts are in-memory in the daemon — regenerate proof after a daemon restart with
+   `--generate-local-receipts`. The gateway method surface beyond the canary contract is still
+   shadow-fixture-backed; full Rust gateway reimplementation remains the long pole.
 2. Scheduler/executive cutover: the Node side never delegates (workflows.backendStatus hardcodes `rust_scheduler_shadow_only` / `authority_switch_not_allowed` by design). The delegation seam must be designed and built — the checklist's own top rung is "controlled READ-ONLY adoption" first.
-3. Canary receipts machinery end-to-end once (1) exists.
+3. ~~Canary receipts machinery end-to-end once (1) exists.~~ Covered by (1): canary receipts machinery ran end-to-end against the installed daemon 2026-07-02.
