@@ -16,6 +16,7 @@
  */
 
 import type { Redis } from "ioredis";
+import { randomUUID } from "node:crypto";
 import type { ModelTier } from "../models/types.js";
 import type {
   WorkflowDefinition,
@@ -438,7 +439,11 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           errorConfig,
           errorMsg,
         );
-        if (stepResult.items.length === 0 && stepResult.items[0]?.meta?.status === "failed") {
+        // Exhausted retries return errorItemSet (one item, meta.status
+        // "failed"); non-retryable kinds return an empty set. Both are
+        // failures — the old `length === 0 &&` guard was unsatisfiable, so
+        // retry-exhausted steps were recorded as completed.
+        if (stepResult.items.length === 0 || stepResult.items[0]?.meta?.status === "failed") {
           stepStatus = "failed";
         }
       } else {
@@ -1723,15 +1728,22 @@ async function sendWorkflowEmail(
     // logged as DELIVERED — an email to nobody marked the run completed.
     return { ok: false, error: "send_email: no recipient configured (actionType.to is empty)" };
   }
+  // provider arrives untyped from workflow JSON; an unknown value would fall
+  // through the email tool as "Unknown action" (a detail-less text result)
+  // and read as success — the same silent-delivery class this guards against.
+  const normalizedProvider = provider.trim().toLowerCase();
+  if (!["resend", "mailgun", "sendgrid"].includes(normalizedProvider)) {
+    return { ok: false, error: `send_email: unknown provider "${provider}"` };
+  }
   const [{ loadConfig }, { createEmailDeliveryTool }] = await Promise.all([
     import("../config/config.js"),
     import("../agents/tools/email-delivery-tool.js"),
   ]);
   const cfg = loadConfig();
   const emailTool = createEmailDeliveryTool({ config: cfg });
-  const from = await resolveWorkflowEmailFrom(provider);
+  const from = await resolveWorkflowEmailFrom(normalizedProvider);
   const result = await emailTool.execute(`wf-email-${nodeId}`, {
-    action: `send_${provider}`,
+    action: `send_${normalizedProvider}`,
     to: [recipient],
     from,
     subject,
@@ -3586,9 +3598,13 @@ export class CoreAgentDispatcher implements AgentDispatcher {
 }
 
 export function buildWorkflowAgentSessionKey(agentId: string, nowMs = Date.now()): string {
+  // Millisecond timestamps alone collide when parallel branches dispatch
+  // agent nodes in the same tick — colliding keys would cross-contaminate
+  // the seeded per-step tool policy (last writer wins). The random suffix
+  // makes each step's session key unique.
   return buildAgentMainSessionKey({
     agentId,
-    mainKey: `workflow:${nowMs}`,
+    mainKey: `workflow:${nowMs}-${randomUUID().slice(0, 8)}`,
   });
 }
 
@@ -3607,17 +3623,12 @@ export async function seedWorkflowSessionToolPolicy(params: {
   if (!allow.length && !deny.length) {
     return false;
   }
-  const [
-    { loadConfig },
-    { resolveStorePath, updateSessionStore },
-    { resolveDefaultAgentId },
-    { randomUUID },
-  ] = await Promise.all([
-    import("../config/config.js"),
-    import("../config/sessions.js"),
-    import("../agents/agent-scope.js"),
-    import("node:crypto"),
-  ]);
+  const [{ loadConfig }, { resolveStorePath, updateSessionStore }, { resolveDefaultAgentId }] =
+    await Promise.all([
+      import("../config/config.js"),
+      import("../config/sessions.js"),
+      import("../agents/agent-scope.js"),
+    ]);
   const cfg = params.cfg ?? loadConfig();
   // Must mirror resolveSessionToolPolicy (pi-tools.policy.ts) exactly so the
   // entry lands in the same store the policy resolver reads.

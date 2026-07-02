@@ -859,12 +859,14 @@ export async function denyWorkflowRunAfterApproval(opts: {
       AND approval_status = 'pending'
   `;
   const workflowId = runRow?.workflow_id ? String(runRow.workflow_id) : undefined;
-  opts.broadcast?.("workflow.run.completed", {
-    runId: opts.runId,
-    workflowId,
-    status: "failed",
-    error: reason,
-  });
+  if (runRow) {
+    opts.broadcast?.("workflow.run.completed", {
+      runId: opts.runId,
+      workflowId,
+      status: "failed",
+      error: reason,
+    });
+  }
   return { denied: Boolean(runRow), reason, workflowId };
 }
 
@@ -1429,7 +1431,17 @@ export async function resumeDueWorkflowWaits(opts: {
     if (!row.id || !row.run_id || !row.node_id) {
       continue;
     }
-    const timeoutAction = row.timeout_action === "approve" ? "approve" : "deny";
+    // Fail closed on timeout, ALWAYS. timeout_action='approve' is
+    // workflow-author-controlled (agents author workflows via the gateway),
+    // so honoring it here would let an unattended timer execute gated side
+    // effects with zero operator involvement — and it would re-run entire
+    // pipelines inside the locked cron tick. Auto-approve stays unarmed
+    // until it is gated on explicit operator sign-off; no live approval row
+    // uses it today (verified 2026-07-02).
+    const note =
+      row.timeout_action === "approve"
+        ? "Approval timed out — timeoutAction 'approve' is not armed; denied fail-closed"
+        : "Approval timed out — auto-denied";
     try {
       // Atomic claim: only the sweep instance that flips pending → timed_out
       // acts on the run, so concurrent sweeps (or a racing operator tap) can't
@@ -1439,7 +1451,7 @@ export async function resumeDueWorkflowWaits(opts: {
           status = 'timed_out',
           resolved_at = NOW(),
           resolved_by = 'system:approval_timeout',
-          resolution_note = ${`Approval timed out — auto-${timeoutAction}`}
+          resolution_note = ${note}
         WHERE id = ${row.id}
           AND status = 'pending'
         RETURNING id
@@ -1447,35 +1459,71 @@ export async function resumeDueWorkflowWaits(opts: {
       if (!claimed) {
         continue;
       }
-      opts.broadcast?.("workflow.approval.resolved", {
-        approvalId: row.id,
-        runId: row.run_id,
-        nodeId: row.node_id,
-        approved: timeoutAction === "approve",
-        timedOut: true,
-      });
-      if (timeoutAction === "approve") {
-        await resumeWorkflowRunAfterApproval({
-          sql: opts.sql,
-          runId: row.run_id,
-          nodeId: row.node_id,
-          triggerSource: "cron:approval_timeout",
-          broadcast: opts.broadcast,
-          outboundDeps: opts.outboundDeps,
-        });
-        resumed++;
-      } else {
+      try {
         await denyWorkflowRunAfterApproval({
           sql: opts.sql,
           runId: row.run_id,
           nodeId: row.node_id,
-          reason: "Approval timed out — auto-denied",
+          reason: note,
           broadcast: opts.broadcast,
         });
-        failed++;
+      } catch (denyErr) {
+        // Compensate: un-claim so the next sweep retries. Without this the
+        // approval is terminal while the run is still waiting_approval —
+        // unreachable by every approve/deny surface.
+        await opts.sql`
+          UPDATE workflow_approvals SET
+            status = 'pending',
+            resolved_at = NULL,
+            resolved_by = NULL,
+            resolution_note = NULL
+          WHERE id = ${row.id}
+            AND status = 'timed_out'
+        `;
+        throw denyErr;
       }
+      opts.broadcast?.("workflow.approval.resolved", {
+        approvalId: row.id,
+        runId: row.run_id,
+        nodeId: row.node_id,
+        approved: false,
+        timedOut: true,
+      });
+      failed++;
     } catch (err) {
       errors.push(`approval=${row.id} run=${row.run_id}: ${String(err)}`);
+    }
+  }
+
+  // Orphan sweep: approvals still 'pending' whose run already reached a
+  // terminal state (operator cancel, failWorkflowRun, …) can never be acted
+  // on, but they pollute listPendingWorkflowApprovals — the Telegram text
+  // surface lists them forever and a bare "approve"/"deny" turns ambiguous.
+  const orphanRows = await opts.sql`
+    SELECT a.id, a.run_id
+    FROM workflow_approvals a
+    JOIN workflow_runs r ON r.id = a.run_id
+    WHERE a.status = 'pending'
+      AND r.status IN ('cancelled', 'failed', 'completed')
+    ORDER BY a.requested_at ASC
+    LIMIT ${limit}
+  `;
+  for (const row of orphanRows as Array<{ id?: string; run_id?: string }>) {
+    if (!row.id) {
+      continue;
+    }
+    try {
+      await opts.sql`
+        UPDATE workflow_approvals SET
+          status = 'cancelled',
+          resolved_at = NOW(),
+          resolved_by = 'system:orphan_sweep',
+          resolution_note = 'Run left waiting_approval without resolving this approval'
+        WHERE id = ${row.id}
+          AND status = 'pending'
+      `;
+    } catch (err) {
+      errors.push(`orphan approval=${row.id} run=${row.run_id}: ${String(err)}`);
     }
   }
 

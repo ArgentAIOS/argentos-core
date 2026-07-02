@@ -475,17 +475,27 @@ export const registerTelegramHandlers = ({
                 .editMessageText(
                   chatId,
                   callbackMessage.message_id,
-                  `⚠️ Approved by ${operatorLabel}, but the run failed to resume: ${String(err)}\nRun: ${runId}`,
+                  `⚠️ Approved by ${operatorLabel}, but the run failed to resume: ${String(err).slice(0, 300)}\nRun: ${runId}`,
                 )
                 .catch(() => {});
             });
           } else {
-            await denyWorkflowRunAfterApproval({
+            const denyResult = await denyWorkflowRunAfterApproval({
               sql,
               runId,
               nodeId,
               reason: "Denied via Telegram inline button",
             });
+            if (!denyResult.denied) {
+              await bot.api
+                .editMessageText(
+                  chatId,
+                  callbackMessage.message_id,
+                  `⚠️ Denied by ${operatorLabel}, but the run had already left the waiting state.\nRun: ${runId}`,
+                )
+                .catch(() => {});
+              return;
+            }
           }
           const icon = approved ? "✅" : "❌";
           const verb = approved ? "Approved" : "Denied";
