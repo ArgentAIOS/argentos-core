@@ -1305,6 +1305,10 @@ function getGogDefaultAccount() {
   }
 }
 
+const GOG_CALENDAR_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+let gogCalendarFailureUntilMs = 0;
+let gogCalendarLastError = null;
+
 const calendarSettings = readCalendarSettings();
 let cachedGogCalendarAccount =
   (process.env.GOG_CALENDAR_ACCOUNT || process.env.GOG_ACCOUNT || "").trim() ||
@@ -1354,6 +1358,17 @@ function runGogCalendarEvents(preferredAccount = null) {
     enqueue(null);
   }
 
+  // Failure cooldown: a broken gog state (expired OAuth, DNS outage) used to
+  // cost a blocking 10s shell-out PER dashboard poll, per account in the
+  // queue — a permanent tight error loop in the logs. After a full failed
+  // sweep, skip real attempts for the cooldown window.
+  if (gogCalendarFailureUntilMs > Date.now()) {
+    throw (
+      gogCalendarLastError ||
+      new Error("calendar temporarily unavailable (retry cooldown after repeated gog failures)")
+    );
+  }
+
   let lastError = null;
   let expanded = false;
 
@@ -1372,6 +1387,8 @@ function runGogCalendarEvents(preferredAccount = null) {
         persistCalendarAccount(account);
         console.log(`[Calendar] Switched gog account to ${account}`);
       }
+      gogCalendarFailureUntilMs = 0;
+      gogCalendarLastError = null;
       return { data, account };
     } catch (err) {
       lastError = err;
@@ -1384,6 +1401,8 @@ function runGogCalendarEvents(preferredAccount = null) {
     }
   }
 
+  gogCalendarFailureUntilMs = Date.now() + GOG_CALENDAR_FAILURE_COOLDOWN_MS;
+  gogCalendarLastError = lastError;
   throw lastError || new Error("Failed to fetch calendar via gog");
 }
 
