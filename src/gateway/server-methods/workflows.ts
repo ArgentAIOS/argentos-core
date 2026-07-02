@@ -3475,6 +3475,34 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
+      // Atomic replay guard: the approval row's "approved" status is terminal
+      // and never consumed, so gating on it alone made this endpoint
+      // replayable — every repeat call re-executed the remaining pipeline
+      // (duplicate side effects). Only the caller that flips
+      // waiting_approval → running gets to resume; force=true bypasses the
+      // claim for recovering a run stuck in "running" after a dead resume.
+      if (!force) {
+        const [claimed] = await sql`
+          UPDATE workflow_runs SET status = 'running'
+          WHERE id = ${runId}
+            AND status = 'waiting_approval'
+          RETURNING id
+        `;
+        if (!claimed) {
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              "Run already resumed or finished (pass force=true to re-drive a stuck run)",
+            ),
+          );
+          return;
+        }
+      } else {
+        log.warn(`workflows.resume force=true bypassing replay guard for run ${runId}`);
+      }
+
       void resumeWorkflowRunAfterApproval({
         sql,
         runId,
