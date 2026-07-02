@@ -347,7 +347,7 @@ describe("agentCommand", () => {
         );
 
         expect(deps.sendMessageTelegram).toHaveBeenCalledWith(
-          "123",
+          "telegram:123",
           "ok",
           expect.objectContaining({ accountId: undefined, verbose: false }),
         );

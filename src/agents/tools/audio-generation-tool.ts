@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ArgentConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { readStringParam, readNumberParam } from "./common.js";
 
 const AudioGenSchema = Type.Object({
@@ -32,11 +32,11 @@ const AudioGenSchema = Type.Object({
 
 type Provider = "elevenlabs" | "fal";
 
-function resolveProvider(params: {
+async function resolveProvider(params: {
   requested?: string;
   agentSessionKey?: string;
   config?: ArgentConfig;
-}): { provider: Provider; apiKey: string } | null {
+}): Promise<{ provider: Provider; apiKey: string } | null> {
   const order: { provider: Provider; envKey: string }[] = [
     { provider: "elevenlabs", envKey: "ELEVENLABS_API_KEY" },
     { provider: "fal", envKey: "FAL_API_KEY" },
@@ -45,7 +45,7 @@ function resolveProvider(params: {
   if (params.requested) {
     const match = order.find((o) => o.provider === params.requested);
     if (match) {
-      const key = resolveServiceKey(match.envKey, params.config, {
+      const key = await resolveServiceKeyAsync(match.envKey, params.config, {
         sessionKey: params.agentSessionKey,
         source: "audio_generate",
       });
@@ -56,7 +56,7 @@ function resolveProvider(params: {
   }
 
   for (const entry of order) {
-    const key = resolveServiceKey(entry.envKey, params.config, {
+    const key = await resolveServiceKeyAsync(entry.envKey, params.config, {
       sessionKey: params.agentSessionKey,
       source: "audio_generate",
     });
@@ -155,7 +155,7 @@ Returns a MEDIA: path. Copy the MEDIA line exactly into your response.`,
       const provider = readStringParam(params, "provider") as Provider | undefined;
       const duration = readNumberParam(params, "duration");
 
-      const resolved = resolveProvider({
+      const resolved = await resolveProvider({
         requested: provider,
         agentSessionKey: options?.agentSessionKey,
         config: options?.config,

@@ -241,7 +241,7 @@ vi.mock("../daemon/service.js", () => ({
     stop: serviceStop,
     restart: serviceRestart,
     isLoaded: serviceIsLoaded,
-    readCommand: vi.fn(),
+    readCommand: vi.fn().mockResolvedValue(null),
     readRuntime: vi.fn().mockResolvedValue({ status: "running" }),
   }),
 }));

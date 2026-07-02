@@ -14,6 +14,16 @@ export default defineConfig({
   test: {
     ...baseTest,
     include,
-    exclude: [...exclude, "src/gateway/**", "extensions/**"],
+    exclude: [
+      ...exclude,
+      "src/gateway/**",
+      "extensions/**",
+      // Quarantined from the hermetic unit suite: spawns the Rust `argent-execd`
+      // daemon (rust/target/debug/argent-execd). The binary is absent in the CI
+      // unit-test job and a stale local build returns 404 (route version skew),
+      // so it can't run deterministically here. Run it after `cargo build` in a
+      // dedicated integration context.
+      "src/infra/executive-shadow-client.integration.test.ts",
+    ],
   },
 });

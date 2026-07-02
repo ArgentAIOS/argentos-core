@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ArgentConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { readStringParam, readNumberParam } from "./common.js";
 
 /** Built-in voice map: name → ElevenLabs voice ID */
@@ -201,14 +201,14 @@ Returns a MEDIA: path. Copy the MEDIA line exactly into your response.`,
       const speed = readNumberParam(params, "speed") ?? 1.0;
 
       const apiKey =
-        resolveServiceKey("ELEVENLABS_API_KEY", options?.config, {
+        (await resolveServiceKeyAsync("ELEVENLABS_API_KEY", options?.config, {
           sessionKey: options?.agentSessionKey,
           source: "tts_generate",
-        }) ||
-        resolveServiceKey("XI_API_KEY", options?.config, {
+        })) ||
+        (await resolveServiceKeyAsync("XI_API_KEY", options?.config, {
           sessionKey: options?.agentSessionKey,
           source: "tts_generate",
-        });
+        }));
       if (!apiKey) {
         return {
           content: [

@@ -5,7 +5,7 @@ describe("runtime load profiles", () => {
   it("resolves balanced laptop defaults", () => {
     const resolved = resolveRuntimeLoadProfile({ active: "balanced-laptop" });
     expect(resolved.pollingMultiplier).toBe(2);
-    expect(resolved.patch.executionWorker?.enabled).toBe(false);
+    expect(resolved.patch.executionWorker?.enabled).toBe(true);
     expect(resolved.patch.maxConcurrent).toBe(2);
   });
 
@@ -30,7 +30,7 @@ describe("runtime load profiles", () => {
 
     expect(effective.agents?.defaults?.heartbeat?.every).toBe("30m");
     expect(effective.agents?.defaults?.contemplation?.every).toBe("2h");
-    expect(effective.agents?.defaults?.executionWorker?.enabled).toBe(false);
+    expect(effective.agents?.defaults?.executionWorker?.enabled).toBe(true);
     expect(effective.agents?.defaults?.maxConcurrent).toBe(3);
     expect(effective.agents?.defaults?.subagents?.maxConcurrent).toBe(1);
   });

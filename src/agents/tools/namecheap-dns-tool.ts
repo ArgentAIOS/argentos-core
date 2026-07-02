@@ -6,7 +6,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ArgentConfig } from "../../config/config.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
 const DEFAULT_NAMECHEAP_API_URL = "https://api.namecheap.com/xml.response";
@@ -221,8 +221,8 @@ export function createNamecheapDnsTool(options?: {
   agentSessionKey?: string;
   config?: ArgentConfig;
 }): AnyAgentTool {
-  const resolveKey = (name: string) =>
-    resolveServiceKey(name, options?.config, {
+  const resolveKey = async (name: string): Promise<string | undefined> =>
+    resolveServiceKeyAsync(name, options?.config, {
       sessionKey: options?.agentSessionKey,
       source: "namecheap_dns",
     });
@@ -247,17 +247,18 @@ Actions:
 
       try {
         const apiUser =
-          resolveKey("NAMECHEAP_API_USER") ||
-          resolveKey("NAMECHEAP_USERNAME") ||
+          (await resolveKey("NAMECHEAP_API_USER")) ||
+          (await resolveKey("NAMECHEAP_USERNAME")) ||
           process.env.NAMECHEAP_API_USER ||
           process.env.NAMECHEAP_USERNAME;
         const username =
-          resolveKey("NAMECHEAP_USERNAME") ||
-          resolveKey("NAMECHEAP_API_USER") ||
+          (await resolveKey("NAMECHEAP_USERNAME")) ||
+          (await resolveKey("NAMECHEAP_API_USER")) ||
           process.env.NAMECHEAP_USERNAME ||
           process.env.NAMECHEAP_API_USER;
-        const apiKey = resolveKey("NAMECHEAP_API_KEY") || process.env.NAMECHEAP_API_KEY;
-        const clientIp = resolveKey("NAMECHEAP_CLIENT_IP") || process.env.NAMECHEAP_CLIENT_IP;
+        const apiKey = (await resolveKey("NAMECHEAP_API_KEY")) || process.env.NAMECHEAP_API_KEY;
+        const clientIp =
+          (await resolveKey("NAMECHEAP_CLIENT_IP")) || process.env.NAMECHEAP_CLIENT_IP;
 
         if (!apiUser || !username || !apiKey || !clientIp) {
           throw new Error(

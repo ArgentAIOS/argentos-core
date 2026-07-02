@@ -90,7 +90,9 @@ describe("getApiKeyForModel", () => {
       } else {
         process.env.PI_CODING_AGENT_DIR = previousPiAgentDir;
       }
-      await fs.rm(tempDir, { recursive: true, force: true });
+      // maxRetries absorbs an ENOTEMPTY race: a late async write can land in the
+      // temp dir while the recursive remove walks it (global-env-mutation flake).
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 
@@ -162,7 +164,9 @@ describe("getApiKeyForModel", () => {
       } else {
         process.env.PI_CODING_AGENT_DIR = previousPiAgentDir;
       }
-      await fs.rm(tempDir, { recursive: true, force: true });
+      // maxRetries absorbs an ENOTEMPTY race: a late async write can land in the
+      // temp dir while the recursive remove walks it (global-env-mutation flake).
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 

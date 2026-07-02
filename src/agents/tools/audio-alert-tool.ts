@@ -12,7 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import type { ArgentConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { readStringParam } from "./common.js";
 
 /** Built-in voice map: name → ElevenLabs voice ID */
@@ -220,14 +220,14 @@ MOOD: "urgent"/"excited" = expressive, "calm"/"gentle" = steady, default = balan
       const mood = readStringParam(params, "mood");
 
       const apiKey =
-        resolveServiceKey("ELEVENLABS_API_KEY", options?.config, {
+        (await resolveServiceKeyAsync("ELEVENLABS_API_KEY", options?.config, {
           sessionKey: options?.agentSessionKey,
           source: "audio_alert",
-        }) ||
-        resolveServiceKey("XI_API_KEY", options?.config, {
+        })) ||
+        (await resolveServiceKeyAsync("XI_API_KEY", options?.config, {
           sessionKey: options?.agentSessionKey,
           source: "audio_alert",
-        });
+        }));
       if (!apiKey) {
         return {
           content: [

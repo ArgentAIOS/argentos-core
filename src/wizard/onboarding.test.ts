@@ -170,7 +170,7 @@ describe("runOnboardingWizard", () => {
     expect(runTui).not.toHaveBeenCalled();
   });
 
-  it("launches TUI without auto-delivery when hatching", async () => {
+  it("delegates app launch to the installer instead of hatching the TUI in-wizard", async () => {
     runTui.mockClear();
 
     const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-onboard-"));
@@ -218,18 +218,14 @@ describe("runOnboardingWizard", () => {
       prompter,
     );
 
-    expect(runTui).toHaveBeenCalledWith(
-      expect.objectContaining({
-        deliver: false,
-        message:
-          "Hey — this is our first conversation. Start the first-run ritual from BOOTSTRAP.md and guide it naturally.",
-      }),
-    );
+    // The in-wizard TUI hatch was removed: onboarding.finalize.ts hard-codes
+    // hatchChoice="later" and the installer script launches the app afterward.
+    expect(runTui).not.toHaveBeenCalled();
 
     await fs.rm(workspaceDir, { recursive: true, force: true });
   });
 
-  it("offers TUI hatch even without BOOTSTRAP.md", async () => {
+  it("does not hatch the TUI in-wizard even without BOOTSTRAP.md", async () => {
     runTui.mockClear();
 
     const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-onboard-"));
@@ -276,12 +272,8 @@ describe("runOnboardingWizard", () => {
       prompter,
     );
 
-    expect(runTui).toHaveBeenCalledWith(
-      expect.objectContaining({
-        deliver: false,
-        message: undefined,
-      }),
-    );
+    // No in-wizard TUI hatch regardless of BOOTSTRAP.md presence.
+    expect(runTui).not.toHaveBeenCalled();
 
     await fs.rm(workspaceDir, { recursive: true, force: true });
   });
@@ -289,13 +281,15 @@ describe("runOnboardingWizard", () => {
   it("shows the web search hint at the end of onboarding", async () => {
     const prevBraveKey = process.env.BRAVE_API_KEY;
     delete process.env.BRAVE_API_KEY;
+    // The hint moved from prompter.note to console.log (finalize.ts) so it does
+    // not block the installer piping through /dev/tty.
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     try {
-      const note: WizardPrompter["note"] = vi.fn(async () => {});
       const prompter: WizardPrompter = {
         intro: vi.fn(async () => {}),
         outro: vi.fn(async () => {}),
-        note,
+        note: vi.fn(async () => {}),
         select: vi.fn(async () => "quickstart"),
         multiselect: vi.fn(async () => []),
         text: vi.fn(async () => ""),
@@ -324,10 +318,10 @@ describe("runOnboardingWizard", () => {
         prompter,
       );
 
-      const calls = (note as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-      expect(calls.length).toBeGreaterThan(0);
-      expect(calls.some((call) => call?.[1] === "Web search (optional)")).toBe(true);
+      const logged = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(logged).toContain("Web search: not configured");
     } finally {
+      logSpy.mockRestore();
       if (prevBraveKey === undefined) {
         delete process.env.BRAVE_API_KEY;
       } else {

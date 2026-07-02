@@ -6,7 +6,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ArgentConfig } from "../../config/config.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { type AnyAgentTool, jsonResult, readStringArrayParam, readStringParam } from "./common.js";
 
 const EmailDeliverySchema = Type.Object({
@@ -71,8 +71,8 @@ export function createEmailDeliveryTool(options?: {
   agentSessionKey?: string;
   config?: ArgentConfig;
 }): AnyAgentTool {
-  const resolveKey = (name: string) =>
-    resolveServiceKey(name, options?.config, {
+  const resolveKey = async (name: string): Promise<string | undefined> =>
+    resolveServiceKeyAsync(name, options?.config, {
       sessionKey: options?.agentSessionKey,
       source: "email_delivery",
     });
@@ -99,7 +99,7 @@ Actions:
           const provider = (readStringParam(params, "provider") || "resend").toLowerCase();
 
           if (provider === "resend") {
-            const key = resolveKey("RESEND_API_KEY") || process.env.RESEND_API_KEY;
+            const key = (await resolveKey("RESEND_API_KEY")) || process.env.RESEND_API_KEY;
             if (!key) throw new Error("No RESEND_API_KEY configured.");
             const res = await fetch("https://api.resend.com/domains", {
               headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
@@ -112,8 +112,8 @@ Actions:
 
           if (provider === "mailgun") {
             const key =
-              resolveKey("MAILGUN_API_KEY") ||
-              resolveKey("MAILGUN_TITANIUM_API_KEY") ||
+              (await resolveKey("MAILGUN_API_KEY")) ||
+              (await resolveKey("MAILGUN_TITANIUM_API_KEY")) ||
               process.env.MAILGUN_API_KEY ||
               process.env.MAILGUN_TITANIUM_API_KEY;
             if (!key) throw new Error("No MAILGUN_API_KEY configured.");
@@ -128,7 +128,7 @@ Actions:
           }
 
           if (provider === "sendgrid") {
-            const key = resolveKey("SENDGRID_API_KEY") || process.env.SENDGRID_API_KEY;
+            const key = (await resolveKey("SENDGRID_API_KEY")) || process.env.SENDGRID_API_KEY;
             if (!key) throw new Error("No SENDGRID_API_KEY configured.");
             const res = await fetch("https://api.sendgrid.com/v3/user/profile", {
               headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
@@ -143,7 +143,7 @@ Actions:
         }
 
         if (action === "send_resend") {
-          const key = resolveKey("RESEND_API_KEY") || process.env.RESEND_API_KEY;
+          const key = (await resolveKey("RESEND_API_KEY")) || process.env.RESEND_API_KEY;
           if (!key) throw new Error("No RESEND_API_KEY configured.");
           const msg = requireMessageFields(params);
 
@@ -177,15 +177,15 @@ Actions:
 
         if (action === "send_mailgun") {
           const key =
-            resolveKey("MAILGUN_API_KEY") ||
-            resolveKey("MAILGUN_TITANIUM_API_KEY") ||
+            (await resolveKey("MAILGUN_API_KEY")) ||
+            (await resolveKey("MAILGUN_TITANIUM_API_KEY")) ||
             process.env.MAILGUN_API_KEY ||
             process.env.MAILGUN_TITANIUM_API_KEY;
           if (!key) throw new Error("No MAILGUN_API_KEY configured.");
 
           const domain =
             readStringParam(params, "mailgun_domain") ||
-            resolveKey("MAILGUN_DOMAIN") ||
+            (await resolveKey("MAILGUN_DOMAIN")) ||
             process.env.MAILGUN_DOMAIN;
           if (!domain) throw new Error("mailgun_domain or MAILGUN_DOMAIN is required");
 
@@ -221,7 +221,7 @@ Actions:
         }
 
         if (action === "send_sendgrid") {
-          const key = resolveKey("SENDGRID_API_KEY") || process.env.SENDGRID_API_KEY;
+          const key = (await resolveKey("SENDGRID_API_KEY")) || process.env.SENDGRID_API_KEY;
           if (!key) throw new Error("No SENDGRID_API_KEY configured.");
           const msg = requireMessageFields(params);
 

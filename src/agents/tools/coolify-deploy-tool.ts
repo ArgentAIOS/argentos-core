@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ArgentConfig } from "../../config/config.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { type AnyAgentTool, jsonResult, readNumberParam, readStringParam } from "./common.js";
 
 const execFileAsync = promisify(execFile);
@@ -829,16 +829,16 @@ export function createCoolifyDeployTool(options?: {
   agentSessionKey?: string;
   config?: ArgentConfig;
 }): AnyAgentTool {
-  const resolveKey = (name: string) =>
-    resolveServiceKey(name, options?.config, {
+  const resolveKey = async (name: string): Promise<string | undefined> =>
+    resolveServiceKeyAsync(name, options?.config, {
       sessionKey: options?.agentSessionKey,
       source: "coolify_deploy",
     });
 
-  const resolveContext = (params: Record<string, unknown>): CoolifyContext => {
+  const resolveContext = async (params: Record<string, unknown>): Promise<CoolifyContext> => {
     const apiKey =
-      resolveKey("COOLIFY_API_KEY") ||
-      resolveKey("COOLIFY_API_TOKEN") ||
+      (await resolveKey("COOLIFY_API_KEY")) ||
+      (await resolveKey("COOLIFY_API_TOKEN")) ||
       process.env.COOLIFY_API_KEY ||
       process.env.COOLIFY_API_TOKEN;
 
@@ -850,7 +850,7 @@ export function createCoolifyDeployTool(options?: {
 
     const apiUrl =
       readStringParam(params, "api_url") ||
-      resolveKey("COOLIFY_API_URL") ||
+      (await resolveKey("COOLIFY_API_URL")) ||
       process.env.COOLIFY_API_URL ||
       DEFAULT_COOLIFY_API_URL;
 
@@ -866,8 +866,8 @@ export function createCoolifyDeployTool(options?: {
   ): Promise<string> => {
     const explicit =
       readStringParam(params, "server_uuid") ||
-      resolveKey("COOLIFY_DEFAULT_SERVER_ID") ||
-      resolveKey("COOLIFY_DEFAULT_SERVER_UUID") ||
+      (await resolveKey("COOLIFY_DEFAULT_SERVER_ID")) ||
+      (await resolveKey("COOLIFY_DEFAULT_SERVER_UUID")) ||
       process.env.COOLIFY_DEFAULT_SERVER_ID ||
       process.env.COOLIFY_DEFAULT_SERVER_UUID;
     if (explicit?.trim()) return explicit.trim();
@@ -903,7 +903,7 @@ Key resolution:
       const action = readStringParam(params, "action", { required: true });
 
       try {
-        const ctx = resolveContext(params);
+        const ctx = await resolveContext(params);
         const includeRaw = parseBoolean(params.include_raw, false);
 
         switch (action) {
