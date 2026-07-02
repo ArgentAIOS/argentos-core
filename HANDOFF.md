@@ -1,64 +1,43 @@
 # HANDOFF — argent-core session bridge
 
-**From:** 2026-06-16 session (Opus 4.8 [1m]) — _unit-suite rehab + CI gate_. Supersedes the earlier 2026-06-16 telegram-approval bridge (that work is merged + live; its still-open items are carried below).
+**From:** 2026-07-02 session (Fable 5) — _approval-system integrity + Workforce P5_. Supersedes the 2026-06-16 unit-suite bridge (that work merged as PR #461; its carried items are resolved or re-filed below).
 
 ---
 
 ## TL;DR — what happened this session
 
-**The `vitest.unit.config.ts` unit suite is GREEN: 0 failed / 7806 passed / exit 0** (baseline was 39–40 failed across 21 files). **A blocking CI `unit-test` job is wired.** tsgo 189→**187**. The macOS keychain test modal is killed. **Nothing is committed yet.**
+Two lanes, both **merged to `dev` and DEPLOYED + LIVE-VERIFIED** (gateway running+healthy):
 
-- **Branch:** `fix/docpanel-token-prefer-config` (base `9a445677`). 34 files changed (+195/−137).
-- **Last decision:** migrate the 8 service-key tools sync→async + fix pi_only persistence at the `ArgentSessionManager` seam (both pre-registered tripwires, **approved by Jason mid-session**).
-- **Next step:** commit + open PR → `dev`; the new `unit-test` check should be green (verified locally with `pnpm test:unit`).
-- **Open questions:** commit on this branch or split to a fresh one (the branch name is now unrelated to the work)?
+1. **Approval-system integrity (PRs #462 + review-hardening).** Root-caused the Telegram approval flood: the "MSP Morning Podcast 2" workflow had **self-replicated into 143 copies** (11 active, cron-firing 7 AM daily) because workflow agents got the full 121-tool set — `toolsAllow` was prompt prose, not policy. Fixed four production bugs: Telegram **Deny resumed runs as approved** (now a shared fail-closed deny path), **approval timeouts never fired** for durable runs (now swept with atomic claim + compensation + orphan sweep; `timeout_action='approve'` deliberately fails closed until gated on operator sign-off), **send_email swallowed all failures** (empty recipient/unknown provider/retry-exhaustion now fail the step — the old retry check `length===0 && items[0]` was unsatisfiable), and **toolsAllow now enforced structurally** via session-entry seeding (same seam as WR2 ephemeral workers; session keys got a random suffix against same-ms collisions; `sessions.toolsAllow` is fail-closed in pi-tools). Live cleanup executed: 143 dupes parked, 70 zombie approvals + 70 frozen runs cancelled, 12 cron entries disabled, two active workflows' empty `to:` backfilled, Morning Brief Podcast 2.0 parked, stale plist `DASHBOARD_API_TOKEN` scrubbed.
+2. **Workforce P5 — D10 grading (PR #463).** Append-only `job_grade_events` (PG-native per lock), pure gate math (`src/infra/worker-grading.ts`: **≥95% correct over ≥50 graded, sustained 14d**, exact integers, dip resets clock, **gate informs / never auto-promotes**), gateway `jobs.grades.record|approveAll|list` + `jobs.scorecard`, Workforce Board grading panel + scorecard/gate chip. Review round fixed: gate now reads the FULL grade history (a default LIMIT 5000 asc froze it on the oldest window → permanent false "eligible"), and batch grades get per-row +1ms offsets so sustain-clock resets are deterministic.
+
+- **Branches:** all merged; `dev` HEAD `d94d5c08`. Deploy = `~/argentos` ff → `scripts/out-of-sync-patch.sh` (gateway runs the installed snapshot, NOT the repo).
+- **Live-verified:** `job_grade_events` + 3 indexes created by adapter init; grade round-trip on P4 regression run `9d42b3dd-8da1…` → scorecard 1/1 (100%), gate `needs 49 more`; unknown-run grade rejected fail-closed.
+- **Trunk is `dev`, not `main`** (PRs → dev; main is ancient).
 
 ## Verify before trusting
 
 ```bash
-cd /Users/sem/code/argent-core
-pnpm test:unit                                # → 0 failed, exit 0  (~2.5 min)
-npx tsgo --noEmit 2>&1 | grep -c "error TS"   # 187 (≤189 baseline)
+argent gateway status                          # running+healthy, RPC probe: ok
+argent gateway call jobs.scorecard --params '{"templateId":"34490eb5-2cf8-42e5-bbea-b4d5fe4507e6"}'
+pnpm test:unit                                 # 7,820+ passed (now includes grading suites)
+node scripts/tsc-since.mjs                     # 0 net-new (189 baseline)
 ```
 
-## What changed (highlights)
+## Next steps (in order)
 
-| Area                                                                                   | Change                                                                                                                        | Class               |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| `ci.yml` + `package.json`                                                              | `unit-test` task in `checks` matrix; `test:unit` script                                                                       | **the deliverable** |
-| `keychain.ts`                                                                          | shell-outs short-circuit under `VITEST` → kills the focus/clipboard-stealing "Keychain Not Found — ArgentOS" modal            | code                |
-| 8 tool files (vercel/email/namecheap/coolify/railway/tts/audio-alert/audio-generation) | sync→async `resolveServiceKeyAsync` (PG-aware, no-op when PG off)                                                             | code                |
-| `pi-embedded-runner/run/attempt.ts`                                                    | **pi_only persistence fix** — open `ArgentSessionManager.open(sessionFile)` so default-mode turns actually persist            | code (prod bug)     |
-| `auto-reply/reply/session.ts`                                                          | idempotent branch-header write (pi 0.74 `createBranchedSession` flushes lazily)                                               | code                |
-| `config/validation.ts`                                                                 | `createRequire`→static ESM import (intent-validation only worked against `dist/`)                                             | code                |
-| `skills/workspace.ts`                                                                  | stamp `source` back onto loaded skills (peekaboo allowlist leak)                                                              | code                |
-| `searchable/filterable-select-list.ts`                                                 | `selectCancel`→`Key.escape` (pi 0.74 action-id rename)                                                                        | code                |
-| `channel-config-tool.ts`                                                               | `Union`→`Array` (drop forbidden `anyOf` in tool schema)                                                                       | code                |
-| `pi-embedded-runner/google.ts`                                                         | gate tool-result synthesis on `allowSyntheticToolResults`                                                                     | code                |
-| `model-auth.test.ts`                                                                   | `fs.rm maxRetries` (ENOTEMPTY cleanup flake)                                                                                  | test                |
-| ~12 test files                                                                         | stale-expectation updates (telegram `telegram:` prefix, cooldown, app-forge, onboarding→installer, web-tools `de-US`, doctor) | test                |
-| `vitest.unit.config.ts`                                                                | quarantine `executive-shadow-client.integration` (spawns Rust `argent-execd`)                                                 | infra               |
-| `pi-embedded-runner.test.ts`                                                           | `it.skip` the memory-recall non-goal test                                                                                     | test                |
+1. **Prove D9 live**: create/enable a simulate assignment on a **write-granting** role → `proposed_action` events fire → they become the first real gradable components (Workforce Board run panel now has ✓/±/✗ + approve-all).
+2. **Re-enable the repaired MSP keeper** when Jason wants it: workflow `4a4a8932` (definition fixed: recipient, `{{steps.agent-draft.text}}`, de-poisoned rolePrompt) is INACTIVE; flip `is_active` + `argent cron enable e1193528-…`. Tomorrow 7 AM is otherwise silent by design.
+3. Remaining hardening backlog: **Follow-Up Closet → "argent-core — approval-system hardening leftovers (filed 2026-07-02)"** (Morning Brief 2.0 wiring, Three-Scout DocPanel 503s, silent notification failures, stale-runs sweep, workflows.resume replay guard, arm timeoutAction:'approve' behind operator sign-off, builder tool-name normalization, Brave 1req/s).
+4. **Open design Qs for Jason** (WR2 doc §8): need_input routing, lease TTL sanity vs DGX models, drop legacy toolsDeny?
 
-## The one fix not to lose
+## Gotchas for the next session
 
-**pi_only is the DEFAULT runtime mode** (`ARGENT_RUNTIME` unset). It was silently writing every agent turn to a throwaway file because `createArgentAgentSession` discards any sessionManager that isn't `instanceof ArgentSessionManager`. This is a real production continuity bug, fixed in `attempt.ts`. Details in the vault: `argenos-core/06 - Known Gotchas`.
+- **Budget discipline:** Jason flagged $250/session burn from workflow-subagent fleets. Use `model: "sonnet"` / `effort: "low"` on verify/mechanical workflow stages; no fleets past ~80% of a session window (memory: `feedback-lean-orchestration-budget`).
+- Keychain "Reset To Defaults" modal during tests = keychain shell-out guard missing on that branch (fixed on dev; never click Reset).
+- `gh pr merge` can detach the main checkout's HEAD (happened once; `git branch -f <branch> HEAD && git switch <branch>`).
+- Grades are append-only — never add UPDATE/DELETE paths; the gate's math depends on full ordered history (no default LIMIT on `listGrades`).
 
 ---
 
-## Carried-over open items (owned, not this round)
-
-1. **memory-recall guardrail** — `pi-embedded-runner.test.ts "writes completed chat turns…"` is `it.skip`'d (trips the recall guardrail; explicit NON-GOAL). Also surfaces live as suppressed/empty agent output. Un-skip the test when fixed.
-2. **`{{previous.json.podcast_generate}}` validation edge error** — breaks the MSP Morning Podcast workflow at validation (NON-GOAL).
-3. **189→187 `tsgo` type errors** — baseline floor; includes pre-existing `audio/tts execute` return-type TS2322s + `tool-claim-validation` errors. Untouched.
-4. **Pre-existing dirty files (NOT mine, fail `oxfmt --check`):** `dashboard/provider-catalog/index.cjs`, `dashboard/src/lib/_generated/onboarding-card-seed.ts`, `dashboard/pnpm-lock.yaml`. Don't fold into this commit unless intended.
-5. **Stale plist `DASHBOARD_API_TOKEN`** in `~/Library/LaunchAgents/ai.argent.gateway.plist` — now harmless (resolver prefers `gateway.auth.token`) but cosmetic cleanup avoids future confusion.
-6. **node_modules access** — Read-denied by global settings (lifted+restored this session); Bash to node_modules is hook-blocked even with `dangerouslyDisableSandbox`. Future deep-vendor debugging needs the deny lifted.
-
-## RESOLVED this session (was carried item #3 on the prior bridge)
-
-- ~37 pre-existing unit failures → **0**. vitest **now in CI** (`unit-test` job). The 2026-06-15 "CI runs no vitest / suite silently red" finding is closed.
-
----
-
-_Full record in the Obsidian vault: `argenos-core/01 - Current State`, `05 - Decisions Log`, `06 - Known Gotchas`, `Daily Updates/2026-06-16`, `Orchestration Handoffs/2026-06-16 - Unit suite green + CI gate`._
+_Full record: Obsidian vault `argenos-core/Daily Updates/2026-07-02`, Follow-Ups & To-Dos closet, PRs #461 #462 #463._
