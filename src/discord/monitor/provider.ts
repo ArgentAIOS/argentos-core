@@ -660,7 +660,23 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
             clearInterval(gateway.heartbeatInterval);
             gateway.heartbeatInterval = undefined;
           }
-          gateway.disconnect();
+          try {
+            gateway.disconnect();
+          } catch (err) {
+            runtime.error?.(danger(`discord gateway disconnect failed: ${String(err)}`));
+          }
+          // Belt-and-braces: no-op any further (re)connects on this retired
+          // instance. A vendor timer calling connect() after disconnect()
+          // threw an UNCAUGHT "Attempted to reconnect zombie connection"
+          // error that crashed the whole gateway process (2026-07-02).
+          const retired = gateway as unknown as Record<string, unknown>;
+          for (const method of ["connect", "reconnect"]) {
+            if (typeof retired[method] === "function") {
+              retired[method] = () => {
+                runtime.log?.(`discord gateway: suppressed ${method}() on retired connection`);
+              };
+            }
+          }
         }
         return;
       }
@@ -689,8 +705,12 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
         gw.pings = [];
         consecutive1005Count = 0;
         // Force a fresh connection (no resume)
-        gateway.disconnect();
-        gateway.connect(false);
+        try {
+          gateway.disconnect();
+          gateway.connect(false);
+        } catch (err) {
+          runtime.error?.(danger(`discord gateway fresh IDENTIFY failed: ${String(err)}`));
+        }
         return;
       }
     }
@@ -715,8 +735,14 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
             `connection stalled: no HELLO received within ${HELLO_TIMEOUT_MS}ms, forcing reconnect`,
           ),
         );
-        gateway?.disconnect();
-        gateway?.connect(false);
+        // Timer context: a throw here is an uncaught exception that kills
+        // the whole gateway process — never let vendor reconnect errors out.
+        try {
+          gateway?.disconnect();
+          gateway?.connect(false);
+        } catch (err) {
+          runtime.error?.(danger(`discord gateway HELLO-timeout reconnect failed: ${String(err)}`));
+        }
       }
       helloTimeoutId = undefined;
     }, HELLO_TIMEOUT_MS);

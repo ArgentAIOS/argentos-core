@@ -2169,16 +2169,49 @@ export async function buildWorkflowConnectorCapabilitiesSafely(): Promise<
   }
 }
 
+// Registered pi tool names, cached per process (the registry only changes on
+// restart/config reload). Lowercased for case-insensitive matching. Returns
+// null when the registry can't be built — validation then skips the tool
+// check rather than emitting false warnings.
+let workflowToolNameCache: { names: Set<string>; atMs: number } | null = null;
+async function resolveKnownWorkflowToolNames(): Promise<Set<string> | null> {
+  const TTL_MS = 60_000;
+  if (workflowToolNameCache && Date.now() - workflowToolNameCache.atMs < TTL_MS) {
+    return workflowToolNameCache.names;
+  }
+  try {
+    const [{ createArgentCodingTools }, { loadConfig }] = await Promise.all([
+      import("../../agents/pi-tools.js"),
+      import("../../config/config.js"),
+    ]);
+    const tools = createArgentCodingTools({
+      config: loadConfig(),
+      sessionKey: "workflow:tool-name-validation",
+      senderIsOwner: true,
+    });
+    const names = new Set(tools.map((tool) => tool.name.toLowerCase()));
+    workflowToolNameCache = { names, atMs: Date.now() };
+    return names;
+  } catch (err) {
+    log.warn(`workflow tool-name validation unavailable: ${String(err)}`);
+    return null;
+  }
+}
+
 export async function validateWorkflowRuntimeCapabilities(
   workflow: WorkflowDefinition,
+  opts?: { knownToolNames?: Set<string> | null },
 ): Promise<WorkflowIssue[]> {
   const issues: WorkflowIssue[] = [];
-  const [outputChannels, connectors] = await Promise.all([
+  const [outputChannels, connectors, knownToolNames] = await Promise.all([
     buildWorkflowOutputChannels().catch((err) => {
       log.warn(`workflow runtime channel validation unavailable: ${String(err)}`);
       return [];
     }),
     buildWorkflowConnectorCapabilitiesSafely(),
+    opts && "knownToolNames" in opts
+      ? Promise.resolve(opts.knownToolNames ?? null)
+      : resolveKnownWorkflowToolNames(),
   ]);
   const availableChannels = new Set(
     outputChannels
@@ -2204,6 +2237,36 @@ export async function validateWorkflowRuntimeCapabilities(
     : "none";
 
   for (const node of workflow.nodes) {
+    // Tool grants are FAIL-CLOSED at runtime (session-policy enforcement):
+    // an entry that matches no registered tool means the agent silently runs
+    // WITHOUT it. This was invisible until execution — the canvas palette and
+    // the NL builder have both emitted such names (e.g. "image_generation"
+    // vs the real "image_generate", AppForge capability ids).
+    if (knownToolNames) {
+      const flagUnknown = (raw: unknown, source: string) => {
+        if (typeof raw !== "string") return;
+        const name = raw.trim();
+        if (!name || knownToolNames.has(name.toLowerCase())) return;
+        issues.push({
+          severity: "warning",
+          code: "workflow_tool_grant_unknown",
+          nodeId: node.id,
+          message: `${source} grants tool "${name}", which matches no registered tool. Grants are fail-closed — the agent will run WITHOUT it. Check the exact tool name.`,
+        });
+      };
+      if (node.kind === "agent") {
+        for (const entry of node.config.toolsAllow ?? []) {
+          flagUnknown(entry, "Agent step");
+        }
+      }
+      if (node.kind === "gate") {
+        const rawConfig = node.config as unknown as Record<string, unknown>;
+        if (rawConfig?.nodeType === "tool_grant" && rawConfig.grantType === "builtin_tool") {
+          flagUnknown(rawConfig.toolName, "Tool grant");
+        }
+      }
+    }
+
     if (node.kind === "action") {
       const actionType = node.config.actionType;
       if (
