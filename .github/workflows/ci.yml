@@ -107,6 +107,9 @@ jobs:
           - runtime: node
             task: format
             command: pnpm format
+          - runtime: node
+            task: unit-test
+            command: pnpm test:unit
     steps:
       - name: Checkout
         uses: actions/checkout@v6

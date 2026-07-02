@@ -69,6 +69,21 @@ function forkSessionFromParent(params: {
       const sessionFile = manager.createBranchedSession(leafId) ?? manager.getSessionFile();
       const sessionId = manager.getSessionId();
       if (sessionFile && sessionId) {
+        // pi 0.74 createBranchedSession registers the branch in-memory but flushes
+        // lazily, so the file may not exist on disk yet. Callers (and the thread-fork
+        // path) need the header now, with the parent lineage recorded. Write it only
+        // when absent so a real flush is never clobbered.
+        if (!fs.existsSync(sessionFile)) {
+          const header = {
+            type: "session",
+            version: CURRENT_SESSION_VERSION,
+            id: sessionId,
+            timestamp: new Date().toISOString(),
+            cwd: manager.getCwd(),
+            parentSession: parentSessionFile,
+          };
+          fs.writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, "utf-8");
+        }
         return { sessionId, sessionFile };
       }
     }

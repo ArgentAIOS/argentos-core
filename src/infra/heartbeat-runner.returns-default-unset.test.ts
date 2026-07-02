@@ -261,7 +261,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
     };
     expect(resolveHeartbeatDeliveryTarget({ cfg, entry: baseEntry })).toEqual({
       channel: "telegram",
-      to: "123",
+      to: "telegram:123",
       accountId: undefined,
       lastChannel: undefined,
       lastAccountId: undefined,
@@ -279,7 +279,7 @@ describe("resolveHeartbeatDeliveryTarget", () => {
     };
     expect(resolveHeartbeatDeliveryTarget({ cfg, entry: baseEntry })).toEqual({
       channel: "telegram",
-      to: "123",
+      to: "telegram:123",
       accountId: "work",
       lastChannel: undefined,
       lastAccountId: undefined,

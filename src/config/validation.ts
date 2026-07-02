@@ -1,7 +1,7 @@
-import { createRequire } from "node:module";
 import path from "node:path";
 import type { ArgentConfig, ConfigValidationIssue } from "./types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveIntentValidationMode, validateIntentHierarchy } from "../agents/intent.js";
 import { CHANNEL_IDS, normalizeChatChannelId } from "../channels/registry.js";
 import {
   normalizePluginsConfig,
@@ -15,8 +15,6 @@ import { applyAgentDefaults, applyModelDefaults, applySessionDefaults } from "./
 import { validateGatewayAuthConfig } from "./gateway-auth-validation.js";
 import { findLegacyConfigIssues } from "./legacy.js";
 import { ArgentSchema } from "./zod-schema.js";
-
-const requireModule = createRequire(import.meta.url);
 
 const AVATAR_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const AVATAR_DATA_RE = /^data:/i;
@@ -91,22 +89,11 @@ type OptionalIntentApi = {
   validateIntentHierarchy: (config: ArgentConfig) => ConfigValidationIssue[];
 };
 
-let optionalIntentApi: OptionalIntentApi | null | undefined;
-
 function getOptionalIntentApi(): OptionalIntentApi | null {
-  if (optionalIntentApi === undefined) {
-    try {
-      const mod = requireModule("../agents/intent.js") as Partial<OptionalIntentApi>;
-      optionalIntentApi =
-        typeof mod.resolveIntentValidationMode === "function" &&
-        typeof mod.validateIntentHierarchy === "function"
-          ? (mod as OptionalIntentApi)
-          : null;
-    } catch {
-      optionalIntentApi = null;
-    }
-  }
-  return optionalIntentApi;
+  // Statically imported so it resolves under both the compiled build and the
+  // .ts test runner. A prior lazy createRequire("../agents/intent.js") threw
+  // under vitest/tsx (no compiled .js), silently disabling enforce-mode checks.
+  return { resolveIntentValidationMode, validateIntentHierarchy };
 }
 
 export function validateConfigObject(

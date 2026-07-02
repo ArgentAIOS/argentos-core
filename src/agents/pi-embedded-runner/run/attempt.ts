@@ -1102,7 +1102,16 @@ export async function runEmbeddedAttempt(
         });
         log.info(`[argent-runtime] Using ArgentSessionManager for session`);
       } else {
-        sessionManager = guardSessionManager(SessionManager.open(params.sessionFile), {
+        // pi_only still drives the *argent* agent loop (coding.ts aliases
+        // createAgentSession -> createArgentAgentSession), and that loop only
+        // persists to a sessionManager that is `instanceof ArgentSessionManager`
+        // (create-agent-session.ts:1007-1010). A pi SessionManager fails that
+        // check, so turns silently divert to a throwaway file and params.sessionFile
+        // never receives messages. Open the real ArgentSessionManager so prompt()
+        // writes user+assistant to params.sessionFile. guardSessionManager mutates
+        // and returns the same object, so `instanceof` is preserved downstream.
+        const piModeSm = ArgentSessionManager.open(params.sessionFile);
+        sessionManager = guardSessionManager(piModeSm as unknown as SessionManager, {
           agentId: sessionAgentId,
           sessionKey: params.sessionKey,
           allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,

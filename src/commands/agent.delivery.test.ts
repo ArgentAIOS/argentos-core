@@ -295,6 +295,8 @@ describe("deliverAgentCommandResult", () => {
     expect(line).toContain("session=agent:main:main");
     expect(line).toContain("run=run-announce");
     expect(line).toContain("channel=webchat");
-    expect(line).toContain("ANNOUNCE_SKIP");
+    // Payload text is redacted when a channel context is present (privacy).
+    expect(line).toContain("[agent-output] redacted");
+    expect(line).not.toContain("ANNOUNCE_SKIP");
   });
 });
