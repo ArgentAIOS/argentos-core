@@ -28,6 +28,7 @@ import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-k
 import { appendGateReason, appendRunEvent, writeRunEventsToMetadata } from "./run-event-log.js";
 import {
   crossCheckWorkReport,
+  detectSimulationViolation,
   grantsAreWriteCapable,
   isStaleWorkReport,
 } from "./work-report-crosscheck.js";
@@ -1151,19 +1152,24 @@ async function runWorkerOnce(
     const toolValidation = extractToolValidation(result.meta);
     // WR2 P4 "D9": record each SIMULATE-mode stubbed write as a proposed_action run
     // event for operator review. These flush onto the run record automatically.
-    for (const proposed of extractProposedActions(result.meta)) {
+    const proposedActions = extractProposedActions(result.meta);
+    for (const proposed of proposedActions) {
       appendRunEvent(liveRun.events, "proposed_action", {
         tool: proposed.tool,
         args: proposed.args,
       });
     }
-    const simulationViolation =
-      (jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow") &&
-      Boolean(toolValidation && toolValidation.externalToolsExecuted.length > 0);
+    const { violation: simulationViolation, escapedTools: escapedExternalTools } =
+      detectSimulationViolation({
+        simulateMode:
+          jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow",
+        externalToolsExecuted: toolValidation?.externalToolsExecuted ?? [],
+        proposedActions,
+      });
     if (simulationViolation) {
       await storage.tasks.block(
         before.id,
-        `Simulation-mode policy violation: executed external tools (${toolValidation?.externalToolsExecuted.join(", ")})`,
+        `Simulation-mode policy violation: executed external tools (${escapedExternalTools.join(", ")})`,
       );
     }
     // v2 D5: a filed work_report is the completion contract for job tasks —
