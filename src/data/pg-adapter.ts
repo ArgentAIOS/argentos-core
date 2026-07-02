@@ -59,6 +59,8 @@ import type {
 } from "./adapter.js";
 import type { PostgresConfig } from "./storage-config.js";
 import type {
+  GradeEvent,
+  GradeEventInput,
   JobAssignment,
   JobAssignmentCreateInput,
   JobDeploymentStage,
@@ -2732,6 +2734,32 @@ class PgJobAdapter implements JobAdapter {
       CREATE INDEX IF NOT EXISTS idx_job_events_unprocessed
       ON job_events(processed_at, created_at);
     `);
+    await this.db.execute(sql`
+      CREATE TABLE IF NOT EXISTS job_grade_events (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES job_runs(id) ON DELETE CASCADE,
+        assignment_id TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        component TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        feedback TEXT,
+        grader TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_job_grade_events_template
+      ON job_grade_events(template_id, created_at);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_job_grade_events_assignment
+      ON job_grade_events(assignment_id, created_at);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_job_grade_events_run
+      ON job_grade_events(run_id);
+    `);
     await this.db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_assignment_id TEXT;`);
     await this.db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_template_id TEXT;`);
     await this.db.execute(sql`
@@ -3196,6 +3224,93 @@ class PgJobAdapter implements JobAdapter {
           : 50,
       );
     return rows.map((row) => this.mapRun(row));
+  }
+
+  async recordGrades(inputs: GradeEventInput[]): Promise<GradeEvent[]> {
+    if (inputs.length === 0) {
+      return [];
+    }
+    const runIds = Array.from(new Set(inputs.map((g) => g.runId)));
+    const runRows = await this.db
+      .select({
+        id: schema.jobRuns.id,
+        assignmentId: schema.jobRuns.assignmentId,
+        templateId: schema.jobRuns.templateId,
+      })
+      .from(schema.jobRuns)
+      .where(inArray(schema.jobRuns.id, runIds));
+    const runById = new Map(runRows.map((r) => [r.id, r]));
+    for (const runId of runIds) {
+      if (!runById.has(runId)) {
+        throw new Error(`grade rejected: job run "${runId}" not found`);
+      }
+    }
+    const now = new Date();
+    const rows = await this.db
+      .insert(schema.jobGradeEvents)
+      .values(
+        inputs.map((g) => {
+          const run = runById.get(g.runId);
+          if (!run) throw new Error(`grade rejected: job run "${g.runId}" not found`);
+          return {
+            id: genId(),
+            runId: g.runId,
+            assignmentId: run.assignmentId,
+            templateId: run.templateId,
+            component: g.component,
+            verdict: g.verdict,
+            feedback: g.feedback ?? null,
+            grader: g.grader,
+            metadata: g.metadata ?? {},
+            createdAt: now,
+          };
+        }),
+      )
+      .returning();
+    return rows.map((row) => this.mapGradeEvent(row));
+  }
+
+  async listGrades(filter?: {
+    runId?: string;
+    templateId?: string;
+    assignmentId?: string;
+    component?: string;
+    limit?: number;
+  }): Promise<GradeEvent[]> {
+    const conditions = [];
+    if (filter?.runId) conditions.push(eq(schema.jobGradeEvents.runId, filter.runId));
+    if (filter?.templateId)
+      conditions.push(eq(schema.jobGradeEvents.templateId, filter.templateId));
+    if (filter?.assignmentId)
+      conditions.push(eq(schema.jobGradeEvents.assignmentId, filter.assignmentId));
+    if (filter?.component) conditions.push(eq(schema.jobGradeEvents.component, filter.component));
+    const rows = await this.db
+      .select()
+      .from(schema.jobGradeEvents)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      // Ascending: gate math walks grades in the order they were recorded.
+      .orderBy(asc(schema.jobGradeEvents.createdAt), asc(schema.jobGradeEvents.id))
+      .limit(
+        Number.isFinite(filter?.limit) && (filter?.limit ?? 0) > 0
+          ? Math.floor(filter?.limit ?? 0)
+          : 5000,
+      );
+    return rows.map((row) => this.mapGradeEvent(row));
+  }
+
+  private mapGradeEvent(row: typeof schema.jobGradeEvents.$inferSelect): GradeEvent {
+    return {
+      id: row.id,
+      runId: row.runId,
+      assignmentId: row.assignmentId,
+      templateId: row.templateId,
+      component: row.component,
+      verdict: row.verdict,
+      feedback: row.feedback ?? undefined,
+      grader: row.grader,
+      createdAt: row.createdAt.getTime(),
+      metadata: (row.metadata as Record<string, unknown>) ?? undefined,
+    };
   }
 
   async resolveSessionToolPolicyForAssignment(params: {

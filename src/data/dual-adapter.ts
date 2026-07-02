@@ -1016,6 +1016,14 @@ class DualJobAdapter implements JobAdapter {
     return this.pg.createTemplate(input);
   }
 
+  async recordGrades(inputs: Parameters<JobAdapter["recordGrades"]>[0]) {
+    return this.pg.recordGrades(inputs);
+  }
+
+  async listGrades(filter?: Parameters<JobAdapter["listGrades"]>[0]) {
+    return this.pg.listGrades(filter);
+  }
+
   async listTemplates(): Promise<JobTemplate[]> {
     return this.pg.listTemplates();
   }

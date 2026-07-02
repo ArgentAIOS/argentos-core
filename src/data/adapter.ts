@@ -42,6 +42,8 @@ import type {
   Significance,
 } from "../memory/memu-types.js";
 import type {
+  GradeEvent,
+  GradeEventInput,
   JobAssignment,
   JobAssignmentCreateInput,
   JobDeploymentStage,
@@ -382,6 +384,16 @@ export interface JobAdapter {
     assignment: JobAssignment;
     template: JobTemplate;
   }): Promise<{ toolsAllow?: string[]; toolsDeny?: string[] }>;
+
+  /** WR2 D10: append-only grade events; assignment/template ids derived from the run. */
+  recordGrades(inputs: GradeEventInput[]): Promise<GradeEvent[]>;
+  listGrades(filter?: {
+    runId?: string;
+    templateId?: string;
+    assignmentId?: string;
+    component?: string;
+    limit?: number;
+  }): Promise<GradeEvent[]>;
 
   enqueueEvent(input: JobEventEnqueueInput): Promise<{ accepted: boolean; event?: JobEvent }>;
   listEvents(filter?: {

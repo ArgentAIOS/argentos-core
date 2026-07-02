@@ -131,6 +131,7 @@ type JobRun = {
   };
   /** D7 (WR2 P4): per-run lifecycle events lifted from metadata.events by the runner. */
   events?: RunEvent[];
+  summary?: string;
 };
 
 /** D7 (WR2 P4): mirrors src/data/types.ts RunEvent — consumed read-only by the board. */
@@ -185,6 +186,43 @@ type JobRunTrace = {
   } | null;
   assignmentRuns: JobRun[];
   events: JobEvent[];
+};
+
+/** WR2 D10: mirrors src/data/types.ts GradeEvent — append-only, feedback only. */
+type GradeEvent = {
+  id: string;
+  runId: string;
+  component: string;
+  verdict: "correct" | "needs_change" | "wrong";
+  feedback?: string;
+  grader: string;
+  createdAt: number;
+};
+
+type ScorecardRow = {
+  component: string;
+  correct: number;
+  needsChange: number;
+  wrong: number;
+  total: number;
+  correctPct: number;
+};
+
+/** WR2 D10: `jobs.scorecard` response — the gate informs, the operator promotes. */
+type ScorecardResponse = {
+  scorecard: { totals: ScorecardRow; components: ScorecardRow[] };
+  promotionGate: {
+    eligible: boolean;
+    passingNow: boolean;
+    gradedCount: number;
+    correctCount: number;
+    correctPct: number;
+    sustainedSinceMs?: number;
+    eligibleAtMs?: number;
+    gate: { minGraded: number; minCorrectPct: number; sustainDays: number };
+    reasons: string[];
+  };
+  gradeCount: number;
 };
 
 type JobsOverview = {
@@ -1693,6 +1731,126 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
   const selectedTemplate = useMemo(
     () => (selectedRun ? (templateById.get(selectedRun.templateId) ?? null) : null),
     [selectedRun, templateById],
+  );
+
+  // ── WR2 D10: grading + scorecard ─────────────────────────────────────
+  const [runGrades, setRunGrades] = useState<GradeEvent[]>([]);
+  const [gradeFeedback, setGradeFeedback] = useState("");
+  const [templateScorecard, setTemplateScorecard] = useState<ScorecardResponse | null>(null);
+
+  // Gradable decision components — mirrors gradableComponentsForRun
+  // (src/infra/worker-grading.ts): proposed_action tools + report, else "run".
+  const gradableComponents = useMemo(() => {
+    if (!selectedRun) {
+      return [];
+    }
+    const components = new Set<string>();
+    for (const event of selectedRun.events ?? []) {
+      if (event.type === "proposed_action") {
+        const tool = typeof event.detail?.tool === "string" ? event.detail.tool : "unknown";
+        components.add(`proposed_action:${tool}`);
+      }
+    }
+    if (selectedRun.summary) {
+      components.add("report");
+    }
+    if (components.size === 0) {
+      components.add("run");
+    }
+    return Array.from(components).sort();
+  }, [selectedRun]);
+
+  const refreshRunGrades = useCallback(
+    async (runId: string) => {
+      if (!gatewayRequest) {
+        return;
+      }
+      try {
+        const payload = await gatewayRequest<{ grades: GradeEvent[] }>("jobs.grades.list", {
+          runId,
+        });
+        setRunGrades(Array.isArray(payload?.grades) ? payload.grades : []);
+      } catch {
+        setRunGrades([]);
+      }
+    },
+    [gatewayRequest],
+  );
+
+  useEffect(() => {
+    if (!gatewayRequest || !selectedRun?.id) {
+      setRunGrades([]);
+      return;
+    }
+    void refreshRunGrades(selectedRun.id);
+  }, [gatewayRequest, refreshRunGrades, selectedRun?.id]);
+
+  useEffect(() => {
+    if (!gatewayRequest || !selectedTemplate?.id) {
+      setTemplateScorecard(null);
+      return;
+    }
+    const templateId = selectedTemplate.id;
+    void (async () => {
+      try {
+        const payload = await gatewayRequest<ScorecardResponse>("jobs.scorecard", { templateId });
+        setTemplateScorecard(payload ?? null);
+      } catch {
+        setTemplateScorecard(null);
+      }
+    })();
+  }, [gatewayRequest, selectedTemplate?.id, runGrades.length]);
+
+  const recordGrade = useCallback(
+    async (run: JobRun, component: string, verdict: GradeEvent["verdict"]) => {
+      if (!gatewayRequest) {
+        return;
+      }
+      try {
+        await gatewayRequest("jobs.grades.record", {
+          grades: [
+            {
+              runId: run.id,
+              component,
+              verdict,
+              feedback: gradeFeedback.trim() || undefined,
+            },
+          ],
+          grader: "operator",
+        });
+        setGradeFeedback("");
+        await refreshRunGrades(run.id);
+        setMessage({
+          type: "success",
+          text: `Graded ${component}: ${verdict.replace("_", " ")} — feedback only, nothing executed.`,
+        });
+      } catch (err) {
+        setMessage({ type: "error", text: `Grade failed: ${String(err)}` });
+      }
+    },
+    [gatewayRequest, gradeFeedback, refreshRunGrades],
+  );
+
+  const approveAllGrades = useCallback(
+    async (run: JobRun) => {
+      if (!gatewayRequest) {
+        return;
+      }
+      try {
+        const payload = await gatewayRequest<{ components: string[] }>("jobs.grades.approveAll", {
+          runId: run.id,
+          grader: "operator",
+        });
+        await refreshRunGrades(run.id);
+        setMessage({
+          type: "success",
+          text: `Approved all ${payload?.components?.length ?? 0} components as correct — feedback only, nothing executed.`,
+        });
+      } catch (err) {
+        setMessage({ type: "error", text: `Approve-all failed: ${String(err)}` });
+      }
+    },
+    [gatewayRequest, refreshRunGrades],
   );
 
   const selectedRosterAgent = useMemo(
@@ -3837,6 +3995,55 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
                         scenarios: {selectedTemplate.metadata.simulationScenarios.join(" | ")}
                       </div>
                     ) : null}
+                    {templateScorecard ? (
+                      <div className="rounded border border-white/10 bg-black/15 px-2 py-2 text-[10px] text-white/60 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-white/85">Scorecard (D10)</span>
+                          <span
+                            className={
+                              templateScorecard.promotionGate.eligible
+                                ? "rounded border border-emerald-300/40 px-1.5 py-0.5 text-emerald-200"
+                                : templateScorecard.promotionGate.passingNow
+                                  ? "rounded border border-cyan-300/40 px-1.5 py-0.5 text-cyan-200"
+                                  : "rounded border border-white/15 px-1.5 py-0.5 text-white/60"
+                            }
+                          >
+                            {templateScorecard.promotionGate.eligible
+                              ? "eligible for next stage"
+                              : templateScorecard.promotionGate.passingNow
+                                ? "passing — sustaining"
+                                : "not passing"}
+                          </span>
+                        </div>
+                        <div className="text-white/75">
+                          {templateScorecard.scorecard.totals.correct}/
+                          {templateScorecard.scorecard.totals.total} correct (
+                          {templateScorecard.scorecard.totals.correctPct}%) · gate ≥
+                          {templateScorecard.promotionGate.gate.minCorrectPct}% over ≥
+                          {templateScorecard.promotionGate.gate.minGraded}, sustained{" "}
+                          {templateScorecard.promotionGate.gate.sustainDays}d
+                        </div>
+                        {templateScorecard.scorecard.components.map((row) => (
+                          <div
+                            key={`scorecard-${row.component}`}
+                            className="flex items-center justify-between rounded border border-white/5 bg-white/5 px-2 py-1"
+                          >
+                            <span className="text-white/70">{row.component}</span>
+                            <span>
+                              {row.correct}✓ {row.needsChange}± {row.wrong}✗ · {row.correctPct}%
+                            </span>
+                          </div>
+                        ))}
+                        {templateScorecard.promotionGate.reasons.map((reason) => (
+                          <div key={`gate-${reason}`} className="text-white/50">
+                            - {reason}
+                          </div>
+                        ))}
+                        <div className="text-white/40">
+                          The gate informs — promotion stays an operator action (Promote button).
+                        </div>
+                      </div>
+                    ) : null}
                     {selectedRun.metadata?.relationship ? (
                       <div className="rounded border border-white/10 bg-black/15 px-2 py-2 text-[10px] text-white/60 space-y-1">
                         <div className="text-white/85">Operator evidence summary</div>
@@ -4032,6 +4239,77 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
                           </button>
                         </div>
                       )}
+                    {selectedRun.status !== "running" && (
+                      <div className="rounded border border-white/10 bg-black/15 px-2 py-2 text-[10px] text-white/60 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-white/85">Grade this run (feedback only)</span>
+                          <button
+                            onClick={() => void approveAllGrades(selectedRun)}
+                            className="px-1.5 py-0.5 rounded border border-emerald-300/25 text-emerald-200"
+                          >
+                            Approve all as correct
+                          </button>
+                        </div>
+                        {gradableComponents.map((component) => {
+                          const existing = runGrades.filter((g) => g.component === component);
+                          const latest = existing.at(-1);
+                          return (
+                            <div
+                              key={`grade-${selectedRun.id}-${component}`}
+                              className="flex items-center justify-between gap-2 rounded border border-white/5 bg-white/5 px-2 py-1"
+                            >
+                              <span className="text-white/70">
+                                {component}
+                                {latest ? (
+                                  <span className="ml-1 text-white/45">
+                                    · last: {latest.verdict.replace("_", " ")}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="flex gap-1">
+                                <button
+                                  onClick={() =>
+                                    void recordGrade(selectedRun, component, "correct")
+                                  }
+                                  className="px-1.5 py-0.5 rounded border border-emerald-300/25 text-emerald-200"
+                                  title="correct"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    void recordGrade(selectedRun, component, "needs_change")
+                                  }
+                                  className="px-1.5 py-0.5 rounded border border-amber-300/25 text-amber-200"
+                                  title="needs change"
+                                >
+                                  ±
+                                </button>
+                                <button
+                                  onClick={() => void recordGrade(selectedRun, component, "wrong")}
+                                  className="px-1.5 py-0.5 rounded border border-red-300/25 text-red-200"
+                                  title="wrong"
+                                >
+                                  ✗
+                                </button>
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <input
+                          value={gradeFeedback}
+                          onChange={(event) => setGradeFeedback(event.target.value)}
+                          placeholder="optional feedback attached to the next grade"
+                          className="w-full rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] text-white/80 placeholder:text-white/30"
+                        />
+                        {runGrades.length > 0 ? (
+                          <div className="text-white/45">
+                            {runGrades.length} grade{runGrades.length === 1 ? "" : "s"} recorded on
+                            this run (append-only audit trail).
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                     {selectedRun.status !== "running" && (
                       <div className="flex gap-1.5">
                         <button
