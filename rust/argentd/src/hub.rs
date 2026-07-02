@@ -20,6 +20,17 @@ pub struct HubClient {
     pub presence_match: PresenceMatch,
 }
 
+// ponytail: in-memory canary receipt store; receipts reset on daemon restart —
+// re-run `argent gateway authority smoke-local` to regenerate proof. Upgrade to a
+// JSONL file mirroring the Node store if proof must survive restarts.
+#[derive(Clone)]
+pub struct CanaryReceipt {
+    pub surface: String,
+    pub receipt_code: String,
+    pub duplicate_key: String,
+    pub json: String,
+}
+
 pub struct HubState {
     hub_id: u64,
     next_client_id: u64,
@@ -34,6 +45,7 @@ pub struct HubState {
     tts_enabled: bool,
     tts_provider: String,
     queued_system_events: Vec<String>,
+    canary_receipts: Vec<CanaryReceipt>,
     clients: Vec<HubClient>,
 }
 
@@ -58,8 +70,29 @@ impl HubState {
             tts_enabled: false,
             tts_provider: "openai".to_string(),
             queued_system_events: Vec::new(),
+            canary_receipts: Vec::new(),
             clients: Vec::new(),
         }
+    }
+
+    pub fn has_canary_duplicate(&self, surface: &str, duplicate_key: &str) -> bool {
+        self.canary_receipts
+            .iter()
+            .any(|receipt| receipt.surface == surface && receipt.duplicate_key == duplicate_key)
+    }
+
+    pub fn append_canary_receipt(&mut self, receipt: CanaryReceipt) {
+        // ponytail: cap like queued_system_events; status reads clamp to 100 anyway.
+        const MAX_CANARY_RECEIPTS: usize = 1000;
+        if self.canary_receipts.len() >= MAX_CANARY_RECEIPTS {
+            self.canary_receipts.remove(0);
+        }
+        self.canary_receipts.push(receipt);
+    }
+
+    pub fn canary_receipts(&self, limit: usize) -> Vec<CanaryReceipt> {
+        let start = self.canary_receipts.len().saturating_sub(limit);
+        self.canary_receipts[start..].to_vec()
     }
 
     pub fn register_client(&mut self, writer: SharedWriter, presence_match: PresenceMatch) -> u64 {

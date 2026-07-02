@@ -3,12 +3,28 @@ use crate::contracts::{
     PROTOCOL_VERSION, TICK_INTERVAL_MS,
 };
 use crate::error::GatewayErrorCode;
+use crate::hub::CanaryReceipt;
 use std::env;
 use std::time::Instant;
 
 fn json_string(value: &str) -> String {
-    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{}\"", escaped)
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ch if (ch as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", ch as u32));
+            }
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1142,6 +1158,196 @@ pub fn agents_files_get_payload_json(default_agent_id: &str, name: &str) -> Stri
     )
 }
 
+pub const CANARY_RECEIPT_SURFACES: [&str; 3] = ["chat.send", "cron.add", "workflows.run"];
+
+const CANARY_AUTHORITY_JSON: &str =
+    "{\"nodeAuthority\":\"live\",\"rustAuthority\":\"shadow-only\",\"authoritySwitchAllowed\":false}";
+
+// Mirrors stableReceiptId in src/infra/rust-gateway-receipt-store.ts: the surface
+// segment keeps only [a-z0-9] ("chat.send" -> "chat-send"); the basis segment keeps
+// [a-z0-9._-] and truncates to 48 chars.
+fn canary_safe_surface(value: &str) -> String {
+    canary_sanitize(value, false)
+}
+
+fn canary_safe_id_part(value: &str) -> String {
+    canary_sanitize(value, true).chars().take(48).collect()
+}
+
+fn canary_sanitize(value: &str, keep_punct: bool) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in value.chars() {
+        let keep =
+            ch.is_ascii_alphanumeric() || (keep_punct && matches!(ch, '.' | '_' | '-'));
+        if keep {
+            out.push(ch);
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    out
+}
+
+// Minimal port of redactSensitiveText (src/logging/redact.ts) for the one
+// operator-supplied field argentd persists: known token prefixes, KEY/TOKEN/
+// SECRET/PASSWORD assignments, and Bearer values are replaced with [REDACTED].
+// ponytail: subset of the Node pattern list; extend if receipts ever carry more
+// operator text than --reason.
+fn redact_canary_reason(value: &str) -> String {
+    const TOKEN_PREFIXES: [&str; 11] = [
+        "sk-", "ghp_", "github_pat_", "xoxb-", "xoxp-", "xoxa-", "xapp-", "gsk_", "aiza",
+        "pplx-", "npm_",
+    ];
+    const SECRET_NAMES: [&str; 5] = ["key", "token", "secret", "password", "passwd"];
+    let mut secrets: Vec<String> = Vec::new();
+    let mut bearer_next = false;
+    for word in value.split_whitespace() {
+        let lower = word.to_ascii_lowercase();
+        if bearer_next {
+            secrets.push(word.to_string());
+            bearer_next = false;
+            continue;
+        }
+        if lower == "bearer" {
+            bearer_next = true;
+            continue;
+        }
+        if word.len() >= 12 && TOKEN_PREFIXES.iter().any(|prefix| lower.starts_with(prefix)) {
+            secrets.push(word.to_string());
+            continue;
+        }
+        if let Some(split_at) = word.find(['=', ':']) {
+            let name = word[..split_at].to_ascii_lowercase();
+            let secret = &word[split_at + 1..];
+            if !secret.is_empty() && SECRET_NAMES.iter().any(|key| name.contains(key)) {
+                secrets.push(secret.to_string());
+            }
+        }
+    }
+    let mut out = value.to_string();
+    for secret in secrets {
+        out = out.replace(&secret, "[REDACTED]");
+    }
+    out
+}
+
+fn canary_redacted_params_json(surface: &str, proof_run_id: &str) -> String {
+    match surface {
+        "chat.send" => format!(
+            "{{\"sessionKey\":\"main\",\"idempotencyKey\":\"idem-{}\",\"message\":\"installed daemon local canary proof\",\"token\":\"[REDACTED]\"}}",
+            proof_run_id
+        ),
+        "cron.add" => format!(
+            "{{\"name\":\"cron-{}\",\"schedule\":{{\"kind\":\"every\",\"everyMs\":60000}},\"payload\":{{\"token\":\"[REDACTED]\"}}}}",
+            proof_run_id
+        ),
+        _ => format!(
+            "{{\"workflowId\":\"wf-{}\",\"runId\":\"run-{}\",\"input\":{{\"token\":\"[REDACTED]\"}}}}",
+            proof_run_id, proof_run_id
+        ),
+    }
+}
+
+// Receipt shape mirrors RustGatewayPromotionReceipt in src/infra/rust-gateway-receipt-store.ts.
+pub fn canary_receipt_json(
+    surface: &str,
+    receipt_code: &str,
+    proof_run_id: &str,
+    request_kind: &str,
+    duplicate_key: &str,
+    created_at_ms: u64,
+    reason: &str,
+) -> String {
+    let request_id = format!("{}:{}:{}", proof_run_id, surface, request_kind);
+    let safe_surface = canary_safe_surface(surface);
+    let safe_basis = canary_safe_id_part(&request_id);
+    let reason = redact_canary_reason(reason);
+    format!(
+        "{{\"auditRecordId\":\"audit-{}-{}-{}\",\"receiptId\":\"receipt-{}-{}-{}\",\"sourceFixtureId\":\"rust-local-proof-{}\",\"surface\":{},\"method\":{},\"receiptCode\":{},\"nodeAuthority\":\"live\",\"rustAuthority\":\"shadow-only\",\"tokenMaterialRedacted\":true,\"authoritySwitchAllowed\":false,\"mutationBlockedBeforeHandler\":true,\"duplicateKey\":{},\"requestId\":{},\"createdAtMs\":{},\"reason\":{},\"redactedParams\":{}}}",
+        safe_surface,
+        safe_basis,
+        created_at_ms,
+        safe_surface,
+        safe_basis,
+        created_at_ms,
+        surface,
+        json_string(surface),
+        json_string(surface),
+        json_string(receipt_code),
+        json_string(duplicate_key),
+        json_string(&request_id),
+        created_at_ms,
+        json_string(&reason),
+        json_string(&canary_redacted_params_json(surface, proof_run_id))
+    )
+}
+
+fn canary_receipts_array_json(receipts: &[CanaryReceipt]) -> String {
+    receipts
+        .iter()
+        .map(|receipt| receipt.json.clone())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+pub fn canary_generate_local_proof_payload_json(
+    proof_run_id: &str,
+    receipts: &[CanaryReceipt],
+) -> String {
+    format!(
+        "{{\"status\":\"ok\",\"proofRunId\":{},\"productionTrafficUsed\":false,\"authority\":{},\"generatedSurfaces\":[\"chat.send\",\"cron.add\",\"workflows.run\"],\"receiptCount\":{},\"receipts\":[{}]}}",
+        json_string(proof_run_id),
+        CANARY_AUTHORITY_JSON,
+        receipts.len(),
+        canary_receipts_array_json(receipts)
+    )
+}
+
+pub fn canary_receipts_status_payload_json(receipts: &[CanaryReceipt]) -> String {
+    let surfaces = CANARY_RECEIPT_SURFACES
+        .iter()
+        .map(|surface| {
+            let surface_receipts: Vec<&CanaryReceipt> = receipts
+                .iter()
+                .filter(|receipt| receipt.surface == *surface)
+                .collect();
+            let denied = surface_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_code == "RUST_CANARY_DENIED");
+            let duplicate_prevented = surface_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_code == "RUST_CANARY_DUPLICATE_PREVENTED");
+            let latest = surface_receipts
+                .last()
+                .map(|receipt| json_string(&receipt.receipt_code))
+                .unwrap_or_else(|| "null".to_string());
+            format!(
+                "{{\"surface\":{},\"denied\":{},\"duplicatePrevented\":{},\"receiptCount\":{},\"latestReceiptCode\":{}}}",
+                json_string(surface),
+                denied,
+                duplicate_prevented,
+                surface_receipts.len(),
+                latest
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    // Same flag the Node gateway reads (RUST_CANARY_DENY_RECEIPTS_FLAG in
+    // src/gateway/server-methods.ts); the smoke harness requires it to be true.
+    let canary_flag_enabled =
+        env::var("ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS").ok().as_deref() == Some("1");
+    format!(
+        "{{\"status\":\"ok\",\"dashboardVisible\":true,\"productionTrafficUsed\":false,\"canaryFlagEnabled\":{},\"policy\":{{\"path\":\"in-memory://argentd/canary-receipts\",\"source\":\"in-memory\",\"containsSecrets\":false,\"liveAuthoritySwitchAllowed\":false}},\"authority\":{},\"surfaces\":[{}],\"receipts\":[{}]}}",
+        canary_flag_enabled,
+        CANARY_AUTHORITY_JSON,
+        surfaces,
+        canary_receipts_array_json(receipts)
+    )
+}
+
 fn normalize_voicewake_triggers(triggers: Vec<String>) -> Vec<String> {
     let cleaned = triggers
         .into_iter()
@@ -1168,7 +1374,7 @@ pub fn connect_success_response(
     health_version: u64,
 ) -> String {
     format!(
-        "{{\"type\":\"res\",\"id\":\"{}\",\"ok\":true,\"payload\":{{\"type\":\"hello-ok\",\"protocol\":{},\"server\":{{\"version\":\"{}\",\"connId\":\"shadow-conn-1\"}},\"features\":{{\"methods\":[\"agent\",\"agent.identity.get\",\"agent.wait\",\"agents.files.get\",\"agents.files.list\",\"agents.files.set\",\"agents.list\",\"browser.request\",\"channels.logout\",\"channels.status\",\"chat.abort\",\"chat.history\",\"chat.send\",\"commands.compact\",\"commands.list\",\"config.apply\",\"config.get\",\"config.patch\",\"config.schema\",\"config.set\",\"connectors.catalog\",\"contemplation.runOnce\",\"copilot.mode.get\",\"copilot.mode.set\",\"copilot.observability.overview\",\"copilot.overview\",\"copilot.run.story\",\"copilot.workforce.overview\",\"cron.add\",\"cron.list\",\"cron.remove\",\"cron.run\",\"cron.runs\",\"cron.status\",\"cron.update\",\"dashboard.canvas.push\",\"device.pair.approve\",\"device.pair.list\",\"device.pair.reject\",\"device.token.revoke\",\"device.token.rotate\",\"exec.approval.request\",\"exec.approval.resolve\",\"exec.approvals.get\",\"exec.approvals.node.get\",\"exec.approvals.node.set\",\"exec.approvals.set\",\"execution.worker.metrics.reset\",\"execution.worker.pause\",\"execution.worker.resume\",\"execution.worker.runNow\",\"execution.worker.status\",\"family.members\",\"family.register\",\"health\",\"intent.simulate\",\"jobs.assignments.create\",\"jobs.assignments.list\",\"jobs.assignments.retire\",\"jobs.assignments.runNow\",\"jobs.assignments.update\",\"jobs.events.list\",\"jobs.orchestrator.event\",\"jobs.orchestrator.status\",\"jobs.overview\",\"jobs.runs.advance\",\"jobs.runs.list\",\"jobs.runs.retry\",\"jobs.runs.review\",\"jobs.runs.trace\",\"jobs.templates.create\",\"jobs.templates.list\",\"jobs.templates.retire\",\"jobs.templates.update\",\"knowledge.collections.grant\",\"knowledge.collections.list\",\"knowledge.ingest\",\"knowledge.library.delete\",\"knowledge.library.list\",\"knowledge.library.reindex\",\"knowledge.search\",\"knowledge.vault.ingest\",\"last-heartbeat\",\"logs.tail\",\"models.list\",\"node.describe\",\"node.event\",\"node.invoke\",\"node.invoke.result\",\"node.list\",\"node.pair.approve\",\"node.pair.list\",\"node.pair.reject\",\"node.pair.request\",\"node.pair.verify\",\"node.rename\",\"send\",\"sessions.compact\",\"sessions.delete\",\"sessions.list\",\"sessions.patch\",\"sessions.preview\",\"sessions.reset\",\"sessions.search\",\"set-heartbeats\",\"skills.bins\",\"skills.install\",\"skills.personal\",\"skills.personal.delete\",\"skills.personal.resolveConflict\",\"skills.personal.update\",\"skills.status\",\"skills.update\",\"specforge.kickoff\",\"specforge.suggest\",\"status\",\"system-event\",\"system-presence\",\"talk.mode\",\"terminal.create\",\"terminal.kill\",\"terminal.resize\",\"terminal.write\",\"tools.status\",\"tts.convert\",\"tts.disable\",\"tts.enable\",\"tts.providers\",\"tts.setProvider\",\"tts.status\",\"update.run\",\"usage.cost\",\"usage.status\",\"voicewake.get\",\"voicewake.set\",\"wake\",\"wizard.cancel\",\"wizard.next\",\"wizard.start\",\"wizard.status\"],\"events\":[\"agent\",\"chat\",\"connect.challenge\",\"cron\",\"device.pair.requested\",\"device.pair.resolved\",\"exec.approval.requested\",\"exec.approval.resolved\",\"health\",\"heartbeat\",\"intent.simulation\",\"node.invoke.request\",\"node.pair.requested\",\"node.pair.resolved\",\"presence\",\"shutdown\",\"talk.mode\",\"terminal\",\"tick\",\"voicewake.changed\"]}},\"snapshot\":{{\"presence\":{},\"health\":{},\"stateVersion\":{{\"presence\":{},\"health\":{}}},\"uptimeMs\":{}}},\"policy\":{{\"maxPayload\":{},\"maxBufferedBytes\":{},\"tickIntervalMs\":{}}},\"shadow\":{{\"subscriptions\":[{}]}}}}}}",
+        "{{\"type\":\"res\",\"id\":\"{}\",\"ok\":true,\"payload\":{{\"type\":\"hello-ok\",\"protocol\":{},\"server\":{{\"version\":\"{}\",\"connId\":\"shadow-conn-1\"}},\"features\":{{\"methods\":[\"agent\",\"agent.identity.get\",\"agent.wait\",\"agents.files.get\",\"agents.files.list\",\"agents.files.set\",\"agents.list\",\"browser.request\",\"channels.logout\",\"channels.status\",\"chat.abort\",\"chat.history\",\"chat.send\",\"commands.compact\",\"commands.list\",\"config.apply\",\"config.get\",\"config.patch\",\"config.schema\",\"config.set\",\"connectors.catalog\",\"contemplation.runOnce\",\"copilot.mode.get\",\"copilot.mode.set\",\"copilot.observability.overview\",\"copilot.overview\",\"copilot.run.story\",\"copilot.workforce.overview\",\"cron.add\",\"cron.list\",\"cron.remove\",\"cron.run\",\"cron.runs\",\"cron.status\",\"cron.update\",\"dashboard.canvas.push\",\"device.pair.approve\",\"device.pair.list\",\"device.pair.reject\",\"device.token.revoke\",\"device.token.rotate\",\"exec.approval.request\",\"exec.approval.resolve\",\"exec.approvals.get\",\"exec.approvals.node.get\",\"exec.approvals.node.set\",\"exec.approvals.set\",\"execution.worker.metrics.reset\",\"execution.worker.pause\",\"execution.worker.resume\",\"execution.worker.runNow\",\"execution.worker.status\",\"family.members\",\"family.register\",\"health\",\"intent.simulate\",\"jobs.assignments.create\",\"jobs.assignments.list\",\"jobs.assignments.retire\",\"jobs.assignments.runNow\",\"jobs.assignments.update\",\"jobs.events.list\",\"jobs.orchestrator.event\",\"jobs.orchestrator.status\",\"jobs.overview\",\"jobs.runs.advance\",\"jobs.runs.list\",\"jobs.runs.retry\",\"jobs.runs.review\",\"jobs.runs.trace\",\"jobs.templates.create\",\"jobs.templates.list\",\"jobs.templates.retire\",\"jobs.templates.update\",\"knowledge.collections.grant\",\"knowledge.collections.list\",\"knowledge.ingest\",\"knowledge.library.delete\",\"knowledge.library.list\",\"knowledge.library.reindex\",\"knowledge.search\",\"knowledge.vault.ingest\",\"last-heartbeat\",\"logs.tail\",\"models.list\",\"node.describe\",\"node.event\",\"node.invoke\",\"node.invoke.result\",\"node.list\",\"node.pair.approve\",\"node.pair.list\",\"node.pair.reject\",\"node.pair.request\",\"node.pair.verify\",\"node.rename\",\"rustGateway.canaryReceipts.generateLocalProof\",\"rustGateway.canaryReceipts.status\",\"send\",\"sessions.compact\",\"sessions.delete\",\"sessions.list\",\"sessions.patch\",\"sessions.preview\",\"sessions.reset\",\"sessions.search\",\"set-heartbeats\",\"skills.bins\",\"skills.install\",\"skills.personal\",\"skills.personal.delete\",\"skills.personal.resolveConflict\",\"skills.personal.update\",\"skills.status\",\"skills.update\",\"specforge.kickoff\",\"specforge.suggest\",\"status\",\"system-event\",\"system-presence\",\"talk.mode\",\"terminal.create\",\"terminal.kill\",\"terminal.resize\",\"terminal.write\",\"tools.status\",\"tts.convert\",\"tts.disable\",\"tts.enable\",\"tts.providers\",\"tts.setProvider\",\"tts.status\",\"update.run\",\"usage.cost\",\"usage.status\",\"voicewake.get\",\"voicewake.set\",\"wake\",\"wizard.cancel\",\"wizard.next\",\"wizard.start\",\"wizard.status\"],\"events\":[\"agent\",\"chat\",\"connect.challenge\",\"cron\",\"device.pair.requested\",\"device.pair.resolved\",\"exec.approval.requested\",\"exec.approval.resolved\",\"health\",\"heartbeat\",\"intent.simulation\",\"node.invoke.request\",\"node.pair.requested\",\"node.pair.resolved\",\"presence\",\"shutdown\",\"talk.mode\",\"terminal\",\"tick\",\"voicewake.changed\"]}},\"snapshot\":{{\"presence\":{},\"health\":{},\"stateVersion\":{{\"presence\":{},\"health\":{}}},\"uptimeMs\":{}}},\"policy\":{{\"maxPayload\":{},\"maxBufferedBytes\":{},\"tickIntervalMs\":{}}},\"shadow\":{{\"subscriptions\":[{}]}}}}}}",
         request.id,
         PROTOCOL_VERSION,
         COMPONENT_VERSION,

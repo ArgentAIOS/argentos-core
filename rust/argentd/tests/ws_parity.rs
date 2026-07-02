@@ -2579,3 +2579,167 @@ fn websocket_workflows_templates_get_returns_shadow_payload() {
     drop(client);
     join_server(handle);
 }
+
+#[test]
+fn websocket_hello_advertises_canary_receipt_methods() {
+    let (addr, handle) = spawn_server("shadow-token");
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge frame should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let connect = read_server_text(&mut client).expect("connect response should arrive");
+    assert!(connect.contains("\"type\":\"hello-ok\""));
+    assert!(connect.contains("\"rustGateway.canaryReceipts.status\""));
+    assert!(connect.contains("\"rustGateway.canaryReceipts.generateLocalProof\""));
+
+    drop(client);
+    join_server(handle);
+}
+
+#[test]
+fn websocket_canary_generate_local_proof_requires_confirm_local_only() {
+    let (addr, handle) = spawn_server("shadow-token");
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge frame should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect response should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"proof-1","method":"rustGateway.canaryReceipts.generateLocalProof","params":{"reason":"missing confirm"}}"#,
+    );
+    let denied = read_server_text(&mut client).expect("proof denial should arrive");
+    assert!(denied.contains("\"id\":\"proof-1\""));
+    assert!(denied.contains("\"ok\":false"));
+    assert!(denied.contains("confirmLocalOnly=true is required"));
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"proof-2","method":"rustGateway.canaryReceipts.generateLocalProof","params":{"confirmLocalOnly":false,"reason":"explicit false"}}"#,
+    );
+    let denied_false = read_server_text(&mut client).expect("proof denial should arrive");
+    assert!(denied_false.contains("\"ok\":false"));
+
+    drop(client);
+    join_server(handle);
+}
+
+#[test]
+fn websocket_canary_local_proof_then_status_satisfies_receipt_contract() {
+    let (addr, handle) = spawn_server("shadow-token");
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge frame should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect response should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"status-0","method":"rustGateway.canaryReceipts.status","params":{"limit":20}}"#,
+    );
+    let empty_status = read_server_text(&mut client).expect("empty status should arrive");
+    assert!(empty_status.contains("\"id\":\"status-0\""));
+    assert!(empty_status.contains("\"ok\":true"));
+    assert!(empty_status.contains("\"status\":\"ok\""));
+    assert!(empty_status.contains("\"receipts\":[]"));
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"proof-1","method":"rustGateway.canaryReceipts.generateLocalProof","params":{"confirmLocalOnly":true,"reason":"parity test proof","proofRunId":"proof-run-77"}}"#,
+    );
+    let proof = read_server_text(&mut client).expect("proof response should arrive");
+    assert!(proof.contains("\"id\":\"proof-1\""));
+    assert!(proof.contains("\"ok\":true"));
+    assert!(proof.contains("\"status\":\"ok\""));
+    assert!(proof.contains("\"proofRunId\":\"proof-run-77\""));
+    assert!(proof.contains("\"receiptCount\":6"));
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"status-1","method":"rustGateway.canaryReceipts.status","params":{"limit":20}}"#,
+    );
+    let status = read_server_text(&mut client).expect("status response should arrive");
+    assert!(status.contains("\"id\":\"status-1\""));
+    assert!(status.contains("\"ok\":true"));
+    assert!(status.contains("\"status\":\"ok\""));
+    assert!(status.contains("\"productionTrafficUsed\":false"));
+    assert!(status.contains("\"authoritySwitchAllowed\":false"));
+    assert!(status.contains("\"containsSecrets\":false"));
+    assert!(status.contains("\"surface\":\"chat.send\""));
+    assert!(status.contains("\"surface\":\"cron.add\""));
+    assert!(status.contains("\"surface\":\"workflows.run\""));
+    assert!(status.contains("\"receiptCode\":\"RUST_CANARY_DENIED\""));
+    assert!(status.contains("\"receiptCode\":\"RUST_CANARY_DUPLICATE_PREVENTED\""));
+    assert!(status.contains("\"tokenMaterialRedacted\":true"));
+    assert!(!status.contains("tokenMaterialRedacted\":false"));
+    assert!(!status.contains("super-secret"));
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"proof-2","method":"rustGateway.canaryReceipts.generateLocalProof","params":{"confirmLocalOnly":true,"reason":"repeat run","proofRunId":"proof-run-77"}}"#,
+    );
+    let repeat = read_server_text(&mut client).expect("repeat proof should arrive");
+    assert!(repeat.contains("\"ok\":true"));
+    assert!(!repeat.contains("\"receiptCode\":\"RUST_CANARY_DENIED\""));
+    assert!(repeat.contains("\"receiptCode\":\"RUST_CANARY_DUPLICATE_PREVENTED\""));
+
+    drop(client);
+    join_server(handle);
+}
+
+#[test]
+fn websocket_canary_receipts_match_node_id_and_redaction_contract() {
+    let (addr, handle) = spawn_server("shadow-token");
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge frame should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-1","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"},"auth":{"token":"shadow-token"},"subscriptions":["agent."]}}"#,
+    );
+    let _connect = read_server_text(&mut client).expect("connect response should arrive");
+
+    // reason carries an escaped newline, an escaped quote, and secret material.
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"proof-1","method":"rustGateway.canaryReceipts.generateLocalProof","params":{"confirmLocalOnly":true,"reason":"line1\nline2 \"quoted\" TOKEN=super-secret-material-123","proofRunId":"proof-run-9"}}"#,
+    );
+    let proof = read_server_text(&mut client).expect("proof response should arrive");
+    assert!(proof.contains("\"ok\":true"));
+    // Node stableReceiptId parity: surface segment strips '.', basis keeps it.
+    assert!(proof.contains("\"receiptId\":\"receipt-chat-send-proof-run-9-chat.send-denied-"));
+    assert!(proof.contains("\"auditRecordId\":\"audit-workflows-run-"));
+    // Node deriveRustCanaryDuplicateKey parity.
+    assert!(proof.contains("\"duplicateKey\":\"chat.send:idem-proof-run-9\""));
+    assert!(proof.contains("\"duplicateKey\":\"cron.add:cron-proof-run-9\""));
+    assert!(proof.contains("\"duplicateKey\":\"workflows.run:run-proof-run-9\""));
+    // Secret scrubbed, receipt still claims redaction truthfully.
+    assert!(!proof.contains("super-secret-material-123"));
+    assert!(proof.contains("[REDACTED]"));
+    // Escaped newline/quote round-trip as valid JSON escapes, not raw bytes.
+    assert!(proof.contains("line1\\nline2 \\\"quoted\\\""));
+    assert!(!proof.contains("line1\nline2"));
+
+    // Store was not poisoned: status still parses and negative limit clamps to 1.
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"status-1","method":"rustGateway.canaryReceipts.status","params":{"limit":-5}}"#,
+    );
+    let status = read_server_text(&mut client).expect("status response should arrive");
+    assert!(status.contains("\"ok\":true"));
+    assert_eq!(status.matches("\"receiptId\"").count(), 1);
+    assert!(!status.contains("super-secret-material-123"));
+
+    drop(client);
+    join_server(handle);
+}
