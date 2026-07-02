@@ -1751,7 +1751,7 @@ export function WorkforceBoard({ gatewayRequest, focus = "all", onClose }: Workf
         components.add(`proposed_action:${tool}`);
       }
     }
-    if (selectedRun.summary) {
+    if (selectedRun.summary || (selectedRun.metadata as { report?: unknown } | undefined)?.report) {
       components.add("report");
     }
     if (components.size === 0) {

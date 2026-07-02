@@ -3245,11 +3245,15 @@ class PgJobAdapter implements JobAdapter {
         throw new Error(`grade rejected: job run "${runId}" not found`);
       }
     }
-    const now = new Date();
+    // Per-row +1ms offsets keep the persisted order equal to the batch order:
+    // the gate's sustain math walks (created_at, id) prefixes, and a shared
+    // timestamp with random-UUID tiebreak would make a mixed-verdict batch's
+    // "dip below the bar" depend on insert-order randomness.
+    const baseMs = Date.now();
     const rows = await this.db
       .insert(schema.jobGradeEvents)
       .values(
-        inputs.map((g) => {
+        inputs.map((g, index) => {
           const run = runById.get(g.runId);
           if (!run) throw new Error(`grade rejected: job run "${g.runId}" not found`);
           return {
@@ -3262,7 +3266,7 @@ class PgJobAdapter implements JobAdapter {
             feedback: g.feedback ?? null,
             grader: g.grader,
             metadata: g.metadata ?? {},
-            createdAt: now,
+            createdAt: new Date(baseMs + index),
           };
         }),
       )
@@ -3284,17 +3288,20 @@ class PgJobAdapter implements JobAdapter {
     if (filter?.assignmentId)
       conditions.push(eq(schema.jobGradeEvents.assignmentId, filter.assignmentId));
     if (filter?.component) conditions.push(eq(schema.jobGradeEvents.component, filter.component));
-    const rows = await this.db
+    const query = this.db
       .select()
       .from(schema.jobGradeEvents)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       // Ascending: gate math walks grades in the order they were recorded.
-      .orderBy(asc(schema.jobGradeEvents.createdAt), asc(schema.jobGradeEvents.id))
-      .limit(
-        Number.isFinite(filter?.limit) && (filter?.limit ?? 0) > 0
-          ? Math.floor(filter?.limit ?? 0)
-          : 5000,
-      );
+      .orderBy(asc(schema.jobGradeEvents.createdAt), asc(schema.jobGradeEvents.id));
+    // No default limit: the promotion gate's sustain math needs the FULL
+    // ordered history — an oldest-N window would freeze the gate on stale
+    // grades (and a frozen-passing window reads "eligible" forever). Callers
+    // that want a page pass an explicit limit.
+    const rows =
+      Number.isFinite(filter?.limit) && (filter?.limit ?? 0) > 0
+        ? await query.limit(Math.floor(filter?.limit ?? 0))
+        : await query;
     return rows.map((row) => this.mapGradeEvent(row));
   }
 

@@ -1205,11 +1205,14 @@ export const jobsHandlers: GatewayRequestHandlers = {
         };
       });
       const grades = await storage.jobs.recordGrades(inputs);
+      const gradedRunIds = Array.from(new Set(grades.map((g) => g.runId)));
       await emitAuditEvent(storage, {
         eventType: "workforce.grades.recorded",
         payload: {
           count: grades.length,
-          runIds: Array.from(new Set(grades.map((g) => g.runId))),
+          // Singular runId so eventLinkValues() links this into run traces.
+          runId: gradedRunIds[0],
+          runIds: gradedRunIds,
           grader,
         },
       });
@@ -1266,7 +1269,9 @@ export const jobsHandlers: GatewayRequestHandlers = {
         templateId: readOptionalString(params, "templateId"),
         assignmentId: readOptionalString(params, "assignmentId"),
         component: readOptionalString(params, "component"),
-        limit: readOptionalNumber(params, "limit"),
+        // Wire-facing default page; the unlimited path is reserved for the
+        // gate/scorecard, which needs the full ordered history.
+        limit: readOptionalNumber(params, "limit") ?? 500,
       });
       respond(true, { grades }, undefined);
     } catch (err) {
