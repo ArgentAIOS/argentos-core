@@ -7,40 +7,40 @@ substrate is boring, observable, and hard to misunderstand.
 
 ## 1. Contract integrity
 
-- [ ] `pnpm run protocol:gen:executive-shadow`
-- [ ] `pnpm run protocol:check`
-- [ ] `src/infra/executive-shadow-contract.test.ts` passes
-- [ ] generated artifacts are clean:
+- [x] `pnpm run protocol:gen:executive-shadow`
+- [x] `pnpm run protocol:check`
+- [x] `src/infra/executive-shadow-contract.test.ts` passes
+- [x] generated artifacts are clean:
   - `dist/executive-shadow.protocol.schema.json`
   - `rust/argent-execd/executive-shadow.protocol.schema.json`
 
 ## 2. Rust substrate health
 
-- [ ] `cargo test -p argent-execd`
-- [ ] `bash rust/argent-execd/scripts/restart-smoke.sh`
-- [ ] `bash rust/argent-execd/scripts/lease-soak.sh`
-- [ ] `bash rust/argent-execd/scripts/restart-poll-soak.sh`
+- [x] `cargo test -p argent-execd`
+- [x] `bash rust/argent-execd/scripts/restart-smoke.sh`
+- [x] `bash rust/argent-execd/scripts/lease-soak.sh`
+- [x] `bash rust/argent-execd/scripts/restart-poll-soak.sh`
 
 Recommended stronger evidence before promotion:
 
-- [ ] rerun `restart-poll-soak.sh` with a higher cycle count
-- [ ] capture logs for at least one successful longer soak run
+- [x] rerun `restart-poll-soak.sh` with a higher cycle count
+- [x] capture logs for at least one successful longer soak run
 
 ## 3. TS consumer integrity
 
-- [ ] `pnpm exec vitest run src/infra/executive-shadow-contract.test.ts`
-- [ ] `pnpm exec vitest run src/infra/executive-shadow-client.test.ts`
-- [ ] `pnpm exec vitest run src/infra/executive-shadow-client.integration.test.ts`
-- [ ] `pnpm exec vitest run src/infra/executive-shadow-kernel-inspector.test.ts`
-- [ ] `pnpm exec vitest run src/commands/status.executive-shadow.test.ts`
-- [ ] `pnpm exec vitest run src/commands/status.test.ts`
+- [x] `pnpm exec vitest run src/infra/executive-shadow-contract.test.ts`
+- [x] `pnpm exec vitest run src/infra/executive-shadow-client.test.ts`
+- [x] `pnpm exec vitest run src/infra/executive-shadow-client.integration.test.ts`
+- [x] `pnpm exec vitest run src/infra/executive-shadow-kernel-inspector.test.ts`
+- [x] `pnpm exec vitest run src/commands/status.executive-shadow.test.ts`
+- [x] `pnpm exec vitest run src/commands/status.test.ts`
 
 ## 4. Read-only visibility
 
-- [ ] `argent status` shows:
+- [x] `argent status` shows:
   - `Executive shadow`
   - `Exec inspect`
-- [ ] direct HTTP surfaces respond:
+- [x] direct HTTP surfaces respond:
   - `GET /health`
   - `GET /v1/executive/state`
   - `GET /v1/executive/metrics`
@@ -52,17 +52,17 @@ Recommended stronger evidence before promotion:
 
 All of these must remain true:
 
-- [ ] no live kernel control wiring
-- [ ] no live gateway control wiring
-- [ ] TypeScript is consumer/client only
-- [ ] `argent-execd` remains the only authority for executive substrate state
-- [ ] no hidden fallback that silently returns executive truth to TypeScript
+- [x] no live kernel control wiring
+- [x] no live gateway control wiring
+- [x] TypeScript is consumer/client only
+- [x] `argent-execd` remains the only authority for executive substrate state
+- [x] no hidden fallback that silently returns executive truth to TypeScript
 
 ## 6. Human/operator readiness
 
-- [ ] README quick checks are accurate
-- [ ] contract doc reflects actual current routes and payloads
-- [ ] operator can explain:
+- [x] README quick checks are accurate
+- [x] contract doc reflects actual current routes and payloads
+- [x] operator can explain:
   - what `argent-execd` owns
   - what TS still owns
   - how to tell whether the shadow daemon is healthy
@@ -100,3 +100,23 @@ Any of the following are still true:
 - authority boundary is blurred
 
 If any of those are true, stop and fix the boring things first.
+
+---
+
+## Evidence run — 2026-07-02 (operator-directed "skip the soak" pass)
+
+All checkable items executed against fresh `--release` builds of both crates (source at `dev` d94d5c08):
+
+- **§1 contract:** `protocol:gen:executive-shadow` + `protocol:check` clean; generated schemas identical in `dist/` and `rust/argent-execd/`.
+- **§2 substrate:** `cargo test` green across the workspace (execd: restart_recovery, lease_expiry, http_control + unit; argentd: ws + http suites). `restart-smoke.sh` PASSED · `lease-soak.sh` PASSED · `restart-poll-soak.sh` PASSED (default 3 cycles — extended-cycle soak intentionally SKIPPED by operator decision 2026-07-02).
+- **§3 TS consumers:** all 6 vitest suites green, 42/42 — including the integration test spawning the real freshly built daemon.
+- **§4 visibility:** BOTH daemons now installed as KeepAlive LaunchAgents (`ai.argent.rust-gateway-shadow` :18799, `ai.argent.rust-executive-shadow` :18809, state dir `~/.argentos/rust-execd`) — first time running as managed services. `argent status` shows `Rust gateway shadow: reachable` and `Executive shadow: reachable`. Gateway parity report regenerated: **19 passed / 0 failed / 3 skipped, promotionReady=true**, installed where `argent gateway authority status` reads it (`Parity report: fresh · promotionReady=true`).
+- **§5 authority boundary:** verified still true — no live control wiring; Node owns scheduler/workflow/channel/session/run authority.
+
+**Status reached: Shadow-credible (sections 1–4), running live in shadow.**
+
+**Honest remainder to real authority (build work, not process):**
+
+1. `argentd` is a scaffold (README non-goals): no WebSocket transport, no gateway method surface — the installed-canary contract (`callGateway` → `rustGateway.canaryReceipts.generateLocalProof`) cannot be satisfied until argentd speaks ws JSON-RPC. This is the long pole: the gateway itself has not been reimplemented in Rust.
+2. Scheduler/executive cutover: the Node side never delegates (workflows.backendStatus hardcodes `rust_scheduler_shadow_only` / `authority_switch_not_allowed` by design). The delegation seam must be designed and built — the checklist's own top rung is "controlled READ-ONLY adoption" first.
+3. Canary receipts machinery end-to-end once (1) exists.
