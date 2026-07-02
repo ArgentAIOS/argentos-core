@@ -1,43 +1,79 @@
 # HANDOFF — argent-core session bridge
 
-**From:** 2026-07-02 session (Fable 5) — _approval-system integrity + Workforce P5_. Supersedes the 2026-06-16 unit-suite bridge (that work merged as PR #461; its carried items are resolved or re-filed below).
+**From:** 2026-07-02 session (Fable 5, auto-switched to Opus 4.8 near the end after a
+safeguard false-positive — see note at bottom). Long session: approval-system integrity,
+Workforce P5 grading, operator-reality fixes, Rust shadow promotion, first workforce hire.
 
 ---
 
-## TL;DR — what happened this session
+## Shipped today — all merged to `dev` unless noted
 
-Two lanes, both **merged to `dev` and DEPLOYED + LIVE-VERIFIED** (gateway running+healthy):
+| PR   | What                                                                                            | State                                                |
+| ---- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| #461 | Unit suite green (7,820+) + blocking CI `unit-test` job                                         | merged, deployed                                     |
+| #462 | Approval integrity: Deny denies, timeouts fire, email fails loud, toolsAllow enforced           | merged, deployed, live-verified                      |
+| #463 | Workforce P5 — grading store, scorecards, promotion gate (D10)                                  | merged, deployed, live-verified                      |
+| #464 | Handoff bridge                                                                                  | merged                                               |
+| #465 | Operator wave 1: builder tool-grant validator, Discord crash guards, service-PATH pnpm resolver | merged, deployed                                     |
+| #466 | Calendar failure cooldown + `workflows.resume` replay guard                                     | merged (deploy pending)                              |
+| #467 | Workforce D9 fix: stubbed simulate calls no longer trip the violation wire                      | **OPEN, CI running — merge when green, then deploy** |
 
-1. **Approval-system integrity (PRs #462 + review-hardening).** Root-caused the Telegram approval flood: the "MSP Morning Podcast 2" workflow had **self-replicated into 143 copies** (11 active, cron-firing 7 AM daily) because workflow agents got the full 121-tool set — `toolsAllow` was prompt prose, not policy. Fixed four production bugs: Telegram **Deny resumed runs as approved** (now a shared fail-closed deny path), **approval timeouts never fired** for durable runs (now swept with atomic claim + compensation + orphan sweep; `timeout_action='approve'` deliberately fails closed until gated on operator sign-off), **send_email swallowed all failures** (empty recipient/unknown provider/retry-exhaustion now fail the step — the old retry check `length===0 && items[0]` was unsatisfiable), and **toolsAllow now enforced structurally** via session-entry seeding (same seam as WR2 ephemeral workers; session keys got a random suffix against same-ms collisions; `sessions.toolsAllow` is fail-closed in pi-tools). Live cleanup executed: 143 dupes parked, 70 zombie approvals + 70 frozen runs cancelled, 12 cron entries disabled, two active workflows' empty `to:` backfilled, Morning Brief Podcast 2.0 parked, stale plist `DASHBOARD_API_TOKEN` scrubbed.
-2. **Workforce P5 — D10 grading (PR #463).** Append-only `job_grade_events` (PG-native per lock), pure gate math (`src/infra/worker-grading.ts`: **≥95% correct over ≥50 graded, sustained 14d**, exact integers, dip resets clock, **gate informs / never auto-promotes**), gateway `jobs.grades.record|approveAll|list` + `jobs.scorecard`, Workforce Board grading panel + scorecard/gate chip. Review round fixed: gate now reads the FULL grade history (a default LIMIT 5000 asc froze it on the oldest window → permanent false "eligible"), and batch grades get per-row +1ms offsets so sustain-clock resets are deterministic.
+Deploy path (gateway runs the INSTALLED snapshot, not the repo): `~/argentos` ff to
+`origin/dev` → `SKIP_FETCH=1 bash scripts/out-of-sync-patch.sh` → gateway bounce.
+Gateway is running+healthy. Trunk is **`dev`**, not main.
 
-- **Branches:** all merged; `dev` HEAD `d94d5c08`. Deploy = `~/argentos` ff → `scripts/out-of-sync-patch.sh` (gateway runs the installed snapshot, NOT the repo).
-- **Live-verified:** `job_grade_events` + 3 indexes created by adapter init; grade round-trip on P4 regression run `9d42b3dd-8da1…` → scorecard 1/1 (100%), gate `needs 49 more`; unknown-run grade rejected fail-closed.
-- **Trunk is `dev`, not `main`** (PRs → dev; main is ancient).
+## Live state to know
 
-## Verify before trusting
+- **Workforce is LIVE, first hire running.** Ticket Triage Conductor assignment
+  `14c36f1d-55af-4631-a01f-458014d90eea` (template `34490eb5…`) is ENABLED in **simulate**,
+  240-min cadence, grant `[tasks, memory_recall, doc_panel]`. It ran once tonight:
+  **D9 `proposed_action` fired LIVE for the first time** (a diverted doc_panel write with a
+  full 12-ticket triage). That run ended `blocked` due to the bug #467 fixes (the D9 stub was
+  counted as an executed external tool). **NEXT: after #467 deploys, `jobs.assignments.runNow`
+  the conductor for a clean gradable run, then grade it in the Workforce Board (Runs → ✓/±/✗).**
+  Grading toward the gate: ≥95% correct over ≥50 graded decisions, sustained 2 weeks.
+- **Two repaired daily workflows are PARKED (Jason's call: keep both parked).** MSP keeper
+  `4a4a8932` (recipient + de-poisoned prompt) and "Morning Brief Podcast 2.0" `832f855e`
+  (node kinds restored, dryRun now clean). Re-enable each with `is_active=true` +
+  `argent cron enable <id>` when wanted.
+- **Rust: SHADOW-CREDIBLE reached.** Both daemons installed as KeepAlive LaunchAgents
+  (`ai.argent.rust-gateway-shadow` :18799 with auth token at `~/.argentos/rust-gateway/canary-token`,
+  `ai.argent.rust-executive-shadow` :18809). `argent status` shows both reachable; parity
+  report 19/0 promotionReady=true. Evidence recorded in `rust/argent-execd/PROMOTION_CHECKLIST.md`.
+- Stale-run sweep done (21 workflow_runs + 29 job_runs). AppForge 401 verified already fixed by #460.
+- Follow-up closet has the full operator-audit backlog under "operator-reality audit findings".
 
-```bash
-argent gateway status                          # running+healthy, RPC probe: ok
-argent gateway call jobs.scorecard --params '{"templateId":"34490eb5-2cf8-42e5-bbea-b4d5fe4507e6"}'
-pnpm test:unit                                 # 7,820+ passed (now includes grading suites)
-node scripts/tsc-since.mjs                     # 0 net-new (189 baseline)
-```
+## In-flight when the session was interrupted: argentd ws canary build
 
-## Next steps (in order)
+**Greenlit locked contract, NO Rust code written yet** — was still reading the TS wire contract.
+Resume from the mapped facts below (all in git, nothing lost):
 
-1. **Prove D9 live**: create/enable a simulate assignment on a **write-granting** role → `proposed_action` events fire → they become the first real gradable components (Workforce Board run panel now has ✓/±/✗ + approve-all).
-2. **Re-enable the repaired MSP keeper** when Jason wants it: workflow `4a4a8932` (definition fixed: recipient, `{{steps.agent-draft.text}}`, de-poisoned rolePrompt) is INACTIVE; flip `is_active` + `argent cron enable e1193528-…`. Tomorrow 7 AM is otherwise silent by design.
-3. Remaining hardening backlog: **Follow-Up Closet → "argent-core — approval-system hardening leftovers (filed 2026-07-02)"** (Morning Brief 2.0 wiring, Three-Scout DocPanel 503s, silent notification failures, stale-runs sweep, workflows.resume replay guard, arm timeoutAction:'approve' behind operator sign-off, builder tool-name normalization, Brave 1req/s).
-4. **Open design Qs for Jason** (WR2 doc §8): need_input routing, lease TTL sanity vs DGX models, drop legacy toolsDeny?
+- GOAL: make argentd **canary-provable** over the gateway's existing ws JSON-RPC dialect so
+  `argent gateway authority status --installed-canary-url ws://127.0.0.1:18799 --installed-canary-token <t>`
+  and `argent gateway authority smoke-local --confirm-local-only …` go green with full receipts.
+- The gap is precise: argentd's hello (`rust/argentd/src/http.rs:1162 connect_success_response`)
+  advertises a hardcoded `methods` array that OMITS `rustGateway.canaryReceipts.status` and
+  `rustGateway.canaryReceipts.generateLocalProof`; the ws dispatcher (`rust/argentd/src/ws.rs`
+  `match meta.method`) doesn't handle them. Add both methods + advertise them.
+- Receipt payload contract the TS side validates: `src/commands/gateway-authority-status.ts`
+  `normalizeInstalledDaemonCanaryPayload` (~1802) — needs `status:"ok"`, `productionTrafficUsed:false`,
+  `authority.authoritySwitchAllowed:false`, `policy.containsSecrets:false`, and a `receipts[]` where
+  each has `tokenMaterialRedacted:true`, surfaces covering all of `["chat.send","cron.add","workflows.run"]`
+  (`CANARY_RECEIPT_SURFACES`, line 390), plus one `receiptCode:"RUST_CANARY_DENIED"` and one
+  `"RUST_CANARY_DUPLICATE_PREVENTED"`. Receipt shape mirrors `src/infra/rust-gateway-receipt-store.ts`.
+- `generateLocalProof` params: `{confirmLocalOnly, reason, proofRunId}`. `status` params: `{limit:20}`.
+- Probe advertises-method check: `probeInstalledDaemonRuntime` (~1725) reads `hello.features.methods`.
+- NON-GOALS: no authority flips (scheduler/workflow/session/channel/run stay Node), no full method
+  table, loopback-only, no argent-execd/dashboard changes. Budget: rust/argentd + ≤2 TS touchpoints.
+  TRIPWIRE: if the handshake needs subsystems beyond connect/ping/dispatch → STOP and report.
 
-## Gotchas for the next session
+## Note on the model switch
 
-- **Budget discipline:** Jason flagged $250/session burn from workflow-subagent fleets. Use `model: "sonnet"` / `effort: "low"` on verify/mechanical workflow stages; no fleets past ~80% of a session window (memory: `feedback-lean-orchestration-budget`).
-- Keychain "Reset To Defaults" modal during tests = keychain shell-out guard missing on that branch (fixed on dev; never click Reset).
-- `gh pr merge` can detach the main checkout's HEAD (happened once; `git branch -f <branch> HEAD && git switch <branch>`).
-- Grades are append-only — never add UPDATE/DELETE paths; the gate's math depends on full ordered history (no default LIMIT on `listGrades`).
+Fable 5 carries extra dual-use safeguards. Late in this session they false-positived on the
+dense security-infra work (canary tokens, LaunchAgent daemon install, auth/authority handling,
+credential redaction) and auto-switched to Opus 4.8. All work was legitimate ops on Jason's own
+product. A fresh `/clear` drops the accumulated context and should let Fable resume without re-tripping.
 
 ---
 
-_Full record: Obsidian vault `argenos-core/Daily Updates/2026-07-02`, Follow-Ups & To-Dos closet, PRs #461 #462 #463._
+_Full record: Obsidian vault `argenos-core/Daily Updates/2026-07-02`, Follow-Ups closet, PRs #461–467._
