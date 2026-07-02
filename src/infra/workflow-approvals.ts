@@ -280,8 +280,10 @@ export interface ApprovalTextCommandDeps {
   hasPendingApproval: (runId: string, nodeId: string) => boolean;
   /** Resolve an in-process pending approval (no durable resume needed). */
   resolveInMemory: (runId: string, nodeId: string, approved: boolean, reason?: string) => void;
-  /** Resume a durable (e.g. cron / post-restart) run after resolution. */
+  /** Resume a durable (e.g. cron / post-restart) run after an APPROVAL. */
   resumeRun: (runId: string, nodeId: string) => void;
+  /** Fail a durable run after a DENIAL — resuming would execute it as approved. */
+  denyRun: (runId: string, nodeId: string, reason?: string) => void;
 }
 
 export interface ApprovalTextCommandResult {
@@ -343,8 +345,10 @@ export async function runApprovalTextCommand(opts: {
   const nodeId = String(resolved.node_id);
   if (deps.hasPendingApproval(runId, nodeId)) {
     deps.resolveInMemory(runId, nodeId, approved, approved ? undefined : "Denied via Telegram");
-  } else {
+  } else if (approved) {
     deps.resumeRun(runId, nodeId);
+  } else {
+    deps.denyRun(runId, nodeId, "Denied via Telegram text reply");
   }
   const icon = approved ? "✅" : "❌";
   const verb = approved ? "Approved" : "Denied";
