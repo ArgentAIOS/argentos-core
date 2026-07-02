@@ -74,3 +74,22 @@ export function isStaleWorkReport(params: {
   if (task.claimedBy !== params.workerRunId) return true;
   return false;
 }
+
+/**
+ * D9 × simulate-tripwire: the "external tools executed in simulate" tripwire
+ * must fire only for calls that ESCAPED the D9 recording stub. Stubbed calls
+ * appear in executed-tool telemetry (the worker can't tell the difference —
+ * by design) but executed nothing; counting them blocked every simulate run
+ * that recorded a proposal (first live D9 run, 2026-07-02). In simulate every
+ * write-capable tool is wrapped, so a proposed_action for a tool proves its
+ * calls were diverted.
+ */
+export function detectSimulationViolation(params: {
+  simulateMode: boolean;
+  externalToolsExecuted: string[];
+  proposedActions: Array<{ tool: string }>;
+}): { violation: boolean; escapedTools: string[] } {
+  const proposedTools = new Set(params.proposedActions.map((proposed) => proposed.tool));
+  const escapedTools = params.externalToolsExecuted.filter((tool) => !proposedTools.has(tool));
+  return { violation: params.simulateMode && escapedTools.length > 0, escapedTools };
+}

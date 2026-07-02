@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   crossCheckWorkReport,
+  detectSimulationViolation,
   grantsAreWriteCapable,
   isExternalArtifactTool,
   isStaleWorkReport,
@@ -83,5 +84,46 @@ describe("isStaleWorkReport (late-report guard)", () => {
 
   it("stale when the task is gone", () => {
     expect(isStaleWorkReport({ currentTask: null, workerRunId: RUN })).toBe(true);
+  });
+});
+
+describe("detectSimulationViolation (D9 × simulate tripwire)", () => {
+  it("stubbed calls (proposed_action recorded) are NOT a violation", () => {
+    const result = detectSimulationViolation({
+      simulateMode: true,
+      externalToolsExecuted: ["doc_panel"],
+      proposedActions: [{ tool: "doc_panel" }],
+    });
+    expect(result.violation).toBe(false);
+    expect(result.escapedTools).toEqual([]);
+  });
+
+  it("a tool that escaped the stub IS a violation, named precisely", () => {
+    const result = detectSimulationViolation({
+      simulateMode: true,
+      externalToolsExecuted: ["doc_panel", "message"],
+      proposedActions: [{ tool: "doc_panel" }],
+    });
+    expect(result.violation).toBe(true);
+    expect(result.escapedTools).toEqual(["message"]);
+  });
+
+  it("live mode never trips this wire", () => {
+    const result = detectSimulationViolation({
+      simulateMode: false,
+      externalToolsExecuted: ["message"],
+      proposedActions: [],
+    });
+    expect(result.violation).toBe(false);
+  });
+
+  it("no external executions → no violation", () => {
+    expect(
+      detectSimulationViolation({
+        simulateMode: true,
+        externalToolsExecuted: [],
+        proposedActions: [],
+      }).violation,
+    ).toBe(false);
   });
 });
