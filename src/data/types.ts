@@ -469,6 +469,36 @@ export interface JobRunReviewInput {
   targetStage?: JobDeploymentStage;
 }
 
+// ── Worker grading (WR2 D10) ─────────────────────────────────────────────
+// Grades are APPEND-ONLY: audit trail first. Scorecards and the promotion
+// gate roll up from these events; nothing ever mutates or deletes one.
+
+export type GradeVerdict = "correct" | "needs_change" | "wrong";
+
+export interface GradeEvent {
+  id: string;
+  runId: string;
+  /** Denormalized from the run so scorecards query without joins. */
+  assignmentId: string;
+  templateId: string;
+  /** Decision component being graded, e.g. "classification" | "assignee" | "draft" | "knowledge:<doc>". */
+  component: string;
+  verdict: GradeVerdict;
+  feedback?: string;
+  grader: string;
+  createdAt: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GradeEventInput {
+  runId: string;
+  component: string;
+  verdict: GradeVerdict;
+  feedback?: string;
+  grader: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface JobTaskContext {
   assignment: JobAssignment;
   template: JobTemplate;

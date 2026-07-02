@@ -1,7 +1,13 @@
+import type { GradeEventInput } from "../../data/types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { isStrictPostgresOnly } from "../../data/storage-config.js";
 import { getStorageAdapter } from "../../data/storage-factory.js";
 import { resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
+import {
+  buildScorecard,
+  evaluatePromotionGate,
+  gradableComponentsForRun,
+} from "../../infra/worker-grading.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
@@ -1163,6 +1169,136 @@ export const jobsHandlers: GatewayRequestHandlers = {
         },
         undefined,
       );
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+  // ── WR2 D10: grading + scorecards + promotion gate ─────────────────────
+  // Grades are append-only feedback. The gate informs; the operator promotes.
+  "jobs.grades.record": async ({ params, respond }) => {
+    try {
+      const storage = await getWorkforceStorageAdapter();
+      const grader = readOptionalString(params, "grader") ?? "operator";
+      const rawGrades = Array.isArray((params as Record<string, unknown>).grades)
+        ? ((params as Record<string, unknown>).grades as Array<Record<string, unknown>>)
+        : [params as Record<string, unknown>];
+      const inputs: GradeEventInput[] = rawGrades.map((raw) => {
+        const runId = typeof raw.runId === "string" ? raw.runId.trim() : "";
+        const component = typeof raw.component === "string" ? raw.component.trim() : "";
+        const verdict = typeof raw.verdict === "string" ? raw.verdict : "";
+        if (!runId) throw new Error("grade requires runId");
+        if (!component) throw new Error("grade requires component");
+        if (verdict !== "correct" && verdict !== "needs_change" && verdict !== "wrong") {
+          throw new Error(`grade verdict must be correct|needs_change|wrong (got "${verdict}")`);
+        }
+        return {
+          runId,
+          component,
+          verdict,
+          feedback:
+            typeof raw.feedback === "string" && raw.feedback.trim() ? raw.feedback : undefined,
+          grader: typeof raw.grader === "string" && raw.grader.trim() ? raw.grader : grader,
+        };
+      });
+      const grades = await storage.jobs.recordGrades(inputs);
+      const gradedRunIds = Array.from(new Set(grades.map((g) => g.runId)));
+      await emitAuditEvent(storage, {
+        eventType: "workforce.grades.recorded",
+        payload: {
+          count: grades.length,
+          // Singular runId so eventLinkValues() links this into run traces.
+          runId: gradedRunIds[0],
+          runIds: gradedRunIds,
+          grader,
+        },
+      });
+      respond(true, { grades }, undefined);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+  // One-click approve-all (D10): records a `correct` grade for every gradable
+  // component of the run. FEEDBACK ONLY — never executes or promotes anything.
+  "jobs.grades.approveAll": async ({ params, respond }) => {
+    try {
+      const storage = await getWorkforceStorageAdapter();
+      const runId = readRequiredString(params, "runId");
+      const grader = readOptionalString(params, "grader") ?? "operator";
+      const runs = await storage.jobs.listRuns({ limit: 500 });
+      const run = runs.find((item) => item.id === runId);
+      if (!run) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "run not found"));
+        return;
+      }
+      const components = gradableComponentsForRun(run);
+      const grades = await storage.jobs.recordGrades(
+        components.map((component) => ({
+          runId,
+          component,
+          verdict: "correct" as const,
+          grader,
+          metadata: { approveAll: true },
+        })),
+      );
+      await emitAuditEvent(storage, {
+        eventType: "workforce.grades.approve_all",
+        payload: { runId, components, grader },
+      });
+      respond(true, { grades, components }, undefined);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+  "jobs.grades.list": async ({ params, respond }) => {
+    try {
+      const storage = await getWorkforceStorageAdapter();
+      const grades = await storage.jobs.listGrades({
+        runId: readOptionalString(params, "runId"),
+        templateId: readOptionalString(params, "templateId"),
+        assignmentId: readOptionalString(params, "assignmentId"),
+        component: readOptionalString(params, "component"),
+        // Wire-facing default page; the unlimited path is reserved for the
+        // gate/scorecard, which needs the full ordered history.
+        limit: readOptionalNumber(params, "limit") ?? 500,
+      });
+      respond(true, { grades }, undefined);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+  "jobs.scorecard": async ({ params, respond }) => {
+    try {
+      const storage = await getWorkforceStorageAdapter();
+      const templateId = readOptionalString(params, "templateId");
+      const assignmentId = readOptionalString(params, "assignmentId");
+      if (!templateId && !assignmentId) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "scorecard requires templateId or assignmentId"),
+        );
+        return;
+      }
+      const grades = await storage.jobs.listGrades({ templateId, assignmentId });
+      const scorecard = buildScorecard(grades);
+      const promotionGate = evaluatePromotionGate(grades, Date.now());
+      respond(true, { scorecard, promotionGate, gradeCount: grades.length }, undefined);
     } catch (err) {
       respond(
         false,

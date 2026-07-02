@@ -625,6 +625,16 @@ class SQLiteJobsAdapter implements JobAdapter {
     return this.unsupported("createTemplate");
   }
 
+  async recordGrades(inputs: Parameters<JobAdapter["recordGrades"]>[0]) {
+    void inputs;
+    return this.unsupported("recordGrades");
+  }
+
+  async listGrades(filter?: Parameters<JobAdapter["listGrades"]>[0]) {
+    void filter;
+    return this.unsupported("listGrades");
+  }
+
   async listTemplates(): Promise<JobTemplate[]> {
     return this.unsupported("listTemplates");
   }

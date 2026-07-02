@@ -828,6 +828,30 @@ export const jobEvents = pgTable(
   ],
 );
 
+// WR2 D10: append-only grade events (audit trail; no update/delete paths).
+export const jobGradeEvents = pgTable(
+  "job_grade_events",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => jobRuns.id, { onDelete: "cascade" }),
+    assignmentId: text("assignment_id").notNull(),
+    templateId: text("template_id").notNull(),
+    component: text("component").notNull(),
+    verdict: text("verdict").$type<"correct" | "needs_change" | "wrong">().notNull(),
+    feedback: text("feedback"),
+    grader: text("grader").notNull(),
+    metadata: jsonb("metadata").default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_job_grade_events_template").on(t.templateId, t.createdAt),
+    index("idx_job_grade_events_assignment").on(t.assignmentId, t.createdAt),
+    index("idx_job_grade_events_run").on(t.runId),
+  ],
+);
+
 // ============================================================================
 // TEAMS (migrated from dashboard.db)
 // ============================================================================
