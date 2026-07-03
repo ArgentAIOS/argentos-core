@@ -36,6 +36,24 @@ pub fn resolve_bind_addr() -> String {
     std::env::var("ARGENT_EXECD_BIND").unwrap_or_else(|_| DEFAULT_BIND_ADDR.to_string())
 }
 
+/// Resolve the auth posture from the environment.
+/// `Ok(Some(token))` → enforce a bearer token on every route.
+/// `Ok(None)` → auth explicitly disabled via ARGENT_EXECD_ALLOW_NO_AUTH=1.
+/// `Err(_)` → fail closed: no token and no explicit opt-out (installed mode).
+pub fn resolve_auth_posture() -> Result<Option<String>, String> {
+    let token = std::env::var("ARGENT_EXECD_AUTH_TOKEN")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if !token.is_empty() {
+        return Ok(Some(token));
+    }
+    if std::env::var("ARGENT_EXECD_ALLOW_NO_AUTH").ok().as_deref() == Some("1") {
+        return Ok(None);
+    }
+    Err("ARGENT_EXECD_AUTH_TOKEN is required (set it, or ARGENT_EXECD_ALLOW_NO_AUTH=1 for a local/dev daemon)".to_string())
+}
+
 pub fn bind_listener(bind_addr: &str) -> std::io::Result<TcpListener> {
     TcpListener::bind(bind_addr)
 }
@@ -45,14 +63,25 @@ pub fn serve(
     runtime: Arc<Mutex<ExecutiveRuntime>>,
     shutdown: Arc<ShutdownSignal>,
 ) -> std::io::Result<()> {
+    serve_with_auth(listener, runtime, shutdown, None)
+}
+
+pub fn serve_with_auth(
+    listener: TcpListener,
+    runtime: Arc<Mutex<ExecutiveRuntime>>,
+    shutdown: Arc<ShutdownSignal>,
+    expected_token: Option<String>,
+) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
+    let expected_token: Option<Arc<str>> = expected_token.map(|token| Arc::from(token.as_str()));
     while !shutdown.is_set() {
         match listener.accept() {
             Ok((stream, _addr)) => {
                 let runtime = runtime.clone();
                 let shutdown = shutdown.clone();
+                let expected_token = expected_token.clone();
                 thread::spawn(move || {
-                    let _ = handle_connection(stream, runtime, shutdown);
+                    let _ = handle_connection(stream, runtime, shutdown, expected_token);
                 });
             }
             Err(error) if error.kind() == ErrorKind::WouldBlock => {
@@ -82,6 +111,7 @@ fn handle_connection(
     mut stream: TcpStream,
     runtime: Arc<Mutex<ExecutiveRuntime>>,
     shutdown: Arc<ShutdownSignal>,
+    expected_token: Option<Arc<str>>,
 ) -> std::io::Result<()> {
     let mut buffer = [0_u8; 4096];
     let read = stream.read(&mut buffer)?;
@@ -89,17 +119,63 @@ fn handle_connection(
         return Ok(());
     }
     let request = String::from_utf8_lossy(&buffer[..read]).to_string();
-    let response = build_response(&request, runtime, shutdown);
+    let response = build_response(&request, runtime, shutdown, expected_token.as_deref());
     stream.write_all(response.as_bytes())?;
     stream.flush()?;
     Ok(())
+}
+
+/// Constant-time-ish bearer check. Returns the 401 response body when auth fails,
+/// or None when the request is authorized (or auth is disabled).
+fn authorize(request: &str, expected_token: Option<&str>) -> Option<String> {
+    let Some(expected) = expected_token else {
+        return None; // auth disabled (ARGENT_EXECD_ALLOW_NO_AUTH=1)
+    };
+    let presented = bearer_token(request).unwrap_or_default();
+    if !presented.is_empty() && constant_time_eq(presented.as_bytes(), expected.as_bytes()) {
+        None
+    } else {
+        Some(json_response(
+            401,
+            "{\"error\":\"unauthorized: missing or invalid bearer token\"}",
+        ))
+    }
+}
+
+fn bearer_token(request: &str) -> Option<String> {
+    request.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        if !key.trim().eq_ignore_ascii_case("authorization") {
+            return None;
+        }
+        let value = value.trim();
+        value
+            .strip_prefix("Bearer ")
+            .or_else(|| value.strip_prefix("bearer "))
+            .map(|token| token.trim().to_string())
+    })
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0_u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 fn build_response(
     request: &str,
     runtime: Arc<Mutex<ExecutiveRuntime>>,
     shutdown: Arc<ShutdownSignal>,
+    expected_token: Option<&str>,
 ) -> String {
+    if let Some(denied) = authorize(request, expected_token) {
+        return denied;
+    }
     let first_line = request.lines().next().unwrap_or_default();
     let (method, target) = parse_request_line(first_line);
     let (path, query) = split_target(target);
@@ -337,6 +413,7 @@ fn json_response(status: u16, body: &str) -> String {
     let status_line = match status {
         200 => "HTTP/1.1 200 OK",
         400 => "HTTP/1.1 400 Bad Request",
+        401 => "HTTP/1.1 401 Unauthorized",
         404 => "HTTP/1.1 404 Not Found",
         _ => "HTTP/1.1 500 Internal Server Error",
     };

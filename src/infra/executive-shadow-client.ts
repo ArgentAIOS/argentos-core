@@ -45,6 +45,8 @@ export type ExecutiveShadowClientOptions = {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   experimentalWrites?: boolean;
+  /** Bearer token for the argent-execd daemon (P1 auth). Omit for a no-auth dev daemon. */
+  token?: string;
 };
 
 export class ExecutiveShadowClientError extends Error {
@@ -69,6 +71,7 @@ export class ExecutiveShadowClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly experimentalWrites: boolean;
+  private readonly token?: string;
 
   constructor(options: ExecutiveShadowClientOptions = {}) {
     const fetchImpl = resolveFetch(options.fetchImpl);
@@ -79,6 +82,7 @@ export class ExecutiveShadowClient {
     this.fetchImpl = fetchImpl;
     this.timeoutMs = options.timeoutMs ?? EXECUTIVE_SHADOW_DEFAULT_TIMEOUT_MS;
     this.experimentalWrites = options.experimentalWrites ?? false;
+    this.token = options.token?.trim() || undefined;
   }
 
   async getHealth(): Promise<ExecutiveShadowHealth> {
@@ -166,9 +170,16 @@ export class ExecutiveShadowClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const headers: Record<string, string> = {};
+      if (init.body !== undefined) {
+        headers["Content-Type"] = "application/json";
+      }
+      if (this.token) {
+        headers.Authorization = `Bearer ${this.token}`;
+      }
       const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method: init.method ?? "GET",
-        headers: init.body === undefined ? undefined : { "Content-Type": "application/json" },
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
         body: init.body === undefined ? undefined : JSON.stringify(init.body),
         signal: controller.signal,
       });

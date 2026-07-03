@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import { ZodError } from "zod";
 import {
   createExecutiveShadowClient,
@@ -5,6 +8,28 @@ import {
   type ExecutiveShadowReadiness,
 } from "../infra/executive-shadow-client.js";
 import { executiveShadowReadinessFailsClosed } from "../infra/executive-shadow-contract.js";
+
+/**
+ * Resolve the argent-execd bearer token (P1 auth) for the operator CLI: env var
+ * first, then the installed daemon's token file. Returns undefined for a no-auth
+ * dev daemon. Mirrors how the installed daemon's plist stores its token.
+ */
+export function resolveExecdAuthToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const fromEnv = env.ARGENT_EXECD_AUTH_TOKEN?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const home = env.HOME?.trim() || homedir();
+  try {
+    const fromFile = readFileSync(
+      path.join(home, ".argentos", "rust-execd", "auth-token"),
+      "utf8",
+    ).trim();
+    return fromFile || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export type ExecutiveShadowReadinessSummary = {
   status: "fail-closed" | "unsafe" | "unavailable";
@@ -63,7 +88,10 @@ export async function getExecutiveShadowSummary(
   options: ExecutiveShadowClientOptions = {},
 ): Promise<ExecutiveShadowSummary> {
   try {
-    const client = createExecutiveShadowClient(options);
+    // P1 auth: default the bearer token (env, then token file) so `argent status`
+    // reaches a token-enforcing installed daemon; an explicit option still wins.
+    const token = options.token ?? resolveExecdAuthToken();
+    const client = createExecutiveShadowClient({ ...options, token });
     const [health, metrics, timeline, readinessResult] = await Promise.all([
       client.getHealth(),
       client.getMetrics(),
