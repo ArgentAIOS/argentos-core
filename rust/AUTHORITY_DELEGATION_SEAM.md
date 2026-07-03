@@ -164,12 +164,12 @@ P3. **Second-source the fail-closed signal.** Count the kernel-inspector cross-c
 P4. **Durability policy for seam-critical appends.** execd journal: `sync_all()` on
 append or a documented loss-window statement in the readiness payload. The
 authority record and Node-side seam receipts (§6, I7): fsync on append,
-single-line O_APPEND writes. Read-only adoption can live with execd's window;
+single-line O*APPEND writes. Read-only adoption can live with execd's window;
 the record cannot have one.
 P5. **Read-only PG role for the Rust side:** a dedicated Postgres role with
 `SELECT`-only grants on exactly `workflows` (and later `workflow_runs`),
 injected via env, same conventions as the daemons' existing bind/token config.
-This role is sufficient for the nominated first surface _because_ that surface
+This role is sufficient for the nominated first surface \_because* that surface
 is PG-backed (ground truth #3) — it deliberately buys nothing for `cron.*`.
 
 ## 5. The rung ladder
