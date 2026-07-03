@@ -40,6 +40,7 @@ async function waitForHealth(client: ExecutiveShadowClient, timeoutMs = 10_000):
 }
 
 const spawned: ChildProcessWithoutNullStreams[] = [];
+const EXECD_INTEGRATION_TOKEN = "execd-integration-test-token";
 
 afterEach(async () => {
   await Promise.all(
@@ -81,6 +82,7 @@ describe("ExecutiveShadowClient integration", () => {
         ARGENT_EXECD_STATE_DIR: stateDir,
         ARGENT_EXECD_TICK_INTERVAL_MS: "10000",
         ARGENT_EXECD_DEFAULT_LEASE_MS: "5000",
+        ARGENT_EXECD_AUTH_TOKEN: EXECD_INTEGRATION_TOKEN,
       },
       stdio: "pipe",
     });
@@ -89,6 +91,7 @@ describe("ExecutiveShadowClient integration", () => {
     const client = createExecutiveShadowClient({
       baseUrl: `http://127.0.0.1:${port}`,
       experimentalWrites: true,
+      token: EXECD_INTEGRATION_TOKEN,
     });
     await waitForHealth(client);
 
@@ -144,6 +147,7 @@ describe("ExecutiveShadowClient integration", () => {
         ARGENT_EXECD_STATE_DIR: stateDir,
         ARGENT_EXECD_TICK_INTERVAL_MS: "10000",
         ARGENT_EXECD_DEFAULT_LEASE_MS: "120",
+        ARGENT_EXECD_AUTH_TOKEN: EXECD_INTEGRATION_TOKEN,
       },
       stdio: "pipe",
     });
@@ -152,6 +156,7 @@ describe("ExecutiveShadowClient integration", () => {
     const client = createExecutiveShadowClient({
       baseUrl: `http://127.0.0.1:${port}`,
       experimentalWrites: true,
+      token: EXECD_INTEGRATION_TOKEN,
     });
     await waitForHealth(client);
 
@@ -210,6 +215,7 @@ describe("ExecutiveShadowClient integration", () => {
         ARGENT_EXECD_STATE_DIR: stateDir,
         ARGENT_EXECD_TICK_INTERVAL_MS: "10000",
         ARGENT_EXECD_DEFAULT_LEASE_MS: "5000",
+        ARGENT_EXECD_AUTH_TOKEN: EXECD_INTEGRATION_TOKEN,
       },
       stdio: "pipe",
     });
@@ -218,6 +224,7 @@ describe("ExecutiveShadowClient integration", () => {
     const client = createExecutiveShadowClient({
       baseUrl: `http://127.0.0.1:${port}`,
       experimentalWrites: true,
+      token: EXECD_INTEGRATION_TOKEN,
     });
     await waitForHealth(client);
 
