@@ -129,5 +129,5 @@ All checkable items executed against fresh `--release` builds of both crates (so
    Note: receipts are in-memory in the daemon — regenerate proof after a daemon restart with
    `--generate-local-receipts`. The gateway method surface beyond the canary contract is still
    shadow-fixture-backed; full Rust gateway reimplementation remains the long pole.
-2. Scheduler/executive cutover: the Node side never delegates (workflows.backendStatus hardcodes `rust_scheduler_shadow_only` / `authority_switch_not_allowed` by design). The delegation seam must be designed and built — the checklist's own top rung is "controlled READ-ONLY adoption" first.
+2. Scheduler/executive cutover: the Node side never delegates (workflows.backendStatus hardcodes `rust_scheduler_shadow_only` / `authority_switch_not_allowed` by design). The delegation seam **design is now LOCKED** — `rust/AUTHORITY_DELEGATION_SEAM.md` (2026-07-02, adversarially reviewed): rung ladder R0–R3 for controlled read-only adoption, first surface `workflows.list`, prerequisites P1–P5 (P1 fail-closed daemon auth is R2-blocking). Build work remains: P1–P5, the Rust read-model, the comparer, the authority record.
 3. ~~Canary receipts machinery end-to-end once (1) exists.~~ Covered by (1): canary receipts machinery ran end-to-end against the installed daemon 2026-07-02.
