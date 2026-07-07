@@ -1,78 +1,81 @@
 # HANDOFF — argent-core session bridge
 
-**From:** 2026-07-02 session (Fable 5, auto-switched to Opus 4.8 near the end after a
-safeguard false-positive — see note at bottom). Long session: approval-system integrity,
-Workforce P5 grading, operator-reality fixes, Rust shadow promotion, first workforce hire.
+**From:** 2026-07-02 evening → 2026-07-04 session (Fable 5, auto-switched to Opus 4.8 mid-session
+after a dual-use safeguard false-positive on dense security-ops context — benign; a `/clear`
+lets Fable resume). Covered: Rust canary + delegation seam + P1 daemon auth, a two-day SIS/kernel
+spam firefight, a claude-mem version war, and a laptop thermal cooldown.
+
+Full narrative: Obsidian vault `argenos-core/` (01 - Current State, Daily Updates 2026-07-03/04,
+Orchestration Handoffs, Decisions Log, Known Gotchas). Backlog: `Follow-Ups & To-Dos.md` closet.
 
 ---
 
-## Shipped today — all merged to `dev` unless noted
+## ⚠️ SYSTEM IS PARKED — read before doing anything
 
-| PR   | What                                                                                            | State                                                |
-| ---- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| #461 | Unit suite green (7,820+) + blocking CI `unit-test` job                                         | merged, deployed                                     |
-| #462 | Approval integrity: Deny denies, timeouts fire, email fails loud, toolsAllow enforced           | merged, deployed, live-verified                      |
-| #463 | Workforce P5 — grading store, scorecards, promotion gate (D10)                                  | merged, deployed, live-verified                      |
-| #464 | Handoff bridge                                                                                  | merged                                               |
-| #465 | Operator wave 1: builder tool-grant validator, Discord crash guards, service-PATH pnpm resolver | merged, deployed                                     |
-| #466 | Calendar failure cooldown + `workflows.resume` replay guard                                     | merged (deploy pending)                              |
-| #467 | Workforce D9 fix: stubbed simulate calls no longer trip the violation wire                      | **OPEN, CI running — merge when green, then deploy** |
+Everything autonomous is deliberately OFF (thermal + stability). Nothing is broken.
+
+| System                       | State                                       | Bring back                                                                                                                      |
+| ---------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Argent gateway**           | **STOPPED** (operator asked)                | `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.argent.gateway.plist`                                               |
+| Kernel / contemplation / SIS | disabled in `argent.json`                   | flip the flags + gateway restart — **but do the prompt diet FIRST**                                                             |
+| Workforce worker             | `globalPaused=true`                         | `argent gateway call execution.worker.resume` — **NOTE: a gateway restart resets this to unpaused; re-pause after any restart** |
+| subctl evy                   | paused (file `~/.config/subctl/evy/PAUSED`) | `subctl evy resume` (survives restart)                                                                                          |
+| LM Studio models             | 0 resident (GPU idle)                       | model-pin LaunchAgent `ai.argent.lmstudio-context-pin` is STOPPED                                                               |
+
+## Shipped this session (all merged to `dev`, tip `188b6cf9`)
+
+| PR   | What                                                                                                           |
+| ---- | -------------------------------------------------------------------------------------------------------------- |
+| #468 | argentd ws canary — `rustGateway.canaryReceipts.status`/`.generateLocalProof`, live-verified read-only-ready   |
+| #469 | Authority delegation seam DESIGN (`rust/AUTHORITY_DELEGATION_SEAM.md`), locked after 3-lens adversarial review |
+| #470 | P1 daemon auth — fail-closed token auth on argentd + argent-execd                                              |
+
+(Earlier same-session: #461 unit-suite+CI, #462 approval integrity, #463 Workforce P5,
+#464–467 operator-reality waves + D9 fix.)
 
 Deploy path (gateway runs the INSTALLED snapshot, not the repo): `~/argentos` ff to
-`origin/dev` → `SKIP_FETCH=1 bash scripts/out-of-sync-patch.sh` → gateway bounce.
-Gateway is running+healthy. Trunk is **`dev`**, not main.
+`origin/dev` → `SKIP_FETCH=1 bash scripts/out-of-sync-patch.sh` → gateway bounce. Trunk is `dev`.
 
-## Live state to know
+## The main forward thread: kernel prompt diet (🔴 do this next)
 
-- **Workforce is LIVE, first hire running.** Ticket Triage Conductor assignment
-  `14c36f1d-55af-4631-a01f-458014d90eea` (template `34490eb5…`) is ENABLED in **simulate**,
-  240-min cadence, grant `[tasks, memory_recall, doc_panel]`. It ran once tonight:
-  **D9 `proposed_action` fired LIVE for the first time** (a diverted doc_panel write with a
-  full 12-ticket triage). That run ended `blocked` due to the bug #467 fixes (the D9 stub was
-  counted as an executed external tool). **NEXT: after #467 deploys, `jobs.assignments.runNow`
-  the conductor for a clean gradable run, then grade it in the Workforce Board (Runs → ✓/±/✗).**
-  Grading toward the gate: ≥95% correct over ≥50 graded decisions, sustained 2 weeks.
-- **Two repaired daily workflows are PARKED (Jason's call: keep both parked).** MSP keeper
-  `4a4a8932` (recipient + de-poisoned prompt) and "Morning Brief Podcast 2.0" `832f855e`
-  (node kinds restored, dryRun now clean). Re-enable each with `is_active=true` +
-  `argent cron enable <id>` when wanted.
-- **Rust: SHADOW-CREDIBLE reached.** Both daemons installed as KeepAlive LaunchAgents
-  (`ai.argent.rust-gateway-shadow` :18799 with auth token at `~/.argentos/rust-gateway/canary-token`,
-  `ai.argent.rust-executive-shadow` :18809). `argent status` shows both reachable; parity
-  report 19/0 promotionReady=true. Evidence recorded in `rust/argent-execd/PROMOTION_CHECKLIST.md`.
-- Stale-run sweep done (21 workflow_runs + 29 job_runs). AppForge 401 verified already fixed by #460.
-- Follow-up closet has the full operator-audit backlog under "operator-reality audit findings".
+**Root cause fully mapped.** The kernel's own reflection tick is tiny (~2-3k, safe). The 90k
+comes from the kernel's executive dispatch → contemplation:
+`consciousness-kernel.ts:1583` `maybeRunManagedContemplation` → `contemplation-runner.ts:994`
+`agentCommand(...)` with **no narrowing** → the full agent pipeline. Itemized:
 
-## ~~In-flight~~ SHIPPED 2026-07-02 evening: argentd ws canary build (PR #468)
+- **skills snapshot ~20.2k tok** — all 229 `SKILL.md` (`buildWorkspaceSkillSnapshot`), passed
+  because contemplation never sets `promptMode: minimal/subagent`.
+- **tool schemas ~15-25k tok** — full 30+ registry (`attempt.ts:1050`).
+- **bootstrap `ctx:*` dump ~7.5-12.5k tok** — incl. `RECENT_CONTEMPLATION.md` feeding its own
+  history back. Persistent `:contemplation` session grows unbounded.
+- contemplation-runner **never reads `contemplation.model`** (only `modelFallbacksOverride`,
+  default `openai-codex/gpt-5.3-codex`), so the configured 31B (113k, would fit) was ignored and
+  the turn hit the 12B (81920) → overflow.
 
-The locked contract (GOAL: make argentd canary-provable at ws://127.0.0.1:18799) was executed
-to completion in the follow-on Fable session:
+**FIX (one call site):** at `contemplation-runner.ts:994` pass `promptMode:"subagent"` + a
+narrowed `tools` array → cuts ~40-50k → fits even a modest local model. **NOT done autonomously:**
+the one judgment call (which tools contemplation actually keeps) wants Fable + operator to verify.
+Then re-enable kernel/contemplation with a **supervised** verify — **never re-enable autonomously**
+(it spammed Telegram 3× over two days). Add a give-up/backoff too (below).
 
-- `rustGateway.canaryReceipts.status` + `.generateLocalProof` implemented in argentd's ws
-  dispatcher and advertised in hello `features.methods`. Receipts mirror the Node store shape
-  (`src/infra/rust-gateway-receipt-store.ts`); in-memory hub store capped at 1000 — **proof
-  regenerates after a daemon restart** via `status-installed --generate-local-receipts`.
-- Multi-agent adversarial review (3 lenses, 17 agents) confirmed 7 findings, all fixed in the
-  same PR: control-char-safe JSON escaping, JSON-aware param extraction (escaped reasons no
-  longer poison the persisted receipt JSON), reason redaction (`redactSensitiveText` subset, so
-  `tokenMaterialRedacted:true` is truthful), Node-parity limit clamping / duplicateKey /
-  stableReceiptId sanitization.
-- **Live-verified against the installed daemon :18799** (release build deployed; plist gained
-  `ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1`; LaunchAgent bounced):
-  `status-installed --generate-local-receipts --confirm-local-only` → **read-only-ready, zero
-  blockers**, receiptProofComplete=true, probe methodAdvertised=true; `smoke-local` → **passed,
-  zero blockers**; `authority status --installed-canary-url` → canary ok, 6 receipts.
-  Evidence recorded in `rust/argent-execd/PROMOTION_CHECKLIST.md` (remainder item 1 closed).
-- 56 argentd tests green (4 new canary parity tests). Zero TS changes. NON-GOALS held: no
-  authority flips, loopback-only, no argent-execd/dashboard changes.
+## Other open items (backlog in the closet)
 
-## Note on the model switch
+- **Arm the installed execd auth token** (Task #12) when #470 deploys: drop plist
+  `ARGENT_EXECD_ALLOW_NO_AUTH=1`, set `ARGENT_EXECD_AUTH_TOKEN` (staged at
+  `~/.argentos/rust-execd/auth-token`), bounce the LaunchAgent.
+- **Kernel give-up/backoff** — after N unresolved escalations of the same signature, mark the
+  executive item abandoned + stop re-escalating (would have capped the spam regardless of model).
+- **Rust delegation seam P2–P5** (P1 shipped #470): shared contract literals, second-source the
+  fail-closed signal, fsync policy, read-only PG role. Then R2 on `workflows.list`.
+- **Workforce grading** — grade Ticket Triage Conductor runs (clean run `dab1e586`) toward the
+  ≥95%/≥50/14d gate. Design idea: risk-scaled gate tiers.
+- **claude-mem structural fix** — semver version selection + version-pin guard (all profiles are
+  on 13.9.3 now; the war recurs on the next per-profile update).
+- **runNow re-queue orphan bug** — loses task↔assignment linkage.
 
-Fable 5 carries extra dual-use safeguards. Late in this session they false-positived on the
-dense security-infra work (canary tokens, LaunchAgent daemon install, auth/authority handling,
-credential redaction) and auto-switched to Opus 4.8. All work was legitimate ops on Jason's own
-product. A fresh `/clear` drops the accumulated context and should let Fable resume without re-tripping.
+## Operating doctrine (through 2026-07-07)
 
----
-
-_Full record: Obsidian vault `argenos-core/Daily Updates/2026-07-02`, Follow-Ups closet, PRs #461–467._
+Operator loses Fable access after **2026-07-07**. Use Fable **sparingly** — only judgment,
+synthesis, architecture, hardest verification. Delegate everything else to **Sonnet** workers
+(mechanical/search/verify) via Workflow/Agent; **Opus** for the occasional hard pass. Bank durable
+progress + handoff-ready specs before the cutoff. Memory: `feedback-lean-orchestration-budget`.
