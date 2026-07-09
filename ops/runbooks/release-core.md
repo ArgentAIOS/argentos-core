@@ -55,12 +55,10 @@ node -e '
   fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
 '
 
-# 1b. CLI version string in src/cli/program.ts
-#     Look for the literal version constant and update it. Diff to verify.
-grep -n "2026\\.5\\.6" src/cli/program.ts
-
-# 1c. Baileys user agent in src/provider-web.ts
-grep -n "2026\\.5\\.6" src/provider-web.ts
+# 1b/1c. (OBSOLETE as of v2026.7.7 — version is centralized.)
+#     src/version.ts resolves VERSION from the build-time __ARGENT_VERSION__
+#     define, falling back to package.json. src/provider-web.ts no longer
+#     exists. package.json is the single version source; no other file edits.
 
 # 1d. Sync extension package versions + changelogs
 pnpm plugins:sync
@@ -171,15 +169,27 @@ pnpm test:install:hosted:local:smoke
 pnpm test:install:cli:local:smoke
 
 # 4g. Docker installer smoke (required before EVERY release)
-ARGENTOS_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke
+#     NOTE: env prefixes are ARGENT_*, not ARGENTOS_* — the harness
+#     (scripts/test-install-sh-docker.sh) reads ARGENT_INSTALL_SMOKE_*;
+#     ARGENTOS_-prefixed vars are silently ignored.
+#     TRAP: the smoke defaults ARGENT_INSTALL_URL to the LIVE
+#     https://argentos.ai/install.sh — i.e. the PREVIOUS release's installer,
+#     not the one you are about to ship. To gate the NEW installer, export it
+#     and serve it locally first:
+#       pnpm export:hosted-installers
+#       python3 -m http.server 8765 --directory dist/hosted-installers &
+#       ARGENT_INSTALL_URL=http://host.docker.internal:8765/install.sh \
+#       ARGENT_INSTALL_CLI_URL=http://host.docker.internal:8765/install-cli.sh \
+#       ARGENT_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke
+ARGENT_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke
 ```
 
 If a recent previous release is known broken, point the smoke at a known-good baseline:
 
 ```bash
-ARGENTOS_INSTALL_SMOKE_PREVIOUS=v2026.5.6.4 pnpm test:install:smoke
+ARGENT_INSTALL_SMOKE_PREVIOUS=v2026.5.6.4 pnpm test:install:smoke
 # OR
-ARGENTOS_INSTALL_SMOKE_SKIP_PREVIOUS=1 pnpm test:install:smoke
+ARGENT_INSTALL_SMOKE_SKIP_PREVIOUS=1 pnpm test:install:smoke
 ```
 
 Optional but valuable when send/receive paths changed:
