@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe("createArgentTools public-core surface", () => {
-  it("defaults to non-business Core tools and removes business tools", () => {
+  it("defaults to Core tools including business tools", () => {
     const config = {
       distribution: {
         surfaceProfile: "public-core",
@@ -65,16 +65,18 @@ describe("createArgentTools public-core surface", () => {
     expect(toolNames.has("specforge")).toBe(true);
     expect(toolNames.has("visual_presence")).toBe(true);
     expect(toolNames.has("changelog")).toBe(true);
-    expect(toolNames.has("intent_tool")).toBe(false);
-    expect(toolNames.has("workforce_setup_tool")).toBe(false);
-    expect(toolNames.has("jobs_tool")).toBe(false);
+    expect(toolNames.has("intent_tool")).toBe(true);
+    expect(toolNames.has("workforce_setup_tool")).toBe(true);
+    expect(toolNames.has("jobs_tool")).toBe(true);
+    expect(toolNames.has("onboarding_pack")).toBe(true);
+    expect(toolNames.has("copilot_system_tool")).toBe(true);
     expect(toolNames.has("plugin_builder")).toBe(true);
     expect(toolNames.has("marketplace")).toBe(true);
     expect(toolNames.has("family")).toBe(true);
     expect(toolNames.has("service_keys")).toBe(true);
   });
 
-  it("keeps legacy power-user flags harmless while business tools stay blocked", () => {
+  it("keeps legacy power-user flags harmless", () => {
     const config = {
       distribution: {
         surfaceProfile: "public-core",
@@ -90,25 +92,8 @@ describe("createArgentTools public-core surface", () => {
     expect(toolNames.has("plugin_builder")).toBe(true);
     expect(toolNames.has("family")).toBe(true);
     expect(toolNames.has("service_keys")).toBe(true);
-    expect(toolNames.has("intent_tool")).toBe(false);
-    expect(toolNames.has("workforce_setup_tool")).toBe(false);
-  });
-
-  it("does not let additive overrides punch through the business boundary", () => {
-    const config = {
-      distribution: {
-        surfaceProfile: "public-core",
-        publicCore: {
-          alsoAllowTools: ["intent_tool", "jobs_tool", "service_keys"],
-        },
-      },
-    } satisfies ArgentConfig;
-
-    const toolNames = new Set(createArgentTools({ config }).map((tool) => tool.name));
-
-    expect(toolNames.has("intent_tool")).toBe(false);
-    expect(toolNames.has("jobs_tool")).toBe(false);
-    expect(toolNames.has("service_keys")).toBe(true);
+    expect(toolNames.has("intent_tool")).toBe(true);
+    expect(toolNames.has("workforce_setup_tool")).toBe(true);
   });
 
   it("blocks extension plugin tools unless the plugin is explicitly allowlisted", () => {

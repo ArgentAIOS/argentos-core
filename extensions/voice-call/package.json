@@ -1,6 +1,6 @@
 {
   "name": "@argentos/voice-call",
-  "version": "2026.5.6.6",
+  "version": "2026.7.7",
   "description": "ArgentOS voice-call plugin",
   "type": "module",
   "dependencies": {

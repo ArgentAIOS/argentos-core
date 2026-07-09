@@ -620,7 +620,7 @@ function stripStructuredMarkers(text: string): string {
   const ranges = [
     ...parseStructuredMarkers(text, "TTS"),
     ...parseStructuredMarkers(text, "TTS_NOW"),
-  ].sort((a, b) => a.start - b.start);
+  ].toSorted((a, b) => a.start - b.start);
   if (ranges.length === 0) {
     return text;
   }
@@ -2511,7 +2511,7 @@ function App() {
       if (services.length === 0) {
         return;
       }
-      const servicesKey = services.slice().sort().join(",");
+      const servicesKey = services.slice().toSorted().join(",");
       const now = Date.now();
       const recentlyAlerted = alerts.some(
         (a) =>
@@ -2776,7 +2776,7 @@ function App() {
             continue;
           }
           const existingUnread = alerts.some(
-            (item) => item.source === `critical-service:${alert.id}` && item.read === false,
+            (item) => item.source === `critical-service:${alert.id}` && !item.read,
           );
           if (existingUnread) {
             criticalAlertSeenRef.current.add(dedupeKey);
@@ -3495,7 +3495,7 @@ function App() {
 
   useEffect(() => {
     const assistant = [...messages]
-      .reverse()
+      .toReversed()
       .find((msg) => msg.role === "assistant" && msg.content.trim().length > 0);
     if (!assistant) {
       delete window.__argentCurrentAssistantMessage;
@@ -4171,7 +4171,7 @@ function App() {
                   ? {
                       ...msg,
                       modelInfo: {
-                        ...(msg.modelInfo ?? {}),
+                        ...msg.modelInfo,
                         ...modelInfo,
                       },
                     }
@@ -4866,7 +4866,7 @@ function App() {
       if (!text) {
         return { ok: false, error: "empty-content" };
       }
-      void sendMessageRef.current(text);
+      sendMessageRef.current(text);
       return { ok: true, sessionKey: currentSessionKey };
     };
 
@@ -5318,7 +5318,7 @@ function App() {
             </div>
           ) : opsView === "org" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <OrgChartWidget />
+              <OrgChartWidget operatorName={operatorDisplayName ?? undefined} />
             </div>
           ) : opsView === "schedule" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
@@ -5457,14 +5457,14 @@ function App() {
               </div>
             </div>
           </div>
-          ) : showWorkforce && allowWorkforceSurface ? (
-          <div className="flex-1 min-h-0 relative">
-            <WorkforceBoard
-              gatewayRequest={gateway.request}
-              focus={workforceFocus}
-              onClose={() => setShowWorkforce(false)}
-            />
-          </div>
+        </div>
+      ) : showWorkforce && allowWorkforceSurface ? (
+        <div className="flex-1 min-h-0 relative">
+          <WorkforceBoard
+            gatewayRequest={gateway.request}
+            focus={workforceFocus}
+            onClose={() => setShowWorkforce(false)}
+          />
         </div>
       ) : (
         <div ref={containerRef} className="flex-1 flex min-h-0 relative gap-0">

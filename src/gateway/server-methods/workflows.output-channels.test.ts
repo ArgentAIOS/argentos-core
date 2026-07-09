@@ -359,3 +359,87 @@ describe("buildWorkflowOutputChannels", () => {
     );
   });
 });
+
+describe("validateWorkflowRuntimeCapabilities — tool grant names", () => {
+  beforeEach(() => {
+    mocks.config = {};
+    mocks.discoverConnectorCatalog.mockReset();
+    mocks.discoverConnectorCatalog.mockResolvedValue({ connectors: [] });
+  });
+
+  const KNOWN = new Set(["web_search", "image_generate", "doc_panel"]);
+
+  function agentWorkflow(toolsAllow: string[]): WorkflowDefinition {
+    return {
+      id: "wf-tools",
+      name: "Tools",
+      version: 1,
+      nodes: [
+        {
+          id: "trigger",
+          kind: "trigger",
+          config: { triggerType: "manual" },
+        },
+        {
+          id: "step",
+          kind: "agent",
+          config: { agentId: "argent", timeoutMs: 1000, toolsAllow },
+        },
+      ],
+      edges: [{ id: "e1", source: "trigger", target: "step" }],
+    } as unknown as WorkflowDefinition;
+  }
+
+  it("flags toolsAllow entries that match no registered tool (fail-closed grants)", async () => {
+    const issues = await validateWorkflowRuntimeCapabilities(
+      agentWorkflow(["web_search", "image_generation", "appforge:crm:create_row"]),
+      { knownToolNames: KNOWN },
+    );
+    const unknown = issues.filter((issue) => issue.code === "workflow_tool_grant_unknown");
+    expect(unknown).toHaveLength(2);
+    expect(unknown[0]?.message).toContain("image_generation");
+    expect(unknown[1]?.message).toContain("appforge:crm:create_row");
+  });
+
+  it("valid grants produce no tool warnings (case-insensitive)", async () => {
+    const issues = await validateWorkflowRuntimeCapabilities(
+      agentWorkflow(["Web_Search", "doc_panel"]),
+      { knownToolNames: KNOWN },
+    );
+    expect(issues.filter((issue) => issue.code === "workflow_tool_grant_unknown")).toEqual([]);
+  });
+
+  it("registry unavailable → check skipped, no false warnings", async () => {
+    const issues = await validateWorkflowRuntimeCapabilities(agentWorkflow(["bogus_tool"]), {
+      knownToolNames: null,
+    });
+    expect(issues.filter((issue) => issue.code === "workflow_tool_grant_unknown")).toEqual([]);
+  });
+
+  it("flags builtin tool_grant gate nodes with unknown toolName", async () => {
+    const workflow = {
+      id: "wf-grant",
+      name: "Grant",
+      version: 1,
+      nodes: [
+        { id: "trigger", kind: "trigger", config: { triggerType: "manual" } },
+        {
+          id: "grant",
+          kind: "gate",
+          config: {
+            nodeType: "tool_grant",
+            grantType: "builtin_tool",
+            toolName: "image_generation",
+          },
+        },
+      ],
+      edges: [],
+    } as unknown as WorkflowDefinition;
+    const issues = await validateWorkflowRuntimeCapabilities(workflow, { knownToolNames: KNOWN });
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workflow_tool_grant_unknown", nodeId: "grant" }),
+      ]),
+    );
+  });
+});

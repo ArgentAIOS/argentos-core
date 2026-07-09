@@ -1,5 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
+import type { AuthProfileStore } from "../agents/auth-profiles.js";
 import type { ArgentConfig } from "../config/config.js";
 import type { DoctorPrompter } from "./doctor-prompter.js";
+import { listAgentIds, resolveAgentDir } from "../agents/agent-scope.js";
 import {
   buildAuthHealthSummary,
   DEFAULT_OAUTH_WARN_MS,
@@ -13,6 +17,7 @@ import {
   resolveApiKeyForProfile,
   resolveProfileUnusableUntilForDisplay,
 } from "../agents/auth-profiles.js";
+import { resolveAuthStorePath } from "../agents/auth-profiles/paths.js";
 import { updateAuthProfileStoreWithLock } from "../agents/auth-profiles/store.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { note } from "../terminal/note.js";
@@ -109,16 +114,121 @@ function pruneAuthProfiles(
   };
 }
 
+type AuthStoreTarget = {
+  /** Undefined for the main/default agent store. */
+  agentDir?: string;
+  authPath: string;
+};
+
+/**
+ * All auth store files doctor should sweep: the main/default store plus every
+ * configured agent's store (deduped — agents often share the main dir).
+ */
+function listAuthStoreTargets(cfg: ArgentConfig): AuthStoreTarget[] {
+  const targets: AuthStoreTarget[] = [];
+  const seen = new Set<string>();
+  const mainPath = resolveAuthStorePath();
+  targets.push({ authPath: mainPath });
+  seen.add(path.resolve(mainPath));
+  for (const agentId of listAgentIds(cfg)) {
+    const agentDir = resolveAgentDir(cfg, agentId);
+    const authPath = resolveAuthStorePath(agentDir);
+    const key = path.resolve(authPath);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    targets.push({ agentDir, authPath });
+  }
+  return targets;
+}
+
+/**
+ * Detect deprecated profile ids by reading the store file as-is. Deliberately
+ * avoids `ensureAuthProfileStore`, which merges main-agent profiles into other
+ * agents' views (false positives) and re-syncs external CLI credentials.
+ */
+function detectDeprecatedIdsInStoreFile(authPath: string): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const raw = JSON.parse(fs.readFileSync(authPath, "utf8")) as {
+      profiles?: Record<string, unknown>;
+    };
+    const profiles = raw?.profiles;
+    if (profiles && typeof profiles === "object") {
+      for (const id of [CLAUDE_CLI_PROFILE_ID, CODEX_CLI_PROFILE_ID]) {
+        if (id in profiles) {
+          ids.add(id);
+        }
+      }
+    }
+  } catch {
+    // Missing or unreadable store — nothing to clean.
+  }
+  return ids;
+}
+
+function removeDeprecatedProfilesFromStore(
+  nextStore: AuthProfileStore,
+  deprecated: Set<string>,
+): boolean {
+  let mutated = false;
+  for (const id of deprecated) {
+    if (nextStore.profiles[id]) {
+      delete nextStore.profiles[id];
+      mutated = true;
+    }
+    if (nextStore.usageStats?.[id]) {
+      delete nextStore.usageStats[id];
+      mutated = true;
+    }
+  }
+  if (nextStore.order) {
+    for (const [provider, list] of Object.entries(nextStore.order)) {
+      const filtered = list.filter((id) => !deprecated.has(id));
+      if (filtered.length !== list.length) {
+        mutated = true;
+        if (filtered.length > 0) {
+          nextStore.order[provider] = filtered;
+        } else {
+          delete nextStore.order[provider];
+        }
+      }
+    }
+  }
+  if (nextStore.lastGood) {
+    for (const [provider, profileId] of Object.entries(nextStore.lastGood)) {
+      if (deprecated.has(profileId)) {
+        delete nextStore.lastGood[provider];
+        mutated = true;
+      }
+    }
+  }
+  return mutated;
+}
+
 export async function maybeRemoveDeprecatedCliAuthProfiles(
   cfg: ArgentConfig,
   prompter: DoctorPrompter,
 ): Promise<ArgentConfig> {
-  const store = ensureAuthProfileStore(undefined, { allowKeychainPrompt: false });
+  // Sweep EVERY agent's auth store, not just the main/default one — a stale
+  // deprecated profile in any agent dir breaks that agent's sessions.
+  const targets = listAuthStoreTargets(cfg);
+  const hits: Array<AuthStoreTarget & { ids: Set<string> }> = [];
   const deprecated = new Set<string>();
-  if (store.profiles[CLAUDE_CLI_PROFILE_ID] || cfg.auth?.profiles?.[CLAUDE_CLI_PROFILE_ID]) {
+  for (const target of targets) {
+    const ids = detectDeprecatedIdsInStoreFile(target.authPath);
+    if (ids.size > 0) {
+      hits.push({ ...target, ids });
+      for (const id of ids) {
+        deprecated.add(id);
+      }
+    }
+  }
+  if (cfg.auth?.profiles?.[CLAUDE_CLI_PROFILE_ID]) {
     deprecated.add(CLAUDE_CLI_PROFILE_ID);
   }
-  if (store.profiles[CODEX_CLI_PROFILE_ID] || cfg.auth?.profiles?.[CODEX_CLI_PROFILE_ID]) {
+  if (cfg.auth?.profiles?.[CODEX_CLI_PROFILE_ID]) {
     deprecated.add(CODEX_CLI_PROFILE_ID);
   }
 
@@ -139,6 +249,12 @@ export async function maybeRemoveDeprecatedCliAuthProfiles(
       )}`,
     );
   }
+  if (hits.length > 0) {
+    lines.push("Affected auth stores:");
+    for (const hit of hits) {
+      lines.push(`- ${hit.authPath}`);
+    }
+  }
   note(lines.join("\n"), "Argent auth profiles");
 
   const shouldRemove = await prompter.confirmRepair({
@@ -149,43 +265,14 @@ export async function maybeRemoveDeprecatedCliAuthProfiles(
     return cfg;
   }
 
-  await updateAuthProfileStoreWithLock({
-    updater: (nextStore) => {
-      let mutated = false;
-      for (const id of deprecated) {
-        if (nextStore.profiles[id]) {
-          delete nextStore.profiles[id];
-          mutated = true;
-        }
-        if (nextStore.usageStats?.[id]) {
-          delete nextStore.usageStats[id];
-          mutated = true;
-        }
-      }
-      if (nextStore.order) {
-        for (const [provider, list] of Object.entries(nextStore.order)) {
-          const filtered = list.filter((id) => !deprecated.has(id));
-          if (filtered.length !== list.length) {
-            mutated = true;
-            if (filtered.length > 0) {
-              nextStore.order[provider] = filtered;
-            } else {
-              delete nextStore.order[provider];
-            }
-          }
-        }
-      }
-      if (nextStore.lastGood) {
-        for (const [provider, profileId] of Object.entries(nextStore.lastGood)) {
-          if (deprecated.has(profileId)) {
-            delete nextStore.lastGood[provider];
-            mutated = true;
-          }
-        }
-      }
-      return mutated;
-    },
-  });
+  for (const hit of hits) {
+    await updateAuthProfileStoreWithLock({
+      agentDir: hit.agentDir,
+      // Per-agent stores must be updated unmerged — see the helper's docs.
+      raw: hit.agentDir !== undefined,
+      updater: (nextStore) => removeDeprecatedProfilesFromStore(nextStore, deprecated),
+    });
+  }
 
   const pruned = pruneAuthProfiles(cfg, deprecated);
   if (pruned.changed) {

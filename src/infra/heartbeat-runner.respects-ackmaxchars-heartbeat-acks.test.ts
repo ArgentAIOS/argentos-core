@@ -468,7 +468,7 @@ describe("resolveHeartbeatIntervalMs", () => {
 
       expect(sendTelegram).toHaveBeenCalledTimes(1);
       expect(sendTelegram).toHaveBeenCalledWith(
-        "123456",
+        "telegram:123456",
         "Hello from heartbeat",
         expect.objectContaining({ accountId: undefined, verbose: false }),
       );
@@ -542,7 +542,7 @@ describe("resolveHeartbeatIntervalMs", () => {
 
       expect(sendTelegram).toHaveBeenCalledTimes(1);
       expect(sendTelegram).toHaveBeenCalledWith(
-        "123456",
+        "telegram:123456",
         "Hello from heartbeat",
         expect.objectContaining({ accountId: "work", verbose: false }),
       );
@@ -616,7 +616,7 @@ describe("resolveHeartbeatIntervalMs", () => {
 
       expect(sendTelegram).toHaveBeenCalledTimes(1);
       expect(sendTelegram).toHaveBeenCalledWith(
-        "123456",
+        "telegram:123456",
         "Hello from heartbeat",
         expect.objectContaining({ accountId: undefined, verbose: false }),
       );

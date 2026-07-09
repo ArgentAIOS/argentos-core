@@ -56,6 +56,8 @@ export const HeartbeatSchema = z
     accountId: z.string().optional(),
     prompt: z.string().optional(),
     ackMaxChars: z.number().int().nonnegative().optional(),
+    salienceGate: z.boolean().optional(),
+    salienceAnchorHours: z.number().nonnegative().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
@@ -150,6 +152,8 @@ export const ContemplationIntervalSchema = z
       })
       .strict()
       .optional(),
+    salienceGate: z.boolean().optional(),
+    salienceAnchorHours: z.number().nonnegative().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
@@ -198,6 +202,7 @@ export const ConsciousnessKernelSchema = z
     allowListening: z.boolean().optional(),
     allowVision: z.boolean().optional(),
     idleActivityGateMinutes: z.number().int().nonnegative().optional(),
+    salienceAnchorHours: z.number().nonnegative().optional(),
     operatorNotifications: z
       .object({
         enabled: z.boolean().optional(),

@@ -54,6 +54,10 @@ export {
   reviewPersonalSkillCandidates,
   selectExecutablePersonalSkill,
 } from "./skills/personal.js";
+export {
+  getCachedPersonalSkillCandidates,
+  invalidatePersonalSkillReadCache,
+} from "./skills/personal-skill-read-cache.js";
 
 export function resolveSkillsInstallPreferences(config?: ArgentConfig): SkillsInstallPreferences {
   const raw = config?.skills?.install;

@@ -136,18 +136,25 @@ function loadSkillEntries(
 ): SkillEntry[] {
   const loadSkills = (params: { dir: string; source: string }): Skill[] => {
     const loaded = loadSkillsFromDir(params);
+    let skills: Skill[];
     if (Array.isArray(loaded)) {
-      return loaded;
-    }
-    if (
+      skills = loaded;
+    } else if (
       loaded &&
       typeof loaded === "object" &&
       "skills" in loaded &&
       Array.isArray((loaded as { skills?: unknown }).skills)
     ) {
-      return (loaded as { skills: Skill[] }).skills;
+      skills = (loaded as { skills: Skill[] }).skills;
+    } else {
+      return [];
     }
-    return [];
+    // The PI loadSkillsFromDir ignores the `source` param, so stamp it back —
+    // bundled-skill allowlist detection (entry.skill.source) depends on it.
+    return skills.map((skill) => {
+      const tagged = skill as Skill & { source?: string };
+      return tagged.source ? skill : { ...skill, source: params.source };
+    });
   };
 
   const managedSkillsDir = opts?.managedSkillsDir ?? path.join(CONFIG_DIR, "skills");
@@ -226,8 +233,10 @@ function tokenizeSkillMatchInput(input: string): string[] {
     .filter((part) => part.length >= 3 && !SKILL_MATCH_STOPWORDS.has(part));
 }
 
-function toSkillSourceLabel(entry: { skill: { source?: string } }): string {
-  const raw = String(entry.skill.source ?? "")
+// `source` is stamped onto loaded skills at runtime (see loadSkillEntries);
+// the upstream pi Skill type doesn't declare it, hence the unknown + cast.
+function toSkillSourceLabel(entry: { skill: unknown }): string {
+  const raw = String((entry.skill as { source?: unknown })?.source ?? "")
     .trim()
     .toLowerCase();
   if (!raw) return "generic";
@@ -414,15 +423,16 @@ export function matchSkillCandidatesForPrompt(params: {
       if (descOverlap.length > 0) {
         reasons.push(`context:${descOverlap.join(",")}`);
       }
-      return {
+      const candidate: SkillMatchCandidate = {
         name: entry.skill.name,
         source: toSkillSourceLabel(entry),
         kind: "generic",
         score: Math.round(score * 100) / 100,
         reasons,
-      } satisfies SkillMatchCandidate;
+      };
+      return candidate;
     })
-    .filter((candidate): candidate is SkillMatchCandidate => Boolean(candidate))
+    .filter((candidate): candidate is SkillMatchCandidate => candidate !== null)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
   return candidates.slice(0, Math.max(1, params.limit ?? 5));

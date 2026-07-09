@@ -46,6 +46,13 @@ export interface Task {
   dependsOn?: string[];
   teamId?: string;
 
+  // Lease (Worker Runtime v2 D4): set by TaskAdapter.claim, cleared on
+  // release or terminal status. Epoch ms.
+  claimedBy?: string;
+  claimTtl?: number;
+  claimAcquiredAt?: number;
+  attempt?: number;
+
   // Metadata
   tags?: string[];
   metadata?: Record<string, unknown>;
@@ -74,6 +81,8 @@ export interface TaskUpdateInput {
   priority?: TaskPriority;
   assignee?: TaskAssignee | null;
   dueAt?: number;
+  /** Reset/set the lease attempt counter (operator re-queue paths). */
+  attempt?: number;
   dependsOn?: string[];
   teamId?: string;
   tags?: string[];
@@ -276,6 +285,43 @@ export type JobPromotionState =
   | "rolled-back";
 export type JobRunReviewStatus = "pending" | "approved" | "held" | "rolled-back";
 
+/**
+ * D7 (WR2 P4) — runner-written lifecycle events on a JobRun. The runner is the
+ * single writer; events accrue in-memory during a run (surfaced live via
+ * getStatus) and are flushed onto the run record at completion. This is the
+ * observability substrate that replaces v1's `boardChanged` inference.
+ */
+export type RunEventType =
+  | "claimed"
+  | "spawned"
+  | "alive"
+  | "tool_call"
+  | "heartbeat"
+  | "report"
+  | "killed"
+  | "expired"
+  | "escalated"
+  | "proposed_action";
+export interface RunEvent {
+  ts: number;
+  type: RunEventType;
+  /** Event-specific payload, e.g. { name, granted } for tool_call, { tool, target } for proposed_action. */
+  detail?: Record<string, unknown>;
+}
+
+/**
+ * D6 (WR2 P4) — why a runner cycle did NOT produce work. Appended per skip
+ * (agent-busy, paused, gated, lease-lost, cycle-error) so the Workforce Board
+ * can render "why didn't this run" without log spelunking. Banishes silent
+ * success-that-did-nothing (#445).
+ */
+export interface GateReason {
+  ts: number;
+  /** The gate that fired, e.g. "agent-busy" | "no-runnable-tasks" | "paused" | "cycle-error". */
+  gate: string;
+  reason?: string;
+}
+
 export interface JobRelationshipContract {
   relationshipObjective?: string;
   toneProfile?: string;
@@ -372,6 +418,8 @@ export interface JobRun {
   createdAt: number;
   startedAt: number;
   endedAt?: number;
+  /** D7 lifecycle events, runner-written; persisted under metadata.events (no migration). */
+  events?: RunEvent[];
   metadata?: Record<string, unknown>;
 }
 
@@ -419,6 +467,36 @@ export interface JobRunReviewInput {
   notes?: string;
   action?: "promote" | "hold" | "rollback";
   targetStage?: JobDeploymentStage;
+}
+
+// ── Worker grading (WR2 D10) ─────────────────────────────────────────────
+// Grades are APPEND-ONLY: audit trail first. Scorecards and the promotion
+// gate roll up from these events; nothing ever mutates or deletes one.
+
+export type GradeVerdict = "correct" | "needs_change" | "wrong";
+
+export interface GradeEvent {
+  id: string;
+  runId: string;
+  /** Denormalized from the run so scorecards query without joins. */
+  assignmentId: string;
+  templateId: string;
+  /** Decision component being graded, e.g. "classification" | "assignee" | "draft" | "knowledge:<doc>". */
+  component: string;
+  verdict: GradeVerdict;
+  feedback?: string;
+  grader: string;
+  createdAt: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GradeEventInput {
+  runId: string;
+  component: string;
+  verdict: GradeVerdict;
+  feedback?: string;
+  grader: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface JobTaskContext {

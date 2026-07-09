@@ -200,6 +200,7 @@ const WRITE_METHODS = new Set([
   "execution.worker.runNow",
   "execution.worker.pause",
   "execution.worker.resume",
+  "execution.worker.halt",
   "execution.worker.metrics.reset",
   "commands.compact",
   "browser.request",

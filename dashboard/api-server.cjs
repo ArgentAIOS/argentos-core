@@ -378,11 +378,10 @@ const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
 // real impact, a tiny TTL can be added here without touching callers.
 function resolveGatewayConfigToken() {
   try {
-    const argentConfigPath = path.join(
-      process.env.HOME || os.homedir(),
-      ".argentos",
-      "argent.json",
-    );
+    const stateDir =
+      process.env.ARGENT_STATE_DIR?.trim() ||
+      path.join(process.env.HOME || os.homedir(), ".argentos");
+    const argentConfigPath = path.join(stateDir, "argent.json");
     if (!fs.existsSync(argentConfigPath)) {
       return null;
     }
@@ -925,8 +924,8 @@ function getDatabaseBackupPlistPath() {
 }
 
 function readStorageConfigSummary() {
-  const configPath =
-    process.env.ARGENT_CONFIG_PATH || path.join(process.env.HOME || "", ".argentos", "argent.json");
+  // Same state-dir-aware resolution as STORAGE_CONFIG_PATH (isolation leak #5).
+  const configPath = STORAGE_CONFIG_PATH;
   const defaults = {
     backend: "sqlite",
     readFrom: "sqlite",
@@ -1306,6 +1305,10 @@ function getGogDefaultAccount() {
   }
 }
 
+const GOG_CALENDAR_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+let gogCalendarFailureUntilMs = 0;
+let gogCalendarLastError = null;
+
 const calendarSettings = readCalendarSettings();
 let cachedGogCalendarAccount =
   (process.env.GOG_CALENDAR_ACCOUNT || process.env.GOG_ACCOUNT || "").trim() ||
@@ -1355,6 +1358,17 @@ function runGogCalendarEvents(preferredAccount = null) {
     enqueue(null);
   }
 
+  // Failure cooldown: a broken gog state (expired OAuth, DNS outage) used to
+  // cost a blocking 10s shell-out PER dashboard poll, per account in the
+  // queue — a permanent tight error loop in the logs. After a full failed
+  // sweep, skip real attempts for the cooldown window.
+  if (gogCalendarFailureUntilMs > Date.now()) {
+    throw (
+      gogCalendarLastError ||
+      new Error("calendar temporarily unavailable (retry cooldown after repeated gog failures)")
+    );
+  }
+
   let lastError = null;
   let expanded = false;
 
@@ -1373,6 +1387,8 @@ function runGogCalendarEvents(preferredAccount = null) {
         persistCalendarAccount(account);
         console.log(`[Calendar] Switched gog account to ${account}`);
       }
+      gogCalendarFailureUntilMs = 0;
+      gogCalendarLastError = null;
       return { data, account };
     } catch (err) {
       lastError = err;
@@ -1385,6 +1401,8 @@ function runGogCalendarEvents(preferredAccount = null) {
     }
   }
 
+  gogCalendarFailureUntilMs = Date.now() + GOG_CALENDAR_FAILURE_COOLDOWN_MS;
+  gogCalendarLastError = lastError;
   throw lastError || new Error("Failed to fetch calendar via gog");
 }
 
@@ -2390,7 +2408,15 @@ app.get("/api/cron/jobs", (req, res) => {
 // TASK API - Backend task management (SQLite)
 // ============================================
 
-const STORAGE_CONFIG_PATH = path.join(process.env.HOME || "", ".argentos", "argent.json");
+// Isolation leak #5 fix: honor ARGENT_CONFIG_PATH / ARGENT_STATE_DIR like the
+// gateway does — a sandboxed gateway's api child must never silently read the
+// operator's ~/.argentos/argent.json (this hit the live board on 2026-06-09).
+const STORAGE_CONFIG_PATH =
+  process.env.ARGENT_CONFIG_PATH?.trim() ||
+  path.join(
+    process.env.ARGENT_STATE_DIR?.trim() || path.join(process.env.HOME || "", ".argentos"),
+    "argent.json",
+  );
 
 function readStorageBackend() {
   try {
@@ -2433,13 +2459,16 @@ function readStorageConfig() {
 }
 
 function resolvePgConnectionString() {
-  const fromConfig = STORAGE_CONFIG.postgresConnectionString;
-  if (fromConfig) {
-    return fromConfig;
-  }
+  // Explicit env wins: an exported ARGENT_PG_URL is operator intent (it is
+  // exactly how sandboxed gateways isolate their scratch database), so it
+  // must never lose to a config file read from the default location.
   const fromEnv = process.env.ARGENT_PG_URL || process.env.DATABASE_URL;
   if (typeof fromEnv === "string" && fromEnv.trim()) {
     return fromEnv.trim();
+  }
+  const fromConfig = STORAGE_CONFIG.postgresConnectionString;
+  if (fromConfig) {
+    return fromConfig;
   }
   return "postgres://localhost:5433/argentos";
 }

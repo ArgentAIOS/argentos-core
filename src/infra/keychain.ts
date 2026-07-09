@@ -97,6 +97,16 @@ export function buildAddGenericPasswordCommand(
   return `security add-generic-password -U -s "${service}" -a "${account}" -w "${hex}"${pin}`;
 }
 
+/**
+ * True when running under the test runner. We must NEVER shell out to the real
+ * macOS `security` binary during tests — under worker contention it surfaces a
+ * blocking "Keychain Not Found" modal that steals focus and breaks copy/paste
+ * (GH #292). Tests use an isolated HOME, so the file-based key path is correct.
+ */
+function keychainShellDisabled(): boolean {
+  return process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+}
+
 function warnUnpinnedKeychainOnce(): void {
   if (unpinnedKeychainWarned) return;
   unpinnedKeychainWarned = true;
@@ -111,6 +121,7 @@ function warnUnpinnedKeychainOnce(): void {
  */
 function readKeychainKey(): Buffer | null {
   if (process.platform !== "darwin") return null;
+  if (keychainShellDisabled()) return null;
   const pinnedPath = resolveKeychainPath();
   if (!pinnedPath) warnUnpinnedKeychainOnce();
   try {
@@ -131,6 +142,7 @@ function readKeychainKey(): Buffer | null {
  */
 function writeKeychainKey(key: Buffer): boolean {
   if (process.platform !== "darwin") return false;
+  if (keychainShellDisabled()) return false;
   const disableRaw = process.env[KEYCHAIN_DISABLE_WRITE_ENV]?.trim().toLowerCase();
   if (disableRaw === "1" || disableRaw === "true" || disableRaw === "yes" || disableRaw === "on") {
     log.info("skipping macOS Keychain write because ARGENT_KEYCHAIN_DISABLE_WRITE is enabled");

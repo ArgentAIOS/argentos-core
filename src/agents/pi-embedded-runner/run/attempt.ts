@@ -6,6 +6,7 @@ import type {
   AgentSessionLike,
   Transport,
 } from "../../../argent-agent/pi-bridge/index.js";
+import type { PromptMode } from "../../system-prompt.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
   streamSimple,
@@ -112,6 +113,7 @@ import {
   mergeMatchedSkills,
   recordPersonalSkillUsage,
   reviewPersonalSkillCandidates,
+  getCachedPersonalSkillCandidates,
   resolveRoomReaderOpportunity,
   resolveSkillsPromptForRun,
   selectExecutablePersonalSkill,
@@ -140,6 +142,7 @@ import {
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
+import { type ProposedAction, wrapToolForSimulate } from "../simulate-tool-stub.js";
 import {
   applySystemPromptOverrideToSession,
   buildEmbeddedSystemPrompt,
@@ -365,6 +368,18 @@ export function resolveArgentProviderFallbackReason(providerName: string): strin
   return undefined;
 }
 
+/**
+ * Local OpenAI-compatible providers must use the Argent provider even in
+ * pi_only runtime mode: Pi's openai-completions driver ships tool specs as
+ * prompt text (no `tools` API field), so the server never declares a native
+ * tool-call channel and small local models can only answer with textual
+ * pseudo-calls (#442). LM Studio / Ollama support native tools.
+ */
+export function requiresArgentProviderForNativeTools(providerName: string): boolean {
+  const normalized = providerName.trim().toLowerCase();
+  return normalized === "lmstudio" || normalized === "ollama";
+}
+
 async function resolveArgentProvider(providerName: string, baseURL?: string, apiKey?: string) {
   if (resolveArgentProviderFallbackReason(providerName)) {
     return null;
@@ -391,8 +406,12 @@ async function resolveArgentProvider(providerName: string, baseURL?: string, api
     case "zai-coding":
       return createArgentZAI(opts);
     case "nvidia":
-    case "ollama":
       return createArgentOpenAI(opts);
+    case "ollama":
+    case "lmstudio":
+      // Local OpenAI-compatible runtimes ignore bearer auth — never fail on a
+      // missing key (client-site boxes run keyless, #442).
+      return createArgentOpenAI({ apiKey: "local-no-key", ...opts });
     case "inception":
       return createArgentInception(opts);
     case "openai-codex":
@@ -491,6 +510,7 @@ export async function runEmbeddedAttempt(
     const skillEntries = shouldLoadSkillEntries
       ? loadWorkspaceSkillEntries(effectiveWorkspace)
       : [];
+    markPhase("skill_entries");
     restoreSkillEnv = params.skillsSnapshot
       ? applySkillEnvOverridesFromSnapshot({
           snapshot: params.skillsSnapshot,
@@ -507,6 +527,7 @@ export async function runEmbeddedAttempt(
       config: params.config,
       workspaceDir: effectiveWorkspace,
     });
+    markPhase("skills_prompt");
     let matchedSkillCandidates = matchSkillCandidatesForPrompt({
       prompt: params.prompt,
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
@@ -522,18 +543,22 @@ export async function runEmbeddedAttempt(
       config: params.config,
     });
 
-    let matchedPersonalSkillsContext: string | undefined;
-    let executablePersonalSkillBlock: string | undefined;
-    let executablePersonalSkillPlan:
-      | ReturnType<typeof buildPersonalSkillExecutionPlan>
-      | null
-      | undefined;
-    try {
+    // #405: the personal-skill block (review + list + match) used to run as
+    // serial memory awaits on the hot path — 81% of slow-turn wall-clock.
+    // It now (a) reads through a per-agent TTL cache (warm turns: zero
+    // backend round trips) and (b) runs concurrently with the QW-1 batch,
+    // so cold fills overlap bootstrap I/O and sync tool creation. Outputs
+    // are first consumed after the QW-1 await (system-prompt parts).
+    const personalSkillsStartedAt = Date.now();
+    const personalSkillsPromise = (async () => {
       const memory = await getMemoryAdapter();
       const scopedMemory = memory.withAgentId ? memory.withAgentId(sessionAgentId) : memory;
-      await reviewPersonalSkillCandidates({ memory: scopedMemory });
-      const personalSkills = await scopedMemory.listPersonalSkillCandidates({
-        limit: 50,
+      const personalSkills = await getCachedPersonalSkillCandidates({
+        agentId: sessionAgentId,
+        fill: async () => {
+          await reviewPersonalSkillCandidates({ memory: scopedMemory });
+          return scopedMemory.listPersonalSkillCandidates({ limit: 50 });
+        },
       });
       const activePersonalSkills = personalSkills.filter(
         (candidate) =>
@@ -548,35 +573,39 @@ export async function runEmbeddedAttempt(
         candidates: activePersonalSkills,
         limit: 5,
       });
-      matchedSkillCandidates = mergeMatchedSkills({
+      const merged = mergeMatchedSkills({
         personal: matchedPersonalSkills,
         generic: matchedSkillCandidates,
         limit: 5,
       });
-      matchedPersonalSkillsContext = buildMatchedPersonalSkillsContextBlock({
-        matches: matchedSkillCandidates,
+      const context = buildMatchedPersonalSkillsContextBlock({
+        matches: merged,
         candidates: activePersonalSkills,
         limit: 2,
       });
       const executablePersonalSkill = selectExecutablePersonalSkill({
         prompt: params.prompt,
-        matches: matchedSkillCandidates,
+        matches: merged,
         candidates: promotedPersonalSkills,
       });
-      executablePersonalSkillPlan = buildPersonalSkillExecutionPlan(executablePersonalSkill);
-      executablePersonalSkillBlock =
-        buildExecutablePersonalSkillContextBlock(executablePersonalSkill);
+      const plan = buildPersonalSkillExecutionPlan(executablePersonalSkill);
+      const block = buildExecutablePersonalSkillContextBlock(executablePersonalSkill);
       if (executablePersonalSkill) {
-        await scopedMemory.createPersonalSkillReviewEvent({
-          candidateId: executablePersonalSkill.id,
-          actorType: "system",
-          action: "procedure_selected",
-          reason: "Runtime selected this Personal Skill as the active procedure for the turn",
-          details: {
-            sessionKey: params.sessionKey ?? params.sessionId,
-            runId: params.runId,
-          },
-        });
+        // Bookkeeping write — result unused this turn; the persistent gateway
+        // flushes it in the background. Deliberately does NOT invalidate the
+        // read cache (day-granularity decay input only). See #405.
+        void scopedMemory
+          .createPersonalSkillReviewEvent({
+            candidateId: executablePersonalSkill.id,
+            actorType: "system",
+            action: "procedure_selected",
+            reason: "Runtime selected this Personal Skill as the active procedure for the turn",
+            details: {
+              sessionKey: params.sessionKey ?? params.sessionId,
+              runId: params.runId,
+            },
+          })
+          .catch((err) => log.debug(`personal skill review event failed: ${String(err)}`));
         params.onAgentEvent?.({
           stream: "lifecycle",
           data: {
@@ -587,7 +616,7 @@ export async function runEmbeddedAttempt(
               scope: executablePersonalSkill.scope,
             },
             plan:
-              executablePersonalSkillPlan?.steps.map((step) => ({
+              plan?.steps.map((step) => ({
                 index: step.index,
                 text: step.text,
                 expectedTools: step.expectedTools,
@@ -595,7 +624,9 @@ export async function runEmbeddedAttempt(
           },
         });
       }
-      await Promise.all(
+      // lastUsedAt is bookkeeping — not consumed this turn. Fire-and-forget off
+      // the critical path (persistent gateway flushes it). See #405.
+      void Promise.all(
         matchedPersonalSkills.map((entry) =>
           entry.id
             ? scopedMemory.updatePersonalSkillCandidate(entry.id, {
@@ -603,46 +634,11 @@ export async function runEmbeddedAttempt(
               })
             : Promise.resolve(null),
         ),
-      );
-    } catch (err) {
+      ).catch((err) => log.debug(`personal skill lastUsedAt update failed: ${String(err)}`));
+      return { merged, context, plan, block };
+    })().catch((err) => {
       log.debug(`personal skill review unavailable: ${String(err)}`);
-    }
-    if (matchedSkillCandidates.length > 0) {
-      params.onAgentEvent?.({
-        stream: "lifecycle",
-        data: {
-          phase: "skill_candidates",
-          matchedSkills: matchedSkillCandidates.map((entry) => ({
-            id: entry.id,
-            name: entry.name,
-            source: entry.source,
-            kind: entry.kind,
-            state: entry.state,
-            score: entry.score,
-            confidence: entry.confidence,
-            provenanceCount: entry.provenanceCount,
-            reasons: entry.reasons,
-          })),
-        },
-      });
-    }
-    const roomReaderOpportunity = resolveRoomReaderOpportunity({
-      prompt: params.prompt,
-      entries: shouldLoadSkillEntries ? skillEntries : undefined,
-      resolvedSkills: params.skillsSnapshot?.resolvedSkills,
-      matchedSkills: matchedSkillCandidates,
-    });
-    const roomReaderOpportunityBlock = buildRoomReaderOpportunityPromptBlock(roomReaderOpportunity);
-    params.onAgentEvent?.({
-      stream: "lifecycle",
-      data: {
-        phase: "room_reader_opportunity",
-        mode: roomReaderOpportunity.mode,
-        patterns: roomReaderOpportunity.patterns,
-        recommended: roomReaderOpportunity.recommended,
-        confidence: roomReaderOpportunity.confidence,
-        reasons: roomReaderOpportunity.reasons,
-      },
+      return null;
     });
 
     // Load session store early — discovered tools needed for tool creation
@@ -664,6 +660,7 @@ export async function runEmbeddedAttempt(
     } catch (err) {
       log.debug(`session bootstrap snapshot unavailable: ${String(err)}`);
     }
+    markPhase("session_store");
 
     // QW-1: Start async I/O operations before sync CPU work (Project Tony Stark).
     // These operations are independent — they read from disk/network while we do
@@ -693,13 +690,20 @@ export async function runEmbeddedAttempt(
       .then(() => true)
       .catch(() => false);
     const prewarmSessionFilePromise = prewarmSessionFile(params.sessionFile);
-    const crossChannelPromise = !isSystemSessionKey(params.sessionKey)
-      ? readCrossChannelContextEvents({
-          agentId: sessionAgentId,
-          limit: 10,
-          excludeSessionKey: params.sessionKey,
-        })
-      : undefined;
+    const promptMode: PromptMode =
+      params.promptMode ?? (isSubagentSessionKey(params.sessionKey) ? "subagent" : "full");
+    // "minimal" runs (execution-worker lane) ship a blank-slate scaffold:
+    // no cross-channel context, no personal skills, no project context files,
+    // no heartbeat prompt — the task prompt carries the role contract (#442/#407).
+    const isMinimalPromptRun = promptMode === "minimal" || promptMode === "none";
+    const crossChannelPromise =
+      !isSystemSessionKey(params.sessionKey) && !isMinimalPromptRun
+        ? readCrossChannelContextEvents({
+            agentId: sessionAgentId,
+            limit: 10,
+            excludeSessionKey: params.sessionKey,
+          })
+        : undefined;
 
     markPhase("async_io_started");
     // Sync CPU work runs while I/O operations are in-flight
@@ -758,12 +762,14 @@ export async function runEmbeddedAttempt(
       intentGate,
       docsPath,
       crossChannelEvents,
+      personalSkillsResult,
     ] = await Promise.all([
       bootstrapPromise,
       machineNamePromise,
       intentGatePromise,
       docsPathPromise,
       crossChannelPromise,
+      personalSkillsPromise,
     ]);
     const workspaceNotes = hookAdjustedBootstrapFiles.some(
       (file) => file.name === DEFAULT_BOOTSTRAP_FILENAME && !file.missing,
@@ -771,6 +777,53 @@ export async function runEmbeddedAttempt(
       ? ["Reminder: commit your changes in this workspace after edits."]
       : undefined;
     markPhase("async_io_done");
+    // #405: personal-skill outputs land here, after the parallel batch.
+    if (personalSkillsResult) {
+      matchedSkillCandidates = personalSkillsResult.merged;
+    }
+    const matchedPersonalSkillsContext = personalSkillsResult?.context;
+    const executablePersonalSkillBlock = personalSkillsResult?.block;
+    const executablePersonalSkillPlan = personalSkillsResult?.plan;
+    // Duration of the personal-skill work itself (overlapped with other I/O,
+    // so phase deltas no longer expose it). Read from the [tony-stark] line.
+    phaseTimes.personal_skills = Date.now() - personalSkillsStartedAt;
+    if (matchedSkillCandidates.length > 0) {
+      params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: {
+          phase: "skill_candidates",
+          matchedSkills: matchedSkillCandidates.map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            source: entry.source,
+            kind: entry.kind,
+            state: entry.state,
+            score: entry.score,
+            confidence: entry.confidence,
+            provenanceCount: entry.provenanceCount,
+            reasons: entry.reasons,
+          })),
+        },
+      });
+    }
+    const roomReaderOpportunity = resolveRoomReaderOpportunity({
+      prompt: params.prompt,
+      entries: shouldLoadSkillEntries ? skillEntries : undefined,
+      resolvedSkills: params.skillsSnapshot?.resolvedSkills,
+      matchedSkills: matchedSkillCandidates,
+    });
+    const roomReaderOpportunityBlock = buildRoomReaderOpportunityPromptBlock(roomReaderOpportunity);
+    params.onAgentEvent?.({
+      stream: "lifecycle",
+      data: {
+        phase: "room_reader_opportunity",
+        mode: roomReaderOpportunity.mode,
+        patterns: roomReaderOpportunity.patterns,
+        recommended: roomReaderOpportunity.recommended,
+        confidence: roomReaderOpportunity.confidence,
+        reasons: roomReaderOpportunity.reasons,
+      },
+    });
     const runtimeChannel = normalizeMessageChannel(params.messageChannel ?? params.messageProvider);
     let runtimeCapabilities = runtimeChannel
       ? (resolveChannelCapabilities({
@@ -865,13 +918,24 @@ export async function runEmbeddedAttempt(
         })
       : undefined;
 
+    // Minimal runs keep the caller's directive + the intent governance hint;
+    // everything else is operator-session scaffolding the blank-slate law bans.
     const extraSystemPromptParts: Array<{ name: string; value: string | undefined }> = [
       { name: "caller-extra-system-prompt", value: params.extraSystemPrompt?.trim() },
       { name: "intent-hint", value: intentPromptHint?.trim() },
       { name: "cross-channel-context", value: crossChannelContextHint },
-      { name: "matched-personal-skills", value: matchedPersonalSkillsContext },
-      { name: "executable-personal-skill", value: executablePersonalSkillBlock },
-      { name: "room-reader-opportunity", value: roomReaderOpportunityBlock },
+      {
+        name: "matched-personal-skills",
+        value: isMinimalPromptRun ? undefined : matchedPersonalSkillsContext,
+      },
+      {
+        name: "executable-personal-skill",
+        value: isMinimalPromptRun ? undefined : executablePersonalSkillBlock,
+      },
+      {
+        name: "room-reader-opportunity",
+        value: isMinimalPromptRun ? undefined : roomReaderOpportunityBlock,
+      },
     ];
     const effectiveExtraSystemPrompt = extraSystemPromptParts
       .map((p) => p.value)
@@ -917,7 +981,10 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "subagent" : "full";
+    const heartbeatPromptForRun =
+      isDefaultAgent && !isMinimalPromptRun
+        ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+        : undefined;
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
     // Opt-in prompt budget audit — gated on ARGENT_PROMPT_BUDGET_LOG=1.
@@ -925,6 +992,14 @@ export async function runEmbeddedAttempt(
     // runs the function but the inner tracker is inert (record() calls no-op).
     const { result: appendPrompt, tracker: promptBudgetTracker } = await runWithPromptBudget(
       async (tracker) => {
+        // Worker Runtime v2 (D1+D2): a compiled role profile replaces the
+        // entire assembled prompt. Built up from the template, never filtered
+        // down from the operator scaffold — so the builder is skipped, not
+        // configured.
+        if (params.systemPromptOverride) {
+          tracker.record("system-prompt-override", params.systemPromptOverride);
+          return params.systemPromptOverride;
+        }
         // Record each extraSystemPrompt contributor BEFORE buildEmbeddedSystemPrompt
         // so the log reflects the actual upstream injectors, not the glued string.
         for (const part of extraSystemPromptParts) {
@@ -935,12 +1010,7 @@ export async function runEmbeddedAttempt(
           (workspaceNotes ?? []).filter((n): n is string => Boolean(n)),
         );
         tracker.record("message-tool-hints", messageToolHints);
-        tracker.record(
-          "heartbeat-prompt-in",
-          isDefaultAgent
-            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-            : undefined,
-        );
+        tracker.record("heartbeat-prompt-in", heartbeatPromptForRun);
         tracker.record("skills-prompt-in", skillsPrompt);
         tracker.record("tts-hint", ttsHint);
         return buildEmbeddedSystemPrompt({
@@ -950,9 +1020,7 @@ export async function runEmbeddedAttempt(
           extraSystemPrompt: effectiveExtraSystemPrompt || undefined,
           ownerNumbers: params.ownerNumbers,
           reasoningTagHint,
-          heartbeatPrompt: isDefaultAgent
-            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-            : undefined,
+          heartbeatPrompt: heartbeatPromptForRun,
           skillsPrompt,
           docsPath: docsPath ?? undefined,
           ttsHint,
@@ -967,7 +1035,7 @@ export async function runEmbeddedAttempt(
           userTimezone,
           userTime,
           userTimeFormat,
-          contextFiles,
+          contextFiles: isMinimalPromptRun ? [] : contextFiles,
           memoryCitationsMode: params.config?.memory?.citations,
           sessionKey: params.sessionKey,
         });
@@ -1034,7 +1102,16 @@ export async function runEmbeddedAttempt(
         });
         log.info(`[argent-runtime] Using ArgentSessionManager for session`);
       } else {
-        sessionManager = guardSessionManager(SessionManager.open(params.sessionFile), {
+        // pi_only still drives the *argent* agent loop (coding.ts aliases
+        // createAgentSession -> createArgentAgentSession), and that loop only
+        // persists to a sessionManager that is `instanceof ArgentSessionManager`
+        // (create-agent-session.ts:1007-1010). A pi SessionManager fails that
+        // check, so turns silently divert to a throwaway file and params.sessionFile
+        // never receives messages. Open the real ArgentSessionManager so prompt()
+        // writes user+assistant to params.sessionFile. guardSessionManager mutates
+        // and returns the same object, so `instanceof` is preserved downstream.
+        const piModeSm = ArgentSessionManager.open(params.sessionFile);
+        sessionManager = guardSessionManager(piModeSm as unknown as SessionManager, {
           agentId: sessionAgentId,
           sessionKey: params.sessionKey,
           allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
@@ -1073,8 +1150,15 @@ export async function runEmbeddedAttempt(
         });
       }
 
+      // WR2 P4 "D9" — SIMULATE mode: wrap write-capable tools so their calls are
+      // recorded as `proposed_action` rather than executed. Passthrough otherwise.
+      const proposedActions: ProposedAction[] = [];
+      const effectiveTools = params.simulateWrites
+        ? tools.map((t) => wrapToolForSimulate(t, proposedActions))
+        : tools;
+
       const { builtInTools, customTools } = splitSdkTools({
-        tools,
+        tools: effectiveTools,
         sandboxEnabled: !!sandbox?.enabled,
       });
 
@@ -1105,9 +1189,11 @@ export async function runEmbeddedAttempt(
           model: params.model,
           config: params.config,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          tools: tools,
+          tools: effectiveTools,
         }));
-        log.info(`[argent-runtime] Using createArgentAgentSession (tools=${tools.length})`);
+        log.info(
+          `[argent-runtime] Using createArgentAgentSession (tools=${effectiveTools.length})`,
+        );
       } else {
         ({ session } = await createAgentSession({
           cwd: resolvedWorkspace,
@@ -1147,9 +1233,14 @@ export async function runEmbeddedAttempt(
         sessionClearedReason: sessionBootstrapSnapshot?.sessionClearedReason,
         fallbackChannel: runtimeChannel ?? undefined,
       });
-      const effectiveSystemPromptText = [systemPromptText, sessionBootstrapHint]
-        .filter((entry): entry is string => Boolean(entry))
-        .join("\n\n");
+      // Profile-override runs ship the override verbatim: the bootstrap hint
+      // carries operator-session state (last session key, cleared-from), which
+      // the blank-slate law bans from worker transcripts.
+      const effectiveSystemPromptText = params.systemPromptOverride
+        ? systemPromptText
+        : [systemPromptText, sessionBootstrapHint]
+            .filter((entry): entry is string => Boolean(entry))
+            .join("\n\n");
       applySystemPromptOverrideToSession(activeSession, effectiveSystemPromptText);
       const cacheTrace = createCacheTrace({
         cfg: params.config,
@@ -1228,7 +1319,10 @@ export async function runEmbeddedAttempt(
           );
           activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
         }
-      } else if (runtimePolicy.argentRuntimeEnabled) {
+      } else if (
+        runtimePolicy.argentRuntimeEnabled ||
+        requiresArgentProviderForNativeTools(params.provider)
+      ) {
         try {
           const argentProvider = await resolveArgentProvider(
             params.provider,
@@ -1236,9 +1330,25 @@ export async function runEmbeddedAttempt(
             providerApiKey,
           );
           if (argentProvider) {
-            activeSession.agent.streamFn = createArgentStreamSimple(argentProvider);
-            log.info(`[argent-runtime] Using Argent provider for ${params.provider}`);
-          } else {
+            const argentStream = createArgentStreamSimple(argentProvider);
+            // Pi's agent loop carries our tools as customTools (rendered as
+            // prompt text) and leaves context.tools empty, so the provider
+            // request would declare NO native tools (#442). Merge the
+            // policy-filtered toolset into the stream context; execution
+            // still flows back through pi's loop by tool name.
+            const nativeStreamTools = tools;
+            activeSession.agent.streamFn = (model, context, options) => {
+              const ctx = context as { tools?: unknown[] };
+              const merged =
+                ctx.tools && ctx.tools.length > 0
+                  ? context
+                  : ({ ...context, tools: nativeStreamTools } as typeof context);
+              return argentStream(model, merged, options);
+            };
+            log.info(
+              `[argent-runtime] Using Argent provider for ${params.provider} (native tools=${nativeStreamTools.length})`,
+            );
+          } else if (runtimePolicy.argentRuntimeEnabled) {
             applyPiStreamFallbackPolicy(
               runtimePolicy.mode,
               resolveArgentProviderFallbackReason(params.provider) ??
@@ -1250,19 +1360,36 @@ export async function runEmbeddedAttempt(
                 );
               },
             );
+          } else {
+            activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+              streamSimple,
+              providerApiKey,
+            );
           }
         } catch (err) {
-          applyPiStreamFallbackPolicy(
-            runtimePolicy.mode,
-            `Failed to create Argent provider for "${params.provider}"`,
-            () => {
-              activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
-                streamSimple,
-                providerApiKey,
-              );
-            },
-            err,
-          );
+          if (runtimePolicy.argentRuntimeEnabled) {
+            applyPiStreamFallbackPolicy(
+              runtimePolicy.mode,
+              `Failed to create Argent provider for "${params.provider}"`,
+              () => {
+                activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+                  streamSimple,
+                  providerApiKey,
+                );
+              },
+              err,
+            );
+          } else {
+            // pi_only + local native-tools provider: pi IS the configured
+            // default, so fall back to it directly (no fallback-policy assert).
+            log.warn(
+              `[argent-runtime] native-tools provider failed for "${params.provider}"; using Pi stream`,
+            );
+            activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+              streamSimple,
+              providerApiKey,
+            );
+          }
         }
       } else {
         activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
@@ -1858,6 +1985,7 @@ export async function runEmbeddedAttempt(
         assistantTexts,
         toolMetas: toolMetasNormalized,
         taskMutationEvidence: getTaskMutationEvidence(),
+        proposedActions,
         lastAssistant,
         lastToolError: getLastToolError?.(),
         didSendViaMessagingTool: didSendViaMessaging,

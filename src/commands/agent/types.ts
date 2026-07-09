@@ -73,6 +73,20 @@ export type AgentCommandOpts = {
   priority?: boolean;
   runId?: string;
   extraSystemPrompt?: string;
+  /**
+   * System prompt assembly mode for the embedded run. The execution worker
+   * passes "minimal" so worker turns ship the blank-slate scaffold
+   * (#407/#442). Omitted → normal resolution (subagent key or full).
+   */
+  promptMode?: "full" | "subagent" | "minimal" | "none";
+  /**
+   * Full replacement for the assembled system prompt (Worker Runtime v2 role
+   * profiles, design D1+D2). When set, the embedded run ships exactly this
+   * text as the system prompt — no operator scaffold, no bootstrap hint, no
+   * appended sections. Pass promptMode "minimal" alongside so per-run context
+   * loading (skills, cross-channel, context files) is skipped too.
+   */
+  systemPromptOverride?: string;
   /** Explicit provider override for this run, bypassing session-stored model routing state. */
   providerOverride?: string;
   /** Explicit model override for this run, bypassing session-stored model routing state. */
@@ -87,4 +101,11 @@ export type AgentCommandOpts = {
    * When provided (even empty), overrides agent/global model fallbacks.
    */
   modelFallbacksOverride?: string[];
+  /**
+   * WR2 P4 "D9" — SIMULATE mode. When true, write-capable tool calls do NOT
+   * execute; each is recorded as a `proposed_action` on the run record and the
+   * worker gets a benign "recorded (simulated)" result. The operator reviews the
+   * proposals; nothing external is touched.
+   */
+  simulateWrites?: boolean;
 };

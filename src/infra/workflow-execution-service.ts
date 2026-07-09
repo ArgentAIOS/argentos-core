@@ -513,6 +513,12 @@ export async function buildWorkflowRetryFromStepResumeOptions(params: {
   };
 }
 
+// Upper bound on how long executeWorkflowRunFromRow waits for in-flight approval
+// notifications to drain before returning. The drain (see below) keeps opts.sql
+// alive until markWorkflowApprovalNotified runs; this cap ensures a wedged
+// Telegram send can never hang the run handler (and, for cron, its sql.end()).
+const APPROVAL_NOTIFY_DRAIN_TIMEOUT_MS = 20_000;
+
 export async function executeWorkflowRunFromRow(opts: {
   sql: Sql;
   workflowRow: WorkflowRow;
@@ -550,6 +556,14 @@ export async function executeWorkflowRunFromRow(opts: {
     /* Redis optional */
   }
 
+  // Approval notifications are dispatched fire-and-forget from the
+  // onApprovalRequested callback below. Collect their promises so we can drain
+  // them before returning — the cron runner closes its SQL connection the
+  // instant this function returns (cron/service/timer.ts), which otherwise
+  // abandons notifyWorkflowApprovalRequest + markWorkflowApprovalNotified and
+  // leaves the operator with no inline-button approval message.
+  const pendingApprovalNotifications: Promise<void>[] = [];
+
   await executeWorkflow({
     workflow,
     runId: opts.runId,
@@ -573,7 +587,7 @@ export async function executeWorkflowRunFromRow(opts: {
     },
     onApprovalRequested: (nodeId, request) => {
       const node = workflow.nodes.find((candidate) => candidate.id === nodeId);
-      void (async () => {
+      const approvalWork = (async () => {
         try {
           const row = await upsertDurableWorkflowApproval(opts.sql, {
             workflow,
@@ -651,6 +665,7 @@ export async function executeWorkflowRunFromRow(opts: {
           });
         }
       })();
+      pendingApprovalNotifications.push(approvalWork);
     },
     onStepStart: (nodeId, node) => {
       opts.broadcast?.("workflow.step.started", {
@@ -700,6 +715,23 @@ export async function executeWorkflowRunFromRow(opts: {
       error: message,
     });
   });
+
+  // Drain any in-flight approval notifications before returning so the caller
+  // that owns opts.sql can't close the connection out from under
+  // markWorkflowApprovalNotified. Bounded by APPROVAL_NOTIFY_DRAIN_TIMEOUT_MS so
+  // a wedged Telegram send never hangs the run handler (or cron's sql.end()).
+  if (pendingApprovalNotifications.length > 0) {
+    let drainTimer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled(pendingApprovalNotifications),
+      new Promise<void>((resolve) => {
+        drainTimer = setTimeout(resolve, APPROVAL_NOTIFY_DRAIN_TIMEOUT_MS);
+      }),
+    ]);
+    if (drainTimer) {
+      clearTimeout(drainTimer);
+    }
+  }
 }
 
 export async function resumeWorkflowRunAfterApproval(opts: {
@@ -793,6 +825,49 @@ export async function resumeWorkflowRunAfterApproval(opts: {
     outboundDeps: opts.outboundDeps,
     resume,
   });
+}
+
+// The single deny path for durable (cron / post-restart) approvals. Every
+// deny surface (gateway workflows.deny, Telegram inline button, Telegram text
+// reply, approval-timeout sweep) must land here — resumeWorkflowRunAfterApproval
+// unconditionally re-executes the pipeline as approved, so routing a denial
+// through it silently runs the gated side effect.
+export async function denyWorkflowRunAfterApproval(opts: {
+  sql: Sql;
+  runId: string;
+  nodeId: string;
+  reason?: string;
+  broadcast?: WorkflowBroadcast;
+}): Promise<{ denied: boolean; reason: string; workflowId?: string }> {
+  const reason = opts.reason ?? "Denied by operator";
+  const [runRow] = await opts.sql`
+    UPDATE workflow_runs SET status = 'failed', current_node_id = NULL,
+      error = ${reason},
+      ended_at = NOW()
+    WHERE id = ${opts.runId}
+      AND status = 'waiting_approval'
+    RETURNING workflow_id
+  `;
+  await opts.sql`
+    UPDATE workflow_step_runs SET
+      approval_status = 'denied',
+      approval_note = ${reason},
+      ended_at = NOW(),
+      status = 'failed'
+    WHERE run_id = ${opts.runId}
+      AND node_id = ${opts.nodeId}
+      AND approval_status = 'pending'
+  `;
+  const workflowId = runRow?.workflow_id ? String(runRow.workflow_id) : undefined;
+  if (runRow) {
+    opts.broadcast?.("workflow.run.completed", {
+      runId: opts.runId,
+      workflowId,
+      status: "failed",
+      error: reason,
+    });
+  }
+  return { denied: Boolean(runRow), reason, workflowId };
 }
 
 export async function resumeWorkflowRunAfterWait(opts: {
@@ -1327,6 +1402,128 @@ export async function resumeDueWorkflowWaits(opts: {
       resumed++;
     } catch (err) {
       errors.push(`run=${row.run_id} node=${row.current_node_id}: ${String(err)}`);
+    }
+  }
+
+  // Third sweep: expired durable approvals. The in-process setTimeout that
+  // enforces approval timeouts only exists for non-durable runs; every
+  // gateway/cron run pauses durably, so without this sweep the advertised
+  // "auto-deny at <time>" never fires and approvals pile up as pending
+  // forever (observed live: 70 pending, 61 past timeout_at, 0 ever timed out).
+  const approvalRows = await opts.sql`
+    SELECT a.id, a.run_id, a.node_id, a.timeout_action
+    FROM workflow_approvals a
+    JOIN workflow_runs r ON r.id = a.run_id
+    WHERE a.status = 'pending'
+      AND a.timeout_at IS NOT NULL
+      AND a.timeout_at <= ${now.toISOString()}::timestamptz
+      AND r.status = 'waiting_approval'
+    ORDER BY a.timeout_at ASC
+    LIMIT ${limit}
+  `;
+
+  for (const row of approvalRows as Array<{
+    id?: string;
+    run_id?: string;
+    node_id?: string;
+    timeout_action?: string;
+  }>) {
+    if (!row.id || !row.run_id || !row.node_id) {
+      continue;
+    }
+    // Fail closed on timeout, ALWAYS. timeout_action='approve' is
+    // workflow-author-controlled (agents author workflows via the gateway),
+    // so honoring it here would let an unattended timer execute gated side
+    // effects with zero operator involvement — and it would re-run entire
+    // pipelines inside the locked cron tick. Auto-approve stays unarmed
+    // until it is gated on explicit operator sign-off; no live approval row
+    // uses it today (verified 2026-07-02).
+    const note =
+      row.timeout_action === "approve"
+        ? "Approval timed out — timeoutAction 'approve' is not armed; denied fail-closed"
+        : "Approval timed out — auto-denied";
+    try {
+      // Atomic claim: only the sweep instance that flips pending → timed_out
+      // acts on the run, so concurrent sweeps (or a racing operator tap) can't
+      // double-resolve.
+      const [claimed] = await opts.sql`
+        UPDATE workflow_approvals SET
+          status = 'timed_out',
+          resolved_at = NOW(),
+          resolved_by = 'system:approval_timeout',
+          resolution_note = ${note}
+        WHERE id = ${row.id}
+          AND status = 'pending'
+        RETURNING id
+      `;
+      if (!claimed) {
+        continue;
+      }
+      try {
+        await denyWorkflowRunAfterApproval({
+          sql: opts.sql,
+          runId: row.run_id,
+          nodeId: row.node_id,
+          reason: note,
+          broadcast: opts.broadcast,
+        });
+      } catch (denyErr) {
+        // Compensate: un-claim so the next sweep retries. Without this the
+        // approval is terminal while the run is still waiting_approval —
+        // unreachable by every approve/deny surface.
+        await opts.sql`
+          UPDATE workflow_approvals SET
+            status = 'pending',
+            resolved_at = NULL,
+            resolved_by = NULL,
+            resolution_note = NULL
+          WHERE id = ${row.id}
+            AND status = 'timed_out'
+        `;
+        throw denyErr;
+      }
+      opts.broadcast?.("workflow.approval.resolved", {
+        approvalId: row.id,
+        runId: row.run_id,
+        nodeId: row.node_id,
+        approved: false,
+        timedOut: true,
+      });
+      failed++;
+    } catch (err) {
+      errors.push(`approval=${row.id} run=${row.run_id}: ${String(err)}`);
+    }
+  }
+
+  // Orphan sweep: approvals still 'pending' whose run already reached a
+  // terminal state (operator cancel, failWorkflowRun, …) can never be acted
+  // on, but they pollute listPendingWorkflowApprovals — the Telegram text
+  // surface lists them forever and a bare "approve"/"deny" turns ambiguous.
+  const orphanRows = await opts.sql`
+    SELECT a.id, a.run_id
+    FROM workflow_approvals a
+    JOIN workflow_runs r ON r.id = a.run_id
+    WHERE a.status = 'pending'
+      AND r.status IN ('cancelled', 'failed', 'completed')
+    ORDER BY a.requested_at ASC
+    LIMIT ${limit}
+  `;
+  for (const row of orphanRows as Array<{ id?: string; run_id?: string }>) {
+    if (!row.id) {
+      continue;
+    }
+    try {
+      await opts.sql`
+        UPDATE workflow_approvals SET
+          status = 'cancelled',
+          resolved_at = NOW(),
+          resolved_by = 'system:orphan_sweep',
+          resolution_note = 'Run left waiting_approval without resolving this approval'
+        WHERE id = ${row.id}
+          AND status = 'pending'
+      `;
+    } catch (err) {
+      errors.push(`orphan approval=${row.id} run=${row.run_id}: ${String(err)}`);
     }
   }
 

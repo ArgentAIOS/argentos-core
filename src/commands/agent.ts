@@ -227,7 +227,11 @@ export async function agentCommand(
       });
     }
 
-    const needsSkillsSnapshot = isNewSession || !sessionEntry?.skillsSnapshot;
+    // Profile-override runs (Worker Runtime v2) ship a fixed system prompt
+    // with no skills section — building and persisting a workspace skill
+    // snapshot per ephemeral session would be pure waste.
+    const needsSkillsSnapshot =
+      !opts.systemPromptOverride && (isNewSession || !sessionEntry?.skillsSnapshot);
     const skillsSnapshotVersion = getSkillsSnapshotVersion(workspaceDir);
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
     const skillsSnapshot = needsSkillsSnapshot
@@ -625,7 +629,10 @@ export async function agentCommand(
             priority: opts.priority,
             abortSignal: opts.abortSignal,
             extraSystemPrompt: opts.extraSystemPrompt,
+            promptMode: opts.promptMode,
+            systemPromptOverride: opts.systemPromptOverride,
             streamParams: opts.streamParams,
+            simulateWrites: opts.simulateWrites,
             agentDir,
             onAgentEvent: (evt) => {
               // Track lifecycle end for fallback emission below.

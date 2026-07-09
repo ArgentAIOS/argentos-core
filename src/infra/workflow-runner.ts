@@ -16,6 +16,7 @@
  */
 
 import type { Redis } from "ioredis";
+import { randomUUID } from "node:crypto";
 import type { ModelTier } from "../models/types.js";
 import type {
   WorkflowDefinition,
@@ -438,7 +439,11 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           errorConfig,
           errorMsg,
         );
-        if (stepResult.items.length === 0 && stepResult.items[0]?.meta?.status === "failed") {
+        // Exhausted retries return errorItemSet (one item, meta.status
+        // "failed"); non-retryable kinds return an empty set. Both are
+        // failures — the old `length === 0 &&` guard was unsatisfiable, so
+        // retry-exhausted steps were recorded as completed.
+        if (stepResult.items.length === 0 || stepResult.items[0]?.meta?.status === "failed") {
           stepStatus = "failed";
         }
       } else {
@@ -1715,23 +1720,44 @@ async function sendWorkflowEmail(
   to: string,
   subject: string,
   body: string,
-  provider = "sendgrid",
+  provider = "resend",
 ): Promise<{ ok: boolean; error?: string; details?: Record<string, unknown> }> {
+  const recipient = to?.trim();
+  if (!recipient) {
+    // Fail loud: an empty actionType.to used to sail through here and get
+    // logged as DELIVERED — an email to nobody marked the run completed.
+    return { ok: false, error: "send_email: no recipient configured (actionType.to is empty)" };
+  }
+  // provider arrives untyped from workflow JSON; an unknown value would fall
+  // through the email tool as "Unknown action" (a detail-less text result)
+  // and read as success — the same silent-delivery class this guards against.
+  const normalizedProvider = provider.trim().toLowerCase();
+  if (!["resend", "mailgun", "sendgrid"].includes(normalizedProvider)) {
+    return { ok: false, error: `send_email: unknown provider "${provider}"` };
+  }
   const [{ loadConfig }, { createEmailDeliveryTool }] = await Promise.all([
     import("../config/config.js"),
     import("../agents/tools/email-delivery-tool.js"),
   ]);
   const cfg = loadConfig();
   const emailTool = createEmailDeliveryTool({ config: cfg });
-  const from = await resolveWorkflowEmailFrom(provider);
+  const from = await resolveWorkflowEmailFrom(normalizedProvider);
   const result = await emailTool.execute(`wf-email-${nodeId}`, {
-    action: `send_${provider}`,
-    to: [to],
+    action: `send_${normalizedProvider}`,
+    to: [recipient],
     from,
     subject,
     html: body,
   });
-  return { ok: true, details: asRecord(result.details) };
+  const details = asRecord(result.details);
+  if (details && details.ok === false) {
+    return {
+      ok: false,
+      error: typeof details.error === "string" ? details.error : "email delivery failed",
+      details,
+    };
+  }
+  return { ok: true, details };
 }
 
 async function createWorkflowTask(
@@ -1855,11 +1881,14 @@ async function executeAction(
       const provider =
         typeof asRecord(actionType).provider === "string"
           ? String(asRecord(actionType).provider)
-          : "sendgrid";
+          : "resend";
       try {
         const result = actions?.sendEmail
           ? await actions.sendEmail(to, subjectRendered, body)
           : await sendWorkflowEmail(node.id, to, subjectRendered, body, provider);
+        if (!result.ok) {
+          throw new Error(result.error ?? "send_email failed");
+        }
         log.info("send_email: DELIVERED", { to, subject: subjectRendered, provider });
         return {
           items: [
@@ -2990,7 +3019,10 @@ async function executeOutput(
     case "email": {
       const subject = resolveTemplate(config.subject, context);
       const body = resolveTemplate(config.bodyTemplate, context);
-      const result = await sendWorkflowEmail(node.id, config.to, subject, body, "sendgrid");
+      const result = await sendWorkflowEmail(node.id, config.to, subject, body, "resend");
+      if (!result.ok) {
+        throw new Error(result.error ?? "email output failed");
+      }
       return {
         items: [
           {
@@ -3412,6 +3444,17 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       const sessionKey = buildWorkflowAgentSessionKey(agentId);
       const timeoutSeconds = Math.ceil(config.timeoutMs / 1000);
 
+      // Seed the session entry with the node's tool grants BEFORE the run so
+      // pi-tools enforces them structurally (same seam as Worker Runtime v2
+      // ephemeral sessions). Until this, toolsAllow was rendered only as
+      // prose in the prompt and workflow agents ran with the full tool set —
+      // which is how the MSP podcast workflow saved new copies of itself.
+      await seedWorkflowSessionToolPolicy({
+        sessionKey,
+        toolsAllow: config.toolsAllow,
+        toolsDeny: config.toolsDeny,
+      });
+
       const result = await agentCommand(
         {
           message: prompt + formatWorkflowAgentDispatchContext(config),
@@ -3555,10 +3598,52 @@ export class CoreAgentDispatcher implements AgentDispatcher {
 }
 
 export function buildWorkflowAgentSessionKey(agentId: string, nowMs = Date.now()): string {
+  // Millisecond timestamps alone collide when parallel branches dispatch
+  // agent nodes in the same tick — colliding keys would cross-contaminate
+  // the seeded per-step tool policy (last writer wins). The random suffix
+  // makes each step's session key unique.
   return buildAgentMainSessionKey({
     agentId,
-    mainKey: `workflow:${nowMs}`,
+    mainKey: `workflow:${nowMs}-${randomUUID().slice(0, 8)}`,
   });
+}
+
+// Writes the workflow node's tool grants onto the (fresh, per-step) session
+// entry so resolveEffectiveToolPolicy picks them up as sessions.toolsAllow /
+// sessions.toolsDeny. Returns false when the node declares no grants (full
+// default policy applies, nothing to seed).
+export async function seedWorkflowSessionToolPolicy(params: {
+  sessionKey: string;
+  toolsAllow?: string[];
+  toolsDeny?: string[];
+  cfg?: import("../config/config.js").ArgentConfig;
+}): Promise<boolean> {
+  const allow = (params.toolsAllow ?? []).map((t) => t.trim()).filter(Boolean);
+  const deny = (params.toolsDeny ?? []).map((t) => t.trim()).filter(Boolean);
+  if (!allow.length && !deny.length) {
+    return false;
+  }
+  const [{ loadConfig }, { resolveStorePath, updateSessionStore }, { resolveDefaultAgentId }] =
+    await Promise.all([
+      import("../config/config.js"),
+      import("../config/sessions.js"),
+      import("../agents/agent-scope.js"),
+    ]);
+  const cfg = params.cfg ?? loadConfig();
+  // Must mirror resolveSessionToolPolicy (pi-tools.policy.ts) exactly so the
+  // entry lands in the same store the policy resolver reads.
+  const agentId = resolveAgentIdFromSessionKey(params.sessionKey) ?? resolveDefaultAgentId(cfg);
+  const storePath = resolveStorePath(cfg.session?.store, { agentId });
+  await updateSessionStore(storePath, (store) => {
+    const existing = store[params.sessionKey];
+    store[params.sessionKey] = {
+      ...(existing ?? { sessionId: randomUUID() }),
+      updatedAt: Date.now(),
+      ...(allow.length ? { toolsAllow: allow } : {}),
+      ...(deny.length ? { toolsDeny: deny } : {}),
+    };
+  });
+  return true;
 }
 
 export function validateWorkflowAgentSessionIdentity(agentId: string, sessionKey: string) {

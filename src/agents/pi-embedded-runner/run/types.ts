@@ -10,7 +10,9 @@ import type { MessagingToolSend } from "../../pi-embedded-messaging.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { AuthStorage, ModelRegistry } from "../../pi-model-discovery.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { PromptMode } from "../../system-prompt.js";
 import type { TaskMutationEvidence } from "../../tool-claim-validation.js";
+import type { ProposedAction } from "../simulate-tool-stub.js";
 import type { ClientToolDefinition } from "./params.js";
 
 export type EmbeddedRunAttemptParams = {
@@ -87,6 +89,22 @@ export type EmbeddedRunAttemptParams = {
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
   extraSystemPrompt?: string;
+  /**
+   * System prompt assembly mode for this run. When omitted, subagent session
+   * keys get "subagent" and everything else gets "full". The execution worker
+   * passes "minimal" so worker turns ship the slim scaffold (no context files,
+   * no personal skills, no cross-channel context) per the blank-slate law
+   * (#407/#442 worker-lane prompt shrink).
+   */
+  promptMode?: PromptMode;
+  /**
+   * Full replacement for the assembled system prompt (Worker Runtime v2 role
+   * profiles). When set, this exact text is the system prompt: the embedded
+   * builder is skipped and the session bootstrap hint is NOT appended —
+   * appending anything would leak operator-session context into a
+   * blank-slate worker run.
+   */
+  systemPromptOverride?: string;
   streamParams?: AgentStreamParams;
   /**
    * Per-tier `reasoningEffort` override resolved by the model router (GH #186).
@@ -100,6 +118,11 @@ export type EmbeddedRunAttemptParams = {
   enforceFinalTag?: boolean;
   /** Whether this is a heartbeat run (for subsystem tool set detection). */
   isHeartbeat?: boolean;
+  /**
+   * WR2 P4 "D9" — SIMULATE mode. When true, write-capable tools are wrapped so
+   * their calls are recorded as `proposed_action` instead of executing.
+   */
+  simulateWrites?: boolean;
 };
 
 export type EmbeddedRunAttemptResult = {
@@ -112,6 +135,11 @@ export type EmbeddedRunAttemptResult = {
   assistantTexts: string[];
   toolMetas: Array<{ toolName: string; meta?: string }>;
   taskMutationEvidence?: TaskMutationEvidence[];
+  /**
+   * WR2 P4 "D9" — write-capable tool calls that were stubbed in SIMULATE mode.
+   * The runner records each as a `proposed_action` run event.
+   */
+  proposedActions?: ProposedAction[];
   lastAssistant: AssistantMessage | undefined;
   lastToolError?: { toolName: string; meta?: string; error?: string };
   didSendViaMessagingTool: boolean;

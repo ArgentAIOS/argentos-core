@@ -13,6 +13,13 @@ vi.mock("./consciousness-kernel-executive.js", () => ({
   runConsciousnessKernelExecutiveCycle: (...args: unknown[]) =>
     runConsciousnessKernelExecutiveCycleMock(...args),
 }));
+// Salience-gate board probe: deterministic in-memory board for all tests.
+const mockTaskList: Array<{ updatedAt: number }> = [];
+vi.mock("../data/storage-factory.js", () => ({
+  getStorageAdapter: async () => ({
+    tasks: { list: async () => [...mockTaskList] },
+  }),
+}));
 import {
   getConsciousnessKernelSnapshot,
   recordConsciousnessKernelConversationTurn,
@@ -56,6 +63,7 @@ describe("consciousness kernel", () => {
     });
     resetConsciousnessKernelStateForTest();
     resetDiagnosticEventsForTest();
+    mockTaskList.length = 0;
   });
 
   afterEach(() => {
@@ -186,11 +194,13 @@ describe("consciousness kernel", () => {
     });
 
     await vi.advanceTimersByTimeAsync(1000);
+    // Salience gate: the resumed tick has no fresh salience (the baseline
+    // cognition is persisted from run A), so it journals a salience-skip.
     expect(getConsciousnessKernelSnapshot()).toMatchObject({
       tickCount: 1,
       totalTickCount: 2,
-      decisionCount: 5,
-      lastDecisionKind: "tick",
+      decisionCount: 6,
+      lastDecisionKind: "salience-skip",
     });
 
     runnerB.stop();
@@ -221,11 +231,13 @@ describe("consciousness kernel", () => {
     });
 
     await vi.advanceTimersByTimeAsync(7000);
+    // Salience gate: the second tick has no fresh salience and journals a
+    // salience-skip instead of running cognition.
     expect(getConsciousnessKernelSnapshot()).toMatchObject({
       tickCount: 2,
       totalTickCount: 2,
-      decisionCount: 4,
-      lastDecisionKind: "tick",
+      decisionCount: 5,
+      lastDecisionKind: "salience-skip",
     });
 
     runner.stop();
@@ -764,10 +776,18 @@ describe("consciousness kernel", () => {
       rawText: "{}",
     });
 
+    const repeatCfg = makeShadowConfig(1000, "lmstudio/qwen/qwen3.5-35b-a3b");
     const runner = startConsciousnessKernel({
-      cfg: makeShadowConfig(1000, "lmstudio/qwen/qwen3.5-35b-a3b"),
+      cfg: repeatCfg,
     });
 
+    await vi.advanceTimersByTimeAsync(1000);
+    // Salience gate: a second cognition needs fresh salience. Use a task-board
+    // delta (NOT a conversation turn — operator text would change the
+    // reflection thread title and break the identical-signature premise).
+    // The board cache refreshes asynchronously, so the delta is visible one
+    // tick after it lands: tick 2 refreshes the cache, tick 3 reflects.
+    mockTaskList.push({ updatedAt: Date.now() });
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(1000);
 

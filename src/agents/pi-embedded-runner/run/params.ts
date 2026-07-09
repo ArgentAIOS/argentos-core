@@ -6,6 +6,7 @@ import type { enqueueCommand } from "../../../process/command-queue.js";
 import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { PromptMode } from "../../system-prompt.js";
 
 // Simplified tool definition for client-provided tools (OpenResponses hosted tools)
 export type ClientToolDefinition = {
@@ -105,7 +106,16 @@ export type RunEmbeddedPiAgentParams = {
   isHeartbeat?: boolean;
   enqueue?: typeof enqueueCommand;
   extraSystemPrompt?: string;
+  /** System prompt assembly mode (see EmbeddedRunAttemptParams.promptMode). */
+  promptMode?: PromptMode;
+  /** Full system prompt replacement (see EmbeddedRunAttemptParams.systemPromptOverride). */
+  systemPromptOverride?: string;
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
+  /**
+   * WR2 P4 "D9" — SIMULATE mode. When true, write-capable tool calls are stubbed
+   * out (recorded as `proposed_action`, not executed). Forwarded to the attempt.
+   */
+  simulateWrites?: boolean;
 };

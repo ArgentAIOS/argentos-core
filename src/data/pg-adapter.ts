@@ -59,6 +59,8 @@ import type {
 } from "./adapter.js";
 import type { PostgresConfig } from "./storage-config.js";
 import type {
+  GradeEvent,
+  GradeEventInput,
   JobAssignment,
   JobAssignmentCreateInput,
   JobDeploymentStage,
@@ -85,8 +87,10 @@ import type {
   TeamMember,
   TeamWithMembers,
 } from "./types.js";
+import { readRunEventsFromMetadata } from "../infra/run-event-log.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getPgClient, closePgClient, setAgentContext } from "./pg-client.js";
+import { PG_BOOTSTRAP_SCHEMA_SQL } from "./pg/bootstrap-schema.js";
 import * as schema from "./pg/schema.js";
 
 const log = createSubsystemLogger("data/pg-adapter");
@@ -2134,11 +2138,18 @@ class PgTaskAdapter implements TaskAdapter {
     const now = new Date();
     const hasDeps = Array.isArray(input.dependsOn) && input.dependsOn.length > 0;
     const initialStatus: TaskStatus = hasDeps ? "blocked" : "pending";
+    const agentId = input.agentId ?? this.agentId;
+    // tasks.agent_id has an FK to agents(id); a family worker created after
+    // init (or a fresh database) may not have its row yet.
+    await this.db
+      .insert(schema.agents)
+      .values({ id: agentId, name: agentId, status: "active", createdAt: now, updatedAt: now })
+      .onConflictDoNothing();
     const [row] = await this.db
       .insert(schema.tasks)
       .values({
         id,
-        agentId: input.agentId ?? this.agentId,
+        agentId,
         title: input.title,
         description: input.description,
         status: initialStatus,
@@ -2191,12 +2202,23 @@ class PgTaskAdapter implements TaskAdapter {
       }
     }
     if (input.priority !== undefined) updates.priority = input.priority;
+    if (input.attempt !== undefined) updates.attempt = input.attempt;
     if (input.assignee !== undefined) updates.assignee = input.assignee;
     if (input.dueAt !== undefined) updates.dueAt = input.dueAt ? new Date(input.dueAt) : null;
     if (input.dependsOn !== undefined) updates.dependsOn = input.dependsOn;
     if (input.teamId !== undefined) updates.teamId = input.teamId;
     if (input.tags !== undefined) updates.tags = input.tags;
     if (input.metadata !== undefined) updates.metadata = input.metadata;
+    // Terminal statuses end any run that held the task — the lease goes with it.
+    if (
+      input.status === "completed" ||
+      input.status === "failed" ||
+      input.status === "cancelled" ||
+      input.status === "blocked"
+    ) {
+      updates.claimedBy = null;
+      updates.claimTtl = null;
+    }
 
     const [row] = await this.db
       .update(schema.tasks)
@@ -2204,6 +2226,101 @@ class PgTaskAdapter implements TaskAdapter {
       .where(eq(schema.tasks.id, existing.id))
       .returning();
     return this.mapTask(row);
+  }
+
+  // ── Lease protocol (Worker Runtime v2 D4) ───────────────────────────────
+
+  async claim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<Task | null> {
+    const existing = await this.get(id);
+    if (!existing) return null;
+    const now = new Date();
+    const [row] = await this.db
+      .update(schema.tasks)
+      .set({
+        status: "in_progress",
+        claimedBy: opts.claimedBy,
+        claimTtl: new Date(now.getTime() + opts.ttlMs),
+        claimAcquiredAt: now,
+        // Raw-sql params skip the column's Date mapping (postgres-js would
+        // send Date.toString(), which timestamptz rejects) — pass ISO text.
+        startedAt: sql`COALESCE(${schema.tasks.startedAt}, ${now.toISOString()}::timestamptz)`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.tasks.id, existing.id),
+          or(
+            eq(schema.tasks.status, "pending"),
+            and(
+              eq(schema.tasks.status, "in_progress"),
+              or(sql`${schema.tasks.claimedBy} IS NULL`, lte(schema.tasks.claimTtl, now)),
+            ),
+          ),
+        ),
+      )
+      .returning();
+    return row ? this.mapTask(row) : null;
+  }
+
+  async heartbeatClaim(id: string, opts: { claimedBy: string; ttlMs: number }): Promise<boolean> {
+    const existing = await this.get(id);
+    if (!existing) return false;
+    const now = new Date();
+    const rows = await this.db
+      .update(schema.tasks)
+      .set({ claimTtl: new Date(now.getTime() + opts.ttlMs), updatedAt: now })
+      .where(and(eq(schema.tasks.id, existing.id), eq(schema.tasks.claimedBy, opts.claimedBy)))
+      .returning({ id: schema.tasks.id });
+    return rows.length > 0;
+  }
+
+  async releaseClaim(
+    id: string,
+    opts?: { claimedBy?: string; requeue?: boolean; reason?: string },
+  ): Promise<Task | null> {
+    const existing = await this.get(id);
+    if (!existing) return null;
+    if (opts?.claimedBy && existing.claimedBy !== opts.claimedBy) return null;
+    const now = new Date();
+    const updates: Record<string, any> = {
+      claimedBy: null,
+      claimTtl: null,
+      updatedAt: now,
+    };
+    if (opts?.requeue && existing.status === "in_progress") {
+      updates.status = "pending";
+      updates.attempt = sql`COALESCE(${schema.tasks.attempt}, 0) + 1`;
+      if (opts.reason) {
+        updates.metadata = { ...(existing.metadata ?? {}), leaseReleaseReason: opts.reason };
+      }
+    }
+    const [row] = await this.db
+      .update(schema.tasks)
+      .set(updates)
+      .where(eq(schema.tasks.id, existing.id))
+      .returning();
+    return row ? this.mapTask(row) : null;
+  }
+
+  async sweepExpiredClaims(opts?: { now?: number; orphanAll?: boolean }): Promise<Task[]> {
+    const now = new Date(opts?.now ?? Date.now());
+    const expiry = opts?.orphanAll
+      ? sql`${schema.tasks.claimedBy} IS NOT NULL`
+      : and(sql`${schema.tasks.claimedBy} IS NOT NULL`, lte(schema.tasks.claimTtl, now));
+    const reason = opts?.orphanAll ? "orphaned_at_boot" : "lease_expired";
+    const rows = await this.db
+      .update(schema.tasks)
+      .set({
+        status: "pending",
+        claimedBy: null,
+        claimTtl: null,
+        attempt: sql`COALESCE(${schema.tasks.attempt}, 0) + 1`,
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || ${JSON.stringify({ leaseReleaseReason: reason })}::jsonb`,
+        updatedAt: now,
+      })
+      .where(and(eq(schema.tasks.status, "in_progress"), expiry))
+      .returning();
+    return rows.map((r) => this.mapTask(r));
   }
 
   async delete(id: string): Promise<boolean> {
@@ -2347,6 +2464,10 @@ class PgTaskAdapter implements TaskAdapter {
       parentTaskId: row.parentTaskId ?? undefined,
       dependsOn: row.dependsOn ?? [],
       teamId: row.teamId ?? undefined,
+      claimedBy: row.claimedBy ?? undefined,
+      claimTtl: row.claimTtl?.getTime() ?? undefined,
+      claimAcquiredAt: row.claimAcquiredAt?.getTime() ?? undefined,
+      attempt: row.attempt ?? undefined,
       tags: row.tags ?? [],
       metadata: row.metadata ?? {},
     };
@@ -2612,6 +2733,32 @@ class PgJobAdapter implements JobAdapter {
     await this.db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_job_events_unprocessed
       ON job_events(processed_at, created_at);
+    `);
+    await this.db.execute(sql`
+      CREATE TABLE IF NOT EXISTS job_grade_events (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES job_runs(id) ON DELETE CASCADE,
+        assignment_id TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        component TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        feedback TEXT,
+        grader TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_job_grade_events_template
+      ON job_grade_events(template_id, created_at);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_job_grade_events_assignment
+      ON job_grade_events(assignment_id, created_at);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_job_grade_events_run
+      ON job_grade_events(run_id);
     `);
     await this.db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_assignment_id TEXT;`);
     await this.db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS job_template_id TEXT;`);
@@ -3079,6 +3226,100 @@ class PgJobAdapter implements JobAdapter {
     return rows.map((row) => this.mapRun(row));
   }
 
+  async recordGrades(inputs: GradeEventInput[]): Promise<GradeEvent[]> {
+    if (inputs.length === 0) {
+      return [];
+    }
+    const runIds = Array.from(new Set(inputs.map((g) => g.runId)));
+    const runRows = await this.db
+      .select({
+        id: schema.jobRuns.id,
+        assignmentId: schema.jobRuns.assignmentId,
+        templateId: schema.jobRuns.templateId,
+      })
+      .from(schema.jobRuns)
+      .where(inArray(schema.jobRuns.id, runIds));
+    const runById = new Map(runRows.map((r) => [r.id, r]));
+    for (const runId of runIds) {
+      if (!runById.has(runId)) {
+        throw new Error(`grade rejected: job run "${runId}" not found`);
+      }
+    }
+    // Per-row +1ms offsets keep the persisted order equal to the batch order:
+    // the gate's sustain math walks (created_at, id) prefixes, and a shared
+    // timestamp with random-UUID tiebreak would make a mixed-verdict batch's
+    // "dip below the bar" depend on insert-order randomness.
+    const baseMs = Date.now();
+    const rows = await this.db
+      .insert(schema.jobGradeEvents)
+      .values(
+        inputs.map((g, index) => {
+          const run = runById.get(g.runId);
+          if (!run) throw new Error(`grade rejected: job run "${g.runId}" not found`);
+          return {
+            id: genId(),
+            runId: g.runId,
+            assignmentId: run.assignmentId,
+            templateId: run.templateId,
+            component: g.component,
+            verdict: g.verdict,
+            feedback: g.feedback ?? null,
+            grader: g.grader,
+            metadata: g.metadata ?? {},
+            createdAt: new Date(baseMs + index),
+          };
+        }),
+      )
+      .returning();
+    return rows.map((row) => this.mapGradeEvent(row));
+  }
+
+  async listGrades(filter?: {
+    runId?: string;
+    templateId?: string;
+    assignmentId?: string;
+    component?: string;
+    limit?: number;
+  }): Promise<GradeEvent[]> {
+    const conditions = [];
+    if (filter?.runId) conditions.push(eq(schema.jobGradeEvents.runId, filter.runId));
+    if (filter?.templateId)
+      conditions.push(eq(schema.jobGradeEvents.templateId, filter.templateId));
+    if (filter?.assignmentId)
+      conditions.push(eq(schema.jobGradeEvents.assignmentId, filter.assignmentId));
+    if (filter?.component) conditions.push(eq(schema.jobGradeEvents.component, filter.component));
+    const query = this.db
+      .select()
+      .from(schema.jobGradeEvents)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      // Ascending: gate math walks grades in the order they were recorded.
+      .orderBy(asc(schema.jobGradeEvents.createdAt), asc(schema.jobGradeEvents.id));
+    // No default limit: the promotion gate's sustain math needs the FULL
+    // ordered history — an oldest-N window would freeze the gate on stale
+    // grades (and a frozen-passing window reads "eligible" forever). Callers
+    // that want a page pass an explicit limit.
+    const rows =
+      Number.isFinite(filter?.limit) && (filter?.limit ?? 0) > 0
+        ? await query.limit(Math.floor(filter?.limit ?? 0))
+        : await query;
+    return rows.map((row) => this.mapGradeEvent(row));
+  }
+
+  private mapGradeEvent(row: typeof schema.jobGradeEvents.$inferSelect): GradeEvent {
+    return {
+      id: row.id,
+      runId: row.runId,
+      assignmentId: row.assignmentId,
+      templateId: row.templateId,
+      component: row.component,
+      verdict: row.verdict,
+      feedback: row.feedback ?? undefined,
+      grader: row.grader,
+      createdAt: row.createdAt.getTime(),
+      metadata: (row.metadata as Record<string, unknown>) ?? undefined,
+    };
+  }
+
   async resolveSessionToolPolicyForAssignment(params: {
     assignment: JobAssignment;
     template: JobTemplate;
@@ -3364,6 +3605,7 @@ class PgJobAdapter implements JobAdapter {
       status: normalizeJobRunStatus(row.status),
       summary: row.summary ?? undefined,
       blockers: row.blockers ?? undefined,
+      events: readRunEventsFromMetadata(row.metadata as Record<string, unknown> | null),
       metadata: (row.metadata as Record<string, unknown>) ?? undefined,
       createdAt: row.createdAt?.getTime() ?? Date.now(),
       startedAt: row.startedAt?.getTime() ?? Date.now(),
@@ -3394,6 +3636,7 @@ export class PgAdapter implements StorageAdapter {
   public tasks: TaskAdapter;
   public teams: TeamAdapter;
   public jobs: JobAdapter;
+  private agentId: string;
   private _ready = false;
   private sqlClient: ReturnType<typeof postgres>;
   private db: PostgresJsDatabase<typeof schema>;
@@ -3410,12 +3653,54 @@ export class PgAdapter implements StorageAdapter {
     this.jobs = this.jobAdapter;
   }
 
+  /**
+   * Fresh-database bootstrap: when the core tables don't exist at all (a
+   * brand-new install's database), apply the full generated schema so the
+   * gateway can self-provision without a hand-run drizzle-kit push. Existing
+   * databases skip this entirely and rely on the idempotent ensures below.
+   */
+  private async bootstrapFreshDatabase(): Promise<void> {
+    const [row] = await this.sqlClient<{ tasks: string | null; agents: string | null }[]>`
+      SELECT to_regclass('public.tasks')::text AS tasks,
+             to_regclass('public.agents')::text AS agents
+    `;
+    if (row?.tasks || row?.agents) {
+      return;
+    }
+    log.info("pg adapter: fresh database detected — applying bootstrap schema");
+    await this.sqlClient.unsafe(PG_BOOTSTRAP_SCHEMA_SQL);
+    log.info("pg adapter: bootstrap schema applied");
+  }
+
+  /**
+   * The tasks table has an FK to agents(id); on a fresh database nothing has
+   * created the configured agent's row yet, so the first orchestrator task
+   * insert dies on the constraint. Seed idempotently at init.
+   */
+  private async seedAgentRows(): Promise<void> {
+    const now = new Date();
+    const ids = [...new Set([this.agentId, "main"])];
+    for (const id of ids) {
+      await this.db
+        .insert(schema.agents)
+        .values({ id, name: id, status: "active", createdAt: now, updatedAt: now })
+        .onConflictDoNothing();
+    }
+  }
+
   private async ensureCoreSchema(): Promise<void> {
     await this.db.execute(sql`
       ALTER TABLE tasks
         ADD COLUMN IF NOT EXISTS session_id TEXT,
         ADD COLUMN IF NOT EXISTS channel_id TEXT,
-        ADD COLUMN IF NOT EXISTS depends_on JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ADD COLUMN IF NOT EXISTS depends_on JSONB NOT NULL DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS claimed_by TEXT,
+        ADD COLUMN IF NOT EXISTS claim_ttl TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS claim_acquired_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 0;
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_tasks_claim_ttl ON tasks(claim_ttl) WHERE claimed_by IS NOT NULL;
     `);
     await this.db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);
@@ -3515,7 +3800,9 @@ export class PgAdapter implements StorageAdapter {
   async init(): Promise<void> {
     // Set RLS agent context for this connection
     await setAgentContext(this.sqlClient, this.agentId);
+    await this.bootstrapFreshDatabase();
     await this.ensureCoreSchema();
+    await this.seedAgentRows();
     await this.jobAdapter.init();
     this._ready = true;
     log.info("pg adapter: initialized", { agentId: this.agentId });

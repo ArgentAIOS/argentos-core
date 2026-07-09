@@ -281,7 +281,10 @@ function resolveSessionToolPolicy(params: {
     return undefined;
   }
   const agentId = resolveAgentIdFromSessionKey(sessionKey) ?? resolveDefaultAgentId(cfg);
-  const storePath = resolveStorePath(cfg.sessionStore, { agentId });
+  // cfg.session.store, NOT cfg.sessionStore — the latter never existed on the
+  // config type, so a configured custom store path was read from the default
+  // location and session tool grants silently failed to apply.
+  const storePath = resolveStorePath(cfg.session?.store, { agentId });
   const store = loadSessionStore(storePath);
   const entry =
     store[sessionKey] ??

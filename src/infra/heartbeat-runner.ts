@@ -77,6 +77,7 @@ import {
   requestHeartbeatNow,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
+import { createIdleSalienceGate, resolveIdleSalienceAnchorHours } from "./idle-salience-gate.js";
 import { deliverOutboundPayloads } from "./outbound/deliver.js";
 import {
   resolveHeartbeatDeliveryTarget,
@@ -93,6 +94,11 @@ type HeartbeatDeps = OutboundSendDeps &
   };
 
 const log = createSubsystemLogger("gateway/heartbeat");
+
+// Idle-salience gate (LIMBIC law 3): interval beats skip deterministically
+// unless something happened since the last salient beat. In-memory state —
+// the first due beat after a restart is the designed baseline admission.
+const heartbeatSalienceGate = createIdleSalienceGate({ subsystem: "heartbeat" });
 let heartbeatsEnabled = true;
 
 export function setHeartbeatsEnabled(enabled: boolean) {
@@ -591,6 +597,28 @@ export async function runHeartbeatOnce(opts: {
   const queueSize = getLaneSize(CommandLane.Main) + getLaneSize(CommandLane.Interactive);
   if (queueSize > 0) {
     return { status: "skipped", reason: "requests-in-flight" };
+  }
+
+  // LIMBIC law 3 (#451 extended to the heartbeat fan-spinner): an INTERVAL
+  // beat spends a full agent turn, so it must point at something that
+  // happened — operator activity, a board delta, or a due anchor.
+  // Externally-triggered beats (exec events, cron wakes, manual) carry
+  // their own salience and bypass the gate.
+  if (opts.reason === "interval" && heartbeat?.salienceGate !== false) {
+    const verdict = heartbeatSalienceGate.evaluate({
+      cfg,
+      agentId,
+      anchorHours: resolveIdleSalienceAnchorHours(heartbeat?.salienceAnchorHours),
+      nowMs: startedAt,
+    });
+    if (!verdict.salient) {
+      emitHeartbeatEvent({
+        status: "skipped",
+        reason: "no-salience",
+        durationMs: Date.now() - startedAt,
+      });
+      return { status: "skipped", reason: "no-salience" };
+    }
   }
 
   // Skip heartbeat if HEARTBEAT.md exists but has no actionable content.

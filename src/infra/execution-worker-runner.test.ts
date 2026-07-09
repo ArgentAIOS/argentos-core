@@ -3,6 +3,7 @@ import type { Task } from "../data/types.js";
 import {
   buildExecutionWorkerStatusHint,
   buildWorkerTaskSnapshot,
+  looksLikeTextualToolCall,
 } from "./execution-worker-runner.js";
 
 function createTask(overrides: Partial<Task> & Pick<Task, "id" | "title" | "status">): Task {
@@ -143,5 +144,23 @@ describe("execution worker status hints", () => {
 
     expect(hint.kind).toBe("waiting");
     expect(hint.summary).toContain("main agent lane");
+  });
+});
+
+describe("looksLikeTextualToolCall (#442)", () => {
+  it("detects the observed local-model pseudo-call dialects", () => {
+    expect(looksLikeTextualToolCall("<|tool_call>call:tasks.search{query}")).toBe(true);
+    expect(looksLikeTextualToolCall('<tool_call>{"name":"tasks"}')).toBe(true);
+    expect(looksLikeTextualToolCall("[ tasks: list, status: open ]")).toBe(true);
+    expect(looksLikeTextualToolCall("[Tool Call: tasks (ID: abc)]")).toBe(true);
+    expect(looksLikeTextualToolCall("I will run call:tasks.list() now")).toBe(true);
+  });
+
+  it("ignores normal prose and summaries", () => {
+    expect(looksLikeTextualToolCall("Triage complete: 6 tickets categorized and routed.")).toBe(
+      false,
+    );
+    expect(looksLikeTextualToolCall("The tasks tool returned 6 open tickets.")).toBe(false);
+    expect(looksLikeTextualToolCall("")).toBe(false);
   });
 });

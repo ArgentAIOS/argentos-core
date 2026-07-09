@@ -360,6 +360,7 @@ export function createArgentCodingTools(options?: {
     ...createArgentTools({
       sandboxBrowserBridgeUrl: sandbox?.browser?.bridgeUrl,
       allowHostBrowserControl: sandbox ? sandbox.browserAllowHostControl : true,
+      runId: options?.runId,
       agentSessionKey: options?.sessionKey,
       agentChannel: resolveGatewayMessageChannel(options?.messageProvider),
       agentAccountId: options?.agentAccountId,
@@ -445,7 +446,19 @@ export function createArgentCodingTools(options?: {
     agentProviderPolicy,
     agentId ? `agents.${agentId}.tools.byProvider.allow` : "agent tools.byProvider.allow",
   );
-  const sessionPolicyExpanded = resolvePolicy(sessionPolicy, "sessions.toolsAllow");
+  // Session grants (workflow steps, ephemeral workers) are containment
+  // boundaries — NEVER strip them fail-open like user config allowlists.
+  // Unknown entries simply match no tool, so a bad grant list yields fewer
+  // tools, not the full set.
+  if (sessionPolicy?.allow?.length) {
+    const sessionResolved = stripPluginOnlyAllowlist(sessionPolicy, pluginGroups, coreToolNames);
+    if (sessionResolved.unknownAllowlist.length > 0) {
+      logWarn(
+        `tools: sessions.toolsAllow contains unknown entries (${sessionResolved.unknownAllowlist.join(", ")}). Enforcing fail-closed; these entries match no tool.`,
+      );
+    }
+  }
+  const sessionPolicyExpanded = expandPolicyWithPluginGroups(sessionPolicy, pluginGroups);
   const groupPolicyExpanded = resolvePolicy(groupPolicy, "group tools.allow");
   const sandboxPolicyExpanded = expandPolicyWithPluginGroups(sandbox?.tools, pluginGroups);
   const subagentPolicyExpanded = expandPolicyWithPluginGroups(subagentPolicy, pluginGroups);

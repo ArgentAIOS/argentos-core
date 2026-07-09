@@ -47,6 +47,35 @@ function resolveRunner() {
   if (pnpm) {
     return { cmd: pnpm, kind: "pnpm" };
   }
+  // Service contexts (LaunchAgent gateway) run with a minimal PATH that
+  // often misses pnpm even though it's installed — check the well-known
+  // homes before giving up ("Control UI build failed: Missing UI runner"
+  // on every gateway restart, 2026-07-02).
+  const home = process.env.HOME ?? "";
+  const candidates = [
+    path.join(path.dirname(process.execPath), "pnpm"),
+    "/opt/homebrew/bin/pnpm",
+    "/usr/local/bin/pnpm",
+    path.join(home, "Library", "pnpm", "pnpm"),
+    path.join(home, ".local", "share", "pnpm", "pnpm"),
+  ];
+  try {
+    const nvmDir = path.join(home, ".nvm", "versions", "node");
+    for (const version of fs.existsSync(nvmDir) ? fs.readdirSync(nvmDir).sort().reverse() : []) {
+      candidates.push(path.join(nvmDir, version, "bin", "pnpm"));
+    }
+  } catch {
+    // ignore
+  }
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return { cmd: candidate, kind: "pnpm" };
+      }
+    } catch {
+      // ignore
+    }
+  }
   return null;
 }
 

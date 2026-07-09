@@ -352,9 +352,12 @@ export async function sanitizeSessionHistory(params: {
     ? sanitizeAntigravityThinkingBlocks(sanitizedImages)
     : sanitizedImages;
   const sanitizedToolCalls = sanitizeToolCallInputs(sanitizedThinking);
-  const repairedTools = policy.repairToolUseResultPairing
-    ? sanitizeToolUseResultPairing(sanitizedToolCalls)
-    : sanitizedToolCalls;
+  // Only synthesize missing toolResults when the policy allows it — openai-responses
+  // sets repairToolUseResultPairing=true but allowSyntheticToolResults=false.
+  const repairedTools =
+    policy.repairToolUseResultPairing && policy.allowSyntheticToolResults
+      ? sanitizeToolUseResultPairing(sanitizedToolCalls)
+      : sanitizedToolCalls;
 
   const isOpenAIResponsesApi =
     params.modelApi === "openai-responses" || params.modelApi === "openai-codex-responses";

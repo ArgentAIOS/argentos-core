@@ -1,7 +1,9 @@
 use crate::contracts::PROTOCOL_VERSION;
 use crate::error::GatewayErrorCode;
-use crate::hub::{PresenceMatch, SharedHub, SharedWriter};
+use crate::hub::{CanaryReceipt, PresenceMatch, SharedHub, SharedWriter};
 use crate::http::{
+    canary_generate_local_proof_payload_json, canary_receipt_json,
+    canary_receipts_status_payload_json, CANARY_RECEIPT_SURFACES,
     agents_list_payload_json, commands_list_payload_json, connectors_catalog_payload_json,
     channels_status_payload_json, connect_success_response, error_response, gateway_health_payload_json, gateway_health_response, gateway_status_response,
     config_get_payload_json, config_schema_payload_json, exec_approvals_get_payload_json,
@@ -1432,6 +1434,91 @@ pub fn serve_websocket_session(
                     send_text_frame(&writer, &error_response(Some(&meta.id), code, "text required"))?;
                 }
             },
+            "rustGateway.canaryReceipts.generateLocalProof" => {
+                if find_param_bool(&message, "confirmLocalOnly") != Some(true) {
+                    send_text_frame(
+                        &writer,
+                        &error_response(
+                            Some(&meta.id),
+                            GatewayErrorCode::InvalidRequest,
+                            "confirmLocalOnly=true is required for local canary receipt proof generation",
+                        ),
+                    )?;
+                } else {
+                    let ts = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|duration| duration.as_millis() as u64)
+                        .unwrap_or(0);
+                    let reason = find_param_json_string(&message, "reason")
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| {
+                            "installed daemon local canary receipt proof".to_string()
+                        });
+                    let proof_run_id = find_param_json_string(&message, "proofRunId")
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| format!("installed-daemon-local-proof-{}", ts));
+                    let mut receipts = Vec::new();
+                    {
+                        let mut hub_state = hub.lock().expect("hub lock should not poison");
+                        for surface in CANARY_RECEIPT_SURFACES {
+                            // Mirrors deriveRustCanaryDuplicateKey over the Node
+                            // local-proof params: idempotencyKey/name/runId per surface.
+                            let key_basis = match surface {
+                                "chat.send" => format!("idem-{}", proof_run_id),
+                                "cron.add" => format!("cron-{}", proof_run_id),
+                                _ => format!("run-{}", proof_run_id),
+                            };
+                            let duplicate_key = format!("{}:{}", surface, key_basis);
+                            for request_kind in ["denied", "duplicate"] {
+                                let receipt_code =
+                                    if hub_state.has_canary_duplicate(surface, &duplicate_key) {
+                                        "RUST_CANARY_DUPLICATE_PREVENTED"
+                                    } else {
+                                        "RUST_CANARY_DENIED"
+                                    };
+                                let receipt = CanaryReceipt {
+                                    surface: surface.to_string(),
+                                    receipt_code: receipt_code.to_string(),
+                                    duplicate_key: duplicate_key.clone(),
+                                    json: canary_receipt_json(
+                                        surface,
+                                        receipt_code,
+                                        &proof_run_id,
+                                        request_kind,
+                                        &duplicate_key,
+                                        ts,
+                                        &reason,
+                                    ),
+                                };
+                                hub_state.append_canary_receipt(receipt.clone());
+                                receipts.push(receipt);
+                            }
+                        }
+                    }
+                    send_text_frame(
+                        &writer,
+                        &ok_response(
+                            &meta.id,
+                            &canary_generate_local_proof_payload_json(&proof_run_id, &receipts),
+                        ),
+                    )?;
+                }
+            }
+            "rustGateway.canaryReceipts.status" => {
+                let limit = find_param_number(&message, "limit")
+                    .map(|value| value.trunc().clamp(1.0, 100.0) as usize)
+                    .unwrap_or(20);
+                let receipts = hub
+                    .lock()
+                    .expect("hub lock should not poison")
+                    .canary_receipts(limit);
+                send_text_frame(
+                    &writer,
+                    &ok_response(&meta.id, &canary_receipts_status_payload_json(&receipts)),
+                )?;
+            }
             _ => {
                 send_text_frame(
                     &writer,
@@ -1593,7 +1680,21 @@ fn merge_presence_payload(
 }
 
 fn escape_json(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ch if (ch as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", ch as u32));
+            }
+            ch => out.push(ch),
+        }
+    }
+    out
 }
 
 fn json_string(value: &str) -> String {
@@ -1608,6 +1709,72 @@ fn find_optional_param_string(body: &str, key: &str) -> Option<String> {
     let tail = &params[start..];
     let end = tail.find('"')?;
     Some(tail[..end].to_string())
+}
+
+fn find_param_bool(body: &str, key: &str) -> Option<bool> {
+    let params_start = body.find("\"params\":")?;
+    let params = &body[params_start..];
+    let needle = format!("\"{}\":", key);
+    let start = params.find(&needle)? + needle.len();
+    let rest = params[start..].trim_start();
+    for (literal, value) in [("true", true), ("false", false)] {
+        if let Some(after) = rest.strip_prefix(literal) {
+            if after.is_empty() || after.starts_with([',', '}', ' ']) {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+// JSON-aware variant of find_optional_param_string for values that get persisted
+// and re-serialized: respects escape sequences instead of truncating at the first
+// '"' byte, and decodes them so re-emission through json_string round-trips.
+fn find_param_json_string(body: &str, key: &str) -> Option<String> {
+    let params_start = body.find("\"params\":")?;
+    let params = &body[params_start..];
+    let needle = format!("\"{}\":\"", key);
+    let start = params.find(&needle)? + needle.len();
+    let mut out = String::new();
+    let mut chars = params[start..].chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                '/' => out.push('/'),
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'b' => out.push('\u{0008}'),
+                'f' => out.push('\u{000c}'),
+                'u' => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    let code = u32::from_str_radix(&hex, 16).ok()?;
+                    out.push(char::from_u32(code).unwrap_or('\u{fffd}'));
+                }
+                _ => return None,
+            },
+            _ => out.push(ch),
+        }
+    }
+    None
+}
+
+// Mirrors Node's Math.min(Math.max(Math.trunc(limit), 1), 100) over any JSON
+// number, including negatives and exponent forms.
+fn find_param_number(body: &str, key: &str) -> Option<f64> {
+    let params_start = body.find("\"params\":")?;
+    let params = &body[params_start..];
+    let needle = format!("\"{}\":", key);
+    let start = params.find(&needle)? + needle.len();
+    let token: String = params[start..]
+        .trim_start()
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.' | 'e' | 'E'))
+        .collect();
+    token.parse().ok()
 }
 
 fn websocket_accept(key: &str) -> String {

@@ -84,6 +84,12 @@ type UpdateRunnerOptions = {
   timeoutMs?: number;
   runCommand?: CommandRunner;
   progress?: UpdateStepProgress;
+  /**
+   * [#416] Override how the gateway service's launch command is read
+   * (LaunchAgent plist / systemd unit). Tests inject this; production uses
+   * resolveGatewayService().readCommand.
+   */
+  readServiceCommand?: () => Promise<{ programArguments: string[] } | null>;
 };
 
 const DEFAULT_TIMEOUT_MS = 20 * 60_000;
@@ -516,6 +522,110 @@ function managerRebuildArgs(manager: "pnpm" | "bun" | "npm") {
   return ["npm", "rebuild"];
 }
 
+/**
+ * [#416] Native-module install scripts (prebuild-install) fetch binaries keyed
+ * to the ABI of the Node RUNNING the package manager — not the Node the
+ * gateway service loads them with. When the shell, Homebrew, and the gateway
+ * plist carry different Node majors, `argent update` lands a better-sqlite3
+ * binary the gateway physically cannot load (aos-lcm NODE_MODULE_VERSION
+ * mismatch on next boot). Resolve the gateway service's pinned Node
+ * (LaunchAgent plist / systemd unit argv[0]) so install/rebuild subprocesses
+ * run under it and post-update verification loads the module with the
+ * runtime that matters. Falls back to the updater's own runtime.
+ */
+async function resolveGatewayNodeRuntime(
+  readServiceCommand?: UpdateRunnerOptions["readServiceCommand"],
+): Promise<{ nodePath: string; binDir: string; source: "service" | "process" }> {
+  const read =
+    readServiceCommand ??
+    (async () => {
+      const { resolveGatewayService } = await import("../daemon/service.js");
+      return resolveGatewayService().readCommand(process.env as Record<string, string | undefined>);
+    });
+  try {
+    const command = await read();
+    const argv0 = command?.programArguments?.[0]?.trim();
+    if (argv0 && /(^|[\\/])node(\.exe)?$/i.test(argv0)) {
+      const stat = await fs.stat(argv0).catch(() => null);
+      if (stat?.isFile()) {
+        return { nodePath: argv0, binDir: path.dirname(argv0), source: "service" };
+      }
+    }
+  } catch {
+    // Service definition unreadable — fall through to the current runtime.
+  }
+  return {
+    nodePath: process.execPath,
+    binDir: path.dirname(process.execPath),
+    source: "process",
+  };
+}
+
+/** PATH override that resolves `node`/`npm`/`npx` to the gateway's runtime first. */
+function nodeFirstPathEnv(binDir: string): NodeJS.ProcessEnv {
+  return { PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` };
+}
+
+/** The native module every install ships and the gateway must be able to load. */
+const NATIVE_ABI_PROBE_MODULE = "better-sqlite3";
+
+function nativeAbiVerifyArgv(nodePath: string): string[] {
+  return [
+    nodePath,
+    "-e",
+    `require(${JSON.stringify(NATIVE_ABI_PROBE_MODULE)}); process.stdout.write("native-abi-ok")`,
+  ];
+}
+
+function managerForcedRebuildArgs(manager: "pnpm" | "bun" | "npm"): string[] | null {
+  if (manager === "bun") {
+    return null; // bun has no targeted rebuild; verification still reports the mismatch.
+  }
+  if (manager === "pnpm") {
+    return ["pnpm", "rebuild", NATIVE_ABI_PROBE_MODULE];
+  }
+  return ["npm", "rebuild", NATIVE_ABI_PROBE_MODULE, "--build-from-source"];
+}
+
+/**
+ * [#416 acceptance] Post-update failsafe: load the native probe module under
+ * the gateway's Node. On ABI mismatch, force a from-source rebuild with the
+ * gateway's Node first on PATH (prebuild-install is skipped via
+ * npm_config_build_from_source) and verify again. Steps carry explicit names
+ * so the CLI shows exactly which stage failed.
+ */
+async function verifyNativeAbiSteps(params: {
+  makeStep: (name: string, argv: string[], env?: NodeJS.ProcessEnv) => RunStepOptions;
+  manager: "pnpm" | "bun" | "npm";
+  runtime: { nodePath: string; binDir: string; source: string };
+}): Promise<UpdateStepResult[]> {
+  const out: UpdateStepResult[] = [];
+  const verifyArgv = nativeAbiVerifyArgv(params.runtime.nodePath);
+  const verify = await runStep(params.makeStep("verify native ABI (gateway node)", verifyArgv));
+  out.push(verify);
+  if (verify.exitCode === 0) {
+    return out;
+  }
+  const rebuildArgv = managerForcedRebuildArgs(params.manager);
+  if (!rebuildArgv) {
+    return out;
+  }
+  const heal = await runStep(
+    params.makeStep("rebuild native modules from source (gateway node)", rebuildArgv, {
+      ...nodeFirstPathEnv(params.runtime.binDir),
+      npm_config_build_from_source: "true",
+    }),
+  );
+  out.push(heal);
+  // "<name> retry" so isRecoveredStepFailure forgives the original verify
+  // when this one passes (existing recovered-failure convention).
+  const reverify = await runStep(
+    params.makeStep("verify native ABI (gateway node) retry", verifyArgv),
+  );
+  out.push(reverify);
+  return out;
+}
+
 function shouldRepairPnpmInstall(manager: "pnpm" | "bun" | "npm", failedStep: UpdateStepResult) {
   if (manager !== "pnpm" || failedStep.exitCode === 0) {
     return false;
@@ -662,6 +772,11 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
   const pkgRoot = await findPackageRoot(candidates);
 
+  // [#416] All native install/rebuild work runs under the gateway's pinned
+  // Node so prebuild-install fetches the ABI the gateway can actually load.
+  const gatewayRuntime = await resolveGatewayNodeRuntime(opts.readServiceCommand);
+  const gatewayPathEnv = nodeFirstPathEnv(gatewayRuntime.binDir);
+
   let gitRoot = await resolveGitRoot(runCommand, candidates, timeoutMs);
   if (gitRoot && pkgRoot && path.resolve(gitRoot) !== path.resolve(pkgRoot)) {
     gitRoot = null;
@@ -688,7 +803,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     const shouldSyncRuntimeSnapshot =
       runtimeSnapshotRoot != null && path.resolve(runtimeSnapshotRoot) !== path.resolve(gitRoot);
     gitTotalSteps =
-      (channel === "dev" ? (needsCheckoutMain ? 12 : 11) : 10) +
+      (channel === "dev" ? (needsCheckoutMain ? 13 : 12) : 11) +
       (shouldSyncRuntimeSnapshot ? 1 : 0);
 
     // #413: dirty-check pathspec excludes regenerated-but-tracked artifacts.
@@ -997,6 +1112,25 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
         };
       }
 
+      // #413 follow-up: the regenerated tracked artifacts are excluded from
+      // the dirty CHECK, but `git rebase` still refuses on unstaged changes —
+      // so every successful build left the next update permanently stuck on
+      // "rebase-failed". Restore them (committed versions are the sanctioned
+      // fallbacks; the build step rewrites them right after) like we already
+      // do for pnpm-lock.yaml.
+      await runCommand(
+        [
+          "git",
+          "-C",
+          gitRoot,
+          "checkout",
+          "--",
+          "dist/control-ui/",
+          "dashboard/provider-catalog/index.cjs",
+          "dashboard/src/lib/_generated/",
+        ],
+        { cwd: gitRoot, timeoutMs },
+      ).catch(() => null);
       const rebaseStep = await runStep(
         step("git rebase", ["git", "-C", gitRoot, "rebase", selectedSha], gitRoot),
       );
@@ -1097,7 +1231,8 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     const manager = await detectPackageManager(gitRoot);
 
     const depsStep = await runStep(
-      step("deps install", managerInstallArgs(manager, true), gitRoot),
+      // [#416] gateway-node-first PATH so install scripts fetch the right ABI.
+      step("deps install", managerInstallArgs(manager, true), gitRoot, gatewayPathEnv),
     );
     steps.push(depsStep);
 
@@ -1117,9 +1252,23 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     // surface the specific load error if it actually matters.
     const rebuildArgs = managerRebuildArgs(manager);
     if (rebuildArgs) {
-      const rebuildStep = await runStep(step("rebuild native modules", rebuildArgs, gitRoot));
+      const rebuildStep = await runStep(
+        // [#416] gateway-node-first PATH: prebuild-install keys the download
+        // to the Node ABI of the process running it.
+        step("rebuild native modules", rebuildArgs, gitRoot, gatewayPathEnv),
+      );
       steps.push(rebuildStep);
     }
+
+    // [#416] Failsafe: prove the gateway's Node can load the native module;
+    // force a from-source rebuild and re-verify if it can't.
+    steps.push(
+      ...(await verifyNativeAbiSteps({
+        makeStep: (name, argv, env) => step(name, argv, gitRoot, env),
+        manager,
+        runtime: gatewayRuntime,
+      })),
+    );
 
     const buildStep = await runStep(step("build", managerScriptArgs(manager, "build"), gitRoot));
     steps.push(buildStep);
@@ -1244,23 +1393,51 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     const channel = opts.channel ?? DEFAULT_PACKAGE_CHANNEL;
     const tag = normalizeTag(opts.tag ?? channelToNpmTag(channel));
     const spec = `${packageName}@${tag}`;
+    const globalTotalSteps = 2;
     const updateStep = await runStep({
       runCommand,
       name: "global update",
       argv: globalInstallArgs(globalManager, spec),
       cwd: pkgRoot,
       timeoutMs,
+      // [#416] gateway-node-first PATH: the global manager runs every
+      // dependency's install script (prebuild-install) under whichever Node
+      // it resolves — make that the gateway's pinned Node, not Homebrew's.
+      env: gatewayPathEnv,
       progress,
       stepIndex: 0,
-      totalSteps: 1,
+      totalSteps: globalTotalSteps,
     });
     const packageSteps = [updateStep];
+    // [#416] Failsafe: prove the gateway's Node can load the native module;
+    // force a from-source rebuild and re-verify if it can't.
+    let globalStepIndex = 1;
+    packageSteps.push(
+      ...(await verifyNativeAbiSteps({
+        makeStep: (name, argv, env) => ({
+          runCommand,
+          name,
+          argv,
+          cwd: pkgRoot,
+          timeoutMs,
+          env,
+          progress,
+          stepIndex: globalStepIndex++,
+          totalSteps: globalTotalSteps,
+        }),
+        manager: globalManager,
+        runtime: gatewayRuntime,
+      })),
+    );
+    const failedStep = packageSteps.find(
+      (item) => item.exitCode !== 0 && !isRecoveredStepFailure(item, packageSteps),
+    );
     const afterVersion = await readPackageVersion(pkgRoot);
     return {
-      status: updateStep.exitCode === 0 ? "ok" : "error",
+      status: failedStep ? "error" : "ok",
       mode: globalManager,
       root: pkgRoot,
-      reason: updateStep.exitCode === 0 ? undefined : updateStep.name,
+      reason: failedStep?.name,
       before: { version: beforeVersion },
       after: { version: afterVersion },
       steps: packageSteps,

@@ -34,7 +34,6 @@ function inlineExportAllPlugin(): Plugin {
       sequential: true,
       order: "post",
       async handler(options) {
-        const fs = await import("node:fs");
         const path = await import("node:path");
         const outDir = options.dir || "dist";
 
@@ -111,6 +110,8 @@ export default defineConfig([
         ["infra/execution-worker-runner", "src/infra/execution-worker-runner.ts"],
         ["infra/exec-approval-forwarder", "src/infra/exec-approval-forwarder.ts"],
         ["infra/service-keys", "src/infra/service-keys.ts"],
+        ["licensing/manager", "src/licensing/manager.ts"],
+        ["licensing/crypto", "src/licensing/crypto.ts"],
         ["connectors/composio/index", "src/connectors/composio/index.ts"],
         ["models/builtin-profiles", "src/models/builtin-profiles.ts"],
       ].filter(([, file]) => fs.existsSync(file)),

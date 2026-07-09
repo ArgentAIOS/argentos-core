@@ -699,6 +699,12 @@ export const tasks = pgTable(
     metadata: jsonb("metadata").default({}),
     jobAssignmentId: text("job_assignment_id"),
     jobTemplateId: text("job_template_id"),
+    // Lease protocol (Worker Runtime v2 D4) — ensured additively by
+    // PgAdapter.ensureCoreSchema for existing databases.
+    claimedBy: text("claimed_by"),
+    claimTtl: timestamp("claim_ttl", { withTimezone: true }),
+    claimAcquiredAt: timestamp("claim_acquired_at", { withTimezone: true }),
+    attempt: integer("attempt").default(0),
   },
   (t) => [
     index("idx_tasks_status").on(t.status),
@@ -819,6 +825,30 @@ export const jobEvents = pgTable(
   (t) => [
     uniqueIndex("idx_job_events_idempotency_key").on(t.idempotencyKey),
     index("idx_job_events_unprocessed").on(t.processedAt, t.createdAt),
+  ],
+);
+
+// WR2 D10: append-only grade events (audit trail; no update/delete paths).
+export const jobGradeEvents = pgTable(
+  "job_grade_events",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => jobRuns.id, { onDelete: "cascade" }),
+    assignmentId: text("assignment_id").notNull(),
+    templateId: text("template_id").notNull(),
+    component: text("component").notNull(),
+    verdict: text("verdict").$type<"correct" | "needs_change" | "wrong">().notNull(),
+    feedback: text("feedback"),
+    grader: text("grader").notNull(),
+    metadata: jsonb("metadata").default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_job_grade_events_template").on(t.templateId, t.createdAt),
+    index("idx_job_grade_events_assignment").on(t.assignmentId, t.createdAt),
+    index("idx_job_grade_events_run").on(t.runId),
   ],
 );
 

@@ -2,6 +2,82 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.7.7
+
+### Highlights
+
+- **The AI workforce is real.** Worker Runtime v2 lands end-to-end: blank-slate
+  ephemeral worker sessions with compiled role profiles (#452), a full lease
+  lifecycle — claim/heartbeat/halt with true `runNow` semantics (#453), a
+  `work_report` completion contract that lets a conductor demo COMPLETE on a
+  local gemma model (#450), and a grading store with scorecards and a
+  quantified promotion gate so a worker earns autonomy with evidence, not
+  vibes (#463). The worker wizard mounts straight from the Workforce Board
+  (#440), and local-model workers are viable thanks to native tool-call
+  support with blank-slate prompts (#444, #447).
+- **One source of truth again.** ArgentOS-Business merges back into core —
+  business logic, dashboard surfaces, and runtime live in a single repo and
+  ship together (#435).
+- **Approvals you can trust.** Deny now denies, timeouts actually fire, failed
+  sends fail loud, and `toolsAllow` is enforced end-to-end (#462). Cron
+  approval buttons render and resolve (#457, #459), with a Telegram text-reply
+  fallback when buttons aren't available, and the approval text-command path
+  is refactored to be provably testable (#458).
+- **Rust daemons graduate from experiment to credible.** Fail-closed bearer
+  token auth on both shadow daemons — no token, no start, no route (#470);
+  argentd answers canary receipt methods over WebSocket (#468); and the
+  authority delegation seam is designed and locked after adversarial review
+  (#469).
+- **An idle gateway now burns zero inference.** Deterministic salience gates
+  keep the kernel (#451), heartbeat, contemplation, and closet runners (#454)
+  silent unless something actually changed, and the personal-skill block is
+  off the turn critical path (#436) — idle boxes stay cool and cheap.
+- **Install and update paths harden.** Unattended installs never block on the
+  master-key prompt (#434 closes #429), `argent update` runs native rebuilds
+  under the gateway's own pinned Node and verifies the ABI before restart
+  (#448 closes #416), and a fresh PostgreSQL self-bootstraps its full schema
+  and agent rows at first init (#439).
+- **Security and CI baseline.** All 11 critical Dependabot alerts cleared
+  (vitest, protobufjs, shell-quote, baileys) (#456), and the unit suite is
+  green with a new blocking CI unit-test job so it stays that way (#461).
+
+### Changes
+
+- `feat: merge ArgentOS-Business back into core — one source of truth (distillation merge)` (#435)
+- `feat(worker): Worker Runtime v2 P2 — blank-slate ephemeral sessions + compiled role profiles` (#452)
+- `feat(worker): Worker Runtime v2 P3 — lease lifecycle (claim/heartbeat/halt) + full runNow semantics` (#453)
+- `feat(worker): work_report completion contract — conductor demo COMPLETES on gemma (v2 D5)` (#450)
+- `feat(workforce): WR2 P5 — grading store, scorecards, quantified promotion gate (D10)` (#463)
+- `feat(dashboard): mount the worker wizard from the Workforce Board` (#440)
+- `feat(demo): conductor demo kit + local-provider runtime auth + bootstrap markers` (#441)
+- `feat(argentd): canary receipt methods over ws — status + generateLocalProof` (#468)
+- `perf(kernel): deterministic salience gate — idle gateway burns zero kernel inference (LIMBIC law 3)` (#451)
+- `perf(runners): idle-salience gates for heartbeat + contemplation + closet quick wins (LIMBIC law 3)` (#454)
+- `perf(#405): take the personal-skill block off the turn critical path (writes + reads)` (#436)
+- `refactor(workflows): testable runApprovalTextCommand (proves #2 resolve+resume)` (#458)
+- `test: green the unit suite + add blocking CI unit-test job` (#461)
+- `chore(deps): clear all 11 critical Dependabot alerts (vitest, protobufjs, shell-quote, baileys)` (#456)
+- `docs(rust): authority delegation seam design — locked after adversarial review` (#469)
+
+### Fixes
+
+- `fix(rust): fail-closed token auth on both shadow daemons (delegation seam P1)` (#470)
+- `fix(workflows): approval integrity — deny denies, timeouts fire, sends fail loud, toolsAllow enforced` (#462)
+- `fix(workflows): cron approval buttons + Telegram text-reply fallback` (#457)
+- `fix(telegram): wire sendPayload into extension outbound (approval buttons render)` (#459)
+- `fix(workforce): D9 stubbed calls no longer trip the simulate violation wire` (#467)
+- `fix(worker): textual pseudo-tool-call detection + format correction (#442)` (#444)
+- `fix(worker): native tool calls + blank-slate prompt — local-model workers viable (#442, #407 worker lane, #445 P0)` (#447)
+- `fix(operator): builder tool-name validator, Discord crash guards, pnpm resolver + Rust shadow evidence` (#465)
+- `fix(operator): calendar failure cooldown + workflows.resume replay guard` (#466)
+- `fix(dashboard-api): prefer gateway.auth.token over stale env token (DocPanel 401)` (#460)
+- `fix(compact): resolve the session's agent; sweep deprecated CLI profiles from all agent stores` (#455)
+- `fix(installer): never block unattended installs on the master-key prompt (closes #429)` (#434)
+- `fix(update): run native rebuilds under the gateway's pinned Node + verify ABI (#416)` (#448)
+- `fix(pg): fresh databases self-bootstrap full schema + agent rows at init` (#439)
+- `fix(memu): keep singleton identity slots canonical under noisy queries` (#437)
+- `fix(demo): conductor SOP completes its own job task (tickets read-only)` (#443)
+
 ## 2026.5.6.7
 
 ### Fixes

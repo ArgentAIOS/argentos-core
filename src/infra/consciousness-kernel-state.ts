@@ -48,6 +48,7 @@ export type ConsciousnessKernelWakefulness = "dormant" | "reflective" | "attenti
 export type ConsciousnessKernelDecisionKind =
   | "started"
   | "tick"
+  | "salience-skip"
   | "reflection"
   | "executive-action"
   | "conversation-sync"
@@ -250,6 +251,8 @@ export type ConsciousnessKernelSelfState = {
     activeChannel: string | null;
     lastUpdatedAt: string | null;
     lastUserMessageAt: string | null;
+    /** Operator-originated activity only — background lanes (cron/heartbeat) never write this (anti self-stimulation, LIMBIC ruling 7). */
+    lastOperatorActivityAt: string | null;
     lastUserMessageText: string | null;
     lastAssistantReplyAt: string | null;
     lastAssistantReplyText: string | null;
@@ -266,6 +269,11 @@ export type ConsciousnessKernelSelfState = {
     lastTickAt: string | null;
     lastReflectionSignature: string | null;
     reflectionRepeatCount: number;
+    /** Last tick where deterministic salience admitted cognition (LIMBIC law 3). */
+    lastSalientCognitionAt: string | null;
+    /** Task-board snapshot consumed by the last cognition (delta detection). */
+    lastBoardMaxUpdatedAt: number | null;
+    lastBoardTaskCount: number | null;
   };
   recentDecision: ConsciousnessKernelDecisionSummary | null;
   decisionCount: number;
@@ -401,6 +409,7 @@ export function createConsciousnessKernelSelfState(params: {
       activeChannel: null,
       lastUpdatedAt: null,
       lastUserMessageAt: null,
+      lastOperatorActivityAt: null,
       lastUserMessageText: null,
       lastAssistantReplyAt: null,
       lastAssistantReplyText: null,
@@ -420,6 +429,9 @@ export function createConsciousnessKernelSelfState(params: {
       lastTickAt: null,
       lastReflectionSignature: null,
       reflectionRepeatCount: 0,
+      lastSalientCognitionAt: null,
+      lastBoardMaxUpdatedAt: null,
+      lastBoardTaskCount: null,
     },
     recentDecision: null,
     decisionCount: 0,
@@ -1201,6 +1213,7 @@ export function loadConsciousnessKernelSelfState(
         activeChannel: asString(conversation.activeChannel),
         lastUpdatedAt: asString(conversation.lastUpdatedAt),
         lastUserMessageAt: asString(conversation.lastUserMessageAt),
+        lastOperatorActivityAt: asString(conversation.lastOperatorActivityAt),
         lastUserMessageText: asString(conversation.lastUserMessageText),
         lastAssistantReplyAt: asString(conversation.lastAssistantReplyAt),
         lastAssistantReplyText: asString(conversation.lastAssistantReplyText),
@@ -1247,6 +1260,13 @@ export function loadConsciousnessKernelSelfState(
         lastTickAt: asString(shadow.lastTickAt),
         lastReflectionSignature: asString(shadow.lastReflectionSignature),
         reflectionRepeatCount: Math.max(0, Math.floor(asNumber(shadow.reflectionRepeatCount, 0))),
+        lastSalientCognitionAt: asString(shadow.lastSalientCognitionAt),
+        lastBoardMaxUpdatedAt: Number.isFinite(asNumber(shadow.lastBoardMaxUpdatedAt, Number.NaN))
+          ? asNumber(shadow.lastBoardMaxUpdatedAt, 0)
+          : null,
+        lastBoardTaskCount: Number.isFinite(asNumber(shadow.lastBoardTaskCount, Number.NaN))
+          ? Math.max(0, Math.floor(asNumber(shadow.lastBoardTaskCount, 0)))
+          : null,
       },
       recentDecision: recentDecision
         ? {

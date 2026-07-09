@@ -1098,6 +1098,8 @@ export async function runEmbeddedPiAgent(
             onToolResult: params.onToolResult,
             onAgentEvent: params.onAgentEvent,
             extraSystemPrompt: effectiveExtraSystemPrompt,
+            promptMode: params.promptMode,
+            systemPromptOverride: params.systemPromptOverride,
             streamParams: params.streamParams,
             // GH #186: per-tier reasoningEffort wins over model-level
             // extraParams.reasoningEffort; absent → no override.
@@ -1105,6 +1107,7 @@ export async function runEmbeddedPiAgent(
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
             isHeartbeat: params.isHeartbeat,
+            simulateWrites: params.simulateWrites,
           });
 
           const { aborted, promptError, timedOut, sessionIdUsed, lastAssistant } = attempt;
@@ -1118,6 +1121,12 @@ export async function runEmbeddedPiAgent(
                 continue;
               }
               const kind = isCompactionFailure ? "compaction_failure" : "context_overflow";
+              // Keep the raw provider rejection in the logs — the chat reply
+              // replaces it with generic overflow text, and misclassified
+              // auth/transport rejections are indistinguishable without it.
+              log.warn(
+                `prompt error classified as ${kind} for ${provider}/${modelId}; raw: ${errorText.slice(0, 600)}`,
+              );
               return {
                 payloads: [
                   {
@@ -1562,8 +1571,9 @@ export async function runEmbeddedPiAgent(
                   );
                 }
               } else {
+                const rawAssistantError = (lastAssistant?.errorMessage ?? "").slice(0, 600);
                 log.warn(
-                  `Model ${provider}/${modelId} hit context overflow (session too large). Skipping auth profile rotation (non-account failure) and forcing model fallback.`,
+                  `Model ${provider}/${modelId} hit context overflow (session too large). Skipping auth profile rotation (non-account failure) and forcing model fallback. Raw: ${rawAssistantError}`,
                 );
               }
             } else {
@@ -2051,6 +2061,9 @@ export async function runEmbeddedPiAgent(
                 ),
                 userMessageText: basePromptText,
                 assistantReplyText: userFacingAssistantText,
+                // Self-originated runs must not register as operator activity
+                // or the kernel's salience gate never closes (self-stimulation).
+                origin: params.lane === "cron" || params.isHeartbeat ? "background" : "operator",
               });
             } catch (err) {
               log.warn(
@@ -2067,6 +2080,7 @@ export async function runEmbeddedPiAgent(
               aborted,
               systemPromptReport: attempt.systemPromptReport,
               toolValidation: toolValidationForMeta,
+              proposedActions: attempt.proposedActions,
               supportQuality: lastSupportQualityValidation,
               // Handle client tool calls (OpenResponses hosted tools)
               stopReason: attempt.clientToolCall ? "tool_calls" : undefined,

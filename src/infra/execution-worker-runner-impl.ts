@@ -1,0 +1,1827 @@
+import type { ToolClaimValidation } from "../agents/tool-claim-validation.js";
+import type { ArgentConfig } from "../config/config.js";
+import type { AgentExecutionWorkerConfig } from "../config/types.agent-defaults.js";
+import type { IntentPolicyConfig } from "../config/types.intent.js";
+import type { GateReason, JobRelationshipContract, RunEvent, Task } from "../data/types.js";
+import type { CreatePersonalSkillCandidateInput } from "../memory/memu-types.js";
+import { resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import {
+  buildIntentSystemPromptHint,
+  resolveEffectiveIntentForAgent,
+  resolveEffectiveIntentForDepartment,
+} from "../agents/intent.js";
+import {
+  abortEmbeddedPiRun,
+  getActiveEmbeddedRunCount,
+} from "../agents/pi-embedded-runner/runs.js";
+import { evaluateRelationshipExecution } from "../agents/relationship-eval.js";
+import { clearWorkReport, takeWorkReport } from "../agents/tools/work-report-tool.js";
+import { getCompiledRoleProfile } from "../agents/worker-role-profile.js";
+import { parseDurationMs } from "../cli/parse-duration.js";
+import { agentCommand } from "../commands/agent.js";
+import { loadConfig } from "../config/config.js";
+import { getStorageAdapter } from "../data/storage-factory.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { getQueueSize } from "../process/command-queue.js";
+import { CommandLane } from "../process/lanes.js";
+import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
+import { appendGateReason, appendRunEvent, writeRunEventsToMetadata } from "./run-event-log.js";
+import {
+  crossCheckWorkReport,
+  detectSimulationViolation,
+  grantsAreWriteCapable,
+  isStaleWorkReport,
+} from "./work-report-crosscheck.js";
+import { createEphemeralWorkerSession } from "./worker-ephemeral-session.js";
+
+const log = createSubsystemLogger("gateway/execution-worker");
+
+const DEFAULT_EVERY = "20m";
+const DEFAULT_SESSION_MAIN_KEY = "worker-execution";
+const DEFAULT_MAX_RUN_MINUTES = 12;
+const DEFAULT_MAX_TASKS_PER_CYCLE = 24;
+const DEFAULT_REQUIRE_EVIDENCE = true;
+const DEFAULT_MAX_NO_PROGRESS_ATTEMPTS = 2;
+// Lease protocol (Worker Runtime v2 D4). The TTL is a set-and-forget upper
+// bound — the heartbeat verifies alive; crash recovery comes from the
+// boot-time orphan sweep, not TTL waiting.
+const LEASE_TTL_MS = 15 * 60_000;
+const LEASE_HEARTBEAT_MS = 60_000;
+// Halt: cooperative abort at T=0, unconditional session kill at T=grace —
+// no worker ack required (#423 item 5).
+const HALT_GRACE_MS = 30_000;
+
+export type ExecutionWorkerStatusHint = {
+  kind: "paused" | "running" | "queued" | "waiting" | "blocked" | "idle";
+  summary: string;
+  detail?: string;
+  taskSnapshot?: {
+    openVisibleCount: number;
+    runnableCount: number;
+    dependencyBlockedCount: number;
+    blockedStatusCount: number;
+    pendingCount: number;
+    inProgressCount: number;
+    evaluatedAt: number;
+  };
+};
+
+export type ExecutionWorkerControlResult = {
+  ok: boolean;
+  scope: "global" | "agent";
+  agentId?: string;
+  paused: boolean;
+};
+
+export type ExecutionWorkerMetricsResetResult = {
+  ok: boolean;
+  scope: "global" | "agent";
+  agentId?: string;
+  resetCount: number;
+};
+
+export type ExecutionWorkerDispatchResult = {
+  ok: boolean;
+  scope: "global" | "agent";
+  agentId?: string;
+  dispatched: number;
+  paused: boolean;
+  running: boolean;
+  reason?: string;
+};
+
+export type ExecutionWorkerAgentStatus = {
+  agentId: string;
+  enabled: boolean;
+  paused: boolean;
+  running: boolean;
+  rerunRequested: boolean;
+  nextDueAt: number | null;
+  lastRunAt: number | null;
+  lastDispatchRequestedAt: number | null;
+  lastDispatchReason?: string;
+  statusHint: ExecutionWorkerStatusHint;
+  /** D7: in-flight runs for this agent with their live event log (per-run live state). */
+  liveRuns: Array<{ runId: string; taskId: string; startedAt: number; events: RunEvent[] }>;
+  /** D6: recent skip reasons — "why didn't this run" (most recent last). */
+  gateReasons: GateReason[];
+  config: {
+    every: string;
+    model?: string;
+    sessionMainKey: string;
+    maxRunMinutes: number;
+    maxTasksPerCycle: number;
+    scope: "assigned" | "all" | "unassigned_or_assigned";
+    requireEvidence: boolean;
+    maxNoProgressAttempts: number;
+  };
+  metrics: {
+    totalRuns: number;
+    totalSkips: number;
+    totalAttempted: number;
+    totalProgressed: number;
+    totalCompleted: number;
+    totalBlocked: number;
+    lastStatus: "ran" | "skipped";
+    lastReason?: string;
+    lastAttempted: number;
+    lastProgressed: number;
+    lastCompleted: number;
+    lastBlocked: number;
+    lastFinishedAt: number | null;
+  };
+};
+
+export type ExecutionWorkerStatus = {
+  enabled: boolean;
+  globalPaused: boolean;
+  agentCount: number;
+  agents: ExecutionWorkerAgentStatus[];
+};
+
+export type ExecutionWorkerRunner = {
+  stop: () => void;
+  updateConfig: (cfg: ArgentConfig) => void;
+  getStatus: (opts?: { agentId?: string }) => ExecutionWorkerStatus;
+  dispatchNow: (opts?: { agentId?: string; reason?: string }) => ExecutionWorkerDispatchResult;
+  pause: (opts?: { agentId?: string }) => ExecutionWorkerControlResult;
+  resume: (opts?: { agentId?: string }) => ExecutionWorkerControlResult;
+  resetMetrics: (opts?: { agentId?: string }) => ExecutionWorkerMetricsResetResult;
+  /**
+   * Halt in-flight worker runs (D4): cooperative abort now, hard session
+   * kill at grace, no worker ack required. Global scope also pauses all
+   * agents ("workforce halt").
+   */
+  halt: (opts?: { agentId?: string; reason?: string }) => ExecutionWorkerHaltResult;
+};
+
+export type ExecutionWorkerTaskScope = "assigned" | "all" | "unassigned_or_assigned";
+
+export type WorkerTaskSnapshot = NonNullable<ExecutionWorkerStatusHint["taskSnapshot"]>;
+
+function isOpenTask(task: Task): boolean {
+  return task.status === "pending" || task.status === "in_progress" || task.status === "blocked";
+}
+
+function taskType(task: Task): string | undefined {
+  return (task as Task & { type?: string }).type;
+}
+
+function isTaskVisibleToWorker(
+  task: Task,
+  agentId: string,
+  scope: ExecutionWorkerTaskScope,
+): boolean {
+  if (!isOpenTask(task)) {
+    return false;
+  }
+  if (scope === "all") {
+    return true;
+  }
+  if (scope === "assigned") {
+    return task.assignee === agentId || task.agentId === agentId;
+  }
+  return !task.assignee || task.assignee === agentId || task.agentId === agentId;
+}
+
+export function isAutonomousAgentServiceableTask(task: Task, agentId: string): boolean {
+  if (!isOpenTask(task)) {
+    return false;
+  }
+  if (taskType(task) === "project") {
+    return false;
+  }
+  return task.assignee === agentId || task.agentId === agentId;
+}
+
+export function buildWorkerTaskSnapshot(
+  tasks: Task[],
+  agentId: string,
+  scope: ExecutionWorkerTaskScope,
+  nowMs = Date.now(),
+): WorkerTaskSnapshot {
+  const openVisible = tasks.filter((task) => isTaskVisibleToWorker(task, agentId, scope));
+  const openIds = new Set(tasks.filter(isOpenTask).map((task) => task.id));
+  const dependencyBlocked = openVisible.filter((task) =>
+    (task.dependsOn ?? []).some((dependencyId) => openIds.has(dependencyId)),
+  );
+  const runnable = openVisible.filter(
+    (task) =>
+      task.status === "pending" &&
+      taskType(task) !== "project" &&
+      !(task.dependsOn ?? []).some((dependencyId) => openIds.has(dependencyId)),
+  );
+
+  return {
+    openVisibleCount: openVisible.length,
+    runnableCount: runnable.length,
+    dependencyBlockedCount: dependencyBlocked.length,
+    blockedStatusCount: openVisible.filter((task) => task.status === "blocked").length,
+    pendingCount: openVisible.filter((task) => task.status === "pending").length,
+    inProgressCount: openVisible.filter((task) => task.status === "in_progress").length,
+    evaluatedAt: nowMs,
+  };
+}
+
+export function buildExecutionWorkerStatusHint(params: {
+  agentId: string;
+  globalPaused: boolean;
+  agentPaused: boolean;
+  running: boolean;
+  rerunRequested: boolean;
+  nextDueAt: number | null;
+  lastReason?: string;
+  snapshot: WorkerTaskSnapshot;
+}): ExecutionWorkerStatusHint {
+  if (params.globalPaused || params.agentPaused) {
+    return {
+      kind: "paused",
+      summary: params.agentPaused
+        ? `Execution worker for ${params.agentId} is paused.`
+        : "Execution worker is globally paused.",
+      taskSnapshot: params.snapshot,
+    };
+  }
+  if (params.running) {
+    return {
+      kind: "running",
+      summary: `Execution worker for ${params.agentId} is running.`,
+      taskSnapshot: params.snapshot,
+    };
+  }
+  if (params.lastReason === "agent-busy") {
+    return {
+      kind: "waiting",
+      summary: "Waiting for the main agent lane to become available.",
+      detail: "Runnable task counts may be stale until the next worker pass.",
+      taskSnapshot: params.snapshot,
+    };
+  }
+  if (params.snapshot.dependencyBlockedCount > 0 && params.snapshot.runnableCount === 0) {
+    return {
+      kind: "blocked",
+      summary: `${params.snapshot.dependencyBlockedCount} task is waiting on dependencies.`,
+      detail: "Resolve or complete dependency tasks before the worker can proceed.",
+      taskSnapshot: params.snapshot,
+    };
+  }
+  if (params.snapshot.runnableCount > 0) {
+    return {
+      kind: params.rerunRequested ? "queued" : "waiting",
+      summary: `${params.snapshot.runnableCount} runnable task is waiting for worker cadence.`,
+      detail: params.nextDueAt
+        ? `The next pass is scheduled for ${new Date(params.nextDueAt).toISOString()}.`
+        : "A rerun can be requested when the agent lane is available.",
+      taskSnapshot: params.snapshot,
+    };
+  }
+  if (params.snapshot.openVisibleCount === 0) {
+    return {
+      kind: "idle",
+      summary: "No open tasks are in this worker's scope.",
+      detail: "There may be other open task items outside this worker scope.",
+      taskSnapshot: params.snapshot,
+    };
+  }
+  return {
+    kind: "idle",
+    summary: "No runnable task is available for this worker.",
+    taskSnapshot: params.snapshot,
+  };
+}
+
+export function buildPersonalSkillCandidateInputFromTaskOutcome(params: {
+  task: Task;
+  toolValidation: Pick<
+    ToolClaimValidation,
+    "executedTools" | "externalToolsExecuted" | "hasExternalArtifact" | "valid"
+  >;
+}): CreatePersonalSkillCandidateInput | null {
+  if (params.task.status !== "completed") {
+    return null;
+  }
+  if (taskType(params.task) === "project") {
+    return null;
+  }
+  const relatedTools = [...new Set(params.toolValidation.executedTools)];
+  if (!params.toolValidation.hasExternalArtifact || relatedTools.length === 0) {
+    return null;
+  }
+
+  const primaryTool = params.toolValidation.externalToolsExecuted[0] ?? relatedTools[0] ?? "tool";
+  return {
+    scope: "operator",
+    title: `${primaryTool} procedure from completed task`,
+    summary: params.task.description ?? params.task.title,
+    triggerPatterns: [params.task.title],
+    procedureOutline:
+      typeof params.task.metadata?.completionNotes === "string"
+        ? params.task.metadata.completionNotes
+        : (params.task.description ?? params.task.title),
+    relatedTools,
+    sourceTaskIds: [params.task.id],
+    evidenceCount: 1,
+    confidence: params.toolValidation.valid ? 0.7 : 0.4,
+    state: "candidate",
+    agentId: params.task.agentId ?? params.task.assignee,
+  };
+}
+
+type WorkerScope = NonNullable<AgentExecutionWorkerConfig["scope"]>;
+
+function toTaskScope(scope: WorkerScope): ExecutionWorkerTaskScope {
+  if (scope === "agent-visible") {
+    return "unassigned_or_assigned";
+  }
+  return scope;
+}
+
+type ResolvedExecutionWorkerConfig = {
+  enabled: boolean;
+  intervalMs: number;
+  model?: string;
+  sessionMainKey: string;
+  maxRunMinutes: number;
+  maxTasksPerCycle: number;
+  scope: WorkerScope;
+  requireEvidence: boolean;
+  maxNoProgressAttempts: number;
+};
+
+type WorkerAgentState = {
+  agentId: string;
+  config: ResolvedExecutionWorkerConfig;
+  nextDueMs: number;
+  lastRunMs?: number;
+  running: boolean;
+  rerunRequested: boolean;
+  lastDispatchRequestedAt: number | null;
+  lastDispatchReason?: string;
+  lastTaskSnapshot?: WorkerTaskSnapshot;
+  noProgressByTask: Map<string, number>;
+  textualToolCallTasks: Set<string>;
+  /** D6: bounded ring of recent skip reasons — "why didn't this run". */
+  gateReasons: GateReason[];
+  stats: {
+    totalRuns: number;
+    totalSkips: number;
+    totalAttempted: number;
+    totalProgressed: number;
+    totalCompleted: number;
+    totalBlocked: number;
+    lastStatus: WorkerRunResult["status"];
+    lastReason?: string;
+    lastAttempted: number;
+    lastProgressed: number;
+    lastCompleted: number;
+    lastBlocked: number;
+    lastFinishedAt: number | null;
+  };
+};
+
+type WorkerRunResult = {
+  status: "ran" | "skipped";
+  reason?: string;
+  attempted?: number;
+  progressed?: number;
+  completed?: number;
+  blocked?: number;
+};
+
+/** In-flight worker run, registered for halt (D4) while agentCommand is live. */
+type LiveWorkerRun = {
+  runId: string;
+  agentId: string;
+  taskId: string;
+  /** Embedded session id — the handle abortEmbeddedPiRun kills at T=grace. */
+  embeddedSessionId?: string;
+  startedAt: number;
+  abort: AbortController;
+  haltReason?: string;
+  /** D7: runner-written lifecycle events; flushed onto the run record at completion. */
+  events: RunEvent[];
+};
+
+export type ExecutionWorkerHaltResult = {
+  ok: boolean;
+  scope: "global" | "agent";
+  agentId?: string;
+  halted: number;
+  runs: Array<{ runId: string; agentId: string; taskId: string }>;
+};
+
+type WorkerToolClaimValidation = Pick<
+  ToolClaimValidation,
+  | "claimedTools"
+  | "executedTools"
+  | "missingClaims"
+  | "externalToolsExecuted"
+  | "hasExternalArtifact"
+  | "valid"
+>;
+
+async function maybeCreatePersonalSkillCandidateFromTaskOutcome(params: {
+  storage: Awaited<ReturnType<typeof getStorageAdapter>>;
+  task: Task;
+  toolValidation?: WorkerToolClaimValidation;
+}): Promise<boolean> {
+  if (!params.toolValidation) {
+    return false;
+  }
+  const input = buildPersonalSkillCandidateInputFromTaskOutcome({
+    task: params.task,
+    toolValidation: params.toolValidation,
+  });
+  if (!input) {
+    return false;
+  }
+
+  const existing = await params.storage.memory.listPersonalSkillCandidates({ limit: 500 });
+  const existingTaskIds = new Set(existing.flatMap((candidate) => candidate.sourceTaskIds));
+  if (existingTaskIds.has(params.task.id)) {
+    return false;
+  }
+
+  await params.storage.memory.createPersonalSkillCandidate(input);
+  return true;
+}
+
+// Per-run governance context. Role-contract content (rolePrompt, SOP,
+// success definition, scenarios) lives in the compiled role profile now —
+// only the fields the runner still reads survive here.
+type JobExecutionContext = {
+  assignmentId: string;
+  assignmentTitle: string;
+  executionMode: "simulate" | "live";
+  deploymentStage: "simulate" | "shadow" | "limited-live" | "live";
+  departmentId?: string;
+  scopeLimit?: string;
+  relationshipContract?: JobRelationshipContract;
+  departmentPolicy?: IntentPolicyConfig;
+};
+
+function buildIntentVerdict(params: {
+  simulationViolation: boolean;
+  intent: ReturnType<typeof resolveEffectiveIntentForAgent>;
+}): "ok" | "runtime-off" | "not-configured" | "hierarchy-invalid" | "policy-violation" {
+  if (params.simulationViolation) {
+    return "policy-violation";
+  }
+  if (!params.intent) {
+    return "not-configured";
+  }
+  if (params.intent.runtimeMode === "off") {
+    return "runtime-off";
+  }
+  if (params.intent.validationMode === "enforce" && params.intent.issues.length > 0) {
+    return "hierarchy-invalid";
+  }
+  return "ok";
+}
+
+function createEmptyWorkerStats(): WorkerAgentState["stats"] {
+  return {
+    totalRuns: 0,
+    totalSkips: 0,
+    totalAttempted: 0,
+    totalProgressed: 0,
+    totalCompleted: 0,
+    totalBlocked: 0,
+    lastStatus: "skipped",
+    lastReason: "not-started",
+    lastAttempted: 0,
+    lastProgressed: 0,
+    lastCompleted: 0,
+    lastBlocked: 0,
+    lastFinishedAt: null,
+  };
+}
+
+function parseEveryMs(raw: string | undefined): number {
+  try {
+    return parseDurationMs(raw ?? DEFAULT_EVERY, { defaultUnit: "m" });
+  } catch {
+    return parseDurationMs(DEFAULT_EVERY, { defaultUnit: "m" });
+  }
+}
+
+function parseModelOverrideRef(
+  value: string | undefined,
+): { provider: string; model: string } | null {
+  const raw = String(value ?? "").trim();
+  const slashIndex = raw.indexOf("/");
+  if (!raw || slashIndex <= 0 || slashIndex === raw.length - 1) {
+    return null;
+  }
+  return {
+    provider: raw.slice(0, slashIndex).trim(),
+    model: raw.slice(slashIndex + 1).trim(),
+  };
+}
+
+function toPositiveInt(
+  value: number | undefined,
+  fallback: number,
+  bounds: { min: number; max: number },
+): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(bounds.max, Math.max(bounds.min, Math.floor(value ?? fallback)));
+}
+
+function hasDependencyBlockers(task: Task, byId: Map<string, Task>): boolean {
+  const deps = Array.isArray(task.dependsOn) ? task.dependsOn : [];
+  if (deps.length === 0) {
+    return false;
+  }
+  return deps.some((depId) => {
+    const dep = byId.get(depId);
+    return Boolean(dep && dep.status !== "completed");
+  });
+}
+
+function priorityWeight(task: Task): number {
+  switch (task.priority) {
+    case "urgent":
+      return 5;
+    case "high":
+      return 4;
+    case "normal":
+      return 3;
+    case "low":
+      return 2;
+    case "background":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function pickNextTask(allTasks: Task[], agentId: string, scope: WorkerScope): Task | null {
+  const byId = new Map(allTasks.map((task) => [task.id, task]));
+  const nowMs = Date.now();
+  const candidates = allTasks
+    .filter((task) => task.status === "pending" || task.status === "in_progress")
+    // D4: an in_progress task with a live lease belongs to its holder —
+    // never offer it for pickup. Expired/absent leases stay claimable.
+    .filter(
+      (task) => !(task.status === "in_progress" && task.claimedBy && (task.claimTtl ?? 0) > nowMs),
+    )
+    .filter((task) => {
+      if (!isAutonomousAgentServiceableTask(task, agentId)) {
+        return false;
+      }
+      if (scope === "all" || scope === "assigned" || scope === "agent-visible") {
+        return true;
+      }
+      return false;
+    })
+    .filter((task) => !hasDependencyBlockers(task, byId))
+    .toSorted((a, b) => {
+      // Continue in-progress work before pulling new items.
+      if (a.status !== b.status) {
+        if (a.status === "in_progress") {
+          return -1;
+        }
+        if (b.status === "in_progress") {
+          return 1;
+        }
+      }
+      const priorityDiff = priorityWeight(b) - priorityWeight(a);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      const dueA = a.dueAt ?? Number.POSITIVE_INFINITY;
+      const dueB = b.dueAt ?? Number.POSITIVE_INFINITY;
+      if (dueA !== dueB) {
+        return dueA - dueB;
+      }
+      return a.createdAt - b.createdAt;
+    });
+  return candidates[0] ?? null;
+}
+
+function extractToolValidation(meta: unknown): WorkerToolClaimValidation | undefined {
+  if (!meta || typeof meta !== "object") {
+    return undefined;
+  }
+  const candidate = (meta as { toolValidation?: unknown }).toolValidation;
+  if (!candidate || typeof candidate !== "object") {
+    return undefined;
+  }
+  const parsed = candidate as Partial<WorkerToolClaimValidation>;
+  if (!Array.isArray(parsed.claimedTools) || !Array.isArray(parsed.executedTools)) {
+    return undefined;
+  }
+  if (!Array.isArray(parsed.missingClaims) || !Array.isArray(parsed.externalToolsExecuted)) {
+    return undefined;
+  }
+  if (typeof parsed.hasExternalArtifact !== "boolean" || typeof parsed.valid !== "boolean") {
+    return undefined;
+  }
+  return parsed as WorkerToolClaimValidation;
+}
+
+/** Defensively lift WR2 P4 "D9" proposed_action records off a run's meta. */
+function extractProposedActions(meta: unknown): Array<{ tool: string; args: unknown }> {
+  if (!meta || typeof meta !== "object") {
+    return [];
+  }
+  const candidate = (meta as { proposedActions?: unknown }).proposedActions;
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+  return candidate.filter(
+    (entry): entry is { tool: string; args: unknown } =>
+      Boolean(entry) &&
+      typeof entry === "object" &&
+      typeof (entry as { tool?: unknown }).tool === "string",
+  );
+}
+
+function hasExecutionEvidence(result: {
+  meta?: unknown;
+  payloads?: Array<{ text?: string }>;
+}): boolean {
+  const toolValidation = extractToolValidation(result.meta);
+  if (toolValidation) {
+    return toolValidation.executedTools.length > 0 && toolValidation.missingClaims.length === 0;
+  }
+  const text = (result.payloads ?? [])
+    .map((payload) => payload.text ?? "")
+    .join("\n")
+    .trim();
+  return text.length > 0;
+}
+
+/**
+ * Textual pseudo-tool-calls: smaller local models sometimes WRITE a tool
+ * invocation as message text instead of emitting a native tool call —
+ * observed dialects from gemma/qwen under the worker prompt:
+ *   <|tool_call>call:tasks.search{...}   [ tasks: list, status: open ]
+ *   <tool_call>{"name": ...}             [Tool Call: tasks (...)]
+ * Nothing executes, so the run records zero work. Detect them so the next
+ * attempt can correct the model explicitly.
+ */
+const TEXTUAL_TOOL_CALL_PATTERNS = [
+  /<\|?tool_call\|?>?/i,
+  /<tool_call>/i,
+  /\[tool[_ ]?call\b/i,
+  /\bcall:[a-z_]+[.({]/i,
+  /^\s*\[\s*[a-z_]+\s*:\s*[a-z_]+/im,
+];
+
+export function looksLikeTextualToolCall(text: string): boolean {
+  if (!text.trim()) {
+    return false;
+  }
+  return TEXTUAL_TOOL_CALL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function buildTaskCoreLines(task: Task): string[] {
+  const lines = [
+    "[WORKER_EXEC]",
+    `Task: ${task.id} — ${task.title}`,
+    `Status: ${task.status}`,
+    `Priority: ${task.priority}`,
+  ];
+  if (task.description?.trim()) {
+    lines.push(`Description: ${task.description.trim()}`);
+  }
+  if (task.dueAt) {
+    lines.push(`Due: ${new Date(task.dueAt).toISOString()}`);
+  }
+  return lines;
+}
+
+const TEXTUAL_TOOL_CALL_NUDGE_LINES = [
+  "",
+  "FORMAT CORRECTION: your previous attempt wrote tool invocations as plain text, so nothing executed.",
+  "Invoke each tool through the tool-call interface now — one tool call at a time, no narration of the call itself.",
+];
+
+/**
+ * Task message for a job run (Worker Runtime v2 D1+D2): only the task and the
+ * per-assignment facts. The role contract, SOP, alignment, mode directives,
+ * tool rules, and completion contract all live in the compiled role profile's
+ * system prompt — repeating them here would just burn worker-prompt budget.
+ */
+function buildJobTaskMessage(
+  task: Task,
+  jobContext: JobExecutionContext,
+  opts?: { textualToolCallNudge?: boolean },
+): string {
+  const lines = buildTaskCoreLines(task);
+  lines.push(
+    `Job Assignment: ${jobContext.assignmentTitle} (${jobContext.assignmentId})`,
+    `Deployment Stage: ${jobContext.deploymentStage.toUpperCase()}`,
+    `Job Mode: ${jobContext.executionMode.toUpperCase()}`,
+  );
+  if (jobContext.scopeLimit) {
+    lines.push(`Limited-Live Scope Boundary: ${jobContext.scopeLimit}`);
+  }
+  lines.push(
+    "",
+    "You are in explicit execution mode.",
+    "Do the work for this task now using tools, then file your work_report.",
+  );
+  if (opts?.textualToolCallNudge) {
+    lines.push(...TEXTUAL_TOOL_CALL_NUDGE_LINES);
+  }
+  return lines.join("\n");
+}
+
+/** Task prompt for plain board tasks (no job template — the agent draining its own queue). */
+function buildTaskExecutionPrompt(task: Task, opts?: { textualToolCallNudge?: boolean }): string {
+  const lines = buildTaskCoreLines(task);
+  lines.push(
+    "",
+    "You are in explicit execution mode.",
+    "Do the work for this task now using tools.",
+    "Tools run ONLY through the native tool-call interface. Never write a tool invocation as message text (no <tool_call> tags, no 'call:tool{...}', no '[tool: ...]' notation) — text like that executes nothing and counts as zero work.",
+    "Before reporting blocked, attempt at least two distinct recovery paths and record what failed.",
+    "If blocked after retries, mark it blocked with a concrete reason and the attempted recoveries.",
+    "If completed, mark it completed.",
+    "Always update task state on the board when work changes status.",
+    "Return a concise summary with evidence of what changed.",
+  );
+  if (opts?.textualToolCallNudge) {
+    lines.push(...TEXTUAL_TOOL_CALL_NUDGE_LINES);
+  }
+  return lines.join("\n");
+}
+
+function mergeWorkerConfig(
+  agentId: string,
+  defaults: AgentExecutionWorkerConfig | undefined,
+  overrides: AgentExecutionWorkerConfig | undefined,
+): ResolvedExecutionWorkerConfig {
+  const rawEnabled = overrides?.enabled ?? defaults?.enabled ?? false;
+  const rawEvery = overrides?.every ?? defaults?.every;
+  const intervalMs = parseEveryMs(rawEvery);
+  const model =
+    typeof overrides?.model === "string" && overrides.model.trim().length > 0
+      ? overrides.model.trim()
+      : typeof defaults?.model === "string" && defaults.model.trim().length > 0
+        ? defaults.model.trim()
+        : undefined;
+  const sessionMainKey =
+    (overrides?.sessionMainKey ?? defaults?.sessionMainKey ?? DEFAULT_SESSION_MAIN_KEY).trim() ||
+    DEFAULT_SESSION_MAIN_KEY;
+  const maxRunMinutes = toPositiveInt(
+    overrides?.maxRunMinutes ?? defaults?.maxRunMinutes,
+    DEFAULT_MAX_RUN_MINUTES,
+    { min: 1, max: 120 },
+  );
+  const maxTasksPerCycle = toPositiveInt(
+    overrides?.maxTasksPerCycle ?? defaults?.maxTasksPerCycle,
+    DEFAULT_MAX_TASKS_PER_CYCLE,
+    { min: 1, max: 200 },
+  );
+  const scope = overrides?.scope ?? defaults?.scope ?? ("assigned" as const);
+  const requireEvidence =
+    overrides?.requireEvidence ?? defaults?.requireEvidence ?? DEFAULT_REQUIRE_EVIDENCE;
+  const maxNoProgressAttempts = toPositiveInt(
+    overrides?.maxNoProgressAttempts ?? defaults?.maxNoProgressAttempts,
+    DEFAULT_MAX_NO_PROGRESS_ATTEMPTS,
+    { min: 1, max: 10 },
+  );
+  return {
+    enabled: rawEnabled,
+    intervalMs,
+    model,
+    sessionMainKey,
+    maxRunMinutes,
+    maxTasksPerCycle,
+    scope,
+    requireEvidence,
+    maxNoProgressAttempts,
+  };
+}
+
+function resolveWorkerStates(cfg: ArgentConfig, previous: Map<string, WorkerAgentState>) {
+  const next = new Map<string, WorkerAgentState>();
+  const defaults = cfg.agents?.defaults?.executionWorker;
+  const defaultAgentId = normalizeAgentId(resolveDefaultAgentId(cfg));
+
+  const defaultConfig = mergeWorkerConfig(defaultAgentId, defaults, undefined);
+  if (defaultConfig.enabled) {
+    const prev = previous.get(defaultAgentId);
+    next.set(defaultAgentId, {
+      agentId: defaultAgentId,
+      config: defaultConfig,
+      nextDueMs: prev?.nextDueMs ?? Date.now() + defaultConfig.intervalMs,
+      lastRunMs: prev?.lastRunMs,
+      running: false,
+      rerunRequested: prev?.rerunRequested ?? false,
+      lastDispatchRequestedAt: prev?.lastDispatchRequestedAt ?? null,
+      lastDispatchReason: prev?.lastDispatchReason,
+      lastTaskSnapshot: prev?.lastTaskSnapshot,
+      noProgressByTask: prev?.noProgressByTask ?? new Map<string, number>(),
+      textualToolCallTasks: prev?.textualToolCallTasks ?? new Set<string>(),
+      gateReasons: prev?.gateReasons ?? [],
+      stats: prev?.stats ?? createEmptyWorkerStats(),
+    });
+  }
+
+  for (const entry of cfg.agents?.list ?? []) {
+    if (!entry?.id) {
+      continue;
+    }
+    const agentId = normalizeAgentId(entry.id);
+    if (agentId === defaultAgentId) {
+      continue;
+    }
+    const override = resolveAgentConfig(cfg, agentId)?.executionWorker;
+    if (!override?.enabled) {
+      continue;
+    }
+    const merged = mergeWorkerConfig(agentId, defaults, override);
+    const prev = previous.get(agentId);
+    next.set(agentId, {
+      agentId,
+      config: merged,
+      nextDueMs: prev?.nextDueMs ?? Date.now() + merged.intervalMs,
+      lastRunMs: prev?.lastRunMs,
+      running: false,
+      rerunRequested: prev?.rerunRequested ?? false,
+      lastDispatchRequestedAt: prev?.lastDispatchRequestedAt ?? null,
+      lastDispatchReason: prev?.lastDispatchReason,
+      lastTaskSnapshot: prev?.lastTaskSnapshot,
+      noProgressByTask: prev?.noProgressByTask ?? new Map<string, number>(),
+      textualToolCallTasks: prev?.textualToolCallTasks ?? new Set<string>(),
+      gateReasons: prev?.gateReasons ?? [],
+      stats: prev?.stats ?? createEmptyWorkerStats(),
+    });
+  }
+
+  return next;
+}
+
+async function runWorkerOnce(
+  cfg: ArgentConfig,
+  state: WorkerAgentState,
+  liveRuns: Map<string, LiveWorkerRun>,
+  isPaused: () => boolean,
+): Promise<WorkerRunResult> {
+  // Avoid user-facing contention.
+  const mainQueue = getQueueSize(CommandLane.Main) + getQueueSize(CommandLane.Interactive);
+  const activeRuns = getActiveEmbeddedRunCount();
+  if (mainQueue > 0 || activeRuns > 0) {
+    return { status: "skipped", reason: "agent-busy" };
+  }
+
+  const storage = await getStorageAdapter();
+  // D4 expiry: lapsed leases return to the queue before this cycle picks.
+  const expired = await storage.tasks.sweepExpiredClaims({ now: Date.now() });
+  if (expired.length > 0) {
+    log.warn(
+      `worker ${state.agentId}: lease expiry requeued ${expired.length} task(s): ${expired.map((t) => t.id).join(", ")}`,
+    );
+  }
+  await storage.jobs.ensureDueTasks({ agentId: state.agentId, now: Date.now() });
+  const startedAt = Date.now();
+  const maxRuntimeMs = state.config.maxRunMinutes * 60_000;
+  const taskScope = toTaskScope(state.config.scope);
+  const sessionKey = buildAgentMainSessionKey({
+    agentId: state.agentId,
+    mainKey: state.config.sessionMainKey,
+  });
+
+  let attempted = 0;
+  let progressed = 0;
+  let completed = 0;
+  let blocked = 0;
+
+  while (attempted < state.config.maxTasksPerCycle && Date.now() - startedAt < maxRuntimeMs) {
+    // Halt/pause lands mid-cycle too — never drain more tasks after the
+    // operator said stop (the first halt drill caught exactly this).
+    if (isPaused()) {
+      log.info(`worker ${state.agentId}: cycle stopping — paused/halted mid-cycle`);
+      break;
+    }
+    const allTasks = await storage.tasks.list();
+    state.lastTaskSnapshot = buildWorkerTaskSnapshot(allTasks, state.agentId, taskScope);
+    const task = pickNextTask(allTasks, state.agentId, state.config.scope);
+    if (!task) {
+      break;
+    }
+
+    const before = (await storage.tasks.get(task.id)) ?? task;
+    const beforeUpdatedAt = before.updatedAt;
+    const beforeStatus = before.status;
+    const beforeStartedAt = before.startedAt ?? 0;
+
+    // Persistent attempt counter (lease expiries, halts, crash requeues)
+    // converges crash-looping tasks the in-memory counter can't see.
+    if ((before.attempt ?? 0) >= state.config.maxNoProgressAttempts) {
+      await storage.tasks.block(
+        before.id,
+        `Auto-blocked: ${before.attempt} requeued attempts (${typeof before.metadata?.leaseReleaseReason === "string" ? before.metadata.leaseReleaseReason : "lease"}) without completion`,
+      );
+      attempted += 1;
+      blocked += 1;
+      continue;
+    }
+
+    // D4 claim CAS: pending (or lease-lapsed in_progress) → in_progress with
+    // a fresh lease owned by this run. Lost claim = pick the next task; the
+    // live lease keeps pickNextTask from offering this row again.
+    const workerRunId = `worker-${state.agentId}-${before.id}-${Date.now()}`;
+    const claimed = await storage.tasks.claim(before.id, {
+      claimedBy: workerRunId,
+      ttlMs: LEASE_TTL_MS,
+    });
+    if (!claimed) {
+      log.info(`worker ${state.agentId}: claim lost on task ${before.id}; picking next`);
+      continue;
+    }
+
+    const jobTaskContext = await storage.jobs.getContextForTask(before.id);
+    const departmentId = jobTaskContext?.template.departmentId?.trim() || undefined;
+    const departmentPolicy = departmentId
+      ? resolveEffectiveIntentForDepartment({
+          config: cfg,
+          departmentId,
+        })
+      : undefined;
+    const jobContext: JobExecutionContext | undefined = jobTaskContext
+      ? {
+          assignmentId: jobTaskContext.assignment.id,
+          assignmentTitle: jobTaskContext.assignment.title,
+          executionMode: jobTaskContext.assignment.executionMode,
+          deploymentStage:
+            jobTaskContext.assignment.deploymentStage ??
+            (jobTaskContext.assignment.executionMode === "live" ? "live" : "simulate"),
+          departmentId,
+          scopeLimit: jobTaskContext.assignment.scopeLimit,
+          relationshipContract: jobTaskContext.template.relationshipContract,
+          departmentPolicy,
+        }
+      : undefined;
+
+    const resolvedIntent = resolveEffectiveIntentForAgent({
+      config: cfg,
+      agentId: state.agentId,
+    });
+    // Worker Runtime v2 (D1+D2): job runs execute against a compiled role
+    // profile — the complete worker system prompt plus structural tool
+    // grants — in an ephemeral per-run session. Company alignment lives in
+    // the profile; the agent-level intent hint is operator-agent posture and
+    // is appended only to non-job (own-queue) prompts.
+    const profile = jobTaskContext
+      ? getCompiledRoleProfile({
+          cfg,
+          template: jobTaskContext.template,
+          assignment: jobTaskContext.assignment,
+        })
+      : undefined;
+    const intentHint = resolvedIntent ? buildIntentSystemPromptHint(resolvedIntent.policy) : "";
+    const prompt =
+      profile && jobContext
+        ? buildJobTaskMessage(before, jobContext, {
+            textualToolCallNudge: state.textualToolCallTasks.has(before.id),
+          })
+        : [
+            buildTaskExecutionPrompt(before, {
+              textualToolCallNudge: state.textualToolCallTasks.has(before.id),
+            }),
+            intentHint?.trim() ? `\n${intentHint.trim()}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+    // Stage-driven denies (simulate/limited-live) are per-assignment, so they
+    // stay runtime-resolved; the grant side comes from the profile.
+    const sessionPolicy = jobTaskContext
+      ? await storage.jobs.resolveSessionToolPolicyForAssignment(jobTaskContext)
+      : {};
+
+    // D8 model resolution: template model → agent executionWorker model → default.
+    const workerModelOverride = parseModelOverrideRef(profile?.model ?? state.config.model);
+    const ephemeralSession = profile
+      ? await createEphemeralWorkerSession({
+          cfg,
+          agentId: state.agentId,
+          assignmentId: jobTaskContext?.assignment.id ?? "unassigned",
+          runId: workerRunId,
+          toolsAllow: profile.toolsAllow,
+          toolsDeny: sessionPolicy.toolsDeny,
+        })
+      : undefined;
+    const runSessionKey = ephemeralSession?.sessionKey ?? sessionKey;
+    // Ephemeral sessions make the runId closure fresh by construction, but
+    // clear/take both keys so the persistent non-job lane stays correct too.
+    clearWorkReport(workerRunId);
+    clearWorkReport(runSessionKey);
+
+    // D4 halt + heartbeat: register the live run, refresh the lease while
+    // the turn is in flight. Heartbeats stop at maxRunMinutes so a wedged
+    // provider call lets the lease lapse instead of holding it forever.
+    const liveRun: LiveWorkerRun = {
+      runId: workerRunId,
+      agentId: state.agentId,
+      taskId: before.id,
+      embeddedSessionId: ephemeralSession?.sessionId,
+      startedAt: Date.now(),
+      abort: new AbortController(),
+      events: [],
+    };
+    // D7: the claim succeeded just above and the session is now spawned. The
+    // runner is the single writer of these events for the life of the run.
+    appendRunEvent(liveRun.events, "claimed", { taskId: before.id });
+    appendRunEvent(liveRun.events, "spawned", { sessionId: ephemeralSession?.sessionId });
+    liveRuns.set(workerRunId, liveRun);
+    const heartbeat = setInterval(() => {
+      if (Date.now() - liveRun.startedAt > maxRuntimeMs) {
+        clearInterval(heartbeat);
+        return;
+      }
+      appendRunEvent(liveRun.events, "heartbeat");
+      void storage.tasks
+        .heartbeatClaim(before.id, { claimedBy: workerRunId, ttlMs: LEASE_TTL_MS })
+        .catch((err) =>
+          log.warn(
+            `worker ${state.agentId}: lease heartbeat failed on ${before.id}: ${String(err)}`,
+          ),
+        );
+    }, LEASE_HEARTBEAT_MS);
+    heartbeat.unref?.();
+
+    let result: Awaited<ReturnType<typeof agentCommand>>;
+    try {
+      result = await agentCommand({
+        agentId: state.agentId,
+        sessionKey: runSessionKey,
+        lane: "cron",
+        runId: workerRunId,
+        message: prompt,
+        abortSignal: liveRun.abort.signal,
+        extraSystemPrompt: profile
+          ? undefined
+          : "This is an explicit queue-draining worker run. Prefer concrete action over discussion.",
+        // Blank-slate worker scaffold (#407/#442): no context files, personal
+        // skills, memory sections, or cross-channel context. Job runs replace
+        // the prompt wholesale with the compiled role profile (v2 D1+D2).
+        promptMode: "minimal",
+        systemPromptOverride: profile?.systemPrompt,
+        bestEffortDeliver: false,
+        providerOverride: workerModelOverride?.provider,
+        modelOverride: workerModelOverride?.model,
+        // WR2 P4 "D9": in SIMULATE (or shadow) mode, write-capable tool calls are
+        // recorded as proposed_action instead of executing — nothing external is touched.
+        simulateWrites:
+          jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow",
+      });
+    } catch (err) {
+      if (liveRun.haltReason) {
+        // Operator halt: the task is blocked with the reason (lease cleared
+        // by the terminal status) and the run record says who/why. No ack
+        // from the worker was needed or waited for.
+        log.warn(
+          `worker ${state.agentId}: run ${workerRunId} halted (${liveRun.haltReason}); blocking task ${before.id}`,
+        );
+        await storage.tasks.block(before.id, `Run halted by operator: ${liveRun.haltReason}`);
+        if (jobTaskContext) {
+          await storage.jobs.completeRunForTask(before.id, {
+            status: "blocked",
+            blockers: `Run halted by operator: ${liveRun.haltReason}`,
+            metadata: writeRunEventsToMetadata(
+              { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+              liveRun.events,
+            ),
+          });
+        }
+        attempted += 1;
+        blocked += 1;
+        break;
+      }
+      // Non-halt failure: requeue with the lease attempt counter so repeated
+      // crashes converge to auto-block instead of looping forever.
+      await storage.tasks.releaseClaim(before.id, {
+        claimedBy: workerRunId,
+        requeue: true,
+        reason: `run_error: ${err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200)}`,
+      });
+      throw err;
+    } finally {
+      clearInterval(heartbeat);
+      liveRuns.delete(workerRunId);
+      // The session is disposable the moment the turn returns: the report
+      // registry and run record carry everything durable.
+      await ephemeralSession?.dispose();
+    }
+
+    // Aborts surface as a NORMAL return with meta.aborted (the embedded
+    // runner resolves on abort rather than throwing) — the halt drill
+    // proved the catch above never sees them. Handle both flavors here.
+    if (liveRun.haltReason) {
+      log.warn(
+        `worker ${state.agentId}: run ${workerRunId} halted (${liveRun.haltReason}); blocking task ${before.id}`,
+      );
+      await storage.tasks.block(before.id, `Run halted by operator: ${liveRun.haltReason}`);
+      if (jobTaskContext) {
+        await storage.jobs.completeRunForTask(before.id, {
+          status: "blocked",
+          blockers: `Run halted by operator: ${liveRun.haltReason}`,
+          metadata: writeRunEventsToMetadata(
+            { halted: { reason: liveRun.haltReason, runId: workerRunId } },
+            liveRun.events,
+          ),
+        });
+      }
+      attempted += 1;
+      blocked += 1;
+      break;
+    }
+    if (result.meta?.aborted === true) {
+      // Aborted without an operator halt (timeout, shutdown): requeue under
+      // the lease attempt counter so repeats converge to auto-block.
+      log.warn(
+        `worker ${state.agentId}: run ${workerRunId} aborted without halt; requeueing task ${before.id}`,
+      );
+      await storage.tasks.releaseClaim(before.id, {
+        claimedBy: workerRunId,
+        requeue: true,
+        reason: "run_aborted",
+      });
+      attempted += 1;
+      break;
+    }
+
+    const toolValidation = extractToolValidation(result.meta);
+    // WR2 P4 "D9": record each SIMULATE-mode stubbed write as a proposed_action run
+    // event for operator review. These flush onto the run record automatically.
+    const proposedActions = extractProposedActions(result.meta);
+    for (const proposed of proposedActions) {
+      appendRunEvent(liveRun.events, "proposed_action", {
+        tool: proposed.tool,
+        args: proposed.args,
+      });
+    }
+    const { violation: simulationViolation, escapedTools: escapedExternalTools } =
+      detectSimulationViolation({
+        simulateMode:
+          jobContext?.executionMode === "simulate" || jobContext?.deploymentStage === "shadow",
+        externalToolsExecuted: toolValidation?.externalToolsExecuted ?? [],
+        proposedActions,
+      });
+    if (simulationViolation) {
+      await storage.tasks.block(
+        before.id,
+        `Simulation-mode policy violation: executed external tools (${escapedExternalTools.join(", ")})`,
+      );
+    }
+    // v2 D5: a filed work_report is the completion contract for job tasks —
+    // the RUNNER updates the board from it; workers never mutate their own
+    // task row (#443). Simulation violations always win over the report.
+    const workReport = takeWorkReport(workerRunId) ?? takeWorkReport(runSessionKey);
+    log.info(
+      `worker ${state.agentId}: report lookup runId=${workerRunId} sessionKey=${runSessionKey} found=${workReport ? workReport.outcome : "none"}`,
+    );
+    if (workReport && jobTaskContext && !simulationViolation) {
+      // P4: a report only mutates the board when the runner still owns the task
+      // (stale-report guard — covers runNow-fresh supersede, cancel, lease
+      // takeover) AND its claim of `done` is consistent with run telemetry.
+      const currentTask = await storage.tasks.get(before.id);
+      if (isStaleWorkReport({ currentTask, workerRunId })) {
+        appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome, stale: true });
+        log.warn(
+          `worker ${state.agentId}: stale work_report on task ${before.id} (claim lost or task cancelled); ignoring board write`,
+        );
+      } else {
+        const crossCheck = crossCheckWorkReport({
+          outcome: workReport.outcome,
+          isLiveMode:
+            jobContext?.executionMode !== "simulate" && jobContext?.deploymentStage !== "shadow",
+          grantsWriteCapable: grantsAreWriteCapable(profile?.toolsAllow ?? []),
+          externalToolCount: toolValidation?.externalToolsExecuted.length ?? 0,
+        });
+        if (!crossCheck.accepted) {
+          appendRunEvent(liveRun.events, "report", {
+            outcome: workReport.outcome,
+            rejected: crossCheck.reason,
+          });
+          await storage.tasks.block(before.id, `${crossCheck.reason}: ${crossCheck.detail}`);
+        } else {
+          appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome });
+          if (workReport.outcome === "done") {
+            await storage.tasks.complete(before.id);
+          } else {
+            await storage.tasks.block(
+              before.id,
+              `work_report(${workReport.outcome}): ${workReport.summary.slice(0, 400)}`,
+            );
+          }
+        }
+      }
+    } else if (workReport) {
+      // Report filed but not actioned (no job context, or a simulation violation
+      // already blocked the task) — still record that it arrived.
+      appendRunEvent(liveRun.events, "report", { outcome: workReport.outcome });
+    }
+    const after = await storage.tasks.get(before.id);
+    const evidenceOk = hasExecutionEvidence(result);
+    const boardChanged = Boolean(
+      after &&
+      (after.updatedAt > beforeUpdatedAt ||
+        after.status !== beforeStatus ||
+        (after.startedAt ?? 0) > beforeStartedAt),
+    );
+    const accepted =
+      !simulationViolation && boardChanged && (!state.config.requireEvidence || evidenceOk);
+
+    attempted += 1;
+
+    if (accepted) {
+      progressed += 1;
+      state.noProgressByTask.delete(before.id);
+      state.textualToolCallTasks.delete(before.id);
+    } else {
+      const executedToolCount = toolValidation?.executedTools.length ?? 0;
+      const resultText = (result.payloads ?? []).map((payload) => payload.text ?? "").join("\n");
+      if (executedToolCount === 0 && looksLikeTextualToolCall(resultText)) {
+        state.textualToolCallTasks.add(before.id);
+        log.warn(
+          `worker ${state.agentId}: textual pseudo-tool-call detected on task ${before.id}; next attempt gets a format correction`,
+        );
+      }
+      if (!workReport && jobTaskContext) {
+        log.info(
+          `worker ${state.agentId}: no work_report filed on job task ${before.id}; counting as no progress (no_report)`,
+        );
+      }
+      const attempts = (state.noProgressByTask.get(before.id) ?? 0) + 1;
+      state.noProgressByTask.set(before.id, attempts);
+      if (attempts >= state.config.maxNoProgressAttempts) {
+        await storage.tasks.block(
+          before.id,
+          "Auto-blocked by execution worker after repeated no-progress attempts",
+        );
+        progressed += 1;
+        state.noProgressByTask.delete(before.id);
+        state.textualToolCallTasks.delete(before.id);
+      }
+    }
+
+    const latest = await storage.tasks.get(before.id);
+    const intentVerdict = buildIntentVerdict({
+      simulationViolation,
+      intent: resolvedIntent,
+    });
+    const priorRuns = jobTaskContext
+      ? await storage.jobs.listRuns({ assignmentId: jobTaskContext.assignment.id, limit: 6 })
+      : [];
+    const recentRelationshipScores = priorRuns
+      .filter((run) => run.taskId !== before.id && run.status !== "running")
+      .map((run) => {
+        const relationship = run.metadata?.relationship as
+          | { overallScore?: number }
+          | undefined
+          | null;
+        return relationship?.overallScore;
+      })
+      .filter((score): score is number => Number.isFinite(score))
+      .slice(0, 5);
+    const runMetadata = {
+      workReport: workReport
+        ? {
+            outcome: workReport.outcome,
+            summary: workReport.summary,
+            evidence: workReport.evidence,
+            filedAt: workReport.filedAt,
+          }
+        : null,
+      intent: resolvedIntent
+        ? {
+            runtimeMode: resolvedIntent.runtimeMode,
+            validationMode: resolvedIntent.validationMode,
+            departmentId: resolvedIntent.departmentId ?? null,
+            templateDepartmentId: jobContext?.departmentId ?? null,
+            issuesCount: resolvedIntent.issues.length,
+            lineage: resolvedIntent.lineage,
+          }
+        : null,
+      intentVerdict,
+      deploymentStage: jobContext?.deploymentStage ?? null,
+      relationship: evaluateRelationshipExecution({
+        simulationViolation,
+        latestStatus: latest?.status,
+        intent: resolvedIntent ?? undefined,
+        deploymentStage: jobContext?.deploymentStage,
+        relationshipContract: jobContext?.relationshipContract,
+        declaredDepartmentId: jobContext?.departmentId,
+        effectiveDepartmentId: resolvedIntent?.departmentId,
+        departmentPolicy: jobContext?.departmentPolicy,
+        recentScores: recentRelationshipScores,
+      }),
+      // D7: the run-event log travels on the run record (single-writer runner).
+      events: liveRun.events,
+    };
+    if (latest?.status === "completed") {
+      completed += 1;
+      const personalSkillCandidateCreated = await maybeCreatePersonalSkillCandidateFromTaskOutcome({
+        storage,
+        task: latest,
+        toolValidation,
+      });
+      if (personalSkillCandidateCreated) {
+        log.info("execution-worker: personal skill candidate created", {
+          agentId: state.agentId,
+          taskId: latest.id,
+          taskTitle: latest.title,
+        });
+      }
+      if (jobTaskContext) {
+        await storage.jobs.completeRunForTask(before.id, {
+          status: "completed",
+          // The filed report IS the deliverable — its summary is what the
+          // operator reads on the run (triage log, drafts, findings).
+          summary: workReport?.summary ?? "Execution worker completed the job task.",
+          metadata: runMetadata,
+        });
+      }
+    } else if (latest?.status === "blocked") {
+      blocked += 1;
+      if (jobTaskContext) {
+        await storage.jobs.completeRunForTask(before.id, {
+          status: "blocked",
+          blockers:
+            workReport?.summary ??
+            // tasks.block writes metadata.blockReason (not "blockedReason").
+            (typeof latest.metadata?.blockReason === "string"
+              ? latest.metadata.blockReason
+              : "Task blocked during execution"),
+          metadata: runMetadata,
+        });
+      }
+    } else if (latest?.status === "failed" && jobTaskContext) {
+      await storage.jobs.completeRunForTask(before.id, {
+        status: "failed",
+        blockers:
+          // tasks.fail writes metadata.failReason (not "failureReason").
+          typeof latest.metadata?.failReason === "string"
+            ? latest.metadata.failReason
+            : "Task failed during execution",
+        metadata: runMetadata,
+      });
+    }
+
+    // The lease is per-run: terminal statuses already cleared it; a task
+    // left open (no-progress, still in_progress) gets its lease released so
+    // the next cycle can claim it again.
+    await storage.tasks.releaseClaim(before.id, { claimedBy: workerRunId });
+  }
+
+  if (attempted === 0) {
+    return { status: "skipped", reason: "no-runnable-tasks" };
+  }
+  return { status: "ran", attempted, progressed, completed, blocked };
+}
+
+export function startExecutionWorkerRunner(init: { cfg?: ArgentConfig }): ExecutionWorkerRunner {
+  let cfg = init.cfg ?? loadConfig();
+  let stopped = false;
+  let timer: NodeJS.Timeout | null = null;
+  let initialized = false;
+  let agents = resolveWorkerStates(cfg, new Map());
+  let globalPaused = false;
+  let pausedAgents = new Set<string>();
+  const liveRuns = new Map<string, LiveWorkerRun>();
+
+  // D4 boot-time orphan sweep: this process just started, so no live runs
+  // exist — any held lease is orphaned by definition. Requeue immediately;
+  // crash recovery time = restart time, not TTL.
+  void (async () => {
+    try {
+      const storage = await getStorageAdapter();
+      const orphaned = await storage.tasks.sweepExpiredClaims({ orphanAll: true });
+      if (orphaned.length > 0) {
+        log.warn(
+          `boot orphan sweep: requeued ${orphaned.length} task(s) with dead leases: ${orphaned.map((t) => t.id).join(", ")}`,
+        );
+      }
+    } catch (err) {
+      log.warn(`boot orphan sweep failed: ${String(err)}`);
+    }
+  })();
+
+  const buildStatusHint = (state: WorkerAgentState): ExecutionWorkerStatusHint =>
+    buildExecutionWorkerStatusHint({
+      agentId: state.agentId,
+      globalPaused,
+      agentPaused: pausedAgents.has(state.agentId),
+      running: state.running,
+      rerunRequested: state.rerunRequested,
+      nextDueAt: state.nextDueMs || null,
+      lastReason: state.stats.lastReason,
+      snapshot:
+        state.lastTaskSnapshot ??
+        buildWorkerTaskSnapshot([], state.agentId, toTaskScope(state.config.scope)),
+    });
+
+  const scheduleNext = () => {
+    if (stopped) {
+      return;
+    }
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (agents.size === 0) {
+      return;
+    }
+    if (globalPaused) {
+      return;
+    }
+
+    const now = Date.now();
+    let nextDue = Number.POSITIVE_INFINITY;
+    for (const state of agents.values()) {
+      if (pausedAgents.has(state.agentId)) {
+        continue;
+      }
+      if (!state.running && state.nextDueMs < nextDue) {
+        nextDue = state.nextDueMs;
+      }
+    }
+    if (!Number.isFinite(nextDue)) {
+      return;
+    }
+
+    const delayMs = Math.max(0, nextDue - now);
+    timer = setTimeout(() => {
+      void runCycle();
+    }, delayMs);
+    timer.unref?.();
+  };
+
+  const runCycle = async () => {
+    if (stopped) {
+      return;
+    }
+    if (globalPaused) {
+      scheduleNext();
+      return;
+    }
+    const now = Date.now();
+    for (const state of agents.values()) {
+      if (stopped) {
+        break;
+      }
+      if (pausedAgents.has(state.agentId)) {
+        continue;
+      }
+      if (state.running) {
+        continue;
+      }
+      if (now < state.nextDueMs) {
+        continue;
+      }
+
+      state.running = true;
+      try {
+        const result = await runWorkerOnce(
+          cfg,
+          state,
+          liveRuns,
+          () => globalPaused || pausedAgents.has(state.agentId),
+        );
+        state.lastRunMs = Date.now();
+        const baseInterval = state.config.intervalMs;
+        const busyRetryMs = Math.min(baseInterval, 45_000);
+        if (state.rerunRequested) {
+          state.nextDueMs = state.lastRunMs;
+          state.rerunRequested = false;
+        } else {
+          state.nextDueMs =
+            result.status === "skipped" && result.reason === "agent-busy"
+              ? state.lastRunMs + busyRetryMs
+              : state.lastRunMs + baseInterval;
+        }
+
+        if (result.status === "ran") {
+          state.stats.totalRuns += 1;
+          state.stats.totalAttempted += result.attempted ?? 0;
+          state.stats.totalProgressed += result.progressed ?? 0;
+          state.stats.totalCompleted += result.completed ?? 0;
+          state.stats.totalBlocked += result.blocked ?? 0;
+          state.stats.lastStatus = "ran";
+          state.stats.lastReason = undefined;
+          state.stats.lastAttempted = result.attempted ?? 0;
+          state.stats.lastProgressed = result.progressed ?? 0;
+          state.stats.lastCompleted = result.completed ?? 0;
+          state.stats.lastBlocked = result.blocked ?? 0;
+          state.stats.lastFinishedAt = state.lastRunMs;
+          log.info("execution worker cycle complete", {
+            agentId: state.agentId,
+            attempted: result.attempted,
+            progressed: result.progressed,
+            completed: result.completed,
+            blocked: result.blocked,
+          });
+        } else {
+          state.stats.totalSkips += 1;
+          state.stats.lastStatus = "skipped";
+          state.stats.lastReason = result.reason;
+          // D6: record why this cycle did nothing (#445 — no silent no-ops).
+          appendGateReason(state.gateReasons, result.reason ?? "skipped");
+          state.stats.lastAttempted = 0;
+          state.stats.lastProgressed = 0;
+          state.stats.lastCompleted = 0;
+          state.stats.lastBlocked = 0;
+          state.stats.lastFinishedAt = state.lastRunMs;
+          log.debug("execution worker cycle skipped", {
+            agentId: state.agentId,
+            reason: result.reason,
+          });
+        }
+      } catch (err) {
+        state.lastRunMs = Date.now();
+        state.nextDueMs = state.lastRunMs + state.config.intervalMs;
+        state.stats.totalSkips += 1;
+        state.stats.lastStatus = "skipped";
+        state.stats.lastReason = "cycle-error";
+        appendGateReason(
+          state.gateReasons,
+          "cycle-error",
+          err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+        );
+        state.stats.lastAttempted = 0;
+        state.stats.lastProgressed = 0;
+        state.stats.lastCompleted = 0;
+        state.stats.lastBlocked = 0;
+        state.stats.lastFinishedAt = state.lastRunMs;
+        log.error("execution worker cycle failed", {
+          agentId: state.agentId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        state.running = false;
+      }
+    }
+    scheduleNext();
+  };
+
+  const updateConfig = (nextCfg: ArgentConfig) => {
+    if (stopped) {
+      return;
+    }
+    cfg = nextCfg;
+    const prev = agents;
+    agents = resolveWorkerStates(cfg, prev);
+    pausedAgents = new Set(Array.from(pausedAgents).filter((agentId) => agents.has(agentId)));
+    if (agents.size === 0) {
+      globalPaused = false;
+    }
+    if (!initialized) {
+      if (agents.size === 0) {
+        log.info("execution worker: disabled");
+      } else {
+        log.info("execution worker: started", {
+          agents: Array.from(agents.keys()),
+        });
+      }
+      initialized = true;
+    } else {
+      log.info("execution worker: updated", {
+        agents: Array.from(agents.keys()),
+      });
+    }
+    scheduleNext();
+  };
+
+  const getStatus = (opts?: { agentId?: string }): ExecutionWorkerStatus => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    const states = Array.from(agents.values())
+      .filter((state) => !requestedAgentId || state.agentId === requestedAgentId)
+      .toSorted((a, b) => a.agentId.localeCompare(b.agentId));
+    return {
+      enabled: agents.size > 0,
+      globalPaused,
+      agentCount: states.length,
+      agents: states.map((state) => ({
+        agentId: state.agentId,
+        enabled: state.config.enabled,
+        paused: globalPaused || pausedAgents.has(state.agentId),
+        running: state.running,
+        rerunRequested: state.rerunRequested,
+        nextDueAt: state.nextDueMs || null,
+        lastRunAt: state.lastRunMs || null,
+        lastDispatchRequestedAt: state.lastDispatchRequestedAt,
+        lastDispatchReason: state.lastDispatchReason,
+        statusHint: buildStatusHint(state),
+        liveRuns: Array.from(liveRuns.values())
+          .filter((run) => run.agentId === state.agentId)
+          .map((run) => ({
+            runId: run.runId,
+            taskId: run.taskId,
+            startedAt: run.startedAt,
+            events: run.events,
+          })),
+        gateReasons: state.gateReasons.slice(-10),
+        config: {
+          every: `${Math.max(1, Math.floor(state.config.intervalMs / 60_000))}m`,
+          model: state.config.model,
+          sessionMainKey: state.config.sessionMainKey,
+          maxRunMinutes: state.config.maxRunMinutes,
+          maxTasksPerCycle: state.config.maxTasksPerCycle,
+          scope: toTaskScope(state.config.scope),
+          requireEvidence: state.config.requireEvidence,
+          maxNoProgressAttempts: state.config.maxNoProgressAttempts,
+        },
+        metrics: {
+          totalRuns: state.stats.totalRuns,
+          totalSkips: state.stats.totalSkips,
+          totalAttempted: state.stats.totalAttempted,
+          totalProgressed: state.stats.totalProgressed,
+          totalCompleted: state.stats.totalCompleted,
+          totalBlocked: state.stats.totalBlocked,
+          lastStatus: state.stats.lastStatus,
+          lastReason: state.stats.lastReason,
+          lastAttempted: state.stats.lastAttempted,
+          lastProgressed: state.stats.lastProgressed,
+          lastCompleted: state.stats.lastCompleted,
+          lastBlocked: state.stats.lastBlocked,
+          lastFinishedAt: state.stats.lastFinishedAt,
+        },
+      })),
+    };
+  };
+
+  const dispatchNow = (opts?: {
+    agentId?: string;
+    reason?: string;
+  }): ExecutionWorkerDispatchResult => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    const now = Date.now();
+    const markState = (state: WorkerAgentState) => {
+      state.lastDispatchRequestedAt = now;
+      state.lastDispatchReason = opts?.reason;
+      state.nextDueMs = Math.min(state.nextDueMs, now);
+      if (state.running || globalPaused || pausedAgents.has(state.agentId)) {
+        state.rerunRequested = true;
+      }
+    };
+
+    if (!requestedAgentId) {
+      if (agents.size === 0) {
+        return {
+          ok: false,
+          scope: "global",
+          dispatched: 0,
+          paused: globalPaused,
+          running: false,
+          reason: opts?.reason,
+        };
+      }
+      for (const state of agents.values()) {
+        markState(state);
+      }
+      scheduleNext();
+      return {
+        ok: true,
+        scope: "global",
+        dispatched: agents.size,
+        paused: globalPaused,
+        running: Array.from(agents.values()).some((state) => state.running),
+        reason: opts?.reason,
+      };
+    }
+
+    const state = agents.get(requestedAgentId);
+    if (!state) {
+      return {
+        ok: false,
+        scope: "agent",
+        agentId: requestedAgentId,
+        dispatched: 0,
+        paused: false,
+        running: false,
+        reason: opts?.reason,
+      };
+    }
+
+    markState(state);
+    scheduleNext();
+    return {
+      ok: true,
+      scope: "agent",
+      agentId: requestedAgentId,
+      dispatched: 1,
+      paused: globalPaused || pausedAgents.has(state.agentId),
+      running: state.running,
+      reason: opts?.reason,
+    };
+  };
+
+  const pause = (opts?: { agentId?: string }): ExecutionWorkerControlResult => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    if (!requestedAgentId) {
+      globalPaused = true;
+      scheduleNext();
+      return { ok: true, scope: "global", paused: true };
+    }
+    if (!agents.has(requestedAgentId)) {
+      return { ok: false, scope: "agent", agentId: requestedAgentId, paused: false };
+    }
+    pausedAgents.add(requestedAgentId);
+    scheduleNext();
+    return { ok: true, scope: "agent", agentId: requestedAgentId, paused: true };
+  };
+
+  const resume = (opts?: { agentId?: string }): ExecutionWorkerControlResult => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    if (!requestedAgentId) {
+      globalPaused = false;
+      scheduleNext();
+      return { ok: true, scope: "global", paused: false };
+    }
+    if (!agents.has(requestedAgentId)) {
+      return { ok: false, scope: "agent", agentId: requestedAgentId, paused: false };
+    }
+    pausedAgents.delete(requestedAgentId);
+    scheduleNext();
+    return { ok: true, scope: "agent", agentId: requestedAgentId, paused: false };
+  };
+
+  const resetMetrics = (opts?: { agentId?: string }): ExecutionWorkerMetricsResetResult => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    if (!requestedAgentId) {
+      let resetCount = 0;
+      for (const state of agents.values()) {
+        state.stats = createEmptyWorkerStats();
+        state.noProgressByTask.clear();
+        resetCount += 1;
+      }
+      return { ok: true, scope: "global", resetCount };
+    }
+    const state = agents.get(requestedAgentId);
+    if (!state) {
+      return { ok: false, scope: "agent", agentId: requestedAgentId, resetCount: 0 };
+    }
+    state.stats = createEmptyWorkerStats();
+    state.noProgressByTask.clear();
+    return { ok: true, scope: "agent", agentId: requestedAgentId, resetCount: 1 };
+  };
+
+  const halt = (opts?: { agentId?: string; reason?: string }): ExecutionWorkerHaltResult => {
+    const requestedAgentId = opts?.agentId ? normalizeAgentId(opts.agentId) : "";
+    const reason = opts?.reason?.trim() || "workforce halt";
+    // Global halt = pause everything first so nothing new dispatches while
+    // in-flight runs die.
+    if (!requestedAgentId) {
+      globalPaused = true;
+      scheduleNext();
+    } else {
+      pausedAgents.add(requestedAgentId);
+      scheduleNext();
+    }
+    const targets = Array.from(liveRuns.values()).filter(
+      (run) => !requestedAgentId || run.agentId === requestedAgentId,
+    );
+    for (const run of targets) {
+      run.haltReason = reason;
+      // D7: record the kill on the run-event log (single-writer runner).
+      appendRunEvent(run.events, "killed", { reason });
+      // T=0: cooperative interrupt — abort signal cancels between tool calls.
+      run.abort.abort(new Error(`halted: ${reason}`));
+      // T=grace: unconditional session termination, no worker ack required.
+      const embeddedSessionId = run.embeddedSessionId;
+      if (embeddedSessionId) {
+        const hardKill = setTimeout(() => {
+          if (liveRuns.has(run.runId)) {
+            const killed = abortEmbeddedPiRun(embeddedSessionId);
+            log.warn(
+              `halt: hard-killed run ${run.runId} (session ${embeddedSessionId}) after ${HALT_GRACE_MS}ms grace: ${killed}`,
+            );
+          }
+        }, HALT_GRACE_MS);
+        hardKill.unref?.();
+      }
+      log.warn(`halt: run ${run.runId} (task ${run.taskId}) flagged: ${reason}`);
+    }
+    return {
+      ok: true,
+      scope: requestedAgentId ? "agent" : "global",
+      agentId: requestedAgentId || undefined,
+      halted: targets.length,
+      runs: targets.map((run) => ({
+        runId: run.runId,
+        agentId: run.agentId,
+        taskId: run.taskId,
+      })),
+    };
+  };
+
+  const stop = () => {
+    stopped = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  updateConfig(cfg);
+  return { stop, updateConfig, getStatus, dispatchNow, pause, resume, resetMetrics, halt };
+}

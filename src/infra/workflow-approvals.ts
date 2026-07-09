@@ -196,6 +196,170 @@ export async function resolveDurableWorkflowApproval(
   return row;
 }
 
+export interface PendingWorkflowApprovalRow {
+  id: string;
+  run_id: string;
+  node_id: string;
+  workflow_name: string | null;
+  node_label: string | null;
+  message: string;
+  requested_at: string;
+}
+
+// Lists currently-pending workflow approvals, newest first. Used by text-reply
+// approval surfaces (Telegram "approve"/"deny") that carry no approval id and
+// must discover what is awaiting the operator.
+export async function listPendingWorkflowApprovals(
+  sql: Sql,
+  opts?: { limit?: number },
+): Promise<PendingWorkflowApprovalRow[]> {
+  const limit = Math.max(1, Math.min(opts?.limit ?? 20, 100));
+  const rows = await sql`
+    SELECT id, run_id, node_id, workflow_name, node_label, message, requested_at
+    FROM workflow_approvals
+    WHERE status = 'pending'
+    ORDER BY requested_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as unknown as PendingWorkflowApprovalRow[];
+}
+
+export type ApprovalTextSelection =
+  | { kind: "none" }
+  | { kind: "resolve"; row: PendingWorkflowApprovalRow }
+  | { kind: "ambiguous"; rows: PendingWorkflowApprovalRow[] }
+  | { kind: "not-found"; token: string };
+
+// Pure decision for the text-reply approval surface ("approve"/"deny", with an
+// optional id/run-id token): given the pending approvals, decide which one a
+// bare command resolves. No token + exactly one pending → resolve it; no token
+// + many → ambiguous (caller lists them); a token narrows by approval id or
+// run id (exact, then prefix). Extracted from the Telegram handler so the
+// branching is unit-testable without standing up the bot.
+export function selectApprovalForTextCommand(
+  pending: PendingWorkflowApprovalRow[],
+  token?: string,
+): ApprovalTextSelection {
+  const trimmed = token?.trim();
+  if (trimmed) {
+    const lower = trimmed.toLowerCase();
+    const exact = pending.filter(
+      (row) => row.id.toLowerCase() === lower || row.run_id.toLowerCase() === lower,
+    );
+    const matches =
+      exact.length > 0
+        ? exact
+        : pending.filter(
+            (row) =>
+              row.id.toLowerCase().includes(lower) || row.run_id.toLowerCase().startsWith(lower),
+          );
+    if (matches.length === 0) {
+      return { kind: "not-found", token: trimmed };
+    }
+    if (matches.length === 1) {
+      return { kind: "resolve", row: matches[0] };
+    }
+    return { kind: "ambiguous", rows: matches };
+  }
+  if (pending.length === 0) {
+    return { kind: "none" };
+  }
+  if (pending.length === 1) {
+    return { kind: "resolve", row: pending[0] };
+  }
+  return { kind: "ambiguous", rows: pending };
+}
+
+export interface ApprovalTextCommandDeps {
+  listPending: (sql: Sql) => Promise<PendingWorkflowApprovalRow[]>;
+  resolveById: (
+    sql: Sql,
+    input: { approvalId: string; approved: boolean; reason?: string; approvedBy?: string },
+  ) => Promise<{ run_id?: unknown; node_id?: unknown } | undefined>;
+  /** True when the run is still pending in the current process (in-memory). */
+  hasPendingApproval: (runId: string, nodeId: string) => boolean;
+  /** Resolve an in-process pending approval (no durable resume needed). */
+  resolveInMemory: (runId: string, nodeId: string, approved: boolean, reason?: string) => void;
+  /** Resume a durable (e.g. cron / post-restart) run after an APPROVAL. */
+  resumeRun: (runId: string, nodeId: string) => void;
+  /** Fail a durable run after a DENIAL — resuming would execute it as approved. */
+  denyRun: (runId: string, nodeId: string, reason?: string) => void;
+}
+
+export interface ApprovalTextCommandResult {
+  outcome: "none" | "not-found" | "ambiguous" | "gone" | "resolved";
+  reply: string;
+  approved: boolean;
+  runId?: string;
+}
+
+// Orchestrates the Telegram text-reply approval surface end to end: list pending
+// → select → resolve (durable) → resume or in-memory-resolve → reply text. All
+// I/O is injected so the branching (including the resolve+resume wiring) is
+// unit-testable without standing up the bot or a live gateway. The Telegram
+// handler is a thin caller that just sends `result.reply`.
+export async function runApprovalTextCommand(opts: {
+  sql: Sql;
+  approved: boolean;
+  token?: string;
+  operatorLabel: string;
+  deps: ApprovalTextCommandDeps;
+}): Promise<ApprovalTextCommandResult> {
+  const { sql, approved, token, operatorLabel, deps } = opts;
+  const pending = await deps.listPending(sql);
+  const selection = selectApprovalForTextCommand(pending, token);
+
+  if (selection.kind === "none") {
+    return { outcome: "none", approved, reply: "No workflow approvals are pending right now." };
+  }
+  if (selection.kind === "not-found") {
+    return {
+      outcome: "not-found",
+      approved,
+      reply: `No pending approval matches "${selection.token}".`,
+    };
+  }
+  if (selection.kind === "ambiguous") {
+    const verb = approved ? "approve" : "deny";
+    const list = selection.rows
+      .map((r) => `• ${r.workflow_name ?? r.run_id} — reply "${verb} ${r.run_id.slice(0, 8)}"`)
+      .join("\n");
+    return {
+      outcome: "ambiguous",
+      approved,
+      reply: `${selection.rows.length} approvals are pending — which one?\n${list}`,
+    };
+  }
+
+  const row = selection.row;
+  const resolved = await deps.resolveById(sql, {
+    approvalId: row.id,
+    approved,
+    approvedBy: operatorLabel,
+    reason: approved ? undefined : "Denied via Telegram text reply",
+  });
+  if (!resolved) {
+    return { outcome: "gone", approved, reply: "That approval is no longer pending." };
+  }
+  const runId = String(resolved.run_id);
+  const nodeId = String(resolved.node_id);
+  if (deps.hasPendingApproval(runId, nodeId)) {
+    deps.resolveInMemory(runId, nodeId, approved, approved ? undefined : "Denied via Telegram");
+  } else if (approved) {
+    deps.resumeRun(runId, nodeId);
+  } else {
+    deps.denyRun(runId, nodeId, "Denied via Telegram text reply");
+  }
+  const icon = approved ? "✅" : "❌";
+  const verb = approved ? "Approved" : "Denied";
+  return {
+    outcome: "resolved",
+    approved,
+    runId,
+    reply: `${icon} ${verb} by ${operatorLabel}.\nWorkflow: ${row.workflow_name ?? runId}\nRun: ${runId}`,
+  };
+}
+
 // Resolves a workflow approval by its primary-key id. Used by callback-driven
 // surfaces (Telegram inline buttons) where the caller only carries the
 // approval id, not run/node. Atomically transitions pending → approved/denied

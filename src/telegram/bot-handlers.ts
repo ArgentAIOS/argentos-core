@@ -437,7 +437,7 @@ export const registerTelegramHandlers = ({
             await import("../infra/workflow-approvals.js");
           const { hasPendingApproval, resolveApproval } =
             await import("../infra/workflow-runner.js");
-          const { resumeWorkflowRunAfterApproval } =
+          const { resumeWorkflowRunAfterApproval, denyWorkflowRunAfterApproval } =
             await import("../infra/workflow-execution-service.js");
           const sql = await getWorkflowSql();
           const row = await resolveDurableWorkflowApprovalById(sql, {
@@ -460,15 +460,42 @@ export const registerTelegramHandlers = ({
           const nodeId = String(row.node_id);
           if (hasPendingApproval(runId, nodeId)) {
             resolveApproval(runId, nodeId, approved, approved ? undefined : "Denied via Telegram");
-          } else {
+          } else if (approved) {
+            // Fire-and-forget: the resume re-executes the rest of the pipeline
+            // (agent steps can run for minutes), so we can't hold the callback.
+            // On failure, re-edit the message so a dead resume never reads ✅.
             void resumeWorkflowRunAfterApproval({
               sql,
               runId,
               nodeId,
               triggerSource: "telegram:approval_button",
-            }).catch((err: unknown) => {
+            }).catch(async (err: unknown) => {
               runtime.error?.(danger(`workflow approval resume failed: ${String(err)}`));
+              await bot.api
+                .editMessageText(
+                  chatId,
+                  callbackMessage.message_id,
+                  `⚠️ Approved by ${operatorLabel}, but the run failed to resume: ${String(err).slice(0, 300)}\nRun: ${runId}`,
+                )
+                .catch(() => {});
             });
+          } else {
+            const denyResult = await denyWorkflowRunAfterApproval({
+              sql,
+              runId,
+              nodeId,
+              reason: "Denied via Telegram inline button",
+            });
+            if (!denyResult.denied) {
+              await bot.api
+                .editMessageText(
+                  chatId,
+                  callbackMessage.message_id,
+                  `⚠️ Denied by ${operatorLabel}, but the run had already left the waiting state.\nRun: ${runId}`,
+                )
+                .catch(() => {});
+              return;
+            }
           }
           const icon = approved ? "✅" : "❌";
           const verb = approved ? "Approved" : "Denied";
@@ -809,6 +836,86 @@ export const registerTelegramHandlers = ({
             { chatId, title: msg.chat.title, reason: "not-allowed" },
             "skipping group message",
           );
+          return;
+        }
+      }
+
+      // Workflow approval text fallback (no-buttons path). The inline-button
+      // callback_query handler above is the primary surface; this lets the
+      // operator resolve a pending approval by replying "approve"/"deny"
+      // (optionally "approve <run-id-prefix>") in the chat that receives
+      // approval notifications. Scoped to operatorNotifications telegram targets
+      // so only the operator's own notification chat can resolve via plain text.
+      const trimmedText = typeof msg.text === "string" ? msg.text.trim() : "";
+      const approvalCommand = trimmedText.match(
+        /^(approve|approved|deny|denied|reject|rejected)(?:\s+([A-Za-z0-9-]+))?$/i,
+      );
+      if (approvalCommand) {
+        const operatorTargets = (
+          cfg.agents?.defaults?.kernel?.operatorNotifications?.targets ?? []
+        ).filter((t) => String(t.channel).toLowerCase() === "telegram" && t.to);
+        const isOperatorChat = operatorTargets.some((t) => String(t.to) === String(chatId));
+        if (isOperatorChat) {
+          const approved = /^appr/i.test(approvalCommand[1]);
+          const token = approvalCommand[2]?.trim();
+          const operatorLabel = msg.from?.username
+            ? `@${msg.from.username}`
+            : `tg:${msg.from?.id ?? "?"}`;
+          const reply = (replyText: string) =>
+            bot.api
+              .sendMessage(chatId, replyText, {
+                ...(resolvedThreadId != null ? { message_thread_id: resolvedThreadId } : {}),
+              })
+              .catch(() => {});
+          try {
+            const { getWorkflowSql } = await import("../infra/workflow-pg-client.js");
+            const {
+              listPendingWorkflowApprovals,
+              resolveDurableWorkflowApprovalById,
+              runApprovalTextCommand,
+            } = await import("../infra/workflow-approvals.js");
+            const { hasPendingApproval, resolveApproval } =
+              await import("../infra/workflow-runner.js");
+            const { resumeWorkflowRunAfterApproval, denyWorkflowRunAfterApproval } =
+              await import("../infra/workflow-execution-service.js");
+            const sql = await getWorkflowSql();
+            const result = await runApprovalTextCommand({
+              sql,
+              approved,
+              token,
+              operatorLabel,
+              deps: {
+                listPending: listPendingWorkflowApprovals,
+                resolveById: resolveDurableWorkflowApprovalById,
+                hasPendingApproval,
+                resolveInMemory: (runId, nodeId, isApproved, reason) =>
+                  resolveApproval(runId, nodeId, isApproved, reason),
+                resumeRun: (runId, nodeId) => {
+                  void resumeWorkflowRunAfterApproval({
+                    sql,
+                    runId,
+                    nodeId,
+                    triggerSource: "telegram:approval_text",
+                  }).catch((err: unknown) => {
+                    runtime.error?.(danger(`workflow approval resume failed: ${String(err)}`));
+                  });
+                },
+                denyRun: (runId, nodeId, reason) => {
+                  void denyWorkflowRunAfterApproval({
+                    sql,
+                    runId,
+                    nodeId,
+                    reason,
+                  }).catch((err: unknown) => {
+                    runtime.error?.(danger(`workflow approval deny failed: ${String(err)}`));
+                  });
+                },
+              },
+            });
+            await reply(result.reply);
+          } catch (err) {
+            runtime.error?.(danger(`workflow approval text command failed: ${String(err)}`));
+          }
           return;
         }
       }

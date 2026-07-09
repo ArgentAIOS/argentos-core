@@ -26,7 +26,7 @@ const EXECUTED_TOOL_NAMES = [
   "process",
 ] as const;
 
-const EXTERNAL_ARTIFACT_TOOLS = new Set<ExecutedToolName>([
+export const EXTERNAL_ARTIFACT_TOOLS = new Set<ExecutedToolName>([
   "web_search",
   "web_fetch",
   "doc_panel",

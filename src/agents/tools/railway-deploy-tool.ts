@@ -6,7 +6,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ArgentConfig } from "../../config/config.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
 const DEFAULT_RAILWAY_API_URL = "https://backboard.railway.app/graphql/v2";
@@ -95,8 +95,8 @@ export function createRailwayDeployTool(options?: {
   agentSessionKey?: string;
   config?: ArgentConfig;
 }): AnyAgentTool {
-  const resolveKey = (name: string) =>
-    resolveServiceKey(name, options?.config, {
+  const resolveKey = async (name: string): Promise<string | undefined> =>
+    resolveServiceKeyAsync(name, options?.config, {
       sessionKey: options?.agentSessionKey,
       source: "railway_deploy",
     });
@@ -117,8 +117,8 @@ Actions:
 
       try {
         const token =
-          resolveKey("RAILWAY_API_TOKEN") ||
-          resolveKey("RAILWAY_API_KEY") ||
+          (await resolveKey("RAILWAY_API_TOKEN")) ||
+          (await resolveKey("RAILWAY_API_KEY")) ||
           process.env.RAILWAY_API_TOKEN ||
           process.env.RAILWAY_API_KEY;
         if (!token) {

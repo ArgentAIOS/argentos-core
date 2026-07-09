@@ -10,6 +10,7 @@ import {
 import { installSkill } from "../../agents/skills-install.js";
 import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
+import { invalidatePersonalSkillReadCache } from "../../agents/skills/personal-skill-read-cache.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
@@ -548,6 +549,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
         ...(operatorNotes !== undefined ? { operatorNotes } : {}),
         lastReviewedAt: new Date().toISOString(),
       });
+      invalidatePersonalSkillReadCache();
       if (!updated) {
         throw new Error(`personal skill "${id}" not found`);
       }
@@ -613,6 +615,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
         lastContradictedAt: now,
         lastReviewedAt: now,
       });
+      invalidatePersonalSkillReadCache();
       await scopedMemory.createPersonalSkillReviewEvent({
         candidateId: winnerId,
         actorType: "operator",
@@ -659,6 +662,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
         reason: "Operator deleted Personal Skill",
       });
       const deleted = await scopedMemory.deletePersonalSkillCandidate(id);
+      invalidatePersonalSkillReadCache();
       if (!deleted) {
         throw new Error(`personal skill "${id}" not found`);
       }

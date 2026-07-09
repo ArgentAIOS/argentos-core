@@ -1499,7 +1499,8 @@ const AVAILABLE_TOOLS: readonly ToolPaletteEntry[] = [
     category: "Communication",
   },
   {
-    id: "image_generation",
+    // Must match the registered pi tool name exactly (grants are fail-closed).
+    id: "image_generate",
     name: "Generate Images",
     desc: "Create images with AI",
     category: "Media",

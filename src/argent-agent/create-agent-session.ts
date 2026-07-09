@@ -382,7 +382,15 @@ class ArgentAgentSessionImpl implements AgentSession {
               let isError = false;
 
               try {
-                if (!tool) throw new Error(`Tool ${toolCall.name as string} not found`);
+                if (!tool) {
+                  console.warn(
+                    `[agent-session] tool lookup miss: ${toolCall.name as string}; registry=[${this._tools
+                      .map((t) => t.name)
+                      .slice(0, 50)
+                      .join(",")}]`,
+                  );
+                  throw new Error(`Tool ${toolCall.name as string} not found`);
+                }
                 result = await tool.execute(
                   toolCall.id as string,
                   toolCall.arguments,
@@ -1019,8 +1027,16 @@ export async function createArgentAgentSession(
   const thinkingLevel: ThinkingLevel =
     (options?.thinkingLevel as ThinkingLevel) ?? settings.getDefaultThinkingLevel() ?? "medium";
 
-  // Collect tools
-  const tools = (options?.tools ?? []) as AgentTool[];
+  // Collect tools. customTools (the adapter-wrapped argent toolset — on the
+  // embedded-runner path that is EVERY tool) must join the executable
+  // registry: ToolDefinition is structurally an AgentTool (name, description,
+  // parameters, execute), and dropping them left _tools empty so every model
+  // tool call errored "Tool X not found" while the request still DECLARED the
+  // tools (#442 follow-up, found via the work_report contract).
+  const tools = [
+    ...((options?.tools ?? []) as AgentTool[]),
+    ...((options?.customTools ?? []) as unknown as AgentTool[]),
+  ];
 
   // Create the session
   const session = new ArgentAgentSessionImpl(

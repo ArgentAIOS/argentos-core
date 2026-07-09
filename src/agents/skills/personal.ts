@@ -2,6 +2,7 @@ import type { MemoryAdapter } from "../../data/adapter.js";
 import type { PersonalSkillCandidate } from "../../memory/memu-types.js";
 import type { SkillMatchCandidate } from "./types.js";
 import { isAudioTranscriptPollutedSkill } from "../../memory/live-inbox/capture.js";
+import { invalidatePersonalSkillReadCache } from "./personal-skill-read-cache.js";
 
 const PERSONAL_SKILL_STOPWORDS = new Set([
   "a",
@@ -481,6 +482,7 @@ export async function recordPersonalSkillUsage(params: {
   });
 
   let updated = 0;
+  let stateChanged = false;
   for (const outcome of outcomes) {
     const candidate = candidates.find((entry) => entry.id === outcome.matchedSkillId);
     if (!candidate) continue;
@@ -508,6 +510,9 @@ export async function recordPersonalSkillUsage(params: {
     if (state === "incubating" && confidence >= 0.78 && successCount >= 2 && strength >= 0.6) {
       state = "promoted";
     }
+    if (state !== candidate.state) {
+      stateChanged = true;
+    }
 
     await params.memory.updatePersonalSkillCandidate(candidate.id, {
       confidence,
@@ -532,6 +537,12 @@ export async function recordPersonalSkillUsage(params: {
       },
     });
     updated += 1;
+  }
+  // #405: only state TRANSITIONS invalidate the turn-time read cache.
+  // Counter/confidence bumps happen after most runs and would defeat the
+  // cache; they stay ≤60s stale, which decay/matching tolerates.
+  if (stateChanged) {
+    invalidatePersonalSkillReadCache();
   }
   return { updated };
 }
@@ -847,7 +858,7 @@ export function matchPersonalSkillCandidatesForPrompt(params: {
         // "use", "tool", "marketplace") and runs up the usage counter.
         !isAudioTranscriptPollutedSkill(candidate),
     )
-    .map((candidate) => {
+    .map((candidate): SkillMatchCandidate | null => {
       const titleTerms = tokenize(candidate.title);
       const triggerTerms = tokenize(candidate.triggerPatterns.join(" "));
       const haystackTerms = new Set(

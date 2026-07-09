@@ -8,6 +8,7 @@ import type {
 import type { SisRunResult, SisRunnerSnapshot } from "./sis-runner.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { loadConfig } from "../config/config.js";
+import { getStorageAdapter } from "../data/storage-factory.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveConsciousnessKernelAuthority } from "./consciousness-kernel-authority.js";
 import { runConsciousnessKernelExecutiveCycle } from "./consciousness-kernel-executive.js";
@@ -64,6 +65,9 @@ const DEFAULT_DAILY_BUDGET = 0;
 // longer absences correctly stop kernel inference. Set to 0 in config to disable.
 // See HANDOFF-kernel-fitness.md Section 13 locked decision #2 (2026-05-24).
 const DEFAULT_IDLE_ACTIVITY_GATE_MINUTES = 30;
+// Salience anchor: with zero salience, allow at most one cognition per this
+// many hours (0 disables the anchor entirely). Default one per day.
+const DEFAULT_SALIENCE_ANCHOR_HOURS = 24;
 const STALLED_REFLECTION_QUIET_THRESHOLD = 3;
 const BLOCKED_REASON =
   "Slice 4 still blocks soft/full modes until outward autonomy and embodiment land.";
@@ -232,6 +236,8 @@ type ResolvedKernelConfig = {
   allowVision: boolean;
   /** Minutes of operator inactivity after which inner reflection is skipped. 0 disables. */
   idleActivityGateMinutes: number;
+  /** With zero salience, allow at most one cognition per this many hours. 0 disables the anchor. */
+  salienceAnchorHours: number;
 };
 
 export type ConsciousnessKernelConversationTurn = {
@@ -243,6 +249,13 @@ export type ConsciousnessKernelConversationTurn = {
   assistantReplyText?: string | null;
   assistantConclusion?: string | null;
   now?: string;
+  /**
+   * "background" = self-originated runs (cron worker, heartbeat, subsystem
+   * dispatch). They sync conversation continuity but are zero-weighted for
+   * salience — the kernel cannot find its own activity arousing (LIMBIC
+   * ruling 7). Default: "operator".
+   */
+  origin?: "operator" | "background";
 };
 
 let currentSnapshot: ConsciousnessKernelSnapshot | null = null;
@@ -344,7 +357,64 @@ function resolveKernelConfig(cfg: ArgentConfig): ResolvedKernelConfig {
       Number.isFinite(raw.idleActivityGateMinutes)
         ? Math.max(0, Math.floor(raw.idleActivityGateMinutes))
         : DEFAULT_IDLE_ACTIVITY_GATE_MINUTES,
+    salienceAnchorHours:
+      typeof raw?.salienceAnchorHours === "number" && Number.isFinite(raw.salienceAnchorHours)
+        ? Math.max(0, raw.salienceAnchorHours)
+        : DEFAULT_SALIENCE_ANCHOR_HOURS,
   };
+}
+
+/**
+ * Deterministic tick salience (LIMBIC law 3 applied to the v1 kernel):
+ * cognition (inner reflection + executive cycle, both of which spend
+ * inference) runs ONLY when something actually happened since the last
+ * cognition — operator activity, a task-board delta — or when the periodic
+ * anchor is due. Otherwise the tick is pure arithmetic and the skip is
+ * journaled with a first-class reason. An idle gateway burns zero tokens.
+ */
+export function decideTickSalience(params: {
+  nowMs: number;
+  lastSalientCognitionAt: string | null;
+  lastUserMessageAt: string | null;
+  lastBoardMaxUpdatedAt: number | null;
+  lastBoardTaskCount: number | null;
+  boardMaxUpdatedAt: number | null;
+  boardTaskCount: number | null;
+  salienceAnchorHours: number;
+}): { salient: true; reason: string } | { salient: false; skipReason: string } {
+  const lastCognitionMs = params.lastSalientCognitionAt
+    ? Date.parse(params.lastSalientCognitionAt)
+    : Number.NaN;
+  if (!Number.isFinite(lastCognitionMs)) {
+    // Never reflected on this state file: one baseline cognition is salient —
+    // it establishes the board snapshot the deltas are measured against.
+    return { salient: true, reason: "first-cognition" };
+  }
+  const lastUserMs = params.lastUserMessageAt ? Date.parse(params.lastUserMessageAt) : Number.NaN;
+  if (Number.isFinite(lastUserMs) && lastUserMs > lastCognitionMs) {
+    return { salient: true, reason: "operator-activity" };
+  }
+  if (
+    params.boardMaxUpdatedAt != null &&
+    (params.lastBoardMaxUpdatedAt == null ||
+      params.boardMaxUpdatedAt > params.lastBoardMaxUpdatedAt)
+  ) {
+    return { salient: true, reason: "board-delta" };
+  }
+  if (
+    params.boardTaskCount != null &&
+    params.lastBoardTaskCount != null &&
+    params.boardTaskCount !== params.lastBoardTaskCount
+  ) {
+    return { salient: true, reason: "board-delta" };
+  }
+  if (
+    params.salienceAnchorHours > 0 &&
+    params.nowMs - lastCognitionMs >= params.salienceAnchorHours * 3_600_000
+  ) {
+    return { salient: true, reason: "anchor-due" };
+  }
+  return { salient: false, skipReason: "skip(no-salience)" };
 }
 
 function snapshotSignature(snapshot: ConsciousnessKernelSnapshot): string {
@@ -989,6 +1059,9 @@ function applyConversationTurnToSelfState(
   if (userMessageText) {
     selfState.conversation.lastUserMessageAt = now;
     selfState.conversation.lastUserMessageText = userMessageText;
+    if (update.origin !== "background") {
+      selfState.conversation.lastOperatorActivityAt = now;
+    }
   }
   if (assistantReplyText) {
     selfState.conversation.lastAssistantReplyAt = now;
@@ -2042,6 +2115,42 @@ export function startConsciousnessKernel(opts: {
     return snapshot;
   };
 
+  // Deterministic board snapshot for the salience gate. The tick reads the
+  // cache synchronously and kicks an async refresh — it NEVER blocks on
+  // storage, and storage trouble means "no delta observable", never a
+  // crashed or noisy tick. Delta detection lags at most one tick.
+  let boardCache: { maxUpdatedAt: number | null; taskCount: number | null } = {
+    maxUpdatedAt: null,
+    taskCount: null,
+  };
+  let boardRefreshInFlight = false;
+  const refreshBoardCache = () => {
+    if (boardRefreshInFlight) {
+      return;
+    }
+    boardRefreshInFlight = true;
+    void (async () => {
+      try {
+        const storage = await getStorageAdapter();
+        const tasks = await storage.tasks.list();
+        let maxUpdatedAt = 0;
+        for (const task of tasks) {
+          if (typeof task.updatedAt === "number" && task.updatedAt > maxUpdatedAt) {
+            maxUpdatedAt = task.updatedAt;
+          }
+        }
+        boardCache = {
+          maxUpdatedAt: maxUpdatedAt > 0 ? maxUpdatedAt : null,
+          taskCount: tasks.length,
+        };
+      } catch {
+        // Keep the previous cache — an unobservable board is "no delta".
+      } finally {
+        boardRefreshInFlight = false;
+      }
+    })();
+  };
+
   const scheduleTick = (resolved: ResolvedKernelConfig) => {
     clearTimer();
     if (stopped) {
@@ -2077,8 +2186,50 @@ export function startConsciousnessKernel(opts: {
             summary: `shadow tick ${tickCount}`,
           });
         }
-        await maybeRunInnerReflection(latest, now);
-        await maybeRunExecutiveCycle(latest, now);
+        // LIMBIC law 3: cognition only when deterministic salience says so.
+        // The skip path is pure arithmetic — no inference on an idle gateway.
+        const board = boardCache;
+        refreshBoardCache();
+        const salience = selfState
+          ? decideTickSalience({
+              nowMs: Date.parse(now),
+              lastSalientCognitionAt: selfState.shadow.lastSalientCognitionAt,
+              // Operator activity only — background lanes are zero-weighted
+              // (self-stimulation guard). Old state files fall back once.
+              lastUserMessageAt:
+                selfState.conversation.lastOperatorActivityAt ??
+                selfState.conversation.lastUserMessageAt,
+              lastBoardMaxUpdatedAt: selfState.shadow.lastBoardMaxUpdatedAt,
+              lastBoardTaskCount: selfState.shadow.lastBoardTaskCount,
+              boardMaxUpdatedAt: board.maxUpdatedAt,
+              boardTaskCount: board.taskCount,
+              salienceAnchorHours: latest.salienceAnchorHours,
+            })
+          : ({ salient: true, reason: "no-self-state" } as const);
+        if (salience.salient) {
+          if (selfState) {
+            selfState.shadow.lastSalientCognitionAt = now;
+            if (board.maxUpdatedAt != null) {
+              selfState.shadow.lastBoardMaxUpdatedAt = board.maxUpdatedAt;
+            }
+            if (board.taskCount != null) {
+              selfState.shadow.lastBoardTaskCount = board.taskCount;
+            }
+          }
+          await maybeRunInnerReflection(latest, now);
+          await maybeRunExecutiveCycle(latest, now);
+        } else {
+          recordDecision({
+            resolved: latest,
+            now,
+            kind: "salience-skip",
+            summary: salience.skipReason,
+          });
+          log.info("consciousness kernel: cognition skipped", {
+            reason: salience.skipReason,
+            tick: tickCount,
+          });
+        }
         await maybeRunManagedSubsystems(latest, now);
         await maybeNotifyOperatorRequest(latest, now);
         setSnapshot(cfg, buildSnapshot(latest));

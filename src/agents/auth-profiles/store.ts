@@ -27,6 +27,12 @@ function _syncAuthProfileStore(target: AuthProfileStore, source: AuthProfileStor
 export async function updateAuthProfileStoreWithLock(params: {
   agentDir?: string;
   updater: (store: AuthProfileStore) => boolean;
+  /**
+   * Load the agent's own store file instead of the merged (main + agent)
+   * view. Required when updating a non-main agent dir: saving the merged
+   * view would copy main-agent credentials into the agent's store file.
+   */
+  raw?: boolean;
 }): Promise<AuthProfileStore | null> {
   const authPath = resolveAuthStorePath(params.agentDir);
   ensureAuthStoreFile(authPath);
@@ -34,7 +40,9 @@ export async function updateAuthProfileStoreWithLock(params: {
   let release: (() => Promise<void>) | undefined;
   try {
     release = await lockfile.lock(authPath, AUTH_STORE_LOCK_OPTIONS);
-    const store = ensureAuthProfileStore(params.agentDir);
+    const store = params.raw
+      ? loadAuthProfileStoreForAgent(params.agentDir)
+      : ensureAuthProfileStore(params.agentDir);
     const shouldSave = params.updater(store);
     if (shouldSave) {
       saveAuthProfileStore(store, params.agentDir);
