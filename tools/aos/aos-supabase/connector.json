@@ -175,7 +175,8 @@
         "expressionEnabled": true,
         "applies_to": ["storage.upload", "storage.download"],
         "placeholder": "uploads/report-2026.pdf",
-        "description": "Path within the bucket (e.g. folder/filename.ext)."
+        "description": "Path within the bucket (e.g. folder/filename.ext).",
+        "pattern": "^[a-zA-Z0-9_\\-\\.\\/]+$"
       },
       {
         "id": "storage_prefix",
